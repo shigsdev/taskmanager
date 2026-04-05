@@ -1,0 +1,202 @@
+"""Business logic for tasks. Routes call into this module; models stay thin.
+
+All mutations commit on success. All validation failures raise
+``ValidationError`` so the route layer can map them to HTTP 422.
+"""
+from __future__ import annotations
+
+import uuid
+from datetime import date
+from typing import Any
+
+from sqlalchemy import select
+
+from models import Task, TaskStatus, TaskType, Tier, db
+
+
+class ValidationError(Exception):
+    """Raised when user input fails validation. Routes map this to HTTP 422."""
+
+    def __init__(self, message: str, field: str | None = None):
+        super().__init__(message)
+        self.field = field
+
+
+# --- Coercion helpers --------------------------------------------------------
+
+
+def _parse_date(value: Any, field: str = "due_date") -> date | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError as e:
+        raise ValidationError(f"invalid date: {value!r}", field) from e
+
+
+def _parse_uuid(value: Any, field: str) -> uuid.UUID | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, uuid.UUID):
+        return value
+    try:
+        return uuid.UUID(str(value))
+    except (ValueError, AttributeError) as e:
+        raise ValidationError(f"invalid {field}", field) from e
+
+
+def _parse_enum(enum_cls, value: Any, field: str):
+    if value is None:
+        return None
+    try:
+        return enum_cls(str(value))
+    except ValueError as e:
+        raise ValidationError(f"invalid {field}: {value!r}", field) from e
+
+
+def _parse_int(value: Any, field: str) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError) as e:
+        raise ValidationError(f"invalid {field}: must be integer", field) from e
+
+
+def _parse_checklist(value: Any) -> list:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValidationError("checklist must be a list", "checklist")
+    return value
+
+
+# --- CRUD --------------------------------------------------------------------
+
+
+def create_task(data: dict) -> Task:
+    title = (data.get("title") or "").strip()
+    if not title:
+        raise ValidationError("title is required", "title")
+
+    task_type = _parse_enum(TaskType, data.get("type"), "type")
+    if task_type is None:
+        raise ValidationError("type is required", "type")
+
+    tier = _parse_enum(Tier, data.get("tier"), "tier") or Tier.INBOX
+
+    task = Task(
+        title=title,
+        type=task_type,
+        tier=tier,
+        project_id=_parse_uuid(data.get("project_id"), "project_id"),
+        goal_id=_parse_uuid(data.get("goal_id"), "goal_id"),
+        due_date=_parse_date(data.get("due_date")),
+        notes=(data.get("notes") or None),
+        checklist=_parse_checklist(data.get("checklist")),
+        sort_order=_parse_int(data.get("sort_order", 0), "sort_order"),
+    )
+    db.session.add(task)
+    db.session.commit()
+    return task
+
+
+def get_task(task_id: uuid.UUID) -> Task | None:
+    return db.session.get(Task, task_id)
+
+
+def list_tasks(
+    *,
+    tier: Tier | None = None,
+    type: TaskType | None = None,
+    status: TaskStatus | None = TaskStatus.ACTIVE,
+    project_id: uuid.UUID | None = None,
+    goal_id: uuid.UUID | None = None,
+) -> list[Task]:
+    stmt = select(Task)
+    if status is not None:
+        stmt = stmt.where(Task.status == status)
+    if tier is not None:
+        stmt = stmt.where(Task.tier == tier)
+    if type is not None:
+        stmt = stmt.where(Task.type == type)
+    if project_id is not None:
+        stmt = stmt.where(Task.project_id == project_id)
+    if goal_id is not None:
+        stmt = stmt.where(Task.goal_id == goal_id)
+    stmt = stmt.order_by(Task.sort_order.asc(), Task.created_at.desc())
+    return list(db.session.scalars(stmt))
+
+
+_UPDATABLE_FIELDS = {
+    "title",
+    "type",
+    "tier",
+    "status",
+    "project_id",
+    "goal_id",
+    "due_date",
+    "notes",
+    "checklist",
+    "sort_order",
+    "last_reviewed",
+}
+
+
+def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
+    task = get_task(task_id)
+    if task is None:
+        return None
+
+    if "title" in data:
+        title = (data["title"] or "").strip()
+        if not title:
+            raise ValidationError("title cannot be empty", "title")
+        task.title = title
+
+    if "type" in data:
+        task.type = _parse_enum(TaskType, data["type"], "type") or task.type
+
+    if "tier" in data:
+        task.tier = _parse_enum(Tier, data["tier"], "tier") or task.tier
+
+    if "status" in data:
+        task.status = _parse_enum(TaskStatus, data["status"], "status") or task.status
+
+    if "project_id" in data:
+        task.project_id = _parse_uuid(data["project_id"], "project_id")
+
+    if "goal_id" in data:
+        task.goal_id = _parse_uuid(data["goal_id"], "goal_id")
+
+    if "due_date" in data:
+        task.due_date = _parse_date(data["due_date"], "due_date")
+
+    if "last_reviewed" in data:
+        task.last_reviewed = _parse_date(data["last_reviewed"], "last_reviewed")
+
+    if "notes" in data:
+        task.notes = data["notes"] or None
+
+    if "checklist" in data:
+        task.checklist = _parse_checklist(data["checklist"])
+
+    if "sort_order" in data:
+        task.sort_order = _parse_int(data["sort_order"], "sort_order")
+
+    unknown = set(data) - _UPDATABLE_FIELDS
+    if unknown:
+        raise ValidationError(f"unknown fields: {sorted(unknown)}", next(iter(unknown)))
+
+    db.session.commit()
+    return task
+
+
+def delete_task(task_id: uuid.UUID) -> bool:
+    """Soft-delete by setting status to DELETED. Returns False if not found."""
+    task = get_task(task_id)
+    if task is None:
+        return False
+    task.status = TaskStatus.DELETED
+    db.session.commit()
+    return True

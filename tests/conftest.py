@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import pytest
 
+import auth
 from app import create_app
 from models import db as _db
 
@@ -41,3 +42,10 @@ def client(app):
 @pytest.fixture
 def db(app):
     return _db
+
+
+@pytest.fixture
+def authed_client(client, monkeypatch):
+    """Client pre-authenticated as the authorized user."""
+    monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+    return client
