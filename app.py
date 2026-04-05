@@ -1,6 +1,6 @@
 """Flask app entry point.
 
-Step 2 scope: Google OAuth sign-in + single-user lockdown. No database yet.
+Wires up Google OAuth + single-user lockdown, the database, and migrations.
 """
 from __future__ import annotations
 
@@ -10,11 +10,27 @@ from datetime import timedelta
 from dotenv import load_dotenv
 from flask import Flask, redirect, render_template, session, url_for
 from flask_dance.contrib.google import make_google_blueprint
+from flask_migrate import Migrate
 from flask_talisman import Talisman
 
 from auth import login_required
+from models import db
 
 load_dotenv()
+
+
+def _normalize_db_url(url: str) -> str:
+    """Normalize a Railway-style DB URL.
+
+    Railway injects ``postgres://...`` which SQLAlchemy 2.x rejects, and the
+    default ``postgresql://`` scheme pulls in psycopg2. We use psycopg3, so
+    we rewrite to the explicit ``postgresql+psycopg://`` scheme.
+    """
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://") :]
+    if url.startswith("postgresql://"):
+        url = "postgresql+psycopg://" + url[len("postgresql://") :]
+    return url
 
 
 def create_app(config: dict | None = None) -> Flask:
@@ -23,6 +39,10 @@ def create_app(config: dict | None = None) -> Flask:
     app.config.update(
         SECRET_KEY=os.environ.get("SECRET_KEY", "dev-secret-change-me"),
         AUTHORIZED_EMAIL=os.environ.get("AUTHORIZED_EMAIL", ""),
+        SQLALCHEMY_DATABASE_URI=_normalize_db_url(
+            os.environ.get("DATABASE_URL", "sqlite:///dev.db")
+        ),
+        SQLALCHEMY_TRACK_MODIFICATIONS=False,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=os.environ.get("FLASK_ENV") != "development",
@@ -30,6 +50,9 @@ def create_app(config: dict | None = None) -> Flask:
     )
     if config:
         app.config.update(config)
+
+    db.init_app(app)
+    Migrate(app, db)
 
     google_bp = make_google_blueprint(
         client_id=os.environ.get("GOOGLE_CLIENT_ID"),

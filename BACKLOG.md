@@ -14,6 +14,7 @@ _(none)_
 
 - [x] Project documentation scaffolding — CLAUDE.md, BACKLOG.md, README.md, ARCHITECTURE.md — completed 2026-04-05
 - [x] Basic Flask app with Google OAuth login, single user lockdown — completed 2026-04-05
+- [x] Database models and migrations (PostgreSQL) — tasks, projects, goals, recurring_tasks, import_log — completed 2026-04-05
 
 ## Bugs
 
@@ -21,7 +22,6 @@ _(none yet)_
 
 ## Backlog (prioritized)
 
-- [ ] Database models and migrations (PostgreSQL) — including goals table — phase: 1
 - [ ] Core task CRUD — create, read, update, delete, move between tiers — phase: 1
 - [ ] Goals CRUD — create, read, update, delete, link to tasks — phase: 1
 - [ ] Main UI — tier view, task cards, quick capture bar — phase: 1

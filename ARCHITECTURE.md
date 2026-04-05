@@ -96,7 +96,7 @@ component is added, a data flow changes, or a security boundary shifts.
 ## External Dependencies (version pins maintained in `requirements.txt`)
 
 - flask, flask-sqlalchemy, flask-migrate, flask-dance, flask-talisman
-- psycopg2-binary
+- psycopg (v3, binary) — SQLAlchemy URL scheme `postgresql+psycopg://`
 - cryptography (Fernet)
 - apscheduler
 - sendgrid

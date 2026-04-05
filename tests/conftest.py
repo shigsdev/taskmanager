@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 
 from app import create_app
+from models import db as _db
 
 
 @pytest.fixture
@@ -22,11 +23,21 @@ def app(monkeypatch):
             "AUTHORIZED_EMAIL": "me@example.com",
             "SESSION_COOKIE_SECURE": False,
             "WTF_CSRF_ENABLED": False,
+            "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
         }
     )
-    return app
+    with app.app_context():
+        _db.create_all()
+        yield app
+        _db.session.remove()
+        _db.drop_all()
 
 
 @pytest.fixture
 def client(app):
     return app.test_client()
+
+
+@pytest.fixture
+def db(app):
+    return _db
