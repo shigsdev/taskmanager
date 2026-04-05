@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Not authorized{% endblock %}
+{% block content %}
+    <section class="unauthorized">
+        <h1>Not authorized</h1>
+        <p>That Google account is not permitted to use this app.</p>
+        <a href="{{ url_for('login_page') }}" class="btn">Back to sign in</a>
+    </section>
+{% endblock %}

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Sign in — Task Manager{% endblock %}
+{% block content %}
+    <section class="login">
+        <h1>Sign in</h1>
+        <p>This app is restricted to a single authorized Google account.</p>
+        <a href="{{ url_for('google.login') }}" class="btn">Sign in with Google</a>
+    </section>
+{% endblock %}

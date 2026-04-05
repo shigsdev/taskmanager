@@ -1,0 +1,38 @@
+# Secrets
+.env
+.env.local
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Testing / lint caches
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ruff_cache/
+.tox/
+
+# Flask / DB
+instance/
+*.db
+*.sqlite
+*.sqlite3
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

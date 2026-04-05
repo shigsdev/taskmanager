@@ -8,11 +8,12 @@ moved between sections, never deleted.
 
 ## In Progress
 
-- [ ] Project documentation scaffolding — CLAUDE.md, BACKLOG.md, README.md, ARCHITECTURE.md — started 2026-04-05
+_(none)_
 
 ## Completed
 
-_(none yet)_
+- [x] Project documentation scaffolding — CLAUDE.md, BACKLOG.md, README.md, ARCHITECTURE.md — completed 2026-04-05
+- [x] Basic Flask app with Google OAuth login, single user lockdown — completed 2026-04-05
 
 ## Bugs
 
@@ -20,7 +21,6 @@ _(none yet)_
 
 ## Backlog (prioritized)
 
-- [ ] Basic Flask app with Google OAuth login, single user lockdown — phase: 1
 - [ ] Database models and migrations (PostgreSQL) — including goals table — phase: 1
 - [ ] Core task CRUD — create, read, update, delete, move between tiers — phase: 1
 - [ ] Goals CRUD — create, read, update, delete, link to tasks — phase: 1

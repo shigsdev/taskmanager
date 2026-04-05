@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Home — Task Manager{% endblock %}
+{% block nav %}
+    <span class="user">{{ email }}</span>
+    <a href="{{ url_for('logout') }}" class="btn-link">Log out</a>
+{% endblock %}
+{% block content %}
+    <section>
+        <h1>Signed in as {{ email }}</h1>
+        <p>Authentication is wired up. Tasks, goals, and the rest of the app come next.</p>
+    </section>
+{% endblock %}
