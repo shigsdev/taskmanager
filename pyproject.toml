@@ -15,6 +15,9 @@ ignore = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q --cov=. --cov-report=term-missing --cov-fail-under=80"
+markers = [
+    "requires_postgres: tests that need a real PostgreSQL DATABASE_URL",
+]
 
 [tool.coverage.run]
 omit = [
