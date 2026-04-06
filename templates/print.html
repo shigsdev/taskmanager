@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Tasks — {{ print_date.strftime('%A, %B %d, %Y') }}</title>
+    <style>
+        /* Print-friendly styles — no external CSS needed */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 11pt;
+            line-height: 1.4;
+            color: #000;
+            padding: 20px;
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .print-header {
+            text-align: center;
+            border-bottom: 2px solid #000;
+            padding-bottom: 8px;
+            margin-bottom: 16px;
+        }
+        .print-header h1 {
+            font-size: 16pt;
+            font-weight: 700;
+            margin-bottom: 2px;
+        }
+        .print-header .print-date {
+            font-size: 10pt;
+            color: #555;
+        }
+
+        .print-section {
+            margin-bottom: 14px;
+        }
+        .print-section h2 {
+            font-size: 12pt;
+            font-weight: 700;
+            border-bottom: 1px solid #999;
+            padding-bottom: 3px;
+            margin-bottom: 6px;
+        }
+        .print-section-empty {
+            color: #999;
+            font-style: italic;
+            font-size: 9pt;
+            padding: 2px 0;
+        }
+
+        .print-task {
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+            padding: 3px 0;
+            border-bottom: 1px dotted #ddd;
+        }
+        .print-task:last-child { border-bottom: none; }
+
+        .print-checkbox {
+            width: 13px;
+            height: 13px;
+            min-width: 13px;
+            border: 1.5px solid #333;
+            border-radius: 2px;
+            margin-top: 2px;
+        }
+
+        .print-task-title {
+            flex: 1;
+            font-size: 10pt;
+        }
+        .print-task-meta {
+            font-size: 8pt;
+            color: #777;
+            white-space: nowrap;
+        }
+
+        .print-overdue {
+            font-weight: 600;
+            color: #c00;
+        }
+
+        .print-checklist {
+            margin-left: 20px;
+            font-size: 9pt;
+            color: #555;
+        }
+        .print-checklist-item {
+            padding: 1px 0;
+        }
+
+        .print-notes {
+            margin-top: 10px;
+            border: 1px solid #ccc;
+            min-height: 80px;
+            padding: 6px;
+            font-size: 9pt;
+            color: #999;
+        }
+        .print-notes::before {
+            content: "Notes";
+            display: block;
+            font-weight: 600;
+            color: #777;
+            margin-bottom: 4px;
+        }
+
+        /* Print button — hidden when actually printing */
+        .print-actions {
+            text-align: center;
+            margin-bottom: 16px;
+        }
+        .print-actions button {
+            padding: 10px 28px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 2px solid #333;
+            background: #fff;
+            border-radius: 6px;
+        }
+        .print-actions button:hover { background: #f0f0f0; }
+        .print-actions a {
+            margin-left: 12px;
+            font-size: 13px;
+            color: #555;
+        }
+
+        @media print {
+            .print-actions { display: none; }
+            body { padding: 0; }
+            .print-header { border-bottom-width: 1.5px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="print-actions" id="printActions">
+        <button onclick="window.print()">Print</button>
+        <a href="/">Back to Tasks</a>
+    </div>
+
+    <div class="print-header">
+        <h1>Daily Tasks</h1>
+        <div class="print-date">{{ print_date.strftime('%A, %B %d, %Y') }}</div>
+    </div>
+
+    {% if overdue_tasks %}
+    <div class="print-section" id="printOverdue">
+        <h2>Overdue</h2>
+        {% for task in overdue_tasks %}
+        <div class="print-task">
+            <div class="print-checkbox"></div>
+            <div class="print-task-title print-overdue">{{ task.title }}</div>
+            <div class="print-task-meta">due {{ task.due_date.isoformat() }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="print-section" id="printToday">
+        <h2>Today</h2>
+        {% if today_tasks %}
+        {% for task in today_tasks %}
+        <div class="print-task">
+            <div class="print-checkbox"></div>
+            <div class="print-task-title">{{ task.title }}</div>
+            <div class="print-task-meta">
+                {{ task.type.value }}
+                {% if task.due_date %} · due {{ task.due_date.isoformat() }}{% endif %}
+            </div>
+        </div>
+        {% if task.checklist %}
+        <div class="print-checklist">
+            {% for item in task.checklist %}
+            <div class="print-checklist-item">
+                {% if item.checked %}☑{% else %}☐{% endif %} {{ item.text }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endfor %}
+        {% else %}
+        <div class="print-section-empty">No tasks for today</div>
+        {% endif %}
+    </div>
+
+    <div class="print-section" id="printWeek">
+        <h2>This Week</h2>
+        {% if week_tasks %}
+        {% for task in week_tasks %}
+        <div class="print-task">
+            <div class="print-checkbox"></div>
+            <div class="print-task-title">{{ task.title }}</div>
+            <div class="print-task-meta">
+                {{ task.type.value }}
+                {% if task.due_date %} · due {{ task.due_date.isoformat() }}{% endif %}
+            </div>
+        </div>
+        {% if task.checklist %}
+        <div class="print-checklist">
+            {% for item in task.checklist %}
+            <div class="print-checklist-item">
+                {% if item.checked %}☑{% else %}☐{% endif %} {{ item.text }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endfor %}
+        {% else %}
+        <div class="print-section-empty">No tasks this week</div>
+        {% endif %}
+    </div>
+
+    <div class="print-notes" id="printNotes"></div>
+</body>
+</html>

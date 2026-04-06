@@ -5,7 +5,7 @@ Wires up Google OAuth + single-user lockdown, the database, and migrations.
 from __future__ import annotations
 
 import os
-from datetime import timedelta
+from datetime import date, timedelta
 
 from dotenv import load_dotenv
 from flask import Flask, redirect, render_template, session, url_for
@@ -19,7 +19,8 @@ import recurring_api
 import review_api
 import tasks_api
 from auth import login_required
-from models import db
+from models import TaskStatus, Tier, db
+from task_service import list_tasks
 
 load_dotenv()
 
@@ -96,6 +97,23 @@ def create_app(config: dict | None = None) -> Flask:
     @login_required
     def review_page(email: str):  # noqa: ARG001
         return render_template("review.html")
+
+    @app.route("/print")
+    @login_required
+    def print_page(email: str):  # noqa: ARG001
+        today_tasks = list_tasks(tier=Tier.TODAY, status=TaskStatus.ACTIVE)
+        week_tasks = list_tasks(tier=Tier.THIS_WEEK, status=TaskStatus.ACTIVE)
+        overdue = [
+            t for t in list_tasks(status=TaskStatus.ACTIVE)
+            if t.due_date and t.due_date < date.today() and t.tier != Tier.TODAY
+        ]
+        return render_template(
+            "print.html",
+            today_tasks=today_tasks,
+            week_tasks=week_tasks,
+            overdue_tasks=overdue,
+            print_date=date.today(),
+        )
 
     @app.route("/logout", methods=["POST", "GET"])
     def logout():
