@@ -10,6 +10,8 @@ from datetime import date, timedelta
 from dotenv import load_dotenv
 from flask import Flask, redirect, render_template, session, url_for
 from flask_dance.contrib.google import make_google_blueprint
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from flask_migrate import Migrate
 from flask_talisman import Talisman
 
@@ -84,8 +86,35 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(import_api.bp)
     app.register_blueprint(settings_api.bp)
 
+    # --- Security: Talisman (HTTPS + headers) ---
     if not app.config.get("TESTING") and os.environ.get("FLASK_ENV") != "development":
-        Talisman(app, content_security_policy=None, force_https=True)
+        csp = {
+            "default-src": "'self'",
+            "script-src": "'self'",
+            "style-src": "'self' 'unsafe-inline'",
+            "img-src": "'self' data:",
+            "font-src": "'self'",
+            "connect-src": "'self'",
+            "frame-ancestors": "'none'",
+        }
+        Talisman(
+            app,
+            content_security_policy=csp,
+            force_https=True,
+            session_cookie_secure=True,
+            strict_transport_security=True,
+            strict_transport_security_max_age=31536000,
+            referrer_policy="strict-origin-when-cross-origin",
+        )
+
+    # --- Security: rate limiting ---
+    if not app.config.get("TESTING"):
+        Limiter(
+            get_remote_address,
+            app=app,
+            default_limits=["200 per minute"],
+            storage_uri="memory://",
+        )
 
     @app.before_request
     def _refresh_session_lifetime():

@@ -32,6 +32,7 @@ _(none)_
 - [x] Image scan to tasks — Google Vision OCR + Claude API parsing, review screen with edit/deselect, confirm to Inbox, in-memory only — completed 2026-04-06
 - [x] Import tool — OneNote task parsing + Excel goals parsing, duplicate detection, ImportLog audit trail — completed 2026-04-06
 - [x] Settings page — app stats, service status, digest controls, import history, quick links — completed 2026-04-06
+- [x] Security hardening — Fernet encryption, CSP headers, rate limiting, session hardening, auth audit — completed 2026-04-06
 
 ## Bugs
 
@@ -47,7 +48,7 @@ _(none yet)_
 - [x] Image scan to tasks (Google Vision + Claude API parsing + review screen) — phase: 1 (done)
 - [x] Import tool — OneNote tasks + Excel goals (/import) — phase: 1 (done)
 - [x] Settings page — phase: 1 (done)
-- [ ] Security hardening (Talisman, session expiry, encryption audit) — phase: 1
+- [x] Security hardening (Talisman, session expiry, encryption audit) — phase: 1 (done)
 - [ ] Railway deployment + DNS — phase: 1
 
 ## Freezer (good ideas, not now)
