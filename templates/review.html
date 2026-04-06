@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Weekly Review — Task Manager{% endblock %}
+
+{% block nav %}
+    <a href="{{ url_for('index') }}" class="nav-tab">Tasks</a>
+    <a href="{{ url_for('goals_page') }}" class="nav-tab">Goals</a>
+    <a href="{{ url_for('review_page') }}" class="nav-tab active">Review</a>
+    <span class="inbox-badge" id="inboxBadge" title="Inbox items">0</span>
+    <a href="{{ url_for('logout') }}" class="btn-link">Log out</a>
+{% endblock %}
+
+{% block content %}
+<div class="review-container" id="reviewContainer">
+    <!-- Loading state -->
+    <div class="review-loading" id="reviewLoading">
+        <h2>Loading review items...</h2>
+    </div>
+
+    <!-- Empty state: nothing to review -->
+    <div class="review-empty" id="reviewEmpty" style="display:none">
+        <h2>All caught up!</h2>
+        <p>No tasks need review right now. Tasks appear here when they haven't
+           been touched in 7+ days.</p>
+        <a href="{{ url_for('index') }}" class="btn">Back to Tasks</a>
+    </div>
+
+    <!-- Review card: shown one task at a time -->
+    <div class="review-card" id="reviewCard" style="display:none">
+        <div class="review-progress">
+            <div class="review-progress-bar">
+                <div class="review-progress-fill" id="reviewProgressFill"></div>
+            </div>
+            <span class="review-progress-text" id="reviewProgressText">0 of 0</span>
+        </div>
+
+        <div class="review-task" id="reviewTask">
+            <h2 class="review-task-title" id="reviewTaskTitle"></h2>
+            <div class="review-task-meta" id="reviewTaskMeta"></div>
+            <div class="review-task-notes" id="reviewTaskNotes"></div>
+            <div class="review-task-checklist" id="reviewTaskChecklist"></div>
+        </div>
+
+        <div class="review-actions" id="reviewActions">
+            <button class="btn review-btn review-btn-keep" data-action="keep" title="Keep in current tier, mark as reviewed">
+                Keep
+            </button>
+            <button class="btn review-btn review-btn-freeze" data-action="freeze" title="Move to Freezer">
+                Freeze
+            </button>
+            <button class="btn review-btn review-btn-snooze" data-action="snooze" title="Snooze for 1 week">
+                Snooze
+            </button>
+            <button class="btn review-btn review-btn-delete" data-action="delete" title="Delete this task">
+                Delete
+            </button>
+        </div>
+    </div>
+
+    <!-- Summary: shown after all tasks reviewed -->
+    <div class="review-summary" id="reviewSummary" style="display:none">
+        <h2>Review Complete</h2>
+        <div class="review-summary-stats" id="reviewSummaryStats"></div>
+        <a href="{{ url_for('index') }}" class="btn">Back to Tasks</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='review.js') }}"></script>
+{% endblock %}

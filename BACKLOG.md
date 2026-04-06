@@ -25,6 +25,7 @@ _(none)_
 - [x] Inbox + triage flow — verified: default tier, single + bulk triage, filtering, complete/delete from inbox — completed 2026-04-05
 - [x] Checklist/notes on tasks — verified: CRUD, progress tracking, round-trips, special chars, independence — completed 2026-04-05
 - [x] Mobile-responsive CSS — 44px touch targets, swipe gestures, iOS zoom prevention, full-screen detail panel, project filter scroll — completed 2026-04-06
+- [x] Weekly review mode — step-through stale tasks, keep/freeze/delete/snooze actions, progress bar, summary — completed 2026-04-06
 
 ## Bugs
 
@@ -33,7 +34,7 @@ _(none yet)_
 ## Backlog (prioritized)
 
 - [x] Mobile-responsive CSS — phase: 1 (done)
-- [ ] Weekly review mode — phase: 1
+- [x] Weekly review mode — phase: 1 (done)
 - [ ] Recurring tasks (system defaults + user-defined) — phase: 1
 - [ ] Print view (/print) — phase: 1
 - [ ] Email digest with goals summary (SendGrid + APScheduler) — phase: 1

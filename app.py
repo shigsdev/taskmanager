@@ -15,6 +15,7 @@ from flask_talisman import Talisman
 
 import goals_api
 import projects_api
+import review_api
 import tasks_api
 from auth import login_required
 from models import db
@@ -70,6 +71,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(tasks_api.bp)
     app.register_blueprint(goals_api.bp)
     app.register_blueprint(projects_api.bp)
+    app.register_blueprint(review_api.bp)
 
     if not app.config.get("TESTING") and os.environ.get("FLASK_ENV") != "development":
         Talisman(app, content_security_policy=None, force_https=True)
@@ -87,6 +89,11 @@ def create_app(config: dict | None = None) -> Flask:
     @login_required
     def goals_page(email: str):  # noqa: ARG001
         return render_template("goals.html")
+
+    @app.route("/review")
+    @login_required
+    def review_page(email: str):  # noqa: ARG001
+        return render_template("review.html")
 
     @app.route("/logout", methods=["POST", "GET"])
     def logout():
