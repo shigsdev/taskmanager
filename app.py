@@ -81,6 +81,11 @@ def create_app(config: dict | None = None) -> Flask:
     def index(email: str):
         return render_template("index.html", email=email)
 
+    @app.route("/goals")
+    @login_required
+    def goals_page(email: str):  # noqa: ARG001
+        return render_template("goals.html")
+
     @app.route("/logout", methods=["POST", "GET"])
     def logout():
         session.clear()

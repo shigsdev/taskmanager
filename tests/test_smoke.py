@@ -65,6 +65,7 @@ def test_expected_routes_exist(app):
     rules = [r.rule for r in app.url_map.iter_rules()]
     assert "/api/tasks" in rules
     assert "/api/goals" in rules
+    assert "/goals" in rules
     assert "/healthz" in rules
     assert "/login" in rules
     assert "/logout" in rules

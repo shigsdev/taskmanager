@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Goals — Task Manager{% endblock %}
+
+{% block capture %}
+<div class="capture-bar" id="captureBar">
+    <input type="text" id="captureInput" placeholder="Add a task… (#today #week @project)" autocomplete="off">
+    <select id="captureType" title="Task type">
+        <option value="work">Work</option>
+        <option value="personal">Personal</option>
+    </select>
+    <button type="button" id="captureVoice" class="icon-btn" title="Voice input">🎤</button>
+</div>
+{% endblock %}
+
+{% block nav %}
+    <a href="{{ url_for('index') }}" class="nav-tab" data-view="all">All</a>
+    <a href="{{ url_for('goals_page') }}" class="nav-tab active">Goals</a>
+    <span class="inbox-badge" id="inboxBadge" title="Inbox items">0</span>
+    <a href="{{ url_for('logout') }}" class="btn-link">Log out</a>
+{% endblock %}
+
+{% block content %}
+<div class="goals-page">
+    <div class="goals-toolbar">
+        <h1>Goals</h1>
+        <div class="goals-filters">
+            <select id="filterCategory" title="Filter by category">
+                <option value="">All categories</option>
+                <option value="health">Health</option>
+                <option value="personal_growth">Personal Growth</option>
+                <option value="relationships">Relationships</option>
+                <option value="work">Work</option>
+            </select>
+            <select id="filterPriority" title="Filter by priority">
+                <option value="">All priorities</option>
+                <option value="must">Must</option>
+                <option value="should">Should</option>
+                <option value="could">Could</option>
+                <option value="need_more_info">Need More Info</option>
+            </select>
+            <select id="filterStatus" title="Filter by status">
+                <option value="">All statuses</option>
+                <option value="not_started">Not Started</option>
+                <option value="in_progress">In Progress</option>
+                <option value="done">Done</option>
+                <option value="on_hold">On Hold</option>
+            </select>
+            <select id="filterQuarter" title="Filter by quarter">
+                <option value="">All quarters</option>
+                <option value="Q1">Q1</option>
+                <option value="Q2">Q2</option>
+                <option value="Q3">Q3</option>
+                <option value="Q4">Q4</option>
+            </select>
+        </div>
+        <button class="btn" id="addGoalBtn">+ New Goal</button>
+    </div>
+
+    <div id="goalsBoard"></div>
+</div>
+
+<!-- Goal detail / edit panel -->
+<div class="detail-overlay" id="goalDetailOverlay" style="display:none">
+    <div class="detail-panel" id="goalDetailPanel">
+        <div class="detail-header">
+            <h3 id="goalDetailHeading">Goal Detail</h3>
+            <button class="icon-btn" id="goalDetailClose" title="Close">✕</button>
+        </div>
+        <form id="goalDetailForm">
+            <input type="hidden" id="goalId">
+
+            <label for="goalTitle">Title</label>
+            <input type="text" id="goalTitle" required>
+
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="goalCategory">Category</label>
+                    <select id="goalCategory" required>
+                        <option value="health">Health</option>
+                        <option value="personal_growth">Personal Growth</option>
+                        <option value="relationships">Relationships</option>
+                        <option value="work">Work</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="goalPriority">Priority</label>
+                    <select id="goalPriority" required>
+                        <option value="must">Must</option>
+                        <option value="should">Should</option>
+                        <option value="could">Could</option>
+                        <option value="need_more_info">Need More Info</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="goalPriorityRank">Priority Rank</label>
+                    <input type="number" id="goalPriorityRank" min="0" placeholder="e.g. 1">
+                </div>
+                <div class="form-field">
+                    <label for="goalTargetQuarter">Target Quarter</label>
+                    <input type="text" id="goalTargetQuarter" placeholder="e.g. Q1,Q2">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="goalStatus">Status</label>
+                    <select id="goalStatus">
+                        <option value="not_started">Not Started</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="done">Done</option>
+                        <option value="on_hold">On Hold</option>
+                    </select>
+                </div>
+            </div>
+
+            <label for="goalActions">Actions</label>
+            <textarea id="goalActions" rows="3" placeholder="What needs to happen…"></textarea>
+
+            <label for="goalNotes">Notes</label>
+            <textarea id="goalNotes" rows="2"></textarea>
+
+            <div class="detail-actions">
+                <button type="submit" class="btn">Save</button>
+                <button type="button" class="btn btn-danger" id="goalDelete">Delete</button>
+            </div>
+        </form>
+
+        <!-- Linked tasks section -->
+        <div class="linked-tasks-section" id="linkedTasksSection" style="display:none">
+            <h4>Linked Tasks <span id="linkedTaskCount" class="tier-count"></span></h4>
+            <div id="linkedTasksList"></div>
+            <div class="add-linked-task">
+                <input type="text" id="linkedTaskInput" placeholder="Add a task to this goal…">
+                <select id="linkedTaskType" title="Task type">
+                    <option value="work">Work</option>
+                    <option value="personal">Personal</option>
+                </select>
+                <button type="button" class="btn-sm" id="addLinkedTaskBtn">Add</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='goals.js') }}"></script>
+<script src="{{ url_for('static', filename='capture.js') }}"></script>
+{% endblock %}

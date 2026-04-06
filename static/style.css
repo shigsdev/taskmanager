@@ -459,6 +459,177 @@ body {
 }
 .triage-dropdown button:hover { background: var(--bg); }
 
+/* === Goals Page === */
+.goals-page {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 16px;
+}
+
+.goals-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+.goals-toolbar h1 { font-size: 1.2rem; margin-right: auto; }
+
+.goals-filters {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.goals-filters select {
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.8rem;
+    background: var(--surface);
+}
+
+.goals-category-section {
+    margin-bottom: 24px;
+}
+.goals-category-header {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--border);
+}
+
+.goal-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: box-shadow 0.15s;
+}
+.goal-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+.goal-card.goal-inactive { opacity: 0.5; }
+
+.goal-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.badge-priority-must { background: #fecaca; color: #991b1b; }
+.badge-priority-should { background: #fed7aa; color: #9a3412; }
+.badge-priority-could { background: #dbeafe; color: #1e40af; }
+.badge-priority-need_more_info { background: #e5e7eb; color: #374151; }
+
+.badge-status-not_started { background: #f3f4f6; color: #6b7280; }
+.badge-status-in_progress { background: #dbeafe; color: #1d4ed8; }
+.badge-status-done { background: #dcfce7; color: #166534; }
+.badge-status-on_hold { background: #fef3c7; color: #92400e; }
+
+.badge-quarter { background: #ede9fe; color: #5b21b6; }
+
+.goal-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.goal-actions-preview {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    line-height: 1.4;
+}
+
+.goal-progress-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+}
+
+.progress-bar {
+    flex: 1;
+    height: 6px;
+    background: #e5e7eb;
+    border-radius: 3px;
+    overflow: hidden;
+    max-width: 200px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+.progress-fill.complete { background: var(--green); }
+
+.progress-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.progress-label.muted { font-style: italic; }
+
+.empty-goals {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 40px 20px;
+    font-size: 0.9rem;
+}
+
+/* Linked tasks in goal detail */
+.linked-tasks-section {
+    margin-top: 24px;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+}
+.linked-tasks-section h4 {
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+}
+
+.linked-task-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 0.85rem;
+}
+.linked-task-row input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 15px;
+    height: 15px;
+}
+.linked-task-title { flex: 1; }
+.linked-task-title.completed {
+    text-decoration: line-through;
+    color: var(--text-muted);
+}
+
+.add-linked-task {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+}
+.add-linked-task input[type="text"] {
+    flex: 1;
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.85rem;
+}
+.add-linked-task select {
+    padding: 5px 4px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.8rem;
+}
+
 /* === Mobile === */
 @media (max-width: 600px) {
     .nav { padding: 8px 10px; gap: 8px; }

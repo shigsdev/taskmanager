@@ -18,6 +18,7 @@ _(none)_
 - [x] Core task CRUD — JSON API for create, read, update, delete, move between tiers — completed 2026-04-05
 - [x] Goals CRUD — JSON API for create, read, update, delete, link to tasks, progress tracking — completed 2026-04-05
 - [x] Main UI — tier board, task cards, quick capture bar, detail panel, voice input — completed 2026-04-05
+- [x] Goals view — grouped by category, progress bars, filters, linked tasks, create/edit/delete — completed 2026-04-05
 
 ## Bugs
 
@@ -25,7 +26,6 @@ _(none yet)_
 
 ## Backlog (prioritized)
 
-- [ ] Goals view — grouped by category, progress tracking, task linking — phase: 1
 - [ ] Project grouping for work tasks (with optional goal link) — phase: 1
 - [ ] Inbox + triage flow — phase: 1
 - [ ] Checklist/notes on tasks — phase: 1

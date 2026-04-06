@@ -60,6 +60,19 @@ def test_logout_clears_session_and_redirects(client):
         assert "something" not in sess
 
 
+def test_goals_page_requires_auth(client, monkeypatch):
+    monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
+    resp = client.get("/goals")
+    assert resp.status_code == 302
+
+
+def test_goals_page_renders(client, monkeypatch):
+    monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+    resp = client.get("/goals")
+    assert resp.status_code == 200
+    assert b"Goals" in resp.data
+
+
 def test_healthz_is_public(client):
     resp = client.get("/healthz")
     assert resp.status_code == 200
