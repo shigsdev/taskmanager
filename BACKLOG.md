@@ -26,6 +26,7 @@ _(none)_
 - [x] Checklist/notes on tasks — verified: CRUD, progress tracking, round-trips, special chars, independence — completed 2026-04-05
 - [x] Mobile-responsive CSS — 44px touch targets, swipe gestures, iOS zoom prevention, full-screen detail panel, project filter scroll — completed 2026-04-06
 - [x] Weekly review mode — step-through stale tasks, keep/freeze/delete/snooze actions, progress bar, summary — completed 2026-04-06
+- [x] Recurring tasks — CRUD API, 16 system defaults (morning/evening routines, day-specific), spawn to Today tier — completed 2026-04-06
 
 ## Bugs
 
@@ -35,7 +36,7 @@ _(none yet)_
 
 - [x] Mobile-responsive CSS — phase: 1 (done)
 - [x] Weekly review mode — phase: 1 (done)
-- [ ] Recurring tasks (system defaults + user-defined) — phase: 1
+- [x] Recurring tasks (system defaults + user-defined) — phase: 1 (done)
 - [ ] Print view (/print) — phase: 1
 - [ ] Email digest with goals summary (SendGrid + APScheduler) — phase: 1
 - [ ] Image scan to tasks (Google Vision + Claude API parsing + review screen) — phase: 1
