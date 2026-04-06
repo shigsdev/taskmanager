@@ -9,12 +9,14 @@
 <body>
     <header class="nav">
         <a href="{{ url_for('index') }}" class="brand">Task Manager</a>
-        <nav>
+        {% block capture %}{% endblock %}
+        <nav class="nav-links">
             {% block nav %}{% endblock %}
         </nav>
     </header>
     <main>
         {% block content %}{% endblock %}
     </main>
+    {% block scripts %}{% endblock %}
 </body>
 </html>

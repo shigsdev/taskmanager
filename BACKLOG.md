@@ -17,6 +17,7 @@ _(none)_
 - [x] Database models and migrations (PostgreSQL) — tasks, projects, goals, recurring_tasks, import_log — completed 2026-04-05
 - [x] Core task CRUD — JSON API for create, read, update, delete, move between tiers — completed 2026-04-05
 - [x] Goals CRUD — JSON API for create, read, update, delete, link to tasks, progress tracking — completed 2026-04-05
+- [x] Main UI — tier board, task cards, quick capture bar, detail panel, voice input — completed 2026-04-05
 
 ## Bugs
 
@@ -24,7 +25,6 @@ _(none yet)_
 
 ## Backlog (prioritized)
 
-- [ ] Main UI — tier view, task cards, quick capture bar — phase: 1
 - [ ] Goals view — grouped by category, progress tracking, task linking — phase: 1
 - [ ] Project grouping for work tasks (with optional goal link) — phase: 1
 - [ ] Inbox + triage flow — phase: 1

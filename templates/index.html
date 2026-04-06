@@ -1,12 +1,134 @@
 {% extends "base.html" %}
 {% block title %}Home — Task Manager{% endblock %}
+
+{% block capture %}
+<div class="capture-bar" id="captureBar">
+    <input type="text" id="captureInput" placeholder="Add a task… (#today #week @project)" autocomplete="off">
+    <select id="captureType" title="Task type">
+        <option value="work">Work</option>
+        <option value="personal">Personal</option>
+    </select>
+    <button type="button" id="captureVoice" class="icon-btn" title="Voice input">🎤</button>
+</div>
+{% endblock %}
+
 {% block nav %}
-    <span class="user">{{ email }}</span>
+    <a href="{{ url_for('index') }}" class="nav-tab active" data-view="all">All</a>
+    <a href="#" class="nav-tab" data-view="work">Work</a>
+    <a href="#" class="nav-tab" data-view="personal">Personal</a>
+    <span class="inbox-badge" id="inboxBadge" title="Inbox items">0</span>
     <a href="{{ url_for('logout') }}" class="btn-link">Log out</a>
 {% endblock %}
+
 {% block content %}
-    <section>
-        <h1>Signed in as {{ email }}</h1>
-        <p>Authentication is wired up. Tasks, goals, and the rest of the app come next.</p>
+<div class="tier-board" id="tierBoard">
+    <section class="tier" data-tier="inbox" id="tierInbox">
+        <div class="tier-header">
+            <h2><button class="collapse-toggle" aria-expanded="true">▾</button> Inbox <span class="tier-count">0</span></h2>
+            <div class="tier-actions">
+                <button class="btn-sm" id="bulkTriageBtn" title="Triage selected" style="display:none">Triage</button>
+            </div>
+        </div>
+        <div class="tier-body task-list" data-tier="inbox"></div>
     </section>
+
+    <section class="tier" data-tier="today" id="tierToday">
+        <div class="tier-header">
+            <h2><button class="collapse-toggle" aria-expanded="true">▾</button> Today <span class="tier-count">0</span></h2>
+            <span class="tier-warning" id="todayWarning" style="display:none">⚠ 7+ tasks</span>
+        </div>
+        <div class="tier-body task-list" data-tier="today"></div>
+    </section>
+
+    <section class="tier" data-tier="this_week" id="tierThisWeek">
+        <div class="tier-header">
+            <h2><button class="collapse-toggle" aria-expanded="true">▾</button> This Week <span class="tier-count">0</span></h2>
+        </div>
+        <div class="tier-body task-list" data-tier="this_week"></div>
+    </section>
+
+    <section class="tier" data-tier="backlog" id="tierBacklog">
+        <div class="tier-header">
+            <h2><button class="collapse-toggle" aria-expanded="true">▾</button> Backlog <span class="tier-count">0</span></h2>
+        </div>
+        <div class="tier-body task-list" data-tier="backlog"></div>
+    </section>
+
+    <section class="tier" data-tier="freezer" id="tierFreezer">
+        <div class="tier-header">
+            <h2><button class="collapse-toggle" aria-expanded="true">▾</button> Freezer <span class="tier-count">0</span></h2>
+        </div>
+        <div class="tier-body task-list" data-tier="freezer"></div>
+    </section>
+</div>
+
+<!-- Task detail panel (slide-in) -->
+<div class="detail-overlay" id="detailOverlay" style="display:none">
+    <div class="detail-panel" id="detailPanel">
+        <div class="detail-header">
+            <h3>Task Detail</h3>
+            <button class="icon-btn" id="detailClose" title="Close">✕</button>
+        </div>
+        <form id="detailForm">
+            <input type="hidden" id="detailId">
+
+            <label for="detailTitle">Title</label>
+            <input type="text" id="detailTitle" required>
+
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="detailTier">Tier</label>
+                    <select id="detailTier">
+                        <option value="inbox">Inbox</option>
+                        <option value="today">Today</option>
+                        <option value="this_week">This Week</option>
+                        <option value="backlog">Backlog</option>
+                        <option value="freezer">Freezer</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="detailType">Type</label>
+                    <select id="detailType">
+                        <option value="work">Work</option>
+                        <option value="personal">Personal</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="detailDueDate">Due date</label>
+                    <input type="date" id="detailDueDate">
+                </div>
+                <div class="form-field">
+                    <label for="detailGoal">Goal</label>
+                    <select id="detailGoal">
+                        <option value="">— None —</option>
+                    </select>
+                </div>
+            </div>
+
+            <label for="detailNotes">Notes</label>
+            <textarea id="detailNotes" rows="3"></textarea>
+
+            <div class="checklist-section">
+                <label>Checklist</label>
+                <div id="checklistItems"></div>
+                <button type="button" class="btn-sm" id="addChecklistItem">+ Add item</button>
+            </div>
+
+            <div class="detail-meta" id="detailMeta"></div>
+
+            <div class="detail-actions">
+                <button type="submit" class="btn">Save</button>
+                <button type="button" class="btn btn-danger" id="detailDelete">Delete</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='capture.js') }}"></script>
 {% endblock %}

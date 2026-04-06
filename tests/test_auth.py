@@ -22,7 +22,7 @@ def test_index_authorized_email_ok(client, monkeypatch):
     monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
     resp = client.get("/")
     assert resp.status_code == 200
-    assert b"me@example.com" in resp.data
+    assert b"Task Manager" in resp.data
 
 
 def test_index_email_casing_is_normalized(client, monkeypatch):

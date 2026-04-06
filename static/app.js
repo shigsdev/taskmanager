@@ -1,0 +1,449 @@
+/* app.js — Main UI: tier board, task cards, detail panel */
+"use strict";
+
+const API = "/api/tasks";
+const GOALS_API = "/api/goals";
+
+// --- State -------------------------------------------------------------------
+
+let allTasks = [];
+let allGoals = [];
+let currentView = "all"; // "all" | "work" | "personal"
+
+// --- API helpers -------------------------------------------------------------
+
+async function apiFetch(url, opts = {}) {
+    const resp = await fetch(url, {
+        headers: { "Content-Type": "application/json", ...opts.headers },
+        ...opts,
+    });
+    if (resp.status === 204) return null;
+    if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body.error || resp.statusText);
+    }
+    return resp.json();
+}
+
+// --- Data loading ------------------------------------------------------------
+
+async function loadTasks() {
+    allTasks = await apiFetch(API);
+    renderBoard();
+}
+
+async function loadGoals() {
+    allGoals = await apiFetch(GOALS_API);
+    taskDetailPopulateGoals();
+}
+
+async function init() {
+    await Promise.all([loadTasks(), loadGoals()]);
+    setupNavTabs();
+    setupCollapse();
+    setupDetailPanel();
+}
+
+// --- Rendering ---------------------------------------------------------------
+
+const TIER_ORDER = ["inbox", "today", "this_week", "backlog", "freezer"];
+const TIER_EMPTY = {
+    inbox: "All caught up — inbox is empty",
+    today: "No tasks for today",
+    this_week: "No tasks this week",
+    backlog: "Backlog is empty",
+    freezer: "Nothing in the freezer",
+};
+
+function renderBoard() {
+    for (const tier of TIER_ORDER) {
+        const list = document.querySelector(`.task-list[data-tier="${tier}"]`);
+        if (!list) continue;
+        const tasks = filteredTasks().filter((t) => t.tier === tier);
+        list.innerHTML = "";
+        if (tasks.length === 0) {
+            list.classList.add("empty-state");
+            list.setAttribute("data-empty-msg", TIER_EMPTY[tier]);
+        } else {
+            list.classList.remove("empty-state");
+            list.removeAttribute("data-empty-msg");
+            for (const task of tasks) {
+                list.appendChild(taskCardEl(task));
+            }
+        }
+        // Update count
+        const section = list.closest(".tier");
+        const count = section.querySelector(".tier-count");
+        if (count) count.textContent = tasks.length;
+    }
+    updateInboxBadge();
+    updateTodayWarning();
+    updateBulkTriageBtn();
+}
+
+function filteredTasks() {
+    if (currentView === "work") return allTasks.filter((t) => t.type === "work");
+    if (currentView === "personal") return allTasks.filter((t) => t.type === "personal");
+    return allTasks;
+}
+
+function taskCardEl(task) {
+    const card = document.createElement("div");
+    card.className = "task-card";
+    card.dataset.id = task.id;
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Triage checkbox (inbox only)
+    const triageCheck = document.createElement("input");
+    triageCheck.type = "checkbox";
+    triageCheck.className = "triage-check";
+    triageCheck.addEventListener("click", (e) => e.stopPropagation());
+    triageCheck.addEventListener("change", updateBulkTriageBtn);
+    card.appendChild(triageCheck);
+
+    // Complete checkbox
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "task-checkbox";
+    cb.title = "Complete task";
+    cb.addEventListener("click", (e) => e.stopPropagation());
+    cb.addEventListener("change", () => taskComplete(task.id));
+    card.appendChild(cb);
+
+    // Body
+    const body = document.createElement("div");
+    body.className = "task-body";
+
+    const title = document.createElement("div");
+    title.className = "task-title";
+    title.textContent = task.title;
+    body.appendChild(title);
+
+    const meta = document.createElement("div");
+    meta.className = "task-meta";
+
+    // Type badge
+    const typeBadge = document.createElement("span");
+    typeBadge.className = `badge badge-${task.type}`;
+    typeBadge.textContent = task.type;
+    meta.appendChild(typeBadge);
+
+    // Due date
+    if (task.due_date) {
+        const dueBadge = document.createElement("span");
+        dueBadge.className = "badge badge-due";
+        if (task.due_date < today) {
+            dueBadge.classList.add("overdue");
+            dueBadge.textContent = `overdue: ${task.due_date}`;
+        } else if (task.due_date === today) {
+            dueBadge.classList.add("due-today");
+            dueBadge.textContent = "due today";
+        } else {
+            dueBadge.textContent = `due ${task.due_date}`;
+        }
+        meta.appendChild(dueBadge);
+    }
+
+    // Goal badge
+    if (task.goal_id) {
+        const goal = allGoals.find((g) => g.id === task.goal_id);
+        if (goal) {
+            const goalBadge = document.createElement("span");
+            goalBadge.className = "badge badge-goal";
+            goalBadge.textContent = goal.title;
+            meta.appendChild(goalBadge);
+        }
+    }
+
+    // Checklist progress
+    if (task.checklist && task.checklist.length > 0) {
+        const done = task.checklist.filter((c) => c.checked).length;
+        const clBadge = document.createElement("span");
+        clBadge.className = "badge badge-checklist";
+        if (done === task.checklist.length) clBadge.classList.add("all-done");
+        clBadge.textContent = `${done}/${task.checklist.length}`;
+        meta.appendChild(clBadge);
+    }
+
+    body.appendChild(meta);
+    card.appendChild(body);
+
+    // Quick actions
+    const actions = document.createElement("div");
+    actions.className = "task-quick-actions";
+
+    const tierBtns = TIER_ORDER.filter((t) => t !== task.tier && t !== "inbox");
+    for (const t of tierBtns) {
+        const btn = document.createElement("button");
+        btn.textContent = tierLabel(t);
+        btn.title = `Move to ${tierLabel(t)}`;
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            taskMoveTier(task.id, t);
+        });
+        actions.appendChild(btn);
+    }
+    card.appendChild(actions);
+
+    // Click to open detail
+    card.addEventListener("click", () => taskDetailOpen(task));
+
+    return card;
+}
+
+function tierLabel(tier) {
+    const labels = {
+        today: "Today",
+        this_week: "Week",
+        backlog: "Backlog",
+        freezer: "Freezer",
+        inbox: "Inbox",
+    };
+    return labels[tier] || tier;
+}
+
+// --- Inbox badge & Today warning -------------------------------------------
+
+function updateInboxBadge() {
+    const badge = document.getElementById("inboxBadge");
+    const count = allTasks.filter((t) => t.tier === "inbox").length;
+    badge.textContent = count;
+    badge.classList.toggle("empty", count === 0);
+}
+
+function updateTodayWarning() {
+    const warn = document.getElementById("todayWarning");
+    const count = filteredTasks().filter((t) => t.tier === "today").length;
+    warn.style.display = count > 7 ? "" : "none";
+}
+
+// --- Bulk triage -------------------------------------------------------------
+
+function updateBulkTriageBtn() {
+    const btn = document.getElementById("bulkTriageBtn");
+    const checked = document.querySelectorAll(
+        '.tier[data-tier="inbox"] .triage-check:checked'
+    );
+    btn.style.display = checked.length > 0 ? "" : "none";
+}
+
+document.getElementById("bulkTriageBtn").addEventListener("click", (e) => {
+    const existing = document.querySelector(".triage-dropdown");
+    if (existing) { existing.remove(); return; }
+
+    const dd = document.createElement("div");
+    dd.className = "triage-dropdown";
+    dd.style.top = e.target.offsetTop + e.target.offsetHeight + "px";
+    dd.style.right = "14px";
+
+    for (const tier of ["today", "this_week", "backlog", "freezer"]) {
+        const btn = document.createElement("button");
+        btn.textContent = tierLabel(tier);
+        btn.addEventListener("click", () => {
+            bulkMoveTier(tier);
+            dd.remove();
+        });
+        dd.appendChild(btn);
+    }
+    e.target.parentElement.appendChild(dd);
+    document.addEventListener("click", function close(ev) {
+        if (!dd.contains(ev.target) && ev.target !== e.target) {
+            dd.remove();
+            document.removeEventListener("click", close);
+        }
+    });
+});
+
+async function bulkMoveTier(tier) {
+    const checks = document.querySelectorAll(
+        '.tier[data-tier="inbox"] .triage-check:checked'
+    );
+    const ids = Array.from(checks).map((c) => c.closest(".task-card").dataset.id);
+    await Promise.all(
+        ids.map((id) => apiFetch(`${API}/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ tier }),
+        }))
+    );
+    await loadTasks();
+}
+
+// --- Task mutations ----------------------------------------------------------
+
+async function taskMoveTier(id, tier) {
+    await apiFetch(`${API}/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ tier }),
+    });
+    await loadTasks();
+}
+
+async function taskComplete(id) {
+    await apiFetch(`${API}/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "archived" }),
+    });
+    await loadTasks();
+}
+
+async function taskDelete(id) {
+    await apiFetch(`${API}/${id}`, { method: "DELETE" });
+    await loadTasks();
+    taskDetailClose();
+}
+
+// --- Nav tabs ----------------------------------------------------------------
+
+function setupNavTabs() {
+    document.querySelectorAll(".nav-tab[data-view]").forEach((tab) => {
+        tab.addEventListener("click", (e) => {
+            e.preventDefault();
+            document.querySelectorAll(".nav-tab").forEach((t) => t.classList.remove("active"));
+            tab.classList.add("active");
+            currentView = tab.dataset.view;
+            renderBoard();
+        });
+    });
+}
+
+// --- Collapse / expand -------------------------------------------------------
+
+function setupCollapse() {
+    document.querySelectorAll(".collapse-toggle").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const section = btn.closest(".tier");
+            const body = section.querySelector(".tier-body");
+            const expanded = btn.getAttribute("aria-expanded") === "true";
+            btn.setAttribute("aria-expanded", !expanded);
+            btn.textContent = expanded ? "▸" : "▾";
+            body.classList.toggle("collapsed", expanded);
+        });
+    });
+}
+
+// --- Detail panel ------------------------------------------------------------
+
+function setupDetailPanel() {
+    document.getElementById("detailClose").addEventListener("click", taskDetailClose);
+    document.getElementById("detailOverlay").addEventListener("click", (e) => {
+        if (e.target === e.currentTarget) taskDetailClose();
+    });
+    document.getElementById("detailForm").addEventListener("submit", taskDetailSave);
+    document.getElementById("detailDelete").addEventListener("click", () => {
+        const id = document.getElementById("detailId").value;
+        if (id) taskDelete(id);
+    });
+    document.getElementById("addChecklistItem").addEventListener("click", () => {
+        taskDetailAddChecklistRow("", false);
+    });
+}
+
+function taskDetailOpen(task) {
+    document.getElementById("detailId").value = task.id;
+    document.getElementById("detailTitle").value = task.title;
+    document.getElementById("detailTier").value = task.tier;
+    document.getElementById("detailType").value = task.type;
+    document.getElementById("detailDueDate").value = task.due_date || "";
+    document.getElementById("detailGoal").value = task.goal_id || "";
+    document.getElementById("detailNotes").value = task.notes || "";
+
+    // Checklist
+    const container = document.getElementById("checklistItems");
+    container.innerHTML = "";
+    if (task.checklist) {
+        for (const item of task.checklist) {
+            taskDetailAddChecklistRow(item.text, item.checked);
+        }
+    }
+
+    // Meta
+    document.getElementById("detailMeta").innerHTML =
+        `Created: ${new Date(task.created_at).toLocaleDateString()}<br>` +
+        `Updated: ${new Date(task.updated_at).toLocaleDateString()}`;
+
+    document.getElementById("detailOverlay").style.display = "";
+}
+
+function taskDetailClose() {
+    document.getElementById("detailOverlay").style.display = "none";
+}
+
+function taskDetailAddChecklistRow(text, checked) {
+    const container = document.getElementById("checklistItems");
+    const row = document.createElement("div");
+    row.className = "checklist-item";
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = checked;
+    row.appendChild(cb);
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = text;
+    input.placeholder = "Checklist item…";
+    row.appendChild(input);
+
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.className = "remove-item";
+    rm.textContent = "✕";
+    rm.addEventListener("click", () => row.remove());
+    row.appendChild(rm);
+
+    container.appendChild(row);
+}
+
+function taskDetailPopulateGoals() {
+    const sel = document.getElementById("detailGoal");
+    // Keep the "None" option, remove the rest
+    while (sel.options.length > 1) sel.remove(1);
+    for (const goal of allGoals) {
+        const opt = document.createElement("option");
+        opt.value = goal.id;
+        opt.textContent = `${goal.title} (${goal.category})`;
+        sel.appendChild(opt);
+    }
+}
+
+async function taskDetailSave(e) {
+    e.preventDefault();
+    const id = document.getElementById("detailId").value;
+    if (!id) return;
+
+    // Collect checklist
+    const clItems = [];
+    document.querySelectorAll("#checklistItems .checklist-item").forEach((row, i) => {
+        const text = row.querySelector('input[type="text"]').value.trim();
+        const checked = row.querySelector('input[type="checkbox"]').checked;
+        if (text) {
+            clItems.push({ id: String(i), text, checked });
+        }
+    });
+
+    const data = {
+        title: document.getElementById("detailTitle").value.trim(),
+        tier: document.getElementById("detailTier").value,
+        type: document.getElementById("detailType").value,
+        due_date: document.getElementById("detailDueDate").value || null,
+        goal_id: document.getElementById("detailGoal").value || null,
+        notes: document.getElementById("detailNotes").value || "",
+        checklist: clItems,
+    };
+
+    try {
+        await apiFetch(`${API}/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify(data),
+        });
+        await loadTasks();
+        taskDetailClose();
+    } catch (err) {
+        alert("Save failed: " + err.message);
+    }
+}
+
+// --- Boot --------------------------------------------------------------------
+
+document.addEventListener("DOMContentLoaded", init);
