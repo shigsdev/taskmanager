@@ -29,6 +29,7 @@ _(none)_
 - [x] Recurring tasks — CRUD API, 16 system defaults (morning/evening routines, day-specific), spawn to Today tier — completed 2026-04-06
 - [x] Print view (/print) — server-rendered, Today + This Week + Overdue, checklists, @media print CSS, no nav chrome — completed 2026-04-06
 - [x] Email digest — plain-text digest via SendGrid, preview + send-now API, goals summary, overdue alerts, sanitized content — completed 2026-04-06
+- [x] Image scan to tasks — Google Vision OCR + Claude API parsing, review screen with edit/deselect, confirm to Inbox, in-memory only — completed 2026-04-06
 
 ## Bugs
 
@@ -41,7 +42,7 @@ _(none yet)_
 - [x] Recurring tasks (system defaults + user-defined) — phase: 1 (done)
 - [x] Print view (/print) — phase: 1 (done)
 - [x] Email digest with goals summary (SendGrid + APScheduler) — phase: 1 (done)
-- [ ] Image scan to tasks (Google Vision + Claude API parsing + review screen) — phase: 1
+- [x] Image scan to tasks (Google Vision + Claude API parsing + review screen) — phase: 1 (done)
 - [ ] Import tool — OneNote tasks + Excel goals (/import) — phase: 1
 - [ ] Settings page — phase: 1
 - [ ] Security hardening (Talisman, session expiry, encryption audit) — phase: 1

@@ -783,6 +783,92 @@ body {
 .review-summary-stats ul { list-style: none; padding: 0; }
 .review-summary-stats li { padding: 4px 0; }
 
+/* === Scan Page === */
+.scan-container {
+    max-width: 640px;
+    margin: 32px auto;
+    padding: 0 16px;
+}
+.scan-upload p, .scan-review p {
+    color: var(--text-muted);
+    margin-bottom: 16px;
+}
+.scan-input-area { margin-bottom: 16px; }
+.scan-file-label {
+    display: inline-block;
+    padding: 12px 24px;
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    text-align: center;
+    width: 100%;
+}
+.scan-file-label:hover { border-color: var(--accent); }
+.scan-preview {
+    margin-top: 12px;
+    text-align: center;
+}
+.scan-preview img {
+    max-width: 100%;
+    max-height: 300px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+.scan-status {
+    margin-top: 12px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: var(--bg);
+    font-size: 0.9rem;
+}
+.scan-error { color: var(--danger); background: #fff0f0; }
+.scan-candidate {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+}
+.scan-candidate input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+}
+.scan-candidate-title {
+    flex: 1;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+.scan-candidate-type {
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+.scan-review-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+.scan-ocr-details {
+    margin-top: 16px;
+    font-size: 0.85rem;
+}
+.scan-ocr-details pre {
+    background: var(--bg);
+    padding: 12px;
+    border-radius: 6px;
+    white-space: pre-wrap;
+    max-height: 200px;
+    overflow-y: auto;
+}
+.scan-done { text-align: center; padding: 32px 0; }
+.scan-done h2 { color: var(--success); }
+.scan-done-actions { margin-top: 16px; display: flex; gap: 8px; justify-content: center; }
+
 /* === Mobile === */
 @media (max-width: 600px) {
     /* Nav: stack capture bar below nav links on its own row */

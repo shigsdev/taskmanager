@@ -32,7 +32,7 @@ db = SQLAlchemy()
 # --- Enums -------------------------------------------------------------------
 
 
-class Tier(str, enum.Enum):
+class Tier(enum.StrEnum):
     TODAY = "today"
     THIS_WEEK = "this_week"
     BACKLOG = "backlog"
@@ -40,42 +40,42 @@ class Tier(str, enum.Enum):
     INBOX = "inbox"
 
 
-class TaskType(str, enum.Enum):
+class TaskType(enum.StrEnum):
     WORK = "work"
     PERSONAL = "personal"
 
 
-class TaskStatus(str, enum.Enum):
+class TaskStatus(enum.StrEnum):
     ACTIVE = "active"
     ARCHIVED = "archived"
     DELETED = "deleted"
 
 
-class ProjectType(str, enum.Enum):
+class ProjectType(enum.StrEnum):
     WORK = "work"
 
 
-class RecurringFrequency(str, enum.Enum):
+class RecurringFrequency(enum.StrEnum):
     DAILY = "daily"
     WEEKLY = "weekly"
     DAY_OF_WEEK = "day_of_week"
 
 
-class GoalCategory(str, enum.Enum):
+class GoalCategory(enum.StrEnum):
     HEALTH = "health"
     PERSONAL_GROWTH = "personal_growth"
     RELATIONSHIPS = "relationships"
     WORK = "work"
 
 
-class GoalPriority(str, enum.Enum):
+class GoalPriority(enum.StrEnum):
     MUST = "must"
     SHOULD = "should"
     COULD = "could"
     NEED_MORE_INFO = "need_more_info"
 
 
-class GoalStatus(str, enum.Enum):
+class GoalStatus(enum.StrEnum):
     NOT_STARTED = "not_started"
     IN_PROGRESS = "in_progress"
     DONE = "done"

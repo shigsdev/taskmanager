@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Scan to Tasks — Task Manager{% endblock %}
+
+{% block nav %}
+    <a href="{{ url_for('index') }}" class="nav-tab">Tasks</a>
+    <a href="{{ url_for('goals_page') }}" class="nav-tab">Goals</a>
+    <a href="{{ url_for('scan_page') }}" class="nav-tab active">Scan</a>
+    <span class="inbox-badge" id="inboxBadge" title="Inbox items">0</span>
+    <a href="{{ url_for('logout') }}" class="btn-link">Log out</a>
+{% endblock %}
+
+{% block content %}
+<div class="scan-container" id="scanContainer">
+    <!-- Upload section -->
+    <div class="scan-upload" id="scanUpload">
+        <h2>Scan Image to Tasks</h2>
+        <p>Upload a photo of handwritten notes, a meeting agenda, or a screenshot.
+           The text will be extracted and parsed into task candidates for your inbox.</p>
+
+        <div class="scan-input-area" id="scanInputArea">
+            <label for="scanFile" class="scan-file-label" id="scanFileLabel">
+                Choose image or take photo
+            </label>
+            <input type="file" id="scanFile" accept="image/jpeg,image/png,image/webp"
+                   capture="environment" style="display:none">
+            <div class="scan-preview" id="scanPreview" style="display:none">
+                <img id="scanPreviewImg" alt="Preview">
+            </div>
+        </div>
+
+        <button class="btn" id="scanSubmitBtn" disabled>Upload &amp; Scan</button>
+        <div class="scan-status" id="scanStatus" style="display:none"></div>
+    </div>
+
+    <!-- Review section (shown after scan) -->
+    <div class="scan-review" id="scanReview" style="display:none">
+        <h2>Review Task Candidates</h2>
+        <p>Edit, include, or exclude each candidate before adding to inbox.</p>
+
+        <div class="scan-candidates" id="scanCandidates"></div>
+
+        <div class="scan-review-actions">
+            <button class="btn" id="scanConfirmAll">Add All to Inbox</button>
+            <button class="btn btn-sm" id="scanConfirmSelected">Add Selected to Inbox</button>
+            <button class="btn btn-sm" id="scanRescan">Scan Another</button>
+        </div>
+
+        <details class="scan-ocr-details">
+            <summary>Raw OCR Text</summary>
+            <pre id="scanOcrText"></pre>
+        </details>
+    </div>
+
+    <!-- Done section -->
+    <div class="scan-done" id="scanDone" style="display:none">
+        <h2>Tasks Added</h2>
+        <p id="scanDoneMessage"></p>
+        <div class="scan-done-actions">
+            <a href="{{ url_for('index') }}" class="btn">Go to Tasks</a>
+            <button class="btn btn-sm" id="scanAgainBtn">Scan Another</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='scan.js') }}"></script>
+{% endblock %}
