@@ -28,6 +28,7 @@ _(none)_
 - [x] Weekly review mode — step-through stale tasks, keep/freeze/delete/snooze actions, progress bar, summary — completed 2026-04-06
 - [x] Recurring tasks — CRUD API, 16 system defaults (morning/evening routines, day-specific), spawn to Today tier — completed 2026-04-06
 - [x] Print view (/print) — server-rendered, Today + This Week + Overdue, checklists, @media print CSS, no nav chrome — completed 2026-04-06
+- [x] Email digest — plain-text digest via SendGrid, preview + send-now API, goals summary, overdue alerts, sanitized content — completed 2026-04-06
 
 ## Bugs
 
@@ -39,7 +40,7 @@ _(none yet)_
 - [x] Weekly review mode — phase: 1 (done)
 - [x] Recurring tasks (system defaults + user-defined) — phase: 1 (done)
 - [x] Print view (/print) — phase: 1 (done)
-- [ ] Email digest with goals summary (SendGrid + APScheduler) — phase: 1
+- [x] Email digest with goals summary (SendGrid + APScheduler) — phase: 1 (done)
 - [ ] Image scan to tasks (Google Vision + Claude API parsing + review screen) — phase: 1
 - [ ] Import tool — OneNote tasks + Excel goals (/import) — phase: 1
 - [ ] Settings page — phase: 1

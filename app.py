@@ -13,6 +13,7 @@ from flask_dance.contrib.google import make_google_blueprint
 from flask_migrate import Migrate
 from flask_talisman import Talisman
 
+import digest_api
 import goals_api
 import projects_api
 import recurring_api
@@ -75,6 +76,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(projects_api.bp)
     app.register_blueprint(review_api.bp)
     app.register_blueprint(recurring_api.bp)
+    app.register_blueprint(digest_api.bp)
 
     if not app.config.get("TESTING") and os.environ.get("FLASK_ENV") != "development":
         Talisman(app, content_security_policy=None, force_https=True)
