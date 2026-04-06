@@ -20,6 +20,7 @@ _(none)_
 - [x] Main UI — tier board, task cards, quick capture bar, detail panel, voice input — completed 2026-04-05
 - [x] Goals view — grouped by category, progress bars, filters, linked tasks, create/edit/delete — completed 2026-04-05
 - [x] Project grouping for work tasks — CRUD API, seed defaults, project filter, grouped Work view — completed 2026-04-05
+- [x] Inbox + triage flow — verified: default tier, single + bulk triage, filtering, complete/delete from inbox — completed 2026-04-05
 
 ## Bugs
 
@@ -27,7 +28,6 @@ _(none yet)_
 
 ## Backlog (prioritized)
 
-- [ ] Inbox + triage flow — phase: 1
 - [ ] Checklist/notes on tasks — phase: 1
 - [ ] Mobile-responsive CSS — phase: 1
 - [ ] Weekly review mode — phase: 1

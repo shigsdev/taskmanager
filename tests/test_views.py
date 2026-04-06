@@ -24,6 +24,27 @@ class TestIndexPage:
         for tier in ["inbox", "today", "this_week", "backlog", "freezer"]:
             assert f'data-tier="{tier}"' in html
 
+    def test_inbox_is_first_tier_section(self, client, monkeypatch):
+        """Spec says inbox appears at top of screen as the default landing view."""
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/").data.decode()
+        inbox_pos = html.index('data-tier="inbox"')
+        today_pos = html.index('data-tier="today"')
+        assert inbox_pos < today_pos
+
+    def test_inbox_has_triage_checkboxes_container(self, client, monkeypatch):
+        """Spec: bulk triage with select multiple + assign tier."""
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/").data.decode()
+        # The triage button is inside the inbox tier section
+        assert 'id="bulkTriageBtn"' in html
+
+    def test_inbox_has_tier_count_display(self, client, monkeypatch):
+        """Spec: inbox count badge shows how many items need triage."""
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/").data.decode()
+        assert 'class="tier-count"' in html
+
     def test_contains_capture_bar(self, client, monkeypatch):
         monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
         html = client.get("/").data.decode()
