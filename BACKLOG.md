@@ -33,6 +33,7 @@ _(none)_
 - [x] Import tool — OneNote task parsing + Excel goals parsing, duplicate detection, ImportLog audit trail — completed 2026-04-06
 - [x] Settings page — app stats, service status, digest controls, import history, quick links — completed 2026-04-06
 - [x] Security hardening — Fernet encryption, CSP headers, rate limiting, session hardening, auth audit — completed 2026-04-06
+- [x] Railway deployment — Procfile, gunicorn config, runtime.txt, deployment readiness tests, full README — completed 2026-04-06
 
 ## Bugs
 
@@ -49,7 +50,7 @@ _(none yet)_
 - [x] Import tool — OneNote tasks + Excel goals (/import) — phase: 1 (done)
 - [x] Settings page — phase: 1 (done)
 - [x] Security hardening (Talisman, session expiry, encryption audit) — phase: 1 (done)
-- [ ] Railway deployment + DNS — phase: 1
+- [x] Railway deployment + DNS — phase: 1 (done)
 
 ## Freezer (good ideas, not now)
 
