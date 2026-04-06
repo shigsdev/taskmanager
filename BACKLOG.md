@@ -21,6 +21,7 @@ _(none)_
 - [x] Goals view — grouped by category, progress bars, filters, linked tasks, create/edit/delete — completed 2026-04-05
 - [x] Project grouping for work tasks — CRUD API, seed defaults, project filter, grouped Work view — completed 2026-04-05
 - [x] Inbox + triage flow — verified: default tier, single + bulk triage, filtering, complete/delete from inbox — completed 2026-04-05
+- [x] Checklist/notes on tasks — verified: CRUD, progress tracking, round-trips, special chars, independence — completed 2026-04-05
 
 ## Bugs
 
@@ -28,7 +29,6 @@ _(none yet)_
 
 ## Backlog (prioritized)
 
-- [ ] Checklist/notes on tasks — phase: 1
 - [ ] Mobile-responsive CSS — phase: 1
 - [ ] Weekly review mode — phase: 1
 - [ ] Recurring tasks (system defaults + user-defined) — phase: 1
