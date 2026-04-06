@@ -73,6 +73,18 @@
         </div>
     </div>
 
+    <!-- Confirm summary (final check before DB commit) -->
+    <div class="import-confirm" id="importConfirm" style="display:none">
+        <h2>Confirm Import</h2>
+        <p id="importConfirmDesc"></p>
+        <ul id="importConfirmList" class="import-confirm-list"></ul>
+        <div class="import-confirm-actions">
+            <button class="btn" id="importFinalConfirm">Yes, Import Now</button>
+            <button class="btn btn-sm" id="importGoBackBtn">Go Back and Edit</button>
+            <button class="btn btn-sm" id="importCancelBtn">Cancel</button>
+        </div>
+    </div>
+
     <!-- Done section -->
     <div class="import-done" id="importDone" style="display:none">
         <h2>Import Complete</h2>

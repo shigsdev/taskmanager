@@ -903,6 +903,15 @@ body {
     border-radius: 4px; white-space: nowrap;
 }
 .import-review-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.import-confirm { max-width: 700px; margin: 0 auto; padding: 16px; }
+.import-confirm h2 { color: var(--warning, #b8860b); }
+.import-confirm-list {
+    margin: 12px 0; padding: 12px 16px 12px 32px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 6px; max-height: 300px; overflow-y: auto;
+}
+.import-confirm-list li { padding: 4px 0; font-size: 14px; }
+.import-confirm-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .import-done { text-align: center; padding: 32px 0; }
 .import-done h2 { color: var(--success); }
 .import-done-actions { margin-top: 16px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }

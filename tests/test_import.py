@@ -756,6 +756,15 @@ class TestImportPageView:
         assert 'id="importConfirmAll"' in html
         assert 'id="importConfirmSelected"' in html
 
+    def test_has_confirm_summary_section(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/import").data.decode()
+        assert 'id="importConfirm"' in html
+        assert 'id="importConfirmList"' in html
+        assert 'id="importFinalConfirm"' in html
+        assert 'id="importGoBackBtn"' in html
+        assert 'id="importCancelBtn"' in html
+
     def test_loads_import_js(self, client, monkeypatch):
         monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
         html = client.get("/import").data.decode()

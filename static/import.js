@@ -39,6 +39,14 @@
     var confirmSelectedBtn = document.getElementById("importConfirmSelected");
     var startOverBtn = document.getElementById("importStartOver");
 
+    // DOM refs — confirm summary
+    var confirmSection = document.getElementById("importConfirm");
+    var confirmDesc = document.getElementById("importConfirmDesc");
+    var confirmList = document.getElementById("importConfirmList");
+    var finalConfirmBtn = document.getElementById("importFinalConfirm");
+    var goBackBtn = document.getElementById("importGoBackBtn");
+    var cancelBtn = document.getElementById("importCancelBtn");
+
     // DOM refs — done
     var doneSection = document.getElementById("importDone");
     var doneMessage = document.getElementById("importDoneMessage");
@@ -54,6 +62,7 @@
         tasksInput.style.display = "none";
         goalsInput.style.display = "none";
         reviewSection.style.display = "none";
+        confirmSection.style.display = "none";
         doneSection.style.display = "none";
         section.style.display = "";
     }
@@ -295,26 +304,67 @@
         });
     }
 
-    // --- Confirm -------------------------------------------------------------
+    // --- Confirm summary (preview before DB commit) ---------------------------
 
-    async function confirmImport(allIncluded) {
-        var toSend = currentCandidates.map(function (c) {
-            var item = {
-                title: c.title,
-                included: allIncluded ? true : c.included,
-            };
+    var pendingImport = []; // candidates staged for final confirm
+
+    function showConfirmSummary(allIncluded) {
+        // Build the list of what will actually be imported
+        pendingImport = currentCandidates
+            .filter(function (c) {
+                return allIncluded ? true : c.included;
+            })
+            .filter(function (c) {
+                return (c.title || "").trim().length > 0;
+            })
+            .map(function (c) {
+                var item = { title: c.title, included: true };
+                if (currentMode === "tasks") {
+                    item.type = c.type || "work";
+                } else {
+                    item.category = c.category || "work";
+                    item.priority = c.priority || "should";
+                    item.actions = c.actions || "";
+                    item.target_quarter = c.target_quarter || "";
+                    item.status = c.status || "not_started";
+                    item.notes = c.notes || "";
+                }
+                return item;
+            });
+
+        if (pendingImport.length === 0) {
+            alert("Nothing selected to import.");
+            return;
+        }
+
+        var noun = currentMode === "tasks" ? "task(s)" : "goal(s)";
+        confirmDesc.textContent =
+            "You are about to import " +
+            pendingImport.length +
+            " " +
+            noun +
+            ". Review the list below, then confirm or go back to edit.";
+
+        // Render the summary list
+        confirmList.innerHTML = "";
+        pendingImport.forEach(function (c) {
+            var li = document.createElement("li");
+            var label = c.title;
             if (currentMode === "tasks") {
-                item.type = c.type || "work";
+                label += " (" + (c.type || "work") + ")";
             } else {
-                item.category = c.category || "work";
-                item.priority = c.priority || "should";
-                item.actions = c.actions || "";
-                item.target_quarter = c.target_quarter || "";
-                item.status = c.status || "not_started";
-                item.notes = c.notes || "";
+                label += " (" + (c.category || "work") + ")";
             }
-            return item;
+            li.textContent = label;
+            confirmList.appendChild(li);
         });
+
+        showSection(confirmSection);
+    }
+
+    async function executeImport() {
+        finalConfirmBtn.disabled = true;
+        finalConfirmBtn.textContent = "Importing...";
 
         var url =
             currentMode === "tasks"
@@ -326,7 +376,7 @@
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    candidates: toSend,
+                    candidates: pendingImport,
                     source: currentMode + "_import",
                 }),
             });
@@ -343,16 +393,26 @@
         } catch (err) {
             alert("Confirm failed: " + err.message);
         }
+
+        finalConfirmBtn.disabled = false;
+        finalConfirmBtn.textContent = "Yes, Import Now";
     }
 
     confirmAllBtn.addEventListener("click", function () {
-        confirmImport(true);
+        showConfirmSummary(true);
     });
 
     confirmSelectedBtn.addEventListener("click", function () {
-        confirmImport(false);
+        showConfirmSummary(false);
     });
 
+    finalConfirmBtn.addEventListener("click", executeImport);
+
+    goBackBtn.addEventListener("click", function () {
+        showSection(reviewSection);
+    });
+
+    cancelBtn.addEventListener("click", resetAll);
     startOverBtn.addEventListener("click", resetAll);
     againBtn.addEventListener("click", resetAll);
 
