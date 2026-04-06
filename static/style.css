@@ -869,6 +869,44 @@ body {
 .scan-done h2 { color: var(--success); }
 .scan-done-actions { margin-top: 16px; display: flex; gap: 8px; justify-content: center; }
 
+/* === Import === */
+.import-container { max-width: 700px; margin: 0 auto; padding: 16px; }
+.import-mode-buttons { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+.import-textarea {
+    width: 100%; box-sizing: border-box; padding: 12px;
+    border: 1px solid var(--border); border-radius: 6px;
+    font-family: inherit; font-size: 14px; resize: vertical;
+    background: var(--card); color: var(--text);
+}
+.import-textarea:focus { outline: 2px solid var(--accent); }
+.import-file-area { margin: 16px 0; display: flex; align-items: center; gap: 12px; }
+.import-file-name { color: var(--muted); font-size: 13px; }
+.import-input-actions { margin-top: 12px; display: flex; gap: 8px; }
+.import-status {
+    margin-top: 12px; padding: 10px 14px;
+    background: var(--card); border-radius: 6px; font-size: 14px;
+}
+.import-error { color: var(--danger); background: #2a1a1a; }
+.import-candidates { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+.import-candidate {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; background: var(--card);
+    border-radius: 6px; border: 1px solid var(--border);
+}
+.import-candidate input[type="checkbox"] { min-width: 18px; min-height: 18px; }
+.import-candidate-title { flex: 1; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); }
+.import-candidate-type { padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); }
+.import-duplicate { opacity: 0.6; border-color: var(--warning, #b8860b); }
+.import-dup-badge {
+    font-size: 11px; padding: 2px 6px;
+    background: var(--warning, #b8860b); color: #fff;
+    border-radius: 4px; white-space: nowrap;
+}
+.import-review-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.import-done { text-align: center; padding: 32px 0; }
+.import-done h2 { color: var(--success); }
+.import-done-actions { margin-top: 16px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
 /* === Mobile === */
 @media (max-width: 600px) {
     /* Nav: stack capture bar below nav links on its own row */

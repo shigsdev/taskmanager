@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Import — Task Manager{% endblock %}
+
+{% block nav %}
+    <a href="{{ url_for('index') }}" class="nav-tab">Tasks</a>
+    <a href="{{ url_for('goals_page') }}" class="nav-tab">Goals</a>
+    <a href="{{ url_for('import_page') }}" class="nav-tab active">Import</a>
+    <span class="inbox-badge" id="inboxBadge" title="Inbox items">0</span>
+    <a href="{{ url_for('logout') }}" class="btn-link">Log out</a>
+{% endblock %}
+
+{% block content %}
+<div class="import-container" id="importContainer">
+    <!-- Mode selection -->
+    <div class="import-modes" id="importModes">
+        <h2>Import</h2>
+        <p>Bring in tasks from OneNote or goals from Excel.</p>
+        <div class="import-mode-buttons">
+            <button class="btn" id="importTasksBtn">Paste OneNote Tasks</button>
+            <button class="btn" id="importGoalsBtn">Upload Excel Goals</button>
+        </div>
+    </div>
+
+    <!-- OneNote tasks input -->
+    <div class="import-input" id="importTasksInput" style="display:none">
+        <h2>Paste OneNote Tasks</h2>
+        <p>Copy text from OneNote and paste it below. Bullet points, numbered lists,
+           and checkboxes are automatically detected.</p>
+
+        <textarea id="importText" class="import-textarea"
+                  placeholder="Paste your OneNote text here...&#10;- Buy groceries&#10;- Call dentist&#10;☐ Review report"
+                  rows="12"></textarea>
+
+        <div class="import-input-actions">
+            <button class="btn" id="importParseTasksBtn">Parse Tasks</button>
+            <button class="btn btn-sm" id="importBackFromTasks">Back</button>
+        </div>
+        <div class="import-status" id="importTasksStatus" style="display:none"></div>
+    </div>
+
+    <!-- Excel goals input -->
+    <div class="import-input" id="importGoalsInput" style="display:none">
+        <h2>Upload Excel Goals</h2>
+        <p>Upload an .xlsx file with a header row. Required column: <strong>title</strong>.
+           Optional: category, priority, actions, target_quarter, status, notes.</p>
+
+        <div class="import-file-area">
+            <label for="importFile" class="scan-file-label" id="importFileLabel">
+                Choose .xlsx file
+            </label>
+            <input type="file" id="importFile" accept=".xlsx" style="display:none">
+            <span id="importFileName" class="import-file-name"></span>
+        </div>
+
+        <div class="import-input-actions">
+            <button class="btn" id="importParseGoalsBtn" disabled>Parse Goals</button>
+            <button class="btn btn-sm" id="importBackFromGoals">Back</button>
+        </div>
+        <div class="import-status" id="importGoalsStatus" style="display:none"></div>
+    </div>
+
+    <!-- Review candidates (shared by both flows) -->
+    <div class="import-review" id="importReview" style="display:none">
+        <h2 id="importReviewTitle">Review Candidates</h2>
+        <p id="importReviewDesc"></p>
+
+        <div class="import-candidates" id="importCandidates"></div>
+
+        <div class="import-review-actions">
+            <button class="btn" id="importConfirmAll">Add All</button>
+            <button class="btn btn-sm" id="importConfirmSelected">Add Selected</button>
+            <button class="btn btn-sm" id="importStartOver">Start Over</button>
+        </div>
+    </div>
+
+    <!-- Done section -->
+    <div class="import-done" id="importDone" style="display:none">
+        <h2>Import Complete</h2>
+        <p id="importDoneMessage"></p>
+        <div class="import-done-actions">
+            <a href="{{ url_for('index') }}" class="btn">Go to Tasks</a>
+            <a href="{{ url_for('goals_page') }}" class="btn btn-sm">Go to Goals</a>
+            <button class="btn btn-sm" id="importAgainBtn">Import More</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='import.js') }}"></script>
+{% endblock %}

@@ -15,6 +15,7 @@ from flask_talisman import Talisman
 
 import digest_api
 import goals_api
+import import_api
 import projects_api
 import recurring_api
 import review_api
@@ -79,6 +80,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(recurring_api.bp)
     app.register_blueprint(digest_api.bp)
     app.register_blueprint(scan_api.bp)
+    app.register_blueprint(import_api.bp)
 
     if not app.config.get("TESTING") and os.environ.get("FLASK_ENV") != "development":
         Talisman(app, content_security_policy=None, force_https=True)
@@ -106,6 +108,11 @@ def create_app(config: dict | None = None) -> Flask:
     @login_required
     def scan_page(email: str):  # noqa: ARG001
         return render_template("scan.html")
+
+    @app.route("/import")
+    @login_required
+    def import_page(email: str):  # noqa: ARG001
+        return render_template("import.html")
 
     @app.route("/print")
     @login_required
