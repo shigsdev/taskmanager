@@ -14,6 +14,7 @@ from flask_migrate import Migrate
 from flask_talisman import Talisman
 
 import goals_api
+import projects_api
 import tasks_api
 from auth import login_required
 from models import db
@@ -68,6 +69,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(google_bp, url_prefix="/login")
     app.register_blueprint(tasks_api.bp)
     app.register_blueprint(goals_api.bp)
+    app.register_blueprint(projects_api.bp)
 
     if not app.config.get("TESTING") and os.environ.get("FLASK_ENV") != "development":
         Talisman(app, content_security_policy=None, force_https=True)

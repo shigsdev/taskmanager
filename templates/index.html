@@ -16,11 +16,13 @@
     <a href="{{ url_for('index') }}" class="nav-tab active" data-view="all">All</a>
     <a href="#" class="nav-tab" data-view="work">Work</a>
     <a href="#" class="nav-tab" data-view="personal">Personal</a>
+    <a href="{{ url_for('goals_page') }}" class="nav-tab">Goals</a>
     <span class="inbox-badge" id="inboxBadge" title="Inbox items">0</span>
     <a href="{{ url_for('logout') }}" class="btn-link">Log out</a>
 {% endblock %}
 
 {% block content %}
+<div class="project-filter-bar" id="projectFilterBar" style="display:none"></div>
 <div class="tier-board" id="tierBoard">
     <section class="tier" data-tier="inbox" id="tierInbox">
         <div class="tier-header">
@@ -88,9 +90,18 @@
                 </div>
                 <div class="form-field">
                     <label for="detailType">Type</label>
-                    <select id="detailType">
+                    <select id="detailType" onchange="taskDetailToggleProject(this.value)">
                         <option value="work">Work</option>
                         <option value="personal">Personal</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row" id="detailProjectField">
+                <div class="form-field">
+                    <label for="detailProject">Project</label>
+                    <select id="detailProject">
+                        <option value="">— None —</option>
                     </select>
                 </div>
             </div>

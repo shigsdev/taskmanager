@@ -3,12 +3,15 @@
 
 const API = "/api/tasks";
 const GOALS_API = "/api/goals";
+const PROJECTS_API = "/api/projects";
 
 // --- State -------------------------------------------------------------------
 
 let allTasks = [];
 let allGoals = [];
+let allProjects = [];
 let currentView = "all"; // "all" | "work" | "personal"
+let projectFilter = null; // UUID string or null
 
 // --- API helpers -------------------------------------------------------------
 
@@ -37,8 +40,14 @@ async function loadGoals() {
     taskDetailPopulateGoals();
 }
 
+async function loadProjects() {
+    allProjects = await apiFetch(PROJECTS_API);
+    taskDetailPopulateProjects();
+    renderProjectFilter();
+}
+
 async function init() {
-    await Promise.all([loadTasks(), loadGoals()]);
+    await Promise.all([loadTasks(), loadGoals(), loadProjects()]);
     setupNavTabs();
     setupCollapse();
     setupDetailPanel();
@@ -67,8 +76,14 @@ function renderBoard() {
         } else {
             list.classList.remove("empty-state");
             list.removeAttribute("data-empty-msg");
-            for (const task of tasks) {
-                list.appendChild(taskCardEl(task));
+
+            // In work view with no project filter, group by project
+            if (currentView === "work" && !projectFilter) {
+                renderTierGroupedByProject(list, tasks);
+            } else {
+                for (const task of tasks) {
+                    list.appendChild(taskCardEl(task));
+                }
             }
         }
         // Update count
@@ -81,10 +96,56 @@ function renderBoard() {
     updateBulkTriageBtn();
 }
 
+function renderTierGroupedByProject(list, tasks) {
+    // Collect tasks by project
+    const byProject = new Map();
+    const noProject = [];
+    for (const task of tasks) {
+        if (task.project_id) {
+            if (!byProject.has(task.project_id)) byProject.set(task.project_id, []);
+            byProject.get(task.project_id).push(task);
+        } else {
+            noProject.push(task);
+        }
+    }
+
+    // Render each project group
+    for (const project of allProjects) {
+        const projectTasks = byProject.get(project.id);
+        if (!projectTasks) continue;
+        const groupHeader = document.createElement("div");
+        groupHeader.className = "project-group-header";
+        groupHeader.innerHTML = `<span class="project-dot" style="background:${project.color || '#999'}"></span> ${escapeHtml(project.name)}`;
+        list.appendChild(groupHeader);
+        for (const task of projectTasks) {
+            list.appendChild(taskCardEl(task));
+        }
+    }
+
+    // Tasks without project
+    if (noProject.length > 0) {
+        const groupHeader = document.createElement("div");
+        groupHeader.className = "project-group-header";
+        groupHeader.textContent = "No project";
+        list.appendChild(groupHeader);
+        for (const task of noProject) {
+            list.appendChild(taskCardEl(task));
+        }
+    }
+}
+
 function filteredTasks() {
-    if (currentView === "work") return allTasks.filter((t) => t.type === "work");
-    if (currentView === "personal") return allTasks.filter((t) => t.type === "personal");
-    return allTasks;
+    let tasks = allTasks;
+    if (currentView === "work") tasks = tasks.filter((t) => t.type === "work");
+    if (currentView === "personal") tasks = tasks.filter((t) => t.type === "personal");
+    if (projectFilter) tasks = tasks.filter((t) => t.project_id === projectFilter);
+    return tasks;
+}
+
+function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
 }
 
 function taskCardEl(task) {
@@ -128,6 +189,18 @@ function taskCardEl(task) {
     typeBadge.className = `badge badge-${task.type}`;
     typeBadge.textContent = task.type;
     meta.appendChild(typeBadge);
+
+    // Project badge (work tasks)
+    if (task.project_id) {
+        const project = allProjects.find((p) => p.id === task.project_id);
+        if (project) {
+            const projBadge = document.createElement("span");
+            projBadge.className = "badge badge-project";
+            if (project.color) projBadge.style.borderColor = project.color;
+            projBadge.textContent = project.name;
+            meta.appendChild(projBadge);
+        }
+    }
 
     // Due date
     if (task.due_date) {
@@ -218,6 +291,28 @@ function updateTodayWarning() {
     warn.style.display = count > 7 ? "" : "none";
 }
 
+// --- Project filter (Work view) ----------------------------------------------
+
+function renderProjectFilter() {
+    const container = document.getElementById("projectFilterBar");
+    if (!container) return;
+    container.innerHTML = "";
+
+    const allBtn = document.createElement("button");
+    allBtn.className = "btn-sm project-filter-btn" + (!projectFilter ? " active" : "");
+    allBtn.textContent = "All projects";
+    allBtn.addEventListener("click", () => { projectFilter = null; renderBoard(); renderProjectFilter(); });
+    container.appendChild(allBtn);
+
+    for (const p of allProjects) {
+        const btn = document.createElement("button");
+        btn.className = "btn-sm project-filter-btn" + (projectFilter === p.id ? " active" : "");
+        btn.innerHTML = `<span class="project-dot" style="background:${p.color || '#999'}"></span> ${escapeHtml(p.name)}`;
+        btn.addEventListener("click", () => { projectFilter = p.id; renderBoard(); renderProjectFilter(); });
+        container.appendChild(btn);
+    }
+}
+
 // --- Bulk triage -------------------------------------------------------------
 
 function updateBulkTriageBtn() {
@@ -302,7 +397,14 @@ function setupNavTabs() {
             document.querySelectorAll(".nav-tab").forEach((t) => t.classList.remove("active"));
             tab.classList.add("active");
             currentView = tab.dataset.view;
+            projectFilter = null;
             renderBoard();
+            // Show/hide project filter bar
+            const bar = document.getElementById("projectFilterBar");
+            if (bar) {
+                bar.style.display = currentView === "work" ? "" : "none";
+                renderProjectFilter();
+            }
         });
     });
 }
@@ -344,9 +446,13 @@ function taskDetailOpen(task) {
     document.getElementById("detailTitle").value = task.title;
     document.getElementById("detailTier").value = task.tier;
     document.getElementById("detailType").value = task.type;
+    document.getElementById("detailProject").value = task.project_id || "";
     document.getElementById("detailDueDate").value = task.due_date || "";
     document.getElementById("detailGoal").value = task.goal_id || "";
     document.getElementById("detailNotes").value = task.notes || "";
+
+    // Show/hide project selector based on type
+    taskDetailToggleProject(task.type);
 
     // Checklist
     const container = document.getElementById("checklistItems");
@@ -363,6 +469,13 @@ function taskDetailOpen(task) {
         `Updated: ${new Date(task.updated_at).toLocaleDateString()}`;
 
     document.getElementById("detailOverlay").style.display = "";
+}
+
+function taskDetailToggleProject(type) {
+    const projectField = document.getElementById("detailProjectField");
+    if (projectField) {
+        projectField.style.display = type === "work" ? "" : "none";
+    }
 }
 
 function taskDetailClose() {
@@ -397,12 +510,23 @@ function taskDetailAddChecklistRow(text, checked) {
 
 function taskDetailPopulateGoals() {
     const sel = document.getElementById("detailGoal");
-    // Keep the "None" option, remove the rest
     while (sel.options.length > 1) sel.remove(1);
     for (const goal of allGoals) {
         const opt = document.createElement("option");
         opt.value = goal.id;
         opt.textContent = `${goal.title} (${goal.category})`;
+        sel.appendChild(opt);
+    }
+}
+
+function taskDetailPopulateProjects() {
+    const sel = document.getElementById("detailProject");
+    if (!sel) return;
+    while (sel.options.length > 1) sel.remove(1);
+    for (const p of allProjects) {
+        const opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = p.name;
         sel.appendChild(opt);
     }
 }
@@ -422,10 +546,12 @@ async function taskDetailSave(e) {
         }
     });
 
+    const type = document.getElementById("detailType").value;
     const data = {
         title: document.getElementById("detailTitle").value.trim(),
         tier: document.getElementById("detailTier").value,
-        type: document.getElementById("detailType").value,
+        type: type,
+        project_id: type === "work" ? (document.getElementById("detailProject").value || null) : null,
         due_date: document.getElementById("detailDueDate").value || null,
         goal_id: document.getElementById("detailGoal").value || null,
         notes: document.getElementById("detailNotes").value || "",

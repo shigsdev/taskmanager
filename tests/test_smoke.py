@@ -59,6 +59,7 @@ def test_all_blueprints_registered(app):
     assert "google" in names
     assert "tasks_api" in names
     assert "goals_api" in names
+    assert "projects_api" in names
 
 
 def test_expected_routes_exist(app):

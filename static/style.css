@@ -459,6 +459,53 @@ body {
 }
 .triage-dropdown button:hover { background: var(--bg); }
 
+/* === Project filter bar === */
+.project-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 16px 8px;
+    max-width: 1200px;
+    margin: 8px auto 0;
+}
+
+.project-filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.project-filter-btn.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+
+.project-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* === Project group headers in tier === */
+.project-group-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    padding: 8px 4px 4px;
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+}
+.project-group-header:first-child {
+    border-top: none;
+    margin-top: 0;
+    padding-top: 0;
+}
+
 /* === Goals Page === */
 .goals-page {
     max-width: 1000px;
