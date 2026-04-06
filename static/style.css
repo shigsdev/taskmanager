@@ -916,6 +916,27 @@ body {
 .import-done h2 { color: var(--success); }
 .import-done-actions { margin-top: 16px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 
+/* === Settings === */
+.settings-container { max-width: 700px; margin: 0 auto; padding: 16px; }
+.settings-section { margin-bottom: 24px; padding: 16px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; }
+.settings-section h3 { margin: 0 0 12px; font-size: 16px; }
+.settings-hint { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+.settings-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+.settings-stat { text-align: center; padding: 12px; background: var(--bg); border-radius: 6px; }
+.settings-stat-value { display: block; font-size: 24px; font-weight: 700; color: var(--accent); }
+.settings-stat-label { font-size: 12px; color: var(--muted); }
+.settings-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.settings-table th, .settings-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+.settings-table th { font-weight: 600; color: var(--muted); }
+.settings-ok { color: var(--success); }
+.settings-warn { color: var(--danger); }
+.settings-digest-info { margin-bottom: 12px; font-size: 14px; }
+.settings-digest-info p { margin: 4px 0; }
+.settings-digest-actions { display: flex; gap: 8px; margin-bottom: 12px; }
+.settings-digest-preview { padding: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; white-space: pre-wrap; font-size: 13px; max-height: 300px; overflow-y: auto; }
+.settings-empty { font-size: 14px; color: var(--muted); text-align: center; padding: 16px; }
+.settings-links-grid { display: flex; gap: 8px; flex-wrap: wrap; }
+
 /* === Mobile === */
 @media (max-width: 600px) {
     /* Nav: stack capture bar below nav links on its own row */

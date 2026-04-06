@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Settings — Task Manager{% endblock %}
+
+{% block nav %}
+    <a href="{{ url_for('index') }}" class="nav-tab">Tasks</a>
+    <a href="{{ url_for('goals_page') }}" class="nav-tab">Goals</a>
+    <a href="{{ url_for('settings_page') }}" class="nav-tab active">Settings</a>
+    <span class="inbox-badge" id="inboxBadge" title="Inbox items">0</span>
+    <a href="{{ url_for('logout') }}" class="btn-link">Log out</a>
+{% endblock %}
+
+{% block content %}
+<div class="settings-container" id="settingsContainer">
+    <h2>Settings</h2>
+
+    <!-- App stats -->
+    <section class="settings-section" id="settingsStats">
+        <h3>App Overview</h3>
+        <div class="settings-stats-grid" id="settingsStatsGrid">
+            <div class="settings-stat">
+                <span class="settings-stat-value" id="statActiveTasks">--</span>
+                <span class="settings-stat-label">Active Tasks</span>
+            </div>
+            <div class="settings-stat">
+                <span class="settings-stat-value" id="statTotalTasks">--</span>
+                <span class="settings-stat-label">Total Tasks</span>
+            </div>
+            <div class="settings-stat">
+                <span class="settings-stat-value" id="statGoals">--</span>
+                <span class="settings-stat-label">Active Goals</span>
+            </div>
+            <div class="settings-stat">
+                <span class="settings-stat-value" id="statRecurring">--</span>
+                <span class="settings-stat-label">Recurring Templates</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Service status -->
+    <section class="settings-section" id="settingsServices">
+        <h3>External Services</h3>
+        <p class="settings-hint">Shows whether each service has its API key configured.
+           Keys are set via environment variables and never displayed here.</p>
+        <table class="settings-table" id="settingsServiceTable">
+            <thead>
+                <tr><th>Service</th><th>Status</th></tr>
+            </thead>
+            <tbody id="settingsServiceBody"></tbody>
+        </table>
+    </section>
+
+    <!-- Digest settings -->
+    <section class="settings-section" id="settingsDigest">
+        <h3>Daily Digest</h3>
+        <div class="settings-digest-info">
+            <p>Recipient: <strong id="settingsDigestTo">--</strong></p>
+            <p>From: <strong id="settingsDigestFrom">--</strong></p>
+        </div>
+        <div class="settings-digest-actions">
+            <button class="btn btn-sm" id="settingsDigestPreview">Preview Digest</button>
+            <button class="btn btn-sm" id="settingsDigestSend">Send Now</button>
+        </div>
+        <pre class="settings-digest-preview" id="settingsDigestText" style="display:none"></pre>
+    </section>
+
+    <!-- Import history -->
+    <section class="settings-section" id="settingsImports">
+        <h3>Import History</h3>
+        <table class="settings-table" id="settingsImportTable">
+            <thead>
+                <tr><th>Source</th><th>Items</th><th>Date</th></tr>
+            </thead>
+            <tbody id="settingsImportBody"></tbody>
+        </table>
+        <p class="settings-empty" id="settingsImportEmpty" style="display:none">
+            No imports yet.
+        </p>
+    </section>
+
+    <!-- Quick links -->
+    <section class="settings-section" id="settingsLinks">
+        <h3>Quick Actions</h3>
+        <div class="settings-links-grid">
+            <a href="{{ url_for('review_page') }}" class="btn btn-sm">Weekly Review</a>
+            <a href="{{ url_for('scan_page') }}" class="btn btn-sm">Scan Image</a>
+            <a href="{{ url_for('import_page') }}" class="btn btn-sm">Import</a>
+            <a href="{{ url_for('print_page') }}" class="btn btn-sm">Print View</a>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='settings.js') }}"></script>
+{% endblock %}

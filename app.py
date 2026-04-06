@@ -20,6 +20,7 @@ import projects_api
 import recurring_api
 import review_api
 import scan_api
+import settings_api
 import tasks_api
 from auth import login_required
 from models import TaskStatus, Tier, db
@@ -81,6 +82,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(digest_api.bp)
     app.register_blueprint(scan_api.bp)
     app.register_blueprint(import_api.bp)
+    app.register_blueprint(settings_api.bp)
 
     if not app.config.get("TESTING") and os.environ.get("FLASK_ENV") != "development":
         Talisman(app, content_security_policy=None, force_https=True)
@@ -113,6 +115,11 @@ def create_app(config: dict | None = None) -> Flask:
     @login_required
     def import_page(email: str):  # noqa: ARG001
         return render_template("import.html")
+
+    @app.route("/settings")
+    @login_required
+    def settings_page(email: str):  # noqa: ARG001
+        return render_template("settings.html")
 
     @app.route("/print")
     @login_required

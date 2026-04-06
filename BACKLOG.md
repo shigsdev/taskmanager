@@ -31,6 +31,7 @@ _(none)_
 - [x] Email digest — plain-text digest via SendGrid, preview + send-now API, goals summary, overdue alerts, sanitized content — completed 2026-04-06
 - [x] Image scan to tasks — Google Vision OCR + Claude API parsing, review screen with edit/deselect, confirm to Inbox, in-memory only — completed 2026-04-06
 - [x] Import tool — OneNote task parsing + Excel goals parsing, duplicate detection, ImportLog audit trail — completed 2026-04-06
+- [x] Settings page — app stats, service status, digest controls, import history, quick links — completed 2026-04-06
 
 ## Bugs
 
@@ -45,7 +46,7 @@ _(none yet)_
 - [x] Email digest with goals summary (SendGrid + APScheduler) — phase: 1 (done)
 - [x] Image scan to tasks (Google Vision + Claude API parsing + review screen) — phase: 1 (done)
 - [x] Import tool — OneNote tasks + Excel goals (/import) — phase: 1 (done)
-- [ ] Settings page — phase: 1
+- [x] Settings page — phase: 1 (done)
 - [ ] Security hardening (Talisman, session expiry, encryption audit) — phase: 1
 - [ ] Railway deployment + DNS — phase: 1
 
