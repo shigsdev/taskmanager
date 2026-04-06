@@ -679,9 +679,147 @@ body {
 
 /* === Mobile === */
 @media (max-width: 600px) {
-    .nav { padding: 8px 10px; gap: 8px; }
-    .capture-bar { order: 10; flex-basis: 100%; max-width: none; }
+    /* Nav: stack capture bar below nav links on its own row */
+    .nav {
+        padding: 8px 10px;
+        gap: 6px;
+    }
+    .capture-bar {
+        order: 10;
+        flex-basis: 100%;
+        max-width: none;
+    }
+    .nav-links { gap: 4px; }
+    .nav-tab { font-size: 0.8rem; padding: 6px 8px; }
+
+    /* Tier board: single column, tighter spacing */
     .tier-board { padding: 8px; gap: 10px; }
+
+    /* Task cards: touch-friendly sizing */
+    .task-card {
+        padding: 12px;
+        min-height: 44px;
+        overflow: hidden;
+    }
+    .task-card .task-checkbox {
+        width: 22px;
+        height: 22px;
+        min-width: 22px;
+        min-height: 22px;
+    }
+    .tier[data-tier="inbox"] .task-card .triage-check {
+        width: 20px;
+        height: 20px;
+    }
+
+    /* Quick actions always visible (no hover on touch) */
+    .task-card .task-quick-actions {
+        opacity: 1;
+        flex-wrap: wrap;
+    }
+    .task-quick-actions button {
+        font-size: 0.8rem;
+        padding: 6px 10px;
+        min-height: 36px;
+    }
+
+    /* Buttons: 44px min tap target */
+    .btn, .btn-sm {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .icon-btn {
+        min-width: 44px;
+        min-height: 44px;
+        font-size: 1.2rem;
+    }
+    .collapse-toggle {
+        min-width: 44px;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Detail panel: full screen on mobile */
     .detail-panel { width: 100vw; }
-    .task-card .task-quick-actions { opacity: 1; }
+    .detail-panel input[type="text"],
+    .detail-panel input[type="date"],
+    .detail-panel textarea,
+    .detail-panel select {
+        font-size: 16px; /* prevents iOS zoom on focus */
+        min-height: 44px;
+    }
+
+    /* Checklist items: bigger tap targets */
+    .checklist-item {
+        min-height: 44px;
+        align-items: center;
+    }
+    .checklist-item input[type="checkbox"] {
+        width: 22px;
+        height: 22px;
+    }
+
+    /* Voice button: make prominent on mobile */
+    #captureVoice {
+        min-width: 48px;
+        min-height: 48px;
+        font-size: 1.3rem;
+    }
+
+    /* Goals page: stack filters */
+    .goals-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .goals-toolbar h1 { margin-bottom: 4px; }
+    .goals-filters { flex-wrap: wrap; }
+    .goal-card { padding: 12px; }
+
+    /* Project filter bar: scroll horizontally */
+    .project-filter-bar {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding: 0 8px 8px;
+        -webkit-overflow-scrolling: touch;
+    }
+    .project-filter-btn { white-space: nowrap; min-height: 36px; }
+
+    /* Swipe card: reveal actions on swipe left */
+    .task-card.swiped {
+        transform: translateX(-120px);
+        transition: transform 0.2s ease;
+    }
+    .task-card .swipe-actions {
+        position: absolute;
+        right: -120px;
+        top: 0;
+        bottom: 0;
+        width: 120px;
+        display: flex;
+        align-items: stretch;
+    }
+    .swipe-actions button {
+        flex: 1;
+        border: none;
+        color: #fff;
+        font-size: 0.75rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .swipe-action-move { background: var(--accent); }
+    .swipe-action-delete { background: var(--danger); }
+
+    /* Bulk triage dropdown: full width on mobile */
+    .triage-dropdown {
+        left: 14px;
+        right: 14px;
+    }
+    .triage-dropdown button {
+        min-height: 44px;
+        font-size: 0.95rem;
+    }
 }

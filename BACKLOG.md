@@ -10,6 +10,8 @@ moved between sections, never deleted.
 
 _(none)_
 
+
+
 ## Completed
 
 - [x] Project documentation scaffolding — CLAUDE.md, BACKLOG.md, README.md, ARCHITECTURE.md — completed 2026-04-05
@@ -22,6 +24,7 @@ _(none)_
 - [x] Project grouping for work tasks — CRUD API, seed defaults, project filter, grouped Work view — completed 2026-04-05
 - [x] Inbox + triage flow — verified: default tier, single + bulk triage, filtering, complete/delete from inbox — completed 2026-04-05
 - [x] Checklist/notes on tasks — verified: CRUD, progress tracking, round-trips, special chars, independence — completed 2026-04-05
+- [x] Mobile-responsive CSS — 44px touch targets, swipe gestures, iOS zoom prevention, full-screen detail panel, project filter scroll — completed 2026-04-06
 
 ## Bugs
 
@@ -29,7 +32,7 @@ _(none yet)_
 
 ## Backlog (prioritized)
 
-- [ ] Mobile-responsive CSS — phase: 1
+- [x] Mobile-responsive CSS — phase: 1 (done)
 - [ ] Weekly review mode — phase: 1
 - [ ] Recurring tasks (system defaults + user-defined) — phase: 1
 - [ ] Print view (/print) — phase: 1
