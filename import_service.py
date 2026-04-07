@@ -127,6 +127,53 @@ def _is_header_line(text: str) -> bool:
     ))
 
 
+# --- OneNote .docx file parsing ----------------------------------------------
+
+
+def parse_onenote_docx(file_bytes: bytes) -> list[dict[str, Any]]:
+    """Parse a OneNote-exported .docx file into task candidates.
+
+    OneNote can export pages as Word documents via File → Export → Word.
+    The exported file contains paragraphs with the same bullet/checkbox
+    formatting as the pasted text. We extract each paragraph's text and
+    run it through the same cleaning pipeline as parse_onenote_text.
+
+    Args:
+        file_bytes: Raw bytes of the .docx file.
+
+    Returns:
+        List of candidate dicts with title, type, included fields.
+    """
+    import docx
+
+    try:
+        doc = docx.Document(io.BytesIO(file_bytes))
+    except Exception as e:
+        raise ValueError(f"Cannot read Word document: {e}") from e
+
+    # Extract all paragraph text, one per line
+    lines = []
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if text:
+            lines.append(text)
+
+    # Also extract text from tables (OneNote sometimes uses tables)
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                text = cell.text.strip()
+                if text:
+                    lines.append(text)
+
+    if not lines:
+        return []
+
+    # Reuse the same text parser
+    combined = "\n".join(lines)
+    return parse_onenote_text(combined)
+
+
 # --- Excel goals parsing ----------------------------------------------------
 
 

@@ -5,6 +5,10 @@
     <a href="{{ url_for('index') }}" class="nav-tab">Tasks</a>
     <a href="{{ url_for('goals_page') }}" class="nav-tab">Goals</a>
     <a href="{{ url_for('import_page') }}" class="nav-tab active">Import</a>
+    <a href="{{ url_for('scan_page') }}" class="nav-tab">Scan</a>
+    <a href="{{ url_for('review_page') }}" class="nav-tab">Review</a>
+    <a href="{{ url_for('settings_page') }}" class="nav-tab">Settings</a>
+    <a href="{{ url_for('print_page') }}" class="nav-tab">Print</a>
     <span class="inbox-badge" id="inboxBadge" title="Inbox items">0</span>
     <a href="{{ url_for('logout') }}" class="btn-link">Log out</a>
 {% endblock %}
@@ -17,6 +21,7 @@
         <p>Bring in tasks from OneNote or goals from Excel.</p>
         <div class="import-mode-buttons">
             <button class="btn" id="importTasksBtn">Paste OneNote Tasks</button>
+            <button class="btn" id="importDocxBtn">Upload OneNote .docx</button>
             <button class="btn" id="importGoalsBtn">Upload Excel Goals</button>
         </div>
     </div>
@@ -36,6 +41,27 @@
             <button class="btn btn-sm" id="importBackFromTasks">Back</button>
         </div>
         <div class="import-status" id="importTasksStatus" style="display:none"></div>
+    </div>
+
+    <!-- OneNote .docx upload -->
+    <div class="import-input" id="importDocxInput" style="display:none">
+        <h2>Upload OneNote .docx</h2>
+        <p>Export your OneNote page as a Word document
+           (File → Export → Word Document), then upload it here.</p>
+
+        <div class="import-file-area">
+            <label for="importDocxFile" class="scan-file-label" id="importDocxFileLabel">
+                Choose .docx file
+            </label>
+            <input type="file" id="importDocxFile" accept=".docx" style="display:none">
+            <span id="importDocxFileName" class="import-file-name"></span>
+        </div>
+
+        <div class="import-input-actions">
+            <button class="btn" id="importParseDocxBtn" disabled>Parse Tasks</button>
+            <button class="btn btn-sm" id="importBackFromDocx">Back</button>
+        </div>
+        <div class="import-status" id="importDocxStatus" style="display:none"></div>
     </div>
 
     <!-- Excel goals input -->

@@ -2,6 +2,7 @@
 
 Endpoints:
     POST /api/import/tasks/parse    — parse OneNote text, return candidates
+    POST /api/import/tasks/upload   — parse OneNote .docx file, return candidates
     POST /api/import/tasks/confirm  — confirm task candidates, create in Inbox
     POST /api/import/goals/parse    — parse Excel file, return goal candidates
     POST /api/import/goals/confirm  — confirm goal candidates, create goals
@@ -17,12 +18,13 @@ from import_service import (
     find_duplicate_goals,
     find_duplicate_tasks,
     parse_excel_goals,
+    parse_onenote_docx,
     parse_onenote_text,
 )
 
 bp = Blueprint("import_api", __name__, url_prefix="/api/import")
 
-MAX_EXCEL_SIZE = 5 * 1024 * 1024  # 5 MB
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 
 # --- OneNote tasks -----------------------------------------------------------
@@ -45,6 +47,46 @@ def parse_tasks(email: str):  # noqa: ARG001
         return jsonify({"error": "text field is required"}), 400
 
     candidates = parse_onenote_text(text)
+
+    # Flag duplicates
+    titles = [c["title"] for c in candidates]
+    duplicates = set(t.lower() for t in find_duplicate_tasks(titles))
+    for c in candidates:
+        c["duplicate"] = c["title"].lower() in duplicates
+
+    return jsonify({"candidates": candidates, "total": len(candidates)})
+
+
+@bp.post("/tasks/upload")
+@login_required
+def upload_tasks(email: str):  # noqa: ARG001
+    """Parse an uploaded OneNote .docx file into task candidates.
+
+    Accepts multipart/form-data with a 'file' field (.docx).
+    Returns candidates with duplicate flags.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    file = request.files["file"]
+    if not file.filename:
+        return jsonify({"error": "No filename"}), 400
+
+    if not file.filename.lower().endswith(".docx"):
+        return jsonify({"error": "Only .docx files are supported"}), 422
+
+    file_bytes = file.read()
+
+    if len(file_bytes) > MAX_FILE_SIZE:
+        return jsonify({"error": "File too large (max 5MB)"}), 413
+
+    if not file_bytes:
+        return jsonify({"error": "Empty file"}), 400
+
+    try:
+        candidates = parse_onenote_docx(file_bytes)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 422
 
     # Flag duplicates
     titles = [c["title"] for c in candidates]
@@ -109,7 +151,7 @@ def parse_goals(email: str):  # noqa: ARG001
 
     file_bytes = file.read()
 
-    if len(file_bytes) > MAX_EXCEL_SIZE:
+    if len(file_bytes) > MAX_FILE_SIZE:
         return jsonify({"error": "File too large (max 5MB)"}), 413
 
     if not file_bytes:

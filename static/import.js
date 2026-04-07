@@ -12,6 +12,7 @@
     // DOM refs — mode selection
     var modesSection = document.getElementById("importModes");
     var tasksBtn = document.getElementById("importTasksBtn");
+    var docxBtn = document.getElementById("importDocxBtn");
     var goalsBtn = document.getElementById("importGoalsBtn");
 
     // DOM refs — tasks input
@@ -20,6 +21,15 @@
     var parseTasksBtn = document.getElementById("importParseTasksBtn");
     var backFromTasks = document.getElementById("importBackFromTasks");
     var tasksStatus = document.getElementById("importTasksStatus");
+
+    // DOM refs — docx input
+    var docxInput = document.getElementById("importDocxInput");
+    var docxFileInput = document.getElementById("importDocxFile");
+    var docxFileLabel = document.getElementById("importDocxFileLabel");
+    var docxFileName = document.getElementById("importDocxFileName");
+    var parseDocxBtn = document.getElementById("importParseDocxBtn");
+    var backFromDocx = document.getElementById("importBackFromDocx");
+    var docxStatus = document.getElementById("importDocxStatus");
 
     // DOM refs — goals input
     var goalsInput = document.getElementById("importGoalsInput");
@@ -60,6 +70,7 @@
     function showSection(section) {
         modesSection.style.display = "none";
         tasksInput.style.display = "none";
+        docxInput.style.display = "none";
         goalsInput.style.display = "none";
         reviewSection.style.display = "none";
         confirmSection.style.display = "none";
@@ -77,8 +88,12 @@
         textArea.value = "";
         fileInput.value = "";
         fileName.textContent = "";
+        docxFileInput.value = "";
+        docxFileName.textContent = "";
         parseGoalsBtn.disabled = true;
+        parseDocxBtn.disabled = true;
         tasksStatus.style.display = "none";
+        docxStatus.style.display = "none";
         goalsStatus.style.display = "none";
         currentCandidates = [];
         currentMode = null;
@@ -92,12 +107,18 @@
         showSection(tasksInput);
     });
 
+    docxBtn.addEventListener("click", function () {
+        currentMode = "tasks";
+        showSection(docxInput);
+    });
+
     goalsBtn.addEventListener("click", function () {
         currentMode = "goals";
         showSection(goalsInput);
     });
 
     backFromTasks.addEventListener("click", resetAll);
+    backFromDocx.addEventListener("click", resetAll);
     backFromGoals.addEventListener("click", resetAll);
 
     // --- File input ----------------------------------------------------------
@@ -111,6 +132,61 @@
 
     fileLabel.addEventListener("click", function () {
         fileInput.click();
+    });
+
+    // --- Docx file input -----------------------------------------------------
+
+    docxFileInput.addEventListener("change", function () {
+        var file = docxFileInput.files[0];
+        if (!file) return;
+        docxFileName.textContent = file.name;
+        parseDocxBtn.disabled = false;
+    });
+
+    docxFileLabel.addEventListener("click", function () {
+        docxFileInput.click();
+    });
+
+    // --- Parse docx ----------------------------------------------------------
+
+    parseDocxBtn.addEventListener("click", async function () {
+        var file = docxFileInput.files[0];
+        if (!file) return;
+
+        parseDocxBtn.disabled = true;
+        setStatus(docxStatus, "Parsing tasks from .docx...", false);
+
+        var formData = new FormData();
+        formData.append("file", file);
+
+        try {
+            var resp = await fetch("/api/import/tasks/upload", {
+                method: "POST",
+                body: formData,
+            });
+            var data = await resp.json();
+
+            if (!resp.ok) {
+                setStatus(docxStatus, "Error: " + (data.error || "Parse failed"), true);
+                parseDocxBtn.disabled = false;
+                return;
+            }
+
+            if (data.candidates && data.candidates.length > 0) {
+                currentCandidates = data.candidates;
+                reviewTitle.textContent = "Review Task Candidates";
+                reviewDesc.textContent =
+                    data.total + " task(s) found. Edit, include, or exclude before importing.";
+                renderTaskCandidates();
+                showSection(reviewSection);
+            } else {
+                setStatus(docxStatus, "No tasks found in the .docx file.", true);
+                parseDocxBtn.disabled = false;
+            }
+        } catch (err) {
+            setStatus(docxStatus, "Parse failed: " + err.message, true);
+            parseDocxBtn.disabled = false;
+        }
     });
 
     // --- Parse tasks ---------------------------------------------------------

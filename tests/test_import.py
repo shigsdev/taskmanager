@@ -22,6 +22,25 @@ from models import Goal, GoalCategory, GoalPriority, ImportLog, Task, TaskType, 
 # --- Helper: create Excel bytes in memory ------------------------------------
 
 
+def _make_docx(paragraphs: list[str], table_rows: list[list[str]] | None = None) -> bytes:
+    """Build a .docx file in memory from paragraphs and optional table rows."""
+    import docx
+
+    doc = docx.Document()
+    for text in paragraphs:
+        doc.add_paragraph(text)
+    if table_rows:
+        cols = max(len(r) for r in table_rows)
+        table = doc.add_table(rows=len(table_rows), cols=cols)
+        for i, row in enumerate(table_rows):
+            for j, cell_text in enumerate(row):
+                table.rows[i].cells[j].text = cell_text
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf.read()
+
+
 def _make_xlsx(rows: list[list]) -> bytes:
     """Build an .xlsx file in memory from a list of rows.
 
@@ -143,6 +162,76 @@ class TestParseOnenoteText:
         text = "- Dash bullet\n* Star bullet\n1. Numbered\n\u2610 Checkbox"
         result = parse_onenote_text(text)
         assert len(result) == 4
+
+
+# --- OneNote .docx parsing ---------------------------------------------------
+
+
+class TestParseOnenoteDocx:
+    """Verify parse_onenote_docx handles Word documents from OneNote export."""
+
+    def test_basic_paragraphs(self):
+        from import_service import parse_onenote_docx
+
+        docx_bytes = _make_docx(["- Buy groceries", "- Call dentist"])
+        result = parse_onenote_docx(docx_bytes)
+        assert len(result) == 2
+        assert result[0]["title"] == "Buy groceries"
+        assert result[1]["title"] == "Call dentist"
+
+    def test_extracts_table_text(self):
+        from import_service import parse_onenote_docx
+
+        docx_bytes = _make_docx([], table_rows=[["Task from table"]])
+        result = parse_onenote_docx(docx_bytes)
+        assert len(result) == 1
+        assert result[0]["title"] == "Task from table"
+
+    def test_combines_paragraphs_and_tables(self):
+        from import_service import parse_onenote_docx
+
+        docx_bytes = _make_docx(
+            ["- Paragraph task"],
+            table_rows=[["Table task"]],
+        )
+        result = parse_onenote_docx(docx_bytes)
+        assert len(result) == 2
+
+    def test_skips_headers_in_docx(self):
+        from import_service import parse_onenote_docx
+
+        docx_bytes = _make_docx(["MEETING NOTES", "- Real task"])
+        result = parse_onenote_docx(docx_bytes)
+        assert len(result) == 1
+        assert result[0]["title"] == "Real task"
+
+    def test_deduplicates_in_docx(self):
+        from import_service import parse_onenote_docx
+
+        docx_bytes = _make_docx(["- Same task", "- Same Task", "- same task"])
+        result = parse_onenote_docx(docx_bytes)
+        assert len(result) == 1
+
+    def test_empty_doc_returns_empty(self):
+        from import_service import parse_onenote_docx
+
+        docx_bytes = _make_docx([])
+        result = parse_onenote_docx(docx_bytes)
+        assert result == []
+
+    def test_invalid_docx_raises(self):
+        from import_service import parse_onenote_docx
+
+        with pytest.raises(ValueError, match="Cannot read"):
+            parse_onenote_docx(b"not a docx file")
+
+    def test_candidates_default_to_work(self):
+        from import_service import parse_onenote_docx
+
+        docx_bytes = _make_docx(["- A task from docx"])
+        result = parse_onenote_docx(docx_bytes)
+        assert result[0]["type"] == "work"
+        assert result[0]["included"] is True
 
 
 # --- Excel goals parsing ----------------------------------------------------
@@ -519,6 +608,98 @@ class TestTasksParseAPI:
         assert len(non_dupes) == 1
 
 
+# --- Tasks upload (.docx) API endpoint ---------------------------------------
+
+
+class TestTasksUploadAPI:
+    """Verify POST /api/import/tasks/upload."""
+
+    def test_upload_returns_candidates(self, authed_client):
+        docx_bytes = _make_docx(["- Buy groceries", "- Call dentist"])
+        data = {
+            "file": (
+                io.BytesIO(docx_bytes),
+                "notes.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        }
+        resp = authed_client.post(
+            "/api/import/tasks/upload",
+            data=data,
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["total"] == 2
+        assert body["candidates"][0]["title"] == "Buy groceries"
+
+    def test_no_file_returns_400(self, authed_client):
+        resp = authed_client.post("/api/import/tasks/upload")
+        assert resp.status_code == 400
+
+    def test_wrong_extension_returns_422(self, authed_client):
+        data = {"file": (io.BytesIO(b"data"), "notes.txt", "text/plain")}
+        resp = authed_client.post(
+            "/api/import/tasks/upload",
+            data=data,
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 422
+
+    def test_empty_file_returns_400(self, authed_client):
+        data = {
+            "file": (
+                io.BytesIO(b""),
+                "empty.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        }
+        resp = authed_client.post(
+            "/api/import/tasks/upload",
+            data=data,
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 400
+
+    def test_invalid_docx_returns_422(self, authed_client):
+        data = {
+            "file": (
+                io.BytesIO(b"not a docx"),
+                "bad.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        }
+        resp = authed_client.post(
+            "/api/import/tasks/upload",
+            data=data,
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 422
+
+    def test_flags_duplicate_tasks(self, authed_client, app):
+        with app.app_context():
+            db.session.add(Task(title="Existing", type=TaskType.WORK, tier=Tier.INBOX))
+            db.session.commit()
+
+        docx_bytes = _make_docx(["- Existing", "- Brand new task"])
+        data = {
+            "file": (
+                io.BytesIO(docx_bytes),
+                "notes.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        }
+        resp = authed_client.post(
+            "/api/import/tasks/upload",
+            data=data,
+            content_type="multipart/form-data",
+        )
+        body = resp.get_json()
+        dupes = [c for c in body["candidates"] if c["duplicate"]]
+        assert len(dupes) == 1
+        assert dupes[0]["title"] == "Existing"
+
+
 # --- Tasks confirm API endpoint ----------------------------------------------
 
 
@@ -731,6 +912,7 @@ class TestImportPageView:
         monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
         html = client.get("/import").data.decode()
         assert 'id="importTasksBtn"' in html
+        assert 'id="importDocxBtn"' in html
         assert 'id="importGoalsBtn"' in html
 
     def test_has_text_input(self, client, monkeypatch):
@@ -743,6 +925,12 @@ class TestImportPageView:
         html = client.get("/import").data.decode()
         assert 'id="importFile"' in html
         assert ".xlsx" in html
+
+    def test_has_docx_upload(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/import").data.decode()
+        assert 'id="importDocxFile"' in html
+        assert ".docx" in html
 
     def test_has_review_section(self, client, monkeypatch):
         monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
@@ -790,4 +978,5 @@ class TestImportBlueprint:
         assert "/api/import/tasks/parse" in rules
         assert "/api/import/tasks/confirm" in rules
         assert "/api/import/goals/parse" in rules
+        assert "/api/import/tasks/upload" in rules
         assert "/api/import/goals/confirm" in rules
