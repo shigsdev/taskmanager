@@ -154,6 +154,7 @@ class Task(db.Model):
         Uuid, ForeignKey("goals.id"), nullable=True
     )
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     checklist: Mapped[list | None] = mapped_column(JSONType, nullable=True, default=list)
     status: Mapped[TaskStatus] = mapped_column(

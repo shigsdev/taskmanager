@@ -229,6 +229,19 @@ function taskCardEl(task) {
         }
     }
 
+    // URL / article badge
+    if (task.url) {
+        const urlBadge = document.createElement("a");
+        urlBadge.className = "badge badge-url";
+        urlBadge.textContent = "Read ↗";
+        urlBadge.href = task.url;
+        urlBadge.target = "_blank";
+        urlBadge.rel = "noopener noreferrer";
+        urlBadge.title = task.url;
+        urlBadge.addEventListener("click", (e) => e.stopPropagation());
+        meta.appendChild(urlBadge);
+    }
+
     // Checklist progress
     if (task.checklist && task.checklist.length > 0) {
         const done = task.checklist.filter((c) => c.checked).length;
@@ -449,6 +462,25 @@ function taskDetailOpen(task) {
     document.getElementById("detailProject").value = task.project_id || "";
     document.getElementById("detailDueDate").value = task.due_date || "";
     document.getElementById("detailGoal").value = task.goal_id || "";
+    const urlInput = document.getElementById("detailUrl");
+    const urlOpen = document.getElementById("detailUrlOpen");
+    urlInput.value = task.url || "";
+    if (task.url) {
+        urlOpen.href = task.url;
+        urlOpen.style.display = "";
+    } else {
+        urlOpen.style.display = "none";
+    }
+    urlInput.addEventListener("input", () => {
+        const v = urlInput.value.trim();
+        if (v.startsWith("http://") || v.startsWith("https://")) {
+            urlOpen.href = v;
+            urlOpen.style.display = "";
+        } else {
+            urlOpen.style.display = "none";
+        }
+    }, { once: true });
+
     document.getElementById("detailNotes").value = task.notes || "";
 
     // Show/hide project selector based on type
@@ -547,6 +579,7 @@ async function taskDetailSave(e) {
     });
 
     const type = document.getElementById("detailType").value;
+    const rawUrl = document.getElementById("detailUrl").value.trim();
     const data = {
         title: document.getElementById("detailTitle").value.trim(),
         tier: document.getElementById("detailTier").value,
@@ -554,6 +587,7 @@ async function taskDetailSave(e) {
         project_id: type === "work" ? (document.getElementById("detailProject").value || null) : null,
         due_date: document.getElementById("detailDueDate").value || null,
         goal_id: document.getElementById("detailGoal").value || null,
+        url: rawUrl || null,
         notes: document.getElementById("detailNotes").value || "",
         checklist: clItems,
     };

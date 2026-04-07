@@ -63,6 +63,17 @@ def _parse_int(value: Any, field: str) -> int:
         raise ValidationError(f"invalid {field}: must be integer", field) from e
 
 
+def _parse_url(value: Any) -> str | None:
+    if value is None or value == "":
+        return None
+    url = str(value).strip()
+    if not url.startswith(("http://", "https://")):
+        raise ValidationError("url must start with http:// or https://", "url")
+    if len(url) > 2000:
+        raise ValidationError("url too long", "url")
+    return url
+
+
 def _parse_checklist(value: Any) -> list:
     if value is None:
         return []
@@ -92,6 +103,7 @@ def create_task(data: dict) -> Task:
         project_id=_parse_uuid(data.get("project_id"), "project_id"),
         goal_id=_parse_uuid(data.get("goal_id"), "goal_id"),
         due_date=_parse_date(data.get("due_date")),
+        url=_parse_url(data.get("url")),
         notes=(data.get("notes") or None),
         checklist=_parse_checklist(data.get("checklist")),
         sort_order=_parse_int(data.get("sort_order", 0), "sort_order"),
@@ -136,6 +148,7 @@ _UPDATABLE_FIELDS = {
     "project_id",
     "goal_id",
     "due_date",
+    "url",
     "notes",
     "checklist",
     "sort_order",
@@ -174,6 +187,9 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
 
     if "last_reviewed" in data:
         task.last_reviewed = _parse_date(data["last_reviewed"], "last_reviewed")
+
+    if "url" in data:
+        task.url = _parse_url(data["url"])
 
     if "notes" in data:
         task.notes = data["notes"] or None

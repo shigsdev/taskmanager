@@ -9,6 +9,7 @@ from functools import wraps
 
 from flask import current_app, redirect, render_template, session, url_for
 from flask_dance.contrib.google import google
+from oauthlib.oauth2.rfc6749.errors import TokenExpiredError
 
 
 def get_current_user_email() -> str | None:
@@ -16,10 +17,17 @@ def get_current_user_email() -> str | None:
 
     Kept as a module-level function so tests can monkeypatch it without
     needing a real OAuth flow.
+
+    Returns None (triggering a login redirect) when the OAuth token has
+    expired rather than letting the TokenExpiredError bubble up as a 500.
     """
     if not google.authorized:
         return None
-    resp = google.get("/oauth2/v2/userinfo")
+    try:
+        resp = google.get("/oauth2/v2/userinfo")
+    except TokenExpiredError:
+        session.clear()
+        return None
     if not resp.ok:
         return None
     return resp.json().get("email")

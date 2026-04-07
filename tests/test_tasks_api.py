@@ -365,3 +365,105 @@ def test_delete_soft_deletes(authed_client, app):
 def test_delete_404(authed_client):
     resp = authed_client.delete(f"/api/tasks/{uuid.uuid4()}")
     assert resp.status_code == 404
+
+
+# --- URL field ---------------------------------------------------------------
+
+
+def test_create_task_with_url(authed_client):
+    resp = authed_client.post(
+        "/api/tasks",
+        json={"title": "Read this", "type": "personal", "url": "https://example.com/article"},
+    )
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert body["url"] == "https://example.com/article"
+
+
+def test_create_task_url_defaults_to_none(authed_client):
+    resp = authed_client.post("/api/tasks", json={"title": "No link", "type": "work"})
+    assert resp.status_code == 201
+    assert resp.get_json()["url"] is None
+
+
+def test_create_task_422_invalid_url_scheme(authed_client):
+    resp = authed_client.post(
+        "/api/tasks",
+        json={"title": "Bad url", "type": "work", "url": "ftp://bad.example.com"},
+    )
+    assert resp.status_code == 422
+    assert resp.get_json()["field"] == "url"
+
+
+def test_patch_add_url_to_task(authed_client, app):
+    with app.app_context():
+        task = _make_task(title="Article")
+        task_id = task.id
+    resp = authed_client.patch(
+        f"/api/tasks/{task_id}", json={"url": "https://news.example.com/post"}
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["url"] == "https://news.example.com/post"
+
+
+def test_patch_clear_url(authed_client, app):
+    with app.app_context():
+        task = _make_task(title="Article", url="https://example.com")
+        task_id = task.id
+    resp = authed_client.patch(f"/api/tasks/{task_id}", json={"url": ""})
+    assert resp.status_code == 200
+    assert resp.get_json()["url"] is None
+
+
+# --- URL preview endpoint ----------------------------------------------------
+
+
+def test_url_preview_400_no_json(authed_client):
+    resp = authed_client.post(
+        "/api/tasks/url-preview", data="nope", content_type="text/plain"
+    )
+    assert resp.status_code == 400
+
+
+def test_url_preview_400_invalid_scheme(authed_client):
+    resp = authed_client.post(
+        "/api/tasks/url-preview", json={"url": "ftp://bad.example.com"}
+    )
+    assert resp.status_code == 400
+
+
+def test_url_preview_returns_title_on_success(authed_client, monkeypatch):
+    import urllib.request
+
+    class _FakeResp:
+        def read(self, n):  # noqa: ARG002
+            return b"<html><head><title>My Article Title</title></head></html>"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout: _FakeResp())  # noqa: ARG005
+    resp = authed_client.post(
+        "/api/tasks/url-preview", json={"url": "https://example.com/article"}
+    )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["title"] == "My Article Title"
+    assert body["url"] == "https://example.com/article"
+
+
+def test_url_preview_returns_null_title_on_fetch_failure(authed_client, monkeypatch):
+    import urllib.request
+
+    def _boom(req, timeout):  # noqa: ARG001
+        raise OSError("network error")
+
+    monkeypatch.setattr(urllib.request, "urlopen", _boom)
+    resp = authed_client.post(
+        "/api/tasks/url-preview", json={"url": "https://example.com/article"}
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["title"] is None
