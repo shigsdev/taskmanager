@@ -14,6 +14,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_migrate import Migrate
 from flask_talisman import Talisman
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import digest_api
 import goals_api
@@ -47,6 +48,10 @@ def _normalize_db_url(url: str) -> str:
 
 def create_app(config: dict | None = None) -> Flask:
     app = Flask(__name__)
+
+    # Trust Railway's reverse proxy so Flask generates https:// URLs
+    # (needed for OAuth redirect URIs to match)
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     app.config.update(
         SECRET_KEY=os.environ.get("SECRET_KEY", "dev-secret-change-me"),
