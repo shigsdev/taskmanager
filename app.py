@@ -103,10 +103,10 @@ def create_app(config: dict | None = None) -> Flask:
             "worker-src": "'self'",
             "frame-ancestors": "'none'",
         }
-        talisman = Talisman(
+        Talisman(
             app,
             content_security_policy=csp,
-            force_https=True,
+            force_https=False,
             session_cookie_secure=True,
             strict_transport_security=True,
             strict_transport_security_max_age=31536000,
@@ -114,16 +114,19 @@ def create_app(config: dict | None = None) -> Flask:
         )
 
         @app.before_request
-        def _skip_talisman_for_healthz():
-            """Let Railway's internal health checker hit /healthz over HTTP."""
+        def _force_https_except_healthz():
+            """Redirect HTTP to HTTPS, except for /healthz.
+
+            Railway's internal health checker hits /healthz over plain
+            HTTP. Talisman's built-in force_https can't exempt paths,
+            so we handle the redirect manually.
+            """
             from flask import request
             if request.path == "/healthz":
-                talisman.force_https = False
-
-        @app.after_request
-        def _restore_talisman(response):
-            talisman.force_https = True
-            return response
+                return None
+            if not request.is_secure and request.headers.get("X-Forwarded-Proto") != "https":
+                url = request.url.replace("http://", "https://", 1)
+                return redirect(url, code=301)
 
     # --- Security: rate limiting ---
     if not app.config.get("TESTING"):

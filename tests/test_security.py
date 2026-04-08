@@ -214,13 +214,14 @@ class TestTalismanConfig:
         assert "frame-ancestors" in source
 
     def test_force_https_in_code(self):
-        """Verify force_https=True is in the Talisman config."""
+        """Verify HTTPS redirect is enforced (manually, exempting /healthz)."""
         import inspect
 
         from app import create_app
 
         source = inspect.getsource(create_app)
-        assert "force_https=True" in source
+        assert "_force_https_except_healthz" in source
+        assert 'replace("http://", "https://", 1)' in source
 
     def test_hsts_in_code(self):
         """Verify HSTS is enabled in the Talisman config."""
