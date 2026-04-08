@@ -103,7 +103,7 @@ def create_app(config: dict | None = None) -> Flask:
             "worker-src": "'self'",
             "frame-ancestors": "'none'",
         }
-        Talisman(
+        talisman = Talisman(
             app,
             content_security_policy=csp,
             force_https=True,
@@ -112,6 +112,18 @@ def create_app(config: dict | None = None) -> Flask:
             strict_transport_security_max_age=31536000,
             referrer_policy="strict-origin-when-cross-origin",
         )
+
+        @app.before_request
+        def _skip_talisman_for_healthz():
+            """Let Railway's internal health checker hit /healthz over HTTP."""
+            from flask import request
+            if request.path == "/healthz":
+                talisman.force_https = False
+
+        @app.after_request
+        def _restore_talisman(response):
+            talisman.force_https = True
+            return response
 
     # --- Security: rate limiting ---
     if not app.config.get("TESTING"):
