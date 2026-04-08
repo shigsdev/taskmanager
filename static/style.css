@@ -208,6 +208,10 @@ body {
     position: relative;
 }
 .task-card:hover { background: var(--bg); }
+.task-card.dragging { opacity: 0.4; background: var(--accent); border-radius: 6px; }
+.task-card[draggable="true"] { cursor: grab; }
+.task-card[draggable="true"]:active { cursor: grabbing; }
+.task-list.drag-over { background: rgba(37, 99, 235, 0.05); border-radius: 6px; }
 .task-card + .task-card { margin-top: 4px; }
 
 .task-card .task-checkbox {

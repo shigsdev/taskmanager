@@ -94,6 +94,7 @@ function renderBoard() {
     updateInboxBadge();
     updateTodayWarning();
     updateBulkTriageBtn();
+    setupDragAndDrop();
 }
 
 function renderTierGroupedByProject(list, tasks) {
@@ -134,6 +135,76 @@ function renderTierGroupedByProject(list, tasks) {
     }
 }
 
+// --- Drag and drop reordering ------------------------------------------------
+
+let draggedCard = null;
+
+function setupDragAndDrop() {
+    for (const tier of TIER_ORDER) {
+        const list = document.querySelector(`.task-list[data-tier="${tier}"]`);
+        if (!list) continue;
+
+        list.addEventListener("dragover", function (e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            const afterEl = getDragAfterElement(list, e.clientY);
+            if (afterEl) {
+                list.insertBefore(draggedCard, afterEl);
+            } else {
+                list.appendChild(draggedCard);
+            }
+        });
+
+        list.addEventListener("drop", function (e) {
+            e.preventDefault();
+            const targetTier = list.dataset.tier;
+            const taskId = draggedCard.dataset.id;
+            const sourceTier = draggedCard.dataset.sourceTier;
+
+            // Collect new order of task IDs in this tier
+            const cardIds = Array.from(list.querySelectorAll(".task-card"))
+                .map(function (c) { return c.dataset.id; });
+
+            // If moved to a different tier, update tier first
+            if (sourceTier !== targetTier) {
+                apiFetch(API + "/" + taskId, {
+                    method: "PATCH",
+                    body: JSON.stringify({ tier: targetTier }),
+                }).then(function () {
+                    return saveReorder(targetTier, cardIds);
+                }).then(function () {
+                    loadTasks();
+                });
+            } else {
+                saveReorder(targetTier, cardIds);
+            }
+        });
+    }
+}
+
+function getDragAfterElement(list, y) {
+    var cards = Array.from(list.querySelectorAll(".task-card:not(.dragging)"));
+    var closest = null;
+    var closestOffset = Number.NEGATIVE_INFINITY;
+
+    for (var i = 0; i < cards.length; i++) {
+        var box = cards[i].getBoundingClientRect();
+        var offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closestOffset) {
+            closestOffset = offset;
+            closest = cards[i];
+        }
+    }
+    return closest;
+}
+
+async function saveReorder(tier, taskIds) {
+    await apiFetch(API + "/reorder", {
+        method: "POST",
+        body: JSON.stringify({ tier: tier, task_ids: taskIds }),
+    });
+}
+
 function filteredTasks() {
     let tasks = allTasks;
     if (currentView === "work") tasks = tasks.filter((t) => t.type === "work");
@@ -152,6 +223,18 @@ function taskCardEl(task) {
     const card = document.createElement("div");
     card.className = "task-card";
     card.dataset.id = task.id;
+    card.dataset.sourceTier = task.tier;
+    card.draggable = true;
+    card.addEventListener("dragstart", function (e) {
+        draggedCard = card;
+        card.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", task.id);
+    });
+    card.addEventListener("dragend", function () {
+        card.classList.remove("dragging");
+        draggedCard = null;
+    });
 
     const today = new Date().toISOString().slice(0, 10);
 

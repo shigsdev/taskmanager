@@ -467,3 +467,51 @@ def test_url_preview_returns_null_title_on_fetch_failure(authed_client, monkeypa
     )
     assert resp.status_code == 200
     assert resp.get_json()["title"] is None
+
+
+# --- Reorder -----------------------------------------------------------------
+
+
+class TestReorder:
+    """Verify POST /api/tasks/reorder."""
+
+    def test_reorder_updates_sort_order(self, authed_client, app):
+        with app.app_context():
+            t1 = _make_task(title="First", tier=Tier.TODAY)
+            t2 = _make_task(title="Second", tier=Tier.TODAY)
+            t3 = _make_task(title="Third", tier=Tier.TODAY)
+            ids = [str(t3.id), str(t1.id), str(t2.id)]
+
+        resp = authed_client.post(
+            "/api/tasks/reorder",
+            json={"tier": "today", "task_ids": ids},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["reordered"] == 3
+
+        # Verify order persisted
+        resp = authed_client.get("/api/tasks?tier=today")
+        titles = [t["title"] for t in resp.get_json()]
+        assert titles == ["Third", "First", "Second"]
+
+    def test_reorder_no_json_returns_400(self, authed_client):
+        resp = authed_client.post(
+            "/api/tasks/reorder",
+            data="not json",
+            content_type="text/plain",
+        )
+        assert resp.status_code == 400
+
+    def test_reorder_missing_fields_returns_422(self, authed_client):
+        resp = authed_client.post(
+            "/api/tasks/reorder",
+            json={"tier": "today"},
+        )
+        assert resp.status_code == 422
+
+    def test_reorder_invalid_tier_returns_400(self, authed_client):
+        resp = authed_client.post(
+            "/api/tasks/reorder",
+            json={"tier": "invalid", "task_ids": []},
+        )
+        assert resp.status_code == 400

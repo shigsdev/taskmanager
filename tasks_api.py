@@ -141,6 +141,40 @@ def destroy(email: str, task_id: uuid.UUID):  # noqa: ARG001
     return "", 204
 
 
+@bp.post("/reorder")
+@login_required
+def reorder(email: str):  # noqa: ARG001
+    """Bulk-update sort_order for tasks within a tier.
+
+    Expects JSON: {"tier": "today", "task_ids": ["id1", "id2", ...]}
+    The order of task_ids determines the new sort_order values.
+    """
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON body required"}), 400
+
+    tier_val = data.get("tier")
+    task_ids = data.get("task_ids")
+
+    if not tier_val or not isinstance(task_ids, list):
+        return jsonify({"error": "tier and task_ids required"}), 422
+
+    try:
+        Tier(tier_val)
+    except ValueError:
+        return jsonify({"error": f"invalid tier: {tier_val}"}), 400
+
+    for i, tid in enumerate(task_ids):
+        try:
+            task = get_task(uuid.UUID(tid))
+        except (ValueError, AttributeError):
+            continue
+        if task:
+            update_task(task.id, {"sort_order": i})
+
+    return jsonify({"reordered": len(task_ids)})
+
+
 class _TitleParser(html.parser.HTMLParser):
     """Minimal HTML parser that extracts the first <title> tag content."""
 
