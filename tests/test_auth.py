@@ -63,7 +63,7 @@ def test_logout_clears_session_and_redirects(client):
 def test_healthz_is_public(client):
     resp = client.get("/healthz")
     assert resp.status_code == 200
-    assert resp.get_json() == {"status": "ok"}
+    assert resp.get_json()["status"] == "ok"
 
 
 def test_get_current_user_email_returns_none_when_not_authorized(app, monkeypatch):

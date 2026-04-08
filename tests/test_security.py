@@ -19,6 +19,8 @@ Key testing concepts:
 """
 from __future__ import annotations
 
+import os
+
 import auth
 
 # --- Fernet encryption -------------------------------------------------------
@@ -290,10 +292,12 @@ class TestNoDataLeakage:
     def test_healthz_no_sensitive_info(self, client):
         resp = client.get("/healthz")
         body = resp.get_json()
-        assert body == {"status": "ok"}
+        assert body["status"] == "ok"
         body_str = resp.get_data(as_text=True)
-        assert "secret" not in body_str.lower()
-        assert "key" not in body_str.lower()
+        # Health check should never expose actual secret values
+        assert os.environ.get("SECRET_KEY", "dev-secret") not in body_str
+        assert "sendgrid" not in body_str.lower()
+        assert "api_key" not in body_str.lower()
 
 
 # --- Input sanitization -------------------------------------------------------

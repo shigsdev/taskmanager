@@ -121,7 +121,10 @@ class TestAppBoot:
     def test_healthz_returns_ok(self, client):
         resp = client.get("/healthz")
         assert resp.status_code == 200
-        assert resp.get_json() == {"status": "ok"}
+        body = resp.get_json()
+        assert body["status"] == "ok"
+        assert "checks" in body
+        assert body["checks"]["database"] == "ok"
 
     def test_healthz_no_auth_required(self, client, monkeypatch):
         """Health check must work without authentication."""

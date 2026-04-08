@@ -184,7 +184,42 @@ def create_app(config: dict | None = None) -> Flask:
 
     @app.route("/healthz")
     def healthz():
-        return {"status": "ok"}
+        """Post-deploy health check — verifies critical systems are working."""
+        checks = {}
+
+        # 1. Database connectivity
+        try:
+            db.session.execute(db.text("SELECT 1"))
+            checks["database"] = "ok"
+        except Exception as e:
+            checks["database"] = f"fail: {e}"
+
+        # 2. Required env vars
+        required_vars = ["SECRET_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]
+        missing = [v for v in required_vars if not os.environ.get(v)]
+        checks["env_vars"] = "ok" if not missing else f"missing: {', '.join(missing)}"
+
+        # 3. Digest scheduler (if configured)
+        if os.environ.get("DIGEST_TO_EMAIL"):
+            try:
+                import importlib.util
+
+                if importlib.util.find_spec("apscheduler"):
+                    if os.environ.get("SENDGRID_API_KEY"):
+                        checks["digest"] = "ok"
+                    else:
+                        checks["digest"] = "warn: SENDGRID_API_KEY not set"
+                else:
+                    checks["digest"] = "fail: apscheduler not installed"
+            except Exception:
+                checks["digest"] = "fail: apscheduler not installed"
+        else:
+            checks["digest"] = "skipped: DIGEST_TO_EMAIL not set"
+
+        # Overall status
+        failed = [k for k, v in checks.items() if v.startswith("fail")]
+        status_code = 503 if failed else 200
+        return {"status": "fail" if failed else "ok", "checks": checks}, status_code
 
     # --- Scheduled digest email ---
     if not app.config.get("TESTING") and os.environ.get("DIGEST_TO_EMAIL"):
