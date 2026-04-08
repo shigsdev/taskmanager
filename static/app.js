@@ -476,6 +476,11 @@ async function taskComplete(id) {
         body: JSON.stringify({ status: "archived" }),
     });
     await loadTasks();
+    // Refresh completed list if it was already loaded
+    const section = document.getElementById("tierCompleted");
+    if (section && section.dataset.loaded) {
+        loadCompletedTasks();
+    }
 }
 
 async function taskDelete(id) {
@@ -515,9 +520,88 @@ function setupCollapse() {
             const expanded = btn.getAttribute("aria-expanded") === "true";
             btn.setAttribute("aria-expanded", !expanded);
             btn.textContent = expanded ? "▸" : "▾";
-            body.classList.toggle("collapsed", expanded);
+            if (expanded) {
+                body.style.display = "none";
+            } else {
+                body.style.display = "";
+                // Load completed tasks on first expand
+                if (section.id === "tierCompleted" && !section.dataset.loaded) {
+                    loadCompletedTasks();
+                }
+            }
         });
     });
+}
+
+// --- Completed tasks ---------------------------------------------------------
+
+let completedLoaded = false;
+
+async function loadCompletedTasks() {
+    const list = document.getElementById("completedList");
+    const count = document.getElementById("completedCount");
+    const section = document.getElementById("tierCompleted");
+
+    list.innerHTML = "<div class='loading-msg'>Loading...</div>";
+    section.dataset.loaded = "true";
+
+    const tasks = await apiFetch(API + "?status=archived");
+    list.innerHTML = "";
+    count.textContent = tasks.length;
+
+    if (tasks.length === 0) {
+        list.classList.add("empty-state");
+        list.setAttribute("data-empty-msg", "No completed tasks yet");
+        return;
+    }
+
+    list.classList.remove("empty-state");
+    // Show most recently completed first
+    for (const task of tasks) {
+        const card = document.createElement("div");
+        card.className = "task-card completed-card";
+        card.dataset.id = task.id;
+
+        const title = document.createElement("div");
+        title.className = "task-title completed-title";
+        title.textContent = task.title;
+        card.appendChild(title);
+
+        const meta = document.createElement("div");
+        meta.className = "task-meta";
+
+        const typeBadge = document.createElement("span");
+        typeBadge.className = "badge badge-" + task.type;
+        typeBadge.textContent = task.type;
+        meta.appendChild(typeBadge);
+
+        const dateBadge = document.createElement("span");
+        dateBadge.className = "badge";
+        dateBadge.textContent = task.updated_at.slice(0, 10);
+        meta.appendChild(dateBadge);
+
+        card.appendChild(meta);
+
+        // Click to restore
+        card.addEventListener("click", function () {
+            taskRestore(task.id);
+        });
+
+        list.appendChild(card);
+    }
+}
+
+async function taskRestore(id) {
+    await apiFetch(API + "/" + id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "active" }),
+    });
+    await loadTasks();
+    // Reload completed list
+    const section = document.getElementById("tierCompleted");
+    if (section.dataset.loaded) {
+        loadCompletedTasks();
+    }
 }
 
 // --- Detail panel ------------------------------------------------------------
