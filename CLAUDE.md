@@ -12,6 +12,14 @@ previous system failed because of complexity overhead.
 - **ruff** for linting and static analysis — zero warnings
 - **pre-commit hooks** block commits that fail either check
 - Run the full gate locally before pushing: `pytest --cov && ruff check .`
+- **Post-push deploy validation** (after every `git push`):
+  1. Wait 2–3 minutes for Railway to build and deploy
+  2. Run: `curl -s https://web-production-3e3ae.up.railway.app/healthz`
+  3. Verify response includes `"checks"` field with `"database": "ok"`
+  4. If response is missing `"checks"` or shows the old format, the build
+     is still deploying — wait 1 minute and retry
+  5. If any check shows `"fail"` or returns `503`, investigate before
+     continuing to the next task
 
 ---
 
