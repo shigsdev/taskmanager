@@ -95,11 +95,12 @@ def create_app(config: dict | None = None) -> Flask:
     if not app.config.get("TESTING") and os.environ.get("FLASK_ENV") != "development":
         csp = {
             "default-src": "'self'",
-            "script-src": "'self'",
+            "script-src": "'self' 'unsafe-inline'",
             "style-src": "'self' 'unsafe-inline'",
             "img-src": "'self' data:",
             "font-src": "'self'",
             "connect-src": "'self'",
+            "worker-src": "'self'",
             "frame-ancestors": "'none'",
         }
         Talisman(
