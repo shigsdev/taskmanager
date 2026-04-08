@@ -5,9 +5,20 @@ Skip sections for features you didn't change.
 
 ---
 
+## 0. Wait for Deploy
+
+Railway builds take 2–3 minutes after a push. Confirm the deploy is
+live before testing.
+
+- [ ] Check Railway dashboard — latest deploy shows **Active** (not Building/Deploying)
+- [ ] Run: `curl -s https://web-production-3e3ae.up.railway.app/healthz | python -m json.tool`
+- [ ] Response should include `"checks"` field with `"database": "ok"`
+- [ ] If you get the old format (`{"status": "ok"}` with no checks), wait 1 minute and retry
+- [ ] If health check returns `503` or any check shows `"fail"`, stop and investigate before continuing
+
 ## 1. Health & Login
 
-- [ ] Visit `/healthz` — should return `{"status": "ok"}` with all checks passing
+- [ ] `/healthz` checks field shows: database ok, env_vars ok, digest ok (or skipped)
 - [ ] Visit `/` — should redirect to login page (if not already logged in)
 - [ ] Click "Sign in with Google" — should complete OAuth and land on task board
 - [ ] Verify your email shows in the nav bar
