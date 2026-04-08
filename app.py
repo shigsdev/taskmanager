@@ -186,7 +186,39 @@ def create_app(config: dict | None = None) -> Flask:
     def healthz():
         return {"status": "ok"}
 
+    # --- Scheduled digest email ---
+    if not app.config.get("TESTING") and os.environ.get("DIGEST_TO_EMAIL"):
+        _start_digest_scheduler(app)
+
     return app
+
+
+def _start_digest_scheduler(app: Flask) -> None:
+    """Start APScheduler to send the daily digest email."""
+    from apscheduler.schedulers.background import BackgroundScheduler
+
+    digest_time = os.environ.get("DIGEST_TIME", "07:00")
+    hour, minute = (int(x) for x in digest_time.split(":"))
+    tz = os.environ.get("DIGEST_TZ", "America/New_York")
+
+    def _send_scheduled_digest():
+        with app.app_context():
+            from digest_service import send_digest
+
+            to_email = os.environ.get("DIGEST_TO_EMAIL")
+            if to_email:
+                send_digest(to_email=to_email)
+
+    scheduler = BackgroundScheduler(timezone=tz)
+    scheduler.add_job(
+        _send_scheduled_digest,
+        "cron",
+        hour=hour,
+        minute=minute,
+        id="daily_digest",
+        replace_existing=True,
+    )
+    scheduler.start()
 
 
 app = create_app()
