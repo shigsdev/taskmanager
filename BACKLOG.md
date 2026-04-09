@@ -37,9 +37,11 @@ _(none)_
 
 ## Bugs
 
-_(none yet)_
+- [ ] Voice input on iPhone — recording starts and stops but captured text does not appear in the task input bar (reported 2026-04-09)
 
 ## Backlog (prioritized)
+
+- [ ] JS/E2E testing infrastructure — Jest for unit tests + Playwright for browser API testing (Web Speech, Notifications) across engines (Chromium, WebKit)
 
 - [x] Mobile-responsive CSS — phase: 1 (done)
 - [x] Weekly review mode — phase: 1 (done)

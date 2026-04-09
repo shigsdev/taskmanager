@@ -99,13 +99,15 @@
             window.SpeechRecognition || window.webkitSpeechRecognition;
         const recognition = new SpeechRecognition();
         recognition.continuous = false;
-        recognition.interimResults = false;
+        recognition.interimResults = true;
         recognition.lang = "en-US";
 
         let listening = false;
+        let pendingTranscript = "";
 
         function setVoiceListening() {
             listening = true;
+            pendingTranscript = "";
             voiceBtn.textContent = "⏹";
             voiceBtn.classList.add("voice-listening");
             voiceBtn.title = "Listening… tap to stop";
@@ -116,6 +118,12 @@
             voiceBtn.textContent = "🎤";
             voiceBtn.classList.remove("voice-listening");
             voiceBtn.title = "Voice input";
+        }
+
+        function applyTranscript(text) {
+            if (!text) return;
+            input.value = (input.value ? input.value + " " : "") + text;
+            input.focus();
         }
 
         voiceBtn.addEventListener("click", () => {
@@ -132,12 +140,30 @@
         });
 
         recognition.addEventListener("result", (e) => {
-            const transcript = e.results[0][0].transcript;
-            input.value = (input.value ? input.value + " " : "") + transcript;
-            input.focus();
+            let finalText = "";
+            let interimText = "";
+            for (let i = 0; i < e.results.length; i++) {
+                if (e.results[i].isFinal) {
+                    finalText += e.results[i][0].transcript;
+                } else {
+                    interimText += e.results[i][0].transcript;
+                }
+            }
+            if (finalText) {
+                applyTranscript(finalText);
+                pendingTranscript = "";
+            } else {
+                pendingTranscript = interimText;
+            }
         });
 
         recognition.addEventListener("end", () => {
+            // On iOS Safari, manual stop() skips the final result event.
+            // Apply any pending interim transcript so speech isn't lost.
+            if (pendingTranscript) {
+                applyTranscript(pendingTranscript);
+                pendingTranscript = "";
+            }
             setVoiceIdle();
         });
 
