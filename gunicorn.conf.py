@@ -25,3 +25,19 @@ loglevel = "info"
 
 # Preload app for faster worker boot
 preload_app = True
+
+
+def post_worker_init(worker):
+    """Start the digest scheduler in the first worker only.
+
+    APScheduler uses a background thread which is not fork-safe.
+    With preload_app=True the app is created in the master process,
+    but background threads die after fork. This hook runs after the
+    fork, inside each worker. We only start the scheduler in worker
+    with the lowest age (first to boot) to avoid duplicate emails.
+    """
+    # worker.age starts at 1 and increments for each spawned worker
+    if worker.age == 1:
+        from app import _start_digest_scheduler, create_app
+        app = create_app()
+        _start_digest_scheduler(app)

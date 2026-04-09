@@ -237,8 +237,10 @@ def create_app(config: dict | None = None) -> Flask:
         return {"status": "fail" if failed else "ok", "checks": checks}, status_code
 
     # --- Scheduled digest email ---
-    if not app.config.get("TESTING") and os.environ.get("DIGEST_TO_EMAIL"):
-        _start_digest_scheduler(app)
+    # NOTE: The scheduler is started via gunicorn.conf.py post_worker_init
+    # hook, NOT here. Starting it in create_app() would run it in the
+    # Gunicorn master process where the background thread dies after fork.
+    # For local dev (flask run), call _start_digest_scheduler() manually.
 
     return app
 
