@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
-from typing import Any
 
 from sqlalchemy import select
 
@@ -30,27 +29,8 @@ from models import (
     db,
 )
 from utils import ValidationError  # noqa: F401 — re-exported for API layer
-
-# --- Helpers -----------------------------------------------------------------
-
-
-def _parse_enum(enum_cls, value: Any, field: str):
-    if value is None:
-        return None
-    try:
-        return enum_cls(str(value))
-    except ValueError as e:
-        raise ValidationError(f"invalid {field}: {value!r}", field) from e
-
-
-def _parse_uuid(value: Any, field: str) -> uuid.UUID | None:
-    if value is None or value == "":
-        return None
-    try:
-        return uuid.UUID(str(value))
-    except (ValueError, AttributeError) as e:
-        raise ValidationError(f"invalid {field}", field) from e
-
+from utils import parse_enum as _parse_enum
+from utils import parse_uuid as _parse_uuid
 
 # --- CRUD --------------------------------------------------------------------
 

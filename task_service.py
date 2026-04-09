@@ -13,8 +13,11 @@ from sqlalchemy import select
 
 from models import Task, TaskStatus, TaskType, Tier, db
 from utils import ValidationError  # noqa: F401 — re-exported for API layer
+from utils import parse_enum as _parse_enum
+from utils import parse_int as _parse_int
+from utils import parse_uuid as _parse_uuid
 
-# --- Coercion helpers --------------------------------------------------------
+# --- Task-specific coercion helpers ------------------------------------------
 
 
 def _parse_date(value: Any, field: str = "due_date") -> date | None:
@@ -26,33 +29,6 @@ def _parse_date(value: Any, field: str = "due_date") -> date | None:
         return date.fromisoformat(str(value))
     except ValueError as e:
         raise ValidationError(f"invalid date: {value!r}", field) from e
-
-
-def _parse_uuid(value: Any, field: str) -> uuid.UUID | None:
-    if value is None or value == "":
-        return None
-    if isinstance(value, uuid.UUID):
-        return value
-    try:
-        return uuid.UUID(str(value))
-    except (ValueError, AttributeError) as e:
-        raise ValidationError(f"invalid {field}", field) from e
-
-
-def _parse_enum(enum_cls, value: Any, field: str):
-    if value is None:
-        return None
-    try:
-        return enum_cls(str(value))
-    except ValueError as e:
-        raise ValidationError(f"invalid {field}: {value!r}", field) from e
-
-
-def _parse_int(value: Any, field: str) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError) as e:
-        raise ValidationError(f"invalid {field}: must be integer", field) from e
 
 
 def _parse_url(value: Any) -> str | None:

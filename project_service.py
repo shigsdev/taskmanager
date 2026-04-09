@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
 
 from sqlalchemy import select
 
 from models import Project, db
 from utils import ValidationError  # noqa: F401 — re-exported for API layer
+from utils import parse_int as _parse_int
+from utils import parse_uuid as _parse_uuid
 
 DEFAULT_PROJECTS = [
     "Portal",
@@ -32,24 +33,6 @@ DEFAULT_COLORS = [
     "#06b6d4",  # cyan
     "#a855f7",  # purple
 ]
-
-
-def _parse_int(value: Any, field: str) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError) as e:
-        raise ValidationError(f"invalid {field}: must be an integer", field) from e
-
-
-def _parse_uuid(value: Any, field: str) -> uuid.UUID | None:
-    if value is None or value == "":
-        return None
-    if isinstance(value, uuid.UUID):
-        return value
-    try:
-        return uuid.UUID(str(value))
-    except (ValueError, AttributeError) as e:
-        raise ValidationError(f"invalid {field}", field) from e
 
 
 def seed_default_projects() -> list[Project]:

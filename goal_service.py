@@ -15,27 +15,16 @@ from models import (
     TaskStatus,
     db,
 )
-from utils import ValidationError  # noqa: F401 — re-exported for API layer
-
-# --- Coercion helpers --------------------------------------------------------
-
-
-def _parse_enum(enum_cls, value: Any, field: str):
-    if value is None:
-        return None
-    try:
-        return enum_cls(str(value))
-    except ValueError as e:
-        raise ValidationError(f"invalid {field}: {value!r}", field) from e
+from utils import (
+    ValidationError,  # noqa: F401 — re-exported for API layer
+    parse_int,
+)
+from utils import parse_enum as _parse_enum
 
 
 def _parse_int(value: Any, field: str) -> int | None:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError) as e:
-        raise ValidationError(f"invalid {field}: must be integer", field) from e
+    """Goal's priority_rank is optional (nullable)."""
+    return parse_int(value, field, allow_none=True)
 
 
 # --- CRUD --------------------------------------------------------------------
