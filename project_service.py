@@ -7,13 +7,7 @@ from typing import Any
 from sqlalchemy import select
 
 from models import Project, db
-
-
-class ValidationError(Exception):
-    def __init__(self, message: str, field: str | None = None):
-        super().__init__(message)
-        self.field = field
-
+from utils import ValidationError  # noqa: F401 — re-exported for API layer
 
 DEFAULT_PROJECTS = [
     "Portal",
@@ -38,6 +32,13 @@ DEFAULT_COLORS = [
     "#06b6d4",  # cyan
     "#a855f7",  # purple
 ]
+
+
+def _parse_int(value: Any, field: str) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError) as e:
+        raise ValidationError(f"invalid {field}: must be an integer", field) from e
 
 
 def _parse_uuid(value: Any, field: str) -> uuid.UUID | None:
@@ -79,7 +80,7 @@ def create_project(data: dict) -> Project:
         name=name,
         color=(data.get("color") or "").strip() or None,
         goal_id=_parse_uuid(data.get("goal_id"), "goal_id"),
-        sort_order=int(data.get("sort_order", 0)),
+        sort_order=_parse_int(data.get("sort_order", 0), "sort_order"),
     )
     db.session.add(project)
     db.session.commit()

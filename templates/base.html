@@ -28,6 +28,14 @@
     if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("/static/sw.js", { scope: "/" });
     }
+    // Clear SW cache on logout so stale authenticated pages aren't served
+    document.querySelectorAll('a[href*="/logout"]').forEach(function (link) {
+        link.addEventListener("click", function () {
+            if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+                navigator.serviceWorker.controller.postMessage({ type: "CLEAR_CACHE" });
+            }
+        });
+    });
     </script>
 </body>
 </html>

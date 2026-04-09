@@ -5,7 +5,7 @@
  * Bump CACHE_VERSION when deploying new static files.
  */
 
-var CACHE_VERSION = "v3";
+var CACHE_VERSION = "v4";
 var CACHE_NAME = "taskmanager-" + CACHE_VERSION;
 
 var APP_SHELL = [
@@ -43,6 +43,19 @@ self.addEventListener("activate", function (event) {
         })
     );
     self.clients.claim();
+});
+
+// Message — handle cache-clear requests (e.g., on logout)
+self.addEventListener("message", function (event) {
+    if (event.data && event.data.type === "CLEAR_CACHE") {
+        caches.keys().then(function (keys) {
+            return Promise.all(
+                keys
+                    .filter(function (key) { return key.startsWith("taskmanager-"); })
+                    .map(function (key) { return caches.delete(key); })
+            );
+        });
+    }
 });
 
 // Fetch — network-first for API and pages, cache-first for static assets

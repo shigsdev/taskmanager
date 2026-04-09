@@ -19,6 +19,7 @@ from task_service import (
     list_tasks,
     update_task,
 )
+from utils import enum_or_400 as _enum_or_400
 
 bp = Blueprint("tasks_api", __name__, url_prefix="/api/tasks")
 
@@ -41,15 +42,6 @@ def _serialize(task: Task) -> dict:
         "created_at": task.created_at.isoformat(),
         "updated_at": task.updated_at.isoformat(),
     }
-
-
-def _enum_or_400(enum_cls, value):
-    if value is None:
-        return None, None
-    try:
-        return enum_cls(value), None
-    except ValueError:
-        return None, (jsonify({"error": f"invalid filter value: {value}"}), 400)
 
 
 def _uuid_or_400(value, field):

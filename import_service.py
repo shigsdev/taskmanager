@@ -25,6 +25,7 @@ from models import (
     GoalStatus,
     ImportLog,
     Task,
+    TaskStatus,
     TaskType,
     Tier,
     db,
@@ -111,9 +112,14 @@ def _clean_task_line(line: str) -> str:
 
 def _is_header_line(text: str) -> bool:
     """Detect header-like lines that aren't real tasks."""
-    # All caps lines with 3+ words are likely section headers
+    # All caps lines (any length, up to 40 chars) are likely section headers
     words = text.split()
-    if len(words) >= 2 and text == text.upper() and not any(c.isdigit() for c in text):
+    if (
+        len(words) >= 1
+        and len(text) <= 40
+        and text == text.upper()
+        and not any(c.isdigit() for c in text)
+    ):
         return True
 
     # Date-only lines (e.g., "April 5, 2026", "2026-04-05")
@@ -287,8 +293,14 @@ def find_duplicate_tasks(titles: list[str]) -> list[str]:
     if not titles:
         return []
 
+    from sqlalchemy import func
+
+    lower_titles = [t.lower() for t in titles]
     existing = db.session.scalars(
-        select(Task.title).where(Task.status != "deleted")
+        select(Task.title).where(
+            Task.status != TaskStatus.DELETED,
+            func.lower(Task.title).in_(lower_titles),
+        )
     ).all()
     existing_lower = {t.lower() for t in existing}
 

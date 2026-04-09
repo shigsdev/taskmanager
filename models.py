@@ -18,6 +18,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -169,6 +170,13 @@ class Task(db.Model):
 
     project: Mapped[Project | None] = relationship(back_populates="tasks")
     goal: Mapped[Goal | None] = relationship(back_populates="tasks")
+
+    __table_args__ = (
+        Index("ix_tasks_status", "status"),
+        Index("ix_tasks_tier_status", "tier", "status"),
+        Index("ix_tasks_project_id", "project_id"),
+        Index("ix_tasks_goal_id", "goal_id"),
+    )
 
 
 class RecurringTask(db.Model):

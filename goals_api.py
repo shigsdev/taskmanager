@@ -16,6 +16,7 @@ from goal_service import (
     update_goal,
 )
 from models import Goal, GoalCategory, GoalPriority, GoalStatus
+from utils import enum_or_400 as _enum_or_400
 
 bp = Blueprint("goals_api", __name__, url_prefix="/api/goals")
 
@@ -38,15 +39,6 @@ def _serialize(goal: Goal, *, include_progress: bool = True) -> dict:
     if include_progress:
         d["progress"] = goal_progress(goal.id)
     return d
-
-
-def _enum_or_400(enum_cls, value):
-    if value is None:
-        return None, None
-    try:
-        return enum_cls(value), None
-    except ValueError:
-        return None, (jsonify({"error": f"invalid filter value: {value}"}), 400)
 
 
 @bp.get("")

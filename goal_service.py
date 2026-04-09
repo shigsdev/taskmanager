@@ -15,15 +15,7 @@ from models import (
     TaskStatus,
     db,
 )
-
-
-class ValidationError(Exception):
-    """Raised when user input fails validation. Routes map this to HTTP 422."""
-
-    def __init__(self, message: str, field: str | None = None):
-        super().__init__(message)
-        self.field = field
-
+from utils import ValidationError  # noqa: F401 — re-exported for API layer
 
 # --- Coercion helpers --------------------------------------------------------
 

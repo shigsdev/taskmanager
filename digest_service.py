@@ -22,8 +22,10 @@ import logging
 import os
 from datetime import date
 
+from sqlalchemy import select
+from sqlalchemy.orm import joinedload
+
 from models import Goal, GoalStatus, Task, TaskStatus, Tier, db
-from task_service import list_tasks
 
 logger = logging.getLogger(__name__)
 
@@ -52,12 +54,17 @@ def build_digest(*, target_date: date | None = None) -> str:
     today = target_date or date.today()
     day_str = today.strftime("%A, %B %d, %Y")
 
-    # Gather data
-    today_tasks = list_tasks(tier=Tier.TODAY, status=TaskStatus.ACTIVE)
-    week_tasks = list_tasks(tier=Tier.THIS_WEEK, status=TaskStatus.ACTIVE)
+    # Gather data — single query with eager-loaded relationships
+    all_active = list(db.session.scalars(
+        select(Task)
+        .where(Task.status == TaskStatus.ACTIVE)
+        .options(joinedload(Task.project), joinedload(Task.goal))
+    ))
 
-    # Tasks due today from ANY tier
-    all_active = list_tasks(status=TaskStatus.ACTIVE)
+    today_tasks = [t for t in all_active if t.tier == Tier.TODAY]
+    week_tasks = [t for t in all_active if t.tier == Tier.THIS_WEEK]
+
+    # Tasks due today from ANY tier (excluding Today — already shown)
     due_today = [
         t for t in all_active
         if t.due_date == today and t.tier != Tier.TODAY
@@ -69,14 +76,19 @@ def build_digest(*, target_date: date | None = None) -> str:
         if t.due_date and t.due_date < today
     ]
 
-    # Goals with active tasks in Today
-    goal_ids_today = {t.goal_id for t in today_tasks if t.goal_id}
+    # Goals with active tasks in Today (already eager-loaded)
     goals_today: list[tuple[Goal, int]] = []
-    for goal_id in goal_ids_today:
-        goal = db.session.get(Goal, goal_id)
-        if goal and goal.status != GoalStatus.DONE:
-            count = sum(1 for t in today_tasks if t.goal_id == goal_id)
-            goals_today.append((goal, count))
+    goal_counts: dict[str, int] = {}
+    for t in today_tasks:
+        if t.goal_id and t.goal and t.goal.status != GoalStatus.DONE:
+            key = str(t.goal_id)
+            goal_counts[key] = goal_counts.get(key, 0) + 1
+    seen_goals: dict[str, Goal] = {}
+    for t in today_tasks:
+        if t.goal_id and t.goal and str(t.goal_id) in goal_counts:
+            seen_goals[str(t.goal_id)] = t.goal
+    for gid, goal in seen_goals.items():
+        goals_today.append((goal, goal_counts[gid]))
     goals_today.sort(key=lambda x: x[0].category.value)
 
     # Build the text
