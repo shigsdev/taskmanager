@@ -24,4 +24,6 @@ omit = [
     "tests/*",
     ".venv/*",
     "venv/*",
+    "migrations/*",
+    "gunicorn.conf.py",
 ]
