@@ -129,6 +129,9 @@ def create_app(config: dict | None = None) -> Flask:
                 return redirect(url, code=301)
 
     # --- Security: rate limiting ---
+    # NOTE: memory:// storage is per-worker — with N Gunicorn workers the
+    # effective limit is N × 200 req/min. Acceptable for a single-user app.
+    # Switch to Redis-backed storage if multi-user support is ever added.
     if not app.config.get("TESTING"):
         Limiter(
             get_remote_address,
