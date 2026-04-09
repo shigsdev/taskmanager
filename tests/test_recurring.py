@@ -380,6 +380,22 @@ class TestSpawnTasks:
         assert resp.status_code == 201
         assert resp.get_json()["spawned"] == 0
 
+    def test_spawn_idempotent_no_duplicates(self, authed_client, app):
+        """Calling spawn twice should not create duplicate tasks."""
+        with app.app_context():
+            _make_recurring(title="Idempotent test", frequency=RecurringFrequency.DAILY)
+
+        resp1 = authed_client.post("/api/recurring/spawn")
+        assert resp1.status_code == 201
+        count1 = resp1.get_json()["spawned"]
+        assert count1 >= 1
+
+        # Second spawn should create 0 new tasks for the same title
+        resp2 = authed_client.post("/api/recurring/spawn")
+        assert resp2.status_code == 201
+        titles = [t["title"] for t in resp2.get_json()["tasks"]]
+        assert "Idempotent test" not in titles
+
 
 # --- Blueprint registration --------------------------------------------------
 

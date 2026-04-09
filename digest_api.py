@@ -44,5 +44,5 @@ def send_now(email: str):  # noqa: ARG001
     ok = send_digest(to_email=to_email, body=body)
 
     if ok:
-        return jsonify({"status": "sent", "to": to_email})
+        return jsonify({"status": "sent"})
     return jsonify({"error": "Failed to send — check SENDGRID_API_KEY"}), 500

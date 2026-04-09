@@ -138,14 +138,20 @@ function renderTierGroupedByProject(list, tasks) {
 // --- Drag and drop reordering ------------------------------------------------
 
 let draggedCard = null;
+let dragDropInitialized = false;
 
 function setupDragAndDrop() {
+    // Only attach listeners once — they use event delegation on stable elements
+    if (dragDropInitialized) return;
+    dragDropInitialized = true;
+
     for (const tier of TIER_ORDER) {
         const list = document.querySelector(`.task-list[data-tier="${tier}"]`);
         if (!list) continue;
 
         list.addEventListener("dragover", function (e) {
             e.preventDefault();
+            if (!draggedCard) return;
             e.dataTransfer.dropEffect = "move";
             const afterEl = getDragAfterElement(list, e.clientY);
             if (afterEl) {
@@ -157,6 +163,7 @@ function setupDragAndDrop() {
 
         list.addEventListener("drop", function (e) {
             e.preventDefault();
+            if (!draggedCard) return;
             const targetTier = list.dataset.tier;
             const taskId = draggedCard.dataset.id;
             const sourceTier = draggedCard.dataset.sourceTier;
@@ -646,7 +653,7 @@ function taskDetailOpen(task) {
         } else {
             urlOpen.style.display = "none";
         }
-    }, { once: true });
+    });
 
     document.getElementById("detailNotes").value = task.notes || "";
 

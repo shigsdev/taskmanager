@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import html.parser
+import ipaddress
+import socket
 import urllib.request
 import uuid
 
@@ -164,15 +166,20 @@ def reorder(email: str):  # noqa: ARG001
     except ValueError:
         return jsonify({"error": f"invalid tier: {tier_val}"}), 400
 
+    from models import db as _db
+
+    reordered = 0
     for i, tid in enumerate(task_ids):
         try:
             task = get_task(uuid.UUID(tid))
         except (ValueError, AttributeError):
             continue
         if task:
-            update_task(task.id, {"sort_order": i})
+            task.sort_order = i
+            reordered += 1
+    _db.session.commit()
 
-    return jsonify({"reordered": len(task_ids)})
+    return jsonify({"reordered": reordered})
 
 
 class _TitleParser(html.parser.HTMLParser):
@@ -210,6 +217,21 @@ def url_preview(email: str):  # noqa: ARG001
     url = (data.get("url") or "").strip()
     if not url.startswith(("http://", "https://")):
         return jsonify({"error": "invalid url"}), 400
+
+    # SSRF protection: resolve hostname and block private/internal IPs
+    try:
+        from urllib.parse import urlparse
+
+        hostname = urlparse(url).hostname
+        if not hostname:
+            return jsonify({"error": "invalid url"}), 400
+        resolved = socket.getaddrinfo(hostname, None)
+        for _, _, _, _, addr in resolved:
+            ip = ipaddress.ip_address(addr[0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return jsonify({"error": "url not allowed"}), 400
+    except (socket.gaierror, ValueError):
+        return jsonify({"title": None, "url": url})
 
     try:
         req = urllib.request.Request(  # noqa: S310

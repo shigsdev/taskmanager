@@ -64,15 +64,27 @@ class TestServiceStatus:
         body_str = resp.get_data(as_text=True)
         assert "super-secret-key" not in body_str
 
-    def test_digest_email_shown(self, authed_client, monkeypatch):
+    def test_digest_email_shown_as_boolean(self, authed_client, monkeypatch):
+        """digest_email returns True when set — never exposes the actual address."""
         monkeypatch.setenv("DIGEST_TO_EMAIL", "work@example.com")
         resp = authed_client.get("/api/settings/status")
-        assert resp.get_json()["digest_email"] == "work@example.com"
+        data = resp.get_json()
+        assert data["digest_email"] is True
+        # Verify the actual email address is not in the response
+        assert "work@example.com" not in resp.get_data(as_text=True)
 
-    def test_digest_email_empty_when_not_set(self, authed_client, monkeypatch):
+    def test_digest_email_false_when_not_set(self, authed_client, monkeypatch):
         monkeypatch.delenv("DIGEST_TO_EMAIL", raising=False)
         resp = authed_client.get("/api/settings/status")
-        assert resp.get_json()["digest_email"] == ""
+        assert resp.get_json()["digest_email"] is False
+
+    def test_digest_from_never_leaks_address(self, authed_client, monkeypatch):
+        """digest_from returns True when set — never exposes the actual address."""
+        monkeypatch.setenv("DIGEST_FROM_EMAIL", "noreply@example.com")
+        resp = authed_client.get("/api/settings/status")
+        data = resp.get_json()
+        assert data["digest_from"] is True
+        assert "noreply@example.com" not in resp.get_data(as_text=True)
 
 
 # --- App statistics -----------------------------------------------------------

@@ -24,10 +24,8 @@ def get_service_status() -> dict:
         "google_vision": bool(os.environ.get("GOOGLE_VISION_API_KEY")),
         "anthropic": bool(os.environ.get("ANTHROPIC_API_KEY")),
         "sendgrid": bool(os.environ.get("SENDGRID_API_KEY")),
-        "digest_email": os.environ.get("DIGEST_TO_EMAIL", ""),
-        "digest_from": os.environ.get(
-            "DIGEST_FROM_EMAIL", "noreply@taskmanager.app"
-        ),
+        "digest_email": bool(os.environ.get("DIGEST_TO_EMAIL")),
+        "digest_from": bool(os.environ.get("DIGEST_FROM_EMAIL")),
     }
 
 

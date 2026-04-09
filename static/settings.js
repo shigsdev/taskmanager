@@ -44,11 +44,11 @@
                 tbody.appendChild(tr);
             });
 
-            // Digest email info
+            // Digest email info (booleans — never expose actual addresses)
             document.getElementById("settingsDigestTo").textContent =
-                data.digest_email || "(not set)";
+                data.digest_email ? "Configured" : "(not set)";
             document.getElementById("settingsDigestFrom").textContent =
-                data.digest_from || "(not set)";
+                data.digest_from ? "Configured" : "(not set)";
         });
 
     // --- Load import history -------------------------------------------------
@@ -104,7 +104,7 @@
             var data = await resp.json();
 
             if (resp.ok) {
-                digestText.textContent = data.digest;
+                digestText.textContent = data.body;
                 digestText.style.display = "";
             } else {
                 alert("Error: " + (data.error || "Preview failed"));

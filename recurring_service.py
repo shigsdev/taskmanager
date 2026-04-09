@@ -199,14 +199,29 @@ def spawn_today_tasks(*, target_date: date | None = None) -> list[Task]:
     Each spawned task lands in the Today tier with status active.
     Returns the list of newly created tasks.
 
-    This is designed to be called once per day (e.g., by a scheduled job
-    or a manual "spawn" button). It does NOT check for duplicates — if
-    called twice, it will create duplicates. The caller is responsible
-    for ensuring it runs once per day.
+    Idempotent — if a task with the same title already exists in Today
+    (active status), it will not be created again. Safe to call multiple
+    times per day.
     """
+    from models import TaskStatus
+
     templates = tasks_due_today(target_date=target_date)
+
+    # Check existing active Today tasks to prevent duplicates
+    existing_titles = {
+        t.title
+        for t in db.session.scalars(
+            select(Task).where(
+                Task.tier == Tier.TODAY,
+                Task.status == TaskStatus.ACTIVE,
+            )
+        )
+    }
+
     spawned = []
     for rt in templates:
+        if rt.title in existing_titles:
+            continue
         task = Task(
             title=rt.title,
             type=rt.type,
