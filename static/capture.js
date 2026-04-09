@@ -104,15 +104,31 @@
 
         let listening = false;
 
+        function setVoiceListening() {
+            listening = true;
+            voiceBtn.textContent = "⏹";
+            voiceBtn.classList.add("voice-listening");
+            voiceBtn.title = "Listening… tap to stop";
+        }
+
+        function setVoiceIdle() {
+            listening = false;
+            voiceBtn.textContent = "🎤";
+            voiceBtn.classList.remove("voice-listening");
+            voiceBtn.title = "Voice input";
+        }
+
         voiceBtn.addEventListener("click", () => {
             if (listening) {
                 recognition.stop();
                 return;
             }
-            recognition.start();
-            listening = true;
-            voiceBtn.style.background = "#fee2e2";
-            voiceBtn.title = "Listening… tap to stop";
+            try {
+                recognition.start();
+                setVoiceListening();
+            } catch (err) {
+                alert("Could not start voice input. Check microphone permissions.");
+            }
         });
 
         recognition.addEventListener("result", (e) => {
@@ -122,14 +138,18 @@
         });
 
         recognition.addEventListener("end", () => {
-            listening = false;
-            voiceBtn.style.background = "";
-            voiceBtn.title = "Voice input";
+            setVoiceIdle();
         });
 
-        recognition.addEventListener("error", () => {
-            listening = false;
-            voiceBtn.style.background = "";
+        recognition.addEventListener("error", (e) => {
+            setVoiceIdle();
+            if (e.error === "not-allowed") {
+                alert("Microphone access denied. Please allow microphone permissions in your browser settings.");
+            } else if (e.error === "no-speech") {
+                // Silently reset — user just didn't speak
+            } else {
+                alert("Voice input error: " + e.error);
+            }
         });
     } else {
         // Hide voice button if Speech API not available

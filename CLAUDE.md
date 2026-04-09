@@ -38,6 +38,10 @@ previous system failed because of complexity overhead.
   duplicate detection, malformed input handling
 - **Image scan tests** — mock Google Vision and Claude API, verify images
   never persist to disk or DB, verify task candidate parsing
+- **PWA / browser API tests** — any feature using a browser-only API
+  (Web Speech, Notifications, etc.) must be manually smoke-tested in the
+  installed PWA standalone view, not just the browser tab. Verify error
+  states (permission denied, API unavailable) show clear user feedback.
 
 ---
 

@@ -117,6 +117,17 @@ body {
 }
 .icon-btn:hover { background: var(--bg); }
 
+/* Voice listening state */
+#captureVoice.voice-listening {
+    background: #dc2626;
+    color: #fff;
+    animation: voice-pulse 1s ease-in-out infinite;
+}
+@keyframes voice-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5); }
+    50% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
+}
+
 /* === Tier Board === */
 .tier-board {
     display: grid;
@@ -1037,6 +1048,13 @@ body {
         min-width: 48px;
         min-height: 48px;
         font-size: 1.3rem;
+    }
+
+    /* Voice listening state: pulsing red glow on mobile */
+    #captureVoice.voice-listening {
+        background: #dc2626;
+        color: #fff;
+        border-radius: 50%;
     }
 
     /* Goals page: stack filters */
