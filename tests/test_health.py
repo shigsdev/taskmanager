@@ -108,6 +108,18 @@ class TestCheckEncryption:
 
 
 class TestCheckDigest:
+    def setup_method(self):
+        """Clear scheduler + heartbeat between tests so the fallback
+        path doesn't leak across cases."""
+        health._scheduler = None
+        if health.HEARTBEAT_PATH.exists():
+            health.HEARTBEAT_PATH.unlink()
+
+    def teardown_method(self):
+        health._scheduler = None
+        if health.HEARTBEAT_PATH.exists():
+            health.HEARTBEAT_PATH.unlink()
+
     def test_skipped_without_digest_email(self, monkeypatch):
         monkeypatch.delenv("DIGEST_TO_EMAIL", raising=False)
         assert health.check_digest().startswith("skipped")
@@ -166,6 +178,124 @@ class TestCheckDigest:
             assert health.check_digest() == "ok"
         finally:
             health._scheduler = None
+
+
+class TestDigestHeartbeat:
+    """Heartbeat fallback path — for non-scheduler Gunicorn workers."""
+
+    def setup_method(self):
+        health._scheduler = None
+        if health.HEARTBEAT_PATH.exists():
+            health.HEARTBEAT_PATH.unlink()
+
+    def teardown_method(self):
+        health._scheduler = None
+        if health.HEARTBEAT_PATH.exists():
+            health.HEARTBEAT_PATH.unlink()
+
+    def _make_live_scheduler(self):
+        import datetime as dt
+
+        job = MagicMock()
+        job.next_run_time = dt.datetime.now(dt.UTC) + dt.timedelta(hours=1)
+        sched = MagicMock()
+        sched.running = True
+        sched.get_job.return_value = job
+        return sched
+
+    def test_write_and_read_roundtrip(self):
+        sched = self._make_live_scheduler()
+        health.write_scheduler_heartbeat(sched)
+        payload = health._read_fresh_heartbeat()
+        assert payload is not None
+        assert payload["running"] is True
+        assert payload["job_present"] is True
+        assert payload["next_run_time"]
+
+    def test_check_digest_ok_from_fresh_heartbeat(self, monkeypatch):
+        """Non-scheduler worker: _scheduler is None but heartbeat exists."""
+        monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
+        monkeypatch.setenv("SENDGRID_API_KEY", "fake")
+        sched = self._make_live_scheduler()
+        health.write_scheduler_heartbeat(sched)
+        # This worker never called register_scheduler
+        assert health._scheduler is None
+        assert health.check_digest() == "ok"
+
+    def test_check_digest_warn_when_heartbeat_stale(self, monkeypatch):
+        """Stale heartbeat should be treated as missing, not healthy."""
+        import datetime as dt
+        import json
+
+        monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
+        monkeypatch.setenv("SENDGRID_API_KEY", "fake")
+        old = dt.datetime.now(dt.UTC) - dt.timedelta(seconds=health.HEARTBEAT_MAX_AGE_SEC + 60)
+        health.HEARTBEAT_PATH.write_text(json.dumps({
+            "written_at": old.isoformat(),
+            "running": True,
+            "job_present": True,
+            "next_run_time": dt.datetime.now(dt.UTC).isoformat(),
+        }))
+        assert health._read_fresh_heartbeat() is None
+        assert health.check_digest().startswith("warn:")
+
+    def test_check_digest_fail_when_heartbeat_says_not_running(self, monkeypatch):
+        import datetime as dt
+        import json
+
+        monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
+        monkeypatch.setenv("SENDGRID_API_KEY", "fake")
+        health.HEARTBEAT_PATH.write_text(json.dumps({
+            "written_at": dt.datetime.now(dt.UTC).isoformat(),
+            "running": False,
+            "job_present": True,
+            "next_run_time": dt.datetime.now(dt.UTC).isoformat(),
+        }))
+        result = health.check_digest()
+        assert result.startswith("fail:")
+        assert "not running" in result
+
+    def test_check_digest_fail_when_heartbeat_missing_job(self, monkeypatch):
+        import datetime as dt
+        import json
+
+        monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
+        monkeypatch.setenv("SENDGRID_API_KEY", "fake")
+        health.HEARTBEAT_PATH.write_text(json.dumps({
+            "written_at": dt.datetime.now(dt.UTC).isoformat(),
+            "running": True,
+            "job_present": False,
+            "next_run_time": None,
+        }))
+        result = health.check_digest()
+        assert result.startswith("fail:")
+        assert "job missing" in result
+
+    def test_write_heartbeat_swallows_scheduler_errors(self):
+        """A broken scheduler.get_job must never crash the heartbeat job."""
+        sched = MagicMock()
+        sched.get_job.side_effect = RuntimeError("boom")
+        # Must not raise
+        health.write_scheduler_heartbeat(sched)
+
+    def test_scheduler_worker_prefers_live_scheduler_over_heartbeat(self, monkeypatch):
+        """If _scheduler is set (we ARE the scheduler worker), ignore
+        any stale heartbeat file and trust the live object."""
+        monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
+        monkeypatch.setenv("SENDGRID_API_KEY", "fake")
+        # Stale heartbeat that would trip a fail-branch if used
+        import datetime as dt
+        import json
+
+        health.HEARTBEAT_PATH.write_text(json.dumps({
+            "written_at": dt.datetime.now(dt.UTC).isoformat(),
+            "running": False,  # would produce fail: if heartbeat path taken
+            "job_present": True,
+            "next_run_time": dt.datetime.now(dt.UTC).isoformat(),
+        }))
+        sched = self._make_live_scheduler()
+        health.register_scheduler(sched)
+        assert health.check_digest() == "ok"
 
 
 # --- check_static_assets -----------------------------------------------------

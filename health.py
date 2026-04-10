@@ -21,9 +21,21 @@ probe.
 from __future__ import annotations
 
 import datetime as _dt
+import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Any
+
+# Heartbeat file path. Written by the scheduler worker every minute,
+# read by check_digest in every worker so the digest check stays
+# deterministic across the Gunicorn worker pool.
+HEARTBEAT_PATH = Path(tempfile.gettempdir()) / "taskmanager_digest_heartbeat.json"
+
+# Heartbeat freshness window. Heartbeat job ticks every 60 s, so 5 min
+# gives plenty of slack for GC pauses, slow disk, etc., without letting
+# a silently-dead scheduler look healthy for long.
+HEARTBEAT_MAX_AGE_SEC = 300
 
 # Timestamp captured at module import so /healthz can report how long
 # this container has been running. Useful for spotting zombie workers.
@@ -40,6 +52,45 @@ def register_scheduler(scheduler: Any) -> None:
     """Record the live APScheduler instance for introspection."""
     global _scheduler  # noqa: PLW0603
     _scheduler = scheduler
+
+
+def write_scheduler_heartbeat(scheduler: Any) -> None:
+    """Persist a small snapshot of scheduler state to disk.
+
+    Called from inside the scheduler worker (both at boot and via a
+    1-minute interval job). Non-scheduler workers read this file in
+    ``check_digest`` to prove the scheduler is alive.
+    """
+    try:
+        job = scheduler.get_job("daily_digest")
+        next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
+        payload = {
+            "written_at": _dt.datetime.now(_dt.UTC).isoformat(),
+            "running": bool(getattr(scheduler, "running", False)),
+            "job_present": job is not None,
+            "next_run_time": next_run,
+        }
+        tmp = HEARTBEAT_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload))
+        # Atomic replace so readers never see a half-written file.
+        tmp.replace(HEARTBEAT_PATH)
+    except Exception:  # noqa: S110  heartbeat failures must never crash the scheduler worker
+        pass
+
+
+def _read_fresh_heartbeat() -> dict | None:
+    """Return the heartbeat payload if it exists and is fresh, else None."""
+    try:
+        if not HEARTBEAT_PATH.exists():
+            return None
+        payload = json.loads(HEARTBEAT_PATH.read_text())
+        written = _dt.datetime.fromisoformat(payload["written_at"])
+        age = (_dt.datetime.now(_dt.UTC) - written).total_seconds()
+        if age > HEARTBEAT_MAX_AGE_SEC:
+            return None
+        return payload
+    except Exception:
+        return None
 
 
 # Tables that must exist in a healthy deployment. Bump this list whenever
@@ -261,22 +312,35 @@ def check_digest() -> str:
     if not os.environ.get("SENDGRID_API_KEY"):
         return "warn: SENDGRID_API_KEY not set"
 
-    # Inspect the live scheduler (only available in gunicorn workers —
-    # not set during unit tests, so we skip there)
-    if _scheduler is None:
-        return "warn: scheduler not registered (dev/test or pre-boot)"
+    # Preferred path: this worker IS the scheduler worker and has a
+    # live reference to it. Introspect directly.
+    if _scheduler is not None:
+        try:
+            if not getattr(_scheduler, "running", False):
+                return "fail: scheduler not running"
+            job = _scheduler.get_job("daily_digest")
+            if job is None:
+                return "fail: daily_digest job missing"
+            if job.next_run_time is None:
+                return "fail: daily_digest has no next_run_time"
+            return "ok"
+        except Exception as e:
+            return f"fail: {_short(e)}"
 
-    try:
-        if not getattr(_scheduler, "running", False):
-            return "fail: scheduler not running"
-        job = _scheduler.get_job("daily_digest")
-        if job is None:
-            return "fail: daily_digest job missing"
-        if job.next_run_time is None:
-            return "fail: daily_digest has no next_run_time"
+    # Fallback: this is a non-scheduler worker. Read the heartbeat
+    # file the scheduler worker writes every minute. If it's fresh and
+    # healthy, we can trust the scheduler is alive.
+    beat = _read_fresh_heartbeat()
+    if beat is not None:
+        if not beat.get("running"):
+            return "fail: heartbeat says scheduler not running"
+        if not beat.get("job_present"):
+            return "fail: heartbeat says daily_digest job missing"
+        if not beat.get("next_run_time"):
+            return "fail: heartbeat says daily_digest has no next_run_time"
         return "ok"
-    except Exception as e:
-        return f"fail: {_short(e)}"
+
+    return "warn: scheduler not registered (dev/test or pre-boot)"
 
 
 def check_static_assets() -> str:

@@ -4,6 +4,7 @@ Wires up Google OAuth + single-user lockdown, the database, and migrations.
 """
 from __future__ import annotations
 
+import datetime as _dt
 import os
 from datetime import date, timedelta
 
@@ -319,13 +320,36 @@ def _start_digest_scheduler(app: Flask) -> None:
         id="daily_digest",
         replace_existing=True,
     )
+
+    # Heartbeat job. Gunicorn runs multiple workers but post_worker_init
+    # only starts the scheduler in worker 1 (to avoid duplicate emails),
+    # so health._scheduler is None in the other workers and /healthz
+    # would randomly return "warn: scheduler not registered" depending
+    # on which worker the probe hit. The heartbeat job writes a small
+    # JSON file every minute with the next run time; check_digest in
+    # any worker can read that file to prove the scheduler is alive.
+    import health as _health
+
+    def _write_heartbeat():
+        _health.write_scheduler_heartbeat(scheduler)
+
+    scheduler.add_job(
+        _write_heartbeat,
+        "interval",
+        minutes=1,
+        id="scheduler_heartbeat",
+        replace_existing=True,
+        next_run_time=_dt.datetime.now(),
+    )
     scheduler.start()
+
+    # Also fire once immediately so a freshly-booted container doesn't
+    # show warn for up to 60 seconds before the first interval tick.
+    _write_heartbeat()
 
     # Expose the live scheduler to /healthz so it can verify the job is
     # actually registered and has a future-dated next run, not just
     # that apscheduler is importable.
-    import health as _health
-
     _health.register_scheduler(scheduler)
 
 
