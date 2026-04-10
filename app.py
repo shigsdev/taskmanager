@@ -17,6 +17,7 @@ from flask_migrate import Migrate
 from flask_talisman import Talisman
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+import debug_api
 import digest_api
 import goals_api
 import import_api
@@ -28,6 +29,7 @@ import scan_api
 import settings_api
 import tasks_api
 from auth import login_required
+from logging_service import configure_logging
 from models import TaskStatus, Tier, db
 from task_service import list_tasks
 
@@ -93,6 +95,16 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(import_api.bp)
     app.register_blueprint(recycle_api.bp)
     app.register_blueprint(settings_api.bp)
+    app.register_blueprint(debug_api.bp)
+
+    # --- Persistent application logging (see logging_service.py) ---
+    # Installs DBLogHandler on the root logger so WARNING+ events land
+    # in the app_logs table, plus Flask before/after_request hooks that
+    # stamp request_id/route/method on every LogRecord. Disabled in
+    # tests via APP_LOG_DISABLE to keep test output clean — individual
+    # logging tests re-enable via a fixture.
+    if not app.config.get("TESTING"):
+        configure_logging(app)
 
     # --- Security: Talisman (HTTPS + headers) ---
     if not app.config.get("TESTING") and os.environ.get("FLASK_ENV") != "development":

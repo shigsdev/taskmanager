@@ -207,6 +207,49 @@ class RecurringTask(db.Model):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class AppLog(db.Model):
+    """Persistent application log row.
+
+    Written by the ``DBLogHandler`` in ``logging_service`` — one row per
+    warning+ log event or per HTTP request summary. Read by the
+    ``/api/debug/logs`` admin endpoint so the developer (or an agent
+    assisting the developer) can diagnose live issues without shelling
+    into Railway.
+
+    Retention: capped at 10,000 rows OR 14 days, whichever hits first.
+    The logging handler prunes on every insert past the cap.
+
+    Security (per CLAUDE.md): the ``scrub_sensitive`` helper strips
+    emails, bearer tokens, API keys, and session cookies from both
+    ``message`` and ``traceback`` before insertion.
+    """
+
+    __tablename__ = "app_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now
+    )
+    level: Mapped[str] = mapped_column(String(20), nullable=False)
+    logger_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    traceback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Request context — populated by the Flask before_request hook via a
+    # LogRecord filter. All nullable because non-request logs (startup,
+    # scheduled jobs) don't have a request.
+    request_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    route: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    method: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # "server" for Python logs, "client" for browser-posted errors.
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="server")
+
+    __table_args__ = (
+        Index("ix_app_logs_timestamp", "timestamp"),
+        Index("ix_app_logs_level", "level"),
+    )
+
+
 class ImportLog(db.Model):
     __tablename__ = "import_log"
 

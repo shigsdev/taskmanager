@@ -149,6 +149,52 @@
             }
         });
     });
+
+    // --- Client error reporter ---
+    // Ships uncaught JS errors and unhandled promise rejections to
+    // /api/debug/client-error so they land in the app_logs table and
+    // show up in /api/debug/logs?source=client alongside server logs.
+    // Rate-limited to at most 1 report per 2 seconds per page to
+    // prevent an infinite-loop error from spamming the API.
+    (function () {
+        var lastReport = 0;
+        var REPORT_COOLDOWN_MS = 2000;
+
+        function reportClientError(payload) {
+            var now = Date.now();
+            if (now - lastReport < REPORT_COOLDOWN_MS) return;
+            lastReport = now;
+            try {
+                fetch("/api/debug/client-error", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                    keepalive: true,
+                }).catch(function () { /* best-effort */ });
+            } catch (_) { /* never throw from the error reporter */ }
+        }
+
+        window.addEventListener("error", function (ev) {
+            reportClientError({
+                message: (ev.error && ev.error.message) || ev.message || "Error",
+                stack: ev.error && ev.error.stack,
+                url: ev.filename || window.location.href,
+                line: ev.lineno,
+                column: ev.colno,
+                userAgent: navigator.userAgent,
+            });
+        });
+
+        window.addEventListener("unhandledrejection", function (ev) {
+            var reason = ev.reason || {};
+            reportClientError({
+                message: "Unhandled promise rejection: " + (reason.message || String(reason)),
+                stack: reason.stack,
+                url: window.location.href,
+                userAgent: navigator.userAgent,
+            });
+        });
+    })();
     </script>
 </body>
 </html>

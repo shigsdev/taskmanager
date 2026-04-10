@@ -73,6 +73,15 @@ All secrets live in the Railway dashboard — never committed to git.
 | `DIGEST_TIME` | Time of day digest is sent (default `07:00`) |
 | `GOOGLE_VISION_API_KEY` | Google Cloud Vision API key for OCR |
 | `ANTHROPIC_API_KEY` | Anthropic API key for Claude task parsing |
+| `APP_LOG_LEVEL` | Minimum level persisted to `app_logs` table (default `WARNING`). Set `INFO` to capture per-request summary rows. |
+| `APP_LOG_DISABLE` | If set to any truthy value, disables the DB log handler entirely. Useful only for debugging the logger itself. |
+
+### Debug / logging endpoints
+
+Both require the authorized user. Data is persisted to the `app_logs` table with scrubbing of emails, API keys, bearer tokens, and session cookies. Retention is capped at 10,000 rows OR 14 days (whichever hits first), enforced on every insert. A circuit breaker disables DB logging after 10 consecutive insert failures to prevent loops when the DB is down.
+
+- `GET  /api/debug/logs` — query recent log rows. Params: `since` (shorthand like `10m`/`2h`/`1d` or ISO-8601, default 1h), `level` (DEBUG|INFO|WARNING|ERROR|CRITICAL), `route` (prefix match), `source` (`server` or `client`), `limit` (default 100, capped at 500).
+- `POST /api/debug/client-error` — receives uncaught browser errors and unhandled promise rejections from a global hook in `templates/base.html`. Rate-limited to 1 report per 2 seconds per page.
 
 ## Usage
 
