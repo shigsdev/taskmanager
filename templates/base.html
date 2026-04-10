@@ -26,7 +26,28 @@
     {% block scripts %}{% endblock %}
     <script>
     if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("/static/sw.js", { scope: "/" });
+        navigator.serviceWorker.register("/static/sw.js", { scope: "/" })
+            .then(function (reg) {
+                // Force check for updated SW on every page load
+                reg.update();
+                // When a new SW is waiting, activate it immediately
+                if (reg.waiting) {
+                    reg.waiting.postMessage({ type: "SKIP_WAITING" });
+                }
+                reg.addEventListener("updatefound", function () {
+                    var newWorker = reg.installing;
+                    newWorker.addEventListener("statechange", function () {
+                        if (newWorker.state === "activated") {
+                            // New SW active — reload to use fresh assets
+                            window.location.reload();
+                        }
+                    });
+                });
+            });
+        // Reload when a new SW takes over
+        navigator.serviceWorker.addEventListener("controllerchange", function () {
+            window.location.reload();
+        });
     }
     // Clear SW cache on logout so stale authenticated pages aren't served
     document.querySelectorAll('a[href*="/logout"]').forEach(function (link) {

@@ -5,7 +5,7 @@
  * Bump CACHE_VERSION when deploying new static files.
  */
 
-var CACHE_VERSION = "v11";
+var CACHE_VERSION = "v12";
 var CACHE_NAME = "taskmanager-" + CACHE_VERSION;
 
 var APP_SHELL = [
@@ -45,8 +45,11 @@ self.addEventListener("activate", function (event) {
     self.clients.claim();
 });
 
-// Message — handle cache-clear requests (e.g., on logout)
+// Message — handle skip-waiting and cache-clear requests
 self.addEventListener("message", function (event) {
+    if (event.data && event.data.type === "SKIP_WAITING") {
+        self.skipWaiting();
+    }
     if (event.data && event.data.type === "CLEAR_CACHE") {
         caches.keys().then(function (keys) {
             return Promise.all(

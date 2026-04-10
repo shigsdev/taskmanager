@@ -713,16 +713,39 @@ async function loadCompletedTasks() {
 
         card.appendChild(meta);
 
-        // Restore button
-        const restoreBtn = document.createElement("button");
-        restoreBtn.className = "btn-sm";
-        restoreBtn.textContent = "Restore";
-        restoreBtn.title = "Move back to active tasks";
-        restoreBtn.addEventListener("click", function (e) {
+        // Re-open dropdown
+        const reopenWrap = document.createElement("div");
+        reopenWrap.className = "reopen-wrap";
+        const reopenBtn = document.createElement("button");
+        reopenBtn.className = "btn-sm reopen-btn";
+        reopenBtn.textContent = "Re-open ▾";
+        reopenBtn.title = "Move back to active tasks";
+        reopenBtn.addEventListener("click", function (e) {
             e.stopPropagation();
-            taskRestore(task.id);
+            // Toggle dropdown
+            const existing = reopenWrap.querySelector(".reopen-dropdown");
+            if (existing) { existing.remove(); return; }
+            const dd = document.createElement("div");
+            dd.className = "reopen-dropdown";
+            ["inbox", "today", "this_week", "backlog", "freezer"].forEach(function (t) {
+                const opt = document.createElement("button");
+                opt.textContent = tierLabel(t);
+                opt.addEventListener("click", function (ev) {
+                    ev.stopPropagation();
+                    taskRestore(task.id, t);
+                    dd.remove();
+                });
+                dd.appendChild(opt);
+            });
+            reopenWrap.appendChild(dd);
+            // Close on outside click
+            document.addEventListener("click", function close() {
+                dd.remove();
+                document.removeEventListener("click", close);
+            }, { once: true });
         });
-        card.appendChild(restoreBtn);
+        reopenWrap.appendChild(reopenBtn);
+        card.appendChild(reopenWrap);
 
         // Click to view detail
         card.addEventListener("click", function () {
@@ -733,10 +756,11 @@ async function loadCompletedTasks() {
     }
 }
 
-async function taskRestore(id) {
+async function taskRestore(id, tier) {
+    tier = tier || "inbox";
     await apiFetch(API + "/" + id, {
         method: "PATCH",
-        body: JSON.stringify({ status: "active", tier: "inbox" }),
+        body: JSON.stringify({ status: "active", tier: tier }),
     });
     await loadTasks();
     // Reload completed list
