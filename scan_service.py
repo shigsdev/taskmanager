@@ -52,7 +52,12 @@ def extract_text_from_image(image_bytes: bytes) -> str:
 
 
 def _call_vision_api(api_key: str, image_bytes: bytes) -> str:
-    """Make the actual Google Vision API call. Separated for testability."""
+    """Make the actual Google Vision API call. Separated for testability.
+
+    Wraps all failure modes (network, HTTP error, bad JSON, per-request
+    API error) in RuntimeError with a useful message that's safe to
+    surface to the user — the API key is never included.
+    """
     import requests
 
     url = (
@@ -67,13 +72,44 @@ def _call_vision_api(api_key: str, image_bytes: bytes) -> str:
             }
         ]
     }
-    resp = requests.post(url, json=payload, timeout=30)
-    resp.raise_for_status()
 
-    data = resp.json()
-    annotations = (
-        data.get("responses", [{}])[0].get("textAnnotations", [])
-    )
+    try:
+        resp = requests.post(url, json=payload, timeout=30)
+    except requests.RequestException as e:
+        # Network error, DNS, timeout, etc. Don't leak the full URL
+        # (which contains the API key) into the error message.
+        raise RuntimeError(f"Vision API network error: {type(e).__name__}") from e
+
+    if not resp.ok:
+        # Try to pull Google's own error message out of the body.
+        detail = ""
+        try:
+            body = resp.json()
+            detail = (
+                body.get("error", {}).get("message")
+                or body.get("error", {}).get("status")
+                or ""
+            )
+        except ValueError:
+            detail = resp.text[:200]
+        raise RuntimeError(
+            f"Vision API returned HTTP {resp.status_code}"
+            + (f": {detail}" if detail else "")
+        )
+
+    try:
+        data = resp.json()
+    except ValueError as e:
+        raise RuntimeError("Vision API returned invalid JSON") from e
+
+    # Per-request error (Vision wraps errors inside responses[0].error)
+    responses = data.get("responses") or [{}]
+    first = responses[0] if responses else {}
+    if "error" in first and first["error"]:
+        msg = first["error"].get("message") or first["error"].get("status") or "unknown"
+        raise RuntimeError(f"Vision API request error: {msg}")
+
+    annotations = first.get("textAnnotations", [])
     if not annotations:
         return ""
     # First annotation is the full text block
@@ -131,7 +167,11 @@ def parse_tasks_from_text(ocr_text: str) -> list[str]:
 
 
 def _call_claude_api(api_key: str, ocr_text: str) -> list[str]:
-    """Make the actual Claude API call. Separated for testability."""
+    """Make the actual Claude API call. Separated for testability.
+
+    Wraps failure modes in RuntimeError with a safe, descriptive
+    message — the API key is never included.
+    """
     import requests
 
     url = "https://api.anthropic.com/v1/messages"
@@ -150,10 +190,29 @@ def _call_claude_api(api_key: str, ocr_text: str) -> list[str]:
             }
         ],
     }
-    resp = requests.post(url, headers=headers, json=payload, timeout=60)
-    resp.raise_for_status()
 
-    data = resp.json()
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=60)
+    except requests.RequestException as e:
+        raise RuntimeError(f"Claude API network error: {type(e).__name__}") from e
+
+    if not resp.ok:
+        detail = ""
+        try:
+            body = resp.json()
+            detail = body.get("error", {}).get("message") or ""
+        except ValueError:
+            detail = resp.text[:200]
+        raise RuntimeError(
+            f"Claude API returned HTTP {resp.status_code}"
+            + (f": {detail}" if detail else "")
+        )
+
+    try:
+        data = resp.json()
+    except ValueError as e:
+        raise RuntimeError("Claude API returned invalid JSON") from e
+
     content = data.get("content", [{}])[0].get("text", "")
     return _extract_json_array(content)
 

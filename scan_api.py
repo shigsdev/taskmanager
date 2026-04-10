@@ -6,6 +6,8 @@ Endpoints:
 """
 from __future__ import annotations
 
+import logging
+
 from flask import Blueprint, jsonify, request
 
 from auth import login_required
@@ -14,6 +16,8 @@ from scan_service import (
     extract_text_from_image,
     parse_tasks_from_text,
 )
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint("scan_api", __name__, url_prefix="/api/scan")
 
@@ -40,8 +44,14 @@ def upload(email: str):  # noqa: ARG001
     if not file.filename:
         return jsonify({"error": "No filename"}), 400
 
-    # Validate content type
+    # Validate content type. Log the rejected type so we can see if iOS is
+    # sending unexpected MIME types (e.g. image/heic, application/octet-stream).
     if file.content_type not in ALLOWED_TYPES:
+        logger.warning(
+            "scan upload rejected: unsupported content_type=%r filename_ext=%r",
+            file.content_type,
+            (file.filename or "").rsplit(".", 1)[-1].lower(),
+        )
         return jsonify({
             "error": f"Unsupported image type: {file.content_type}",
             "allowed": list(ALLOWED_TYPES),
@@ -56,13 +66,23 @@ def upload(email: str):  # noqa: ARG001
     if not image_bytes:
         return jsonify({"error": "Empty file"}), 400
 
+    logger.info(
+        "scan upload received: content_type=%s size=%d",
+        file.content_type, len(image_bytes),
+    )
+
     # Step 1: OCR via Google Vision
     try:
         ocr_text = extract_text_from_image(image_bytes)
     except RuntimeError as e:
-        return jsonify({"error": str(e)}), 422
+        # Known/expected failure — surface details (already sanitized by
+        # scan_service to never include the API key).
+        logger.warning("OCR failed: %s", e)
+        return jsonify({"error": f"OCR failed: {e}"}), 422
     except Exception:
-        return jsonify({"error": "OCR processing failed"}), 500
+        # Unexpected — log full traceback so we can actually see what broke.
+        logger.exception("OCR processing crashed unexpectedly")
+        return jsonify({"error": "OCR processing failed (unexpected)"}), 500
 
     if not ocr_text.strip():
         return jsonify({
@@ -75,9 +95,11 @@ def upload(email: str):  # noqa: ARG001
     try:
         candidates = parse_tasks_from_text(ocr_text)
     except RuntimeError as e:
-        return jsonify({"error": str(e)}), 422
+        logger.warning("Task parsing failed: %s", e)
+        return jsonify({"error": f"Task parsing failed: {e}"}), 422
     except Exception:
-        return jsonify({"error": "Task parsing failed"}), 500
+        logger.exception("Task parsing crashed unexpectedly")
+        return jsonify({"error": "Task parsing failed (unexpected)"}), 500
 
     return jsonify({
         "ocr_text": ocr_text,
