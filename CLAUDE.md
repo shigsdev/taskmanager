@@ -6,12 +6,16 @@ previous system failed because of complexity overhead.
 
 ---
 
-## Quality Gates (mandatory on every commit)
+## Quality Gates (mandatory on every commit — NO EXCEPTIONS)
 
-- **pytest** with 80% coverage floor — no commit goes in below this bar
-- **ruff** for linting and static analysis — zero warnings
-- **pre-commit hooks** block commits that fail either check
-- Run the full gate locally before pushing: `pytest --cov && ruff check .`
+These gates run on EVERY change, no matter how small. Do not skip steps.
+Do not run partial test suites. Do not deviate unless the user explicitly
+says otherwise.
+
+1. **ruff** — `ruff check .` — zero warnings
+2. **pytest** — `pytest --cov` — FULL test suite, 80% coverage floor.
+   Never run only the affected test file. Always run all tests.
+3. Only after BOTH pass: commit and push
 - **Post-push deploy validation** (after every `git push`):
   1. Wait 2–3 minutes for Railway to build and deploy
   2. Run: `curl -s https://web-production-3e3ae.up.railway.app/healthz`
@@ -20,6 +24,13 @@ previous system failed because of complexity overhead.
      is still deploying — wait 1 minute and retry
   5. If any check shows `"fail"` or returns `503`, investigate before
      continuing to the next task
+- **Post-deploy smoke tests** (after health check passes):
+  1. Use Claude Preview (headless browser) to verify affected pages render
+     without errors — check for console errors, broken layouts, missing elements
+  2. For any UI/frontend change, tell the user which pages to manually test
+     on mobile and what to look for — Claude cannot test OAuth-protected pages
+     or mobile-specific features (touch, voice, PWA standalone mode)
+  3. For API-only changes, hit the affected endpoints with curl to verify
 
 ---
 
