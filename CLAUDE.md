@@ -15,7 +15,23 @@ says otherwise.
 1. **ruff** — `ruff check .` — zero warnings
 2. **pytest** — `pytest --cov` — FULL test suite, 80% coverage floor.
    Never run only the affected test file. Always run all tests.
-3. Only after BOTH pass: commit and push
+3. **Test report** — before committing, print a summary to the user:
+   - Ruff status (pass/fail, warning count)
+   - Total tests run, passed, failed
+   - Coverage percentage
+   - Any skipped or errored tests
+   - Files changed in this commit
+   Example:
+   ```
+   Quality Gate Report
+   ─────────────────────
+   Ruff:      PASS (0 warnings)
+   Tests:     247 passed, 0 failed
+   Coverage:  93.7% (floor: 80%)
+   Files:     app.js, capture.js, style.css
+   Status:    READY TO COMMIT
+   ```
+4. Only after the report shows all green: commit and push
 - **Post-push deploy validation** (after every `git push`):
   1. Wait 2–3 minutes for Railway to build and deploy
   2. Run: `curl -s https://web-production-3e3ae.up.railway.app/healthz`
