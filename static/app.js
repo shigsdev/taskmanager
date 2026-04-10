@@ -719,6 +719,13 @@ function setupDetailPanel() {
         const id = document.getElementById("detailId").value;
         if (id) taskDelete(id);
     });
+    document.getElementById("detailComplete").addEventListener("click", () => {
+        const id = document.getElementById("detailId").value;
+        if (id) {
+            taskDetailClose();
+            taskComplete(id);
+        }
+    });
     document.getElementById("addChecklistItem").addEventListener("click", () => {
         taskDetailAddChecklistRow("", false);
     });

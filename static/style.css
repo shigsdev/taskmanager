@@ -234,10 +234,15 @@ body {
 .task-card .task-checkbox {
     margin-top: 3px;
     cursor: pointer;
-    accent-color: var(--accent);
-    width: 16px;
-    height: 16px;
+    accent-color: var(--green);
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    min-height: 20px;
     flex-shrink: 0;
+    border: 2px solid var(--green);
+    border-radius: 4px;
+    appearance: auto;
 }
 
 .task-card .task-body {
@@ -405,6 +410,14 @@ body {
     color: var(--text-muted);
     line-height: 1.8;
 }
+
+.btn-complete {
+    background: var(--green);
+    color: #fff;
+    border: none;
+    font-weight: 600;
+}
+.btn-complete:hover { background: #15803d; }
 
 .detail-actions {
     display: flex;
