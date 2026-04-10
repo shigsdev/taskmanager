@@ -33,13 +33,70 @@ says otherwise.
    ```
 4. Only after the report shows all green: commit and push
 - **Post-push deploy validation** (after every `git push`):
-  1. Wait 2–3 minutes for Railway to build and deploy
-  2. Run: `curl -s https://web-production-3e3ae.up.railway.app/healthz`
-  3. Verify response includes `"checks"` field with `"database": "ok"`
-  4. If response is missing `"checks"` or shows the old format, the build
-     is still deploying — wait 1 minute and retry
-  5. If any check shows `"fail"` or returns `503`, investigate before
-     continuing to the next task
+
+  Railway does **rolling deploys** — the old container keeps serving
+  traffic until the new container is healthy. A plain `curl /healthz`
+  will happily return 200 OK from the OLD container while the new build
+  is still running. Version-pinned validation is mandatory.
+
+  1. Capture the expected commit SHA BEFORE validating:
+     `EXPECTED_SHA=$(git rev-parse HEAD)`
+  2. Poll `/healthz` every 15s, up to 10 minutes:
+     ```
+     curl -s https://web-production-3e3ae.up.railway.app/healthz
+     ```
+  3. The deploy is complete ONLY when ALL of these are true:
+     - HTTP status is `200`
+     - `status` is `"ok"`
+     - `git_sha` equals `$EXPECTED_SHA` (this is the critical check —
+       proves you are hitting the NEW container, not the old one)
+     - Every check in `checks` is `"ok"`, `"skipped: ..."`, or `"warn: ..."`
+     - NO check starts with `"fail:"`
+  4. If `git_sha` still shows the previous SHA after 5 minutes, Railway
+     is still building or the new container failed its own health check.
+     Check the Railway deploy logs before continuing.
+  5. If the `git_sha` matches but any check is `"fail:"`, STOP and
+     investigate. Common failures and what they mean:
+     - `database: fail` — DB connection broken (check DATABASE_URL)
+     - `migrations: fail: at X expected Y` — alembic never ran; check
+       railway.toml `startCommand` includes `flask db upgrade`
+     - `migrations: fail: alembic_version table missing` — fresh DB that
+       never had a migration; run `flask db upgrade` manually
+     - `tables: fail: missing ...` — schema drift or wrong database
+     - `writable_db: fail` — DB is in read-only mode or hot standby
+     - `encryption: fail` — ENCRYPTION_KEY rotated or corrupted
+     - `digest: fail: daily_digest job missing` — scheduler didn't start
+     - `static_assets: fail` — build dropped a required file
+  6. Never consider a deploy "green" based on HTTP 200 alone. The
+     `git_sha` equality check is non-negotiable.
+  7. **Print a Deploy Validation Report** to the user after every
+     post-push check. Use this exact format so it's scannable at a
+     glance:
+     ```
+     Deploy Validation Report
+     ─────────────────────────
+     Expected SHA:   <first 8 chars of git rev-parse HEAD>
+     Deployed SHA:   <first 8 chars of healthz git_sha>
+     SHA match:      PASS | FAIL
+     HTTP status:    200 | 503
+     Overall status: ok | fail
+     Started at:     <started_at timestamp>
+
+     Checks:
+       database       ok
+       env_vars       ok
+       migrations     ok
+       tables         ok
+       writable_db    ok
+       encryption     ok
+       digest         ok | warn: ... | skipped: ...
+       static_assets  ok
+
+     Status: DEPLOY GREEN | DEPLOY RED
+     ```
+     Each check shows its exact status string. Warnings are allowed.
+     Any `fail:` status, SHA mismatch, or non-200 HTTP means DEPLOY RED
+     and you must stop and investigate.
 - **Post-deploy smoke tests** (after health check passes):
   1. Use Claude Preview (headless browser) to verify affected pages render
      without errors — check for console errors, broken layouts, missing elements

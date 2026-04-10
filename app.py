@@ -266,42 +266,19 @@ def create_app(config: dict | None = None) -> Flask:
 
     @app.route("/healthz")
     def healthz():
-        """Post-deploy health check — verifies critical systems are working."""
-        checks = {}
+        """Post-deploy health check — verifies critical systems are working.
 
-        # 1. Database connectivity
-        try:
-            db.session.execute(db.text("SELECT 1"))
-            checks["database"] = "ok"
-        except Exception as e:
-            checks["database"] = f"fail: {e}"
+        See ``health.py`` for the full list of checks. The response
+        always includes a ``git_sha`` field so deploy-validation scripts
+        can confirm they are hitting the newly-deployed container
+        (Railway does rolling deploys, so an HTTP 200 alone doesn't
+        prove the new code is live).
+        """
+        import health as _health
 
-        # 2. Required env vars
-        required_vars = ["SECRET_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]
-        missing = [v for v in required_vars if not os.environ.get(v)]
-        checks["env_vars"] = "ok" if not missing else f"missing: {', '.join(missing)}"
-
-        # 3. Digest scheduler (if configured)
-        if os.environ.get("DIGEST_TO_EMAIL"):
-            try:
-                import importlib.util
-
-                if importlib.util.find_spec("apscheduler"):
-                    if os.environ.get("SENDGRID_API_KEY"):
-                        checks["digest"] = "ok"
-                    else:
-                        checks["digest"] = "warn: SENDGRID_API_KEY not set"
-                else:
-                    checks["digest"] = "fail: apscheduler not installed"
-            except Exception:
-                checks["digest"] = "fail: apscheduler not installed"
-        else:
-            checks["digest"] = "skipped: DIGEST_TO_EMAIL not set"
-
-        # Overall status
-        failed = [k for k, v in checks.items() if v.startswith("fail")]
-        status_code = 503 if failed else 200
-        return {"status": "fail" if failed else "ok", "checks": checks}, status_code
+        report = _health.run_health_checks(app, db)
+        status_code = 503 if report["status"] == "fail" else 200
+        return report, status_code
 
     # --- Scheduled digest email ---
     # NOTE: The scheduler is started via gunicorn.conf.py post_worker_init
@@ -338,6 +315,13 @@ def _start_digest_scheduler(app: Flask) -> None:
         replace_existing=True,
     )
     scheduler.start()
+
+    # Expose the live scheduler to /healthz so it can verify the job is
+    # actually registered and has a future-dated next run, not just
+    # that apscheduler is importable.
+    import health as _health
+
+    _health.register_scheduler(scheduler)
 
 
 app = create_app()

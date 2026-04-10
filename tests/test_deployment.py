@@ -131,6 +131,132 @@ class TestAppBoot:
         assert "checks" in body
         assert body["checks"]["database"] == "ok"
 
+    def test_healthz_includes_git_sha(self, client):
+        """/healthz must return a git_sha so deploy scripts can verify
+        which build is serving traffic during a rolling deploy."""
+        resp = client.get("/healthz")
+        body = resp.get_json()
+        assert "git_sha" in body
+        # Local/test runs have no Railway env var → "dev"
+        assert body["git_sha"]
+
+    def test_healthz_includes_started_at(self, client):
+        resp = client.get("/healthz")
+        body = resp.get_json()
+        assert "started_at" in body
+        # ISO-8601 UTC timestamp
+        assert "T" in body["started_at"]
+
+    def test_healthz_reports_git_sha_from_env(self, client, monkeypatch):
+        """When RAILWAY_GIT_COMMIT_SHA is set, it must appear in the
+        response so the deploy script can match it against the pushed
+        commit."""
+        monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "abc123def456")
+        resp = client.get("/healthz")
+        assert resp.get_json()["git_sha"] == "abc123def456"
+
+    def test_healthz_includes_all_expected_checks(self, client):
+        resp = client.get("/healthz")
+        checks = resp.get_json()["checks"]
+        for key in (
+            "database",
+            "env_vars",
+            "migrations",
+            "tables",
+            "writable_db",
+            "encryption",
+            "digest",
+            "static_assets",
+        ):
+            assert key in checks, f"healthz missing check: {key}"
+
+    def test_healthz_tables_check_passes(self, client):
+        """Table sanity check must find every expected table in tests."""
+        resp = client.get("/healthz")
+        assert resp.get_json()["checks"]["tables"] == "ok"
+
+    def test_healthz_writable_db_check_passes(self, client):
+        resp = client.get("/healthz")
+        assert resp.get_json()["checks"]["writable_db"] == "ok"
+
+    def test_healthz_static_assets_check_passes(self, client):
+        resp = client.get("/healthz")
+        assert resp.get_json()["checks"]["static_assets"] == "ok"
+
+    def test_healthz_fails_when_table_missing(self, client, monkeypatch):
+        """If a required table disappears, healthz must return 503.
+
+        Simulates the "You have no tables" incident by monkey-patching
+        EXPECTED_TABLES to include a table that doesn't exist.
+        """
+        import health
+
+        monkeypatch.setattr(
+            health, "EXPECTED_TABLES", health.EXPECTED_TABLES | {"nonexistent"}
+        )
+        resp = client.get("/healthz")
+        assert resp.status_code == 503
+        body = resp.get_json()
+        assert body["status"] == "fail"
+        assert "nonexistent" in body["checks"]["tables"]
+
+    def test_healthz_fails_when_static_asset_missing(self, client, monkeypatch):
+        import health
+
+        monkeypatch.setattr(
+            health,
+            "EXPECTED_STATIC_FILES",
+            health.EXPECTED_STATIC_FILES + ("static/does_not_exist.js",),
+        )
+        resp = client.get("/healthz")
+        assert resp.status_code == 503
+        assert "does_not_exist" in resp.get_json()["checks"]["static_assets"]
+
+    def test_healthz_encryption_canary_roundtrip(self, client, monkeypatch):
+        """With a real ENCRYPTION_KEY set, the Fernet canary must round-trip."""
+        from cryptography.fernet import Fernet
+
+        import crypto
+
+        monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode())
+        crypto.reset()
+        try:
+            resp = client.get("/healthz")
+            assert resp.get_json()["checks"]["encryption"] == "ok"
+        finally:
+            crypto.reset()
+
+    def test_healthz_encryption_warns_without_key(self, client, monkeypatch):
+        import crypto
+
+        monkeypatch.delenv("ENCRYPTION_KEY", raising=False)
+        crypto.reset()
+        try:
+            resp = client.get("/healthz")
+            # Warn, not fail — still HTTP 200
+            assert resp.status_code == 200
+            assert "ENCRYPTION_KEY" in resp.get_json()["checks"]["encryption"]
+        finally:
+            crypto.reset()
+
+    def test_healthz_migrations_skipped_in_tests(self, client):
+        """Tests use create_all(), not alembic — check must not fail."""
+        resp = client.get("/healthz")
+        assert resp.get_json()["checks"]["migrations"].startswith("skipped")
+
+    def test_healthz_digest_check_reports_scheduler_state(self, client, monkeypatch):
+        """When DIGEST_TO_EMAIL is set but the scheduler isn't registered
+        (as in tests), digest check should warn — not fail."""
+        monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
+        monkeypatch.setenv("SENDGRID_API_KEY", "fake")
+        import health
+
+        health._scheduler = None  # ensure clean state
+        resp = client.get("/healthz")
+        # Warn, not fail — test harness doesn't run the scheduler
+        assert resp.status_code == 200
+        assert resp.get_json()["checks"]["digest"].startswith("warn")
+
     def test_healthz_no_auth_required(self, client, monkeypatch):
         """Health check must work without authentication."""
         monkeypatch.setattr(auth, "get_current_user_email", lambda: None)

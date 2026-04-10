@@ -183,7 +183,10 @@ body {
     background: var(--surface);
     border-radius: var(--radius);
     box-shadow: var(--shadow);
-    overflow: hidden;
+    /* overflow:visible lets the Re-open dropdown escape the card.
+       Children are inset by tier-body padding so rounded corners
+       still render cleanly without needing to clip. */
+    overflow: visible;
 }
 
 .tier-header {
@@ -272,12 +275,15 @@ body {
 .reopen-dropdown {
     position: absolute;
     right: 0;
-    top: 100%;
+    /* Open upward — Completed cards sit at the bottom of the board so
+       a downward dropdown would fall off the viewport on short pages. */
+    bottom: 100%;
+    margin-bottom: 4px;
     z-index: 200;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    box-shadow: var(--shadow);
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.12);
     display: flex;
     flex-direction: column;
     min-width: 120px;
