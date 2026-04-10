@@ -5,14 +5,13 @@
     const input = document.getElementById("captureInput");
     const typeSelect = document.getElementById("captureType");
     const voiceBtn = document.getElementById("captureVoice");
+    const submitBtn = document.getElementById("captureSubmit");
 
     if (!input) return;
 
-    // --- Quick capture on Enter ---
+    // --- Submit capture (shared by Enter key and submit button) ---
 
-    input.addEventListener("keydown", async (e) => {
-        if (e.key !== "Enter") return;
-        e.preventDefault();
+    async function submitCapture() {
         const raw = input.value.trim();
         if (!raw) return;
 
@@ -44,7 +43,21 @@
         } catch (err) {
             alert("Capture failed: " + err.message);
         }
+    }
+
+    // --- Quick capture on Enter ---
+
+    input.addEventListener("keydown", async (e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        submitCapture();
     });
+
+    // --- Submit button (for mobile / after voice input) ---
+
+    if (submitBtn) {
+        submitBtn.addEventListener("click", () => submitCapture());
+    }
 
     // --- Parse hashtags, @project, and URLs ---
 

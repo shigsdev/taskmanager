@@ -116,6 +116,7 @@ body {
     transition: background 0.15s;
 }
 .icon-btn:hover { background: var(--bg); }
+#captureSubmit { color: var(--green); font-weight: bold; font-size: 1.1rem; }
 
 /* Voice listening state */
 #captureVoice.voice-listening {
