@@ -81,9 +81,10 @@
         reader.readAsDataURL(file);
     });
 
-    fileLabel.addEventListener("click", function () {
-        fileInput.click();
-    });
+    // Note: no JS click handler on fileLabel — the <label for="scanFile">
+    // attribute already opens the file picker natively. Adding a programmatic
+    // .click() here caused a double-trigger on iOS Safari that cancelled the
+    // camera intent and prevented the change event from firing on return.
 
     // --- Upload ---------------------------------------------------------------
 
