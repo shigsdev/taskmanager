@@ -9,6 +9,7 @@ from datetime import date, timedelta
 
 from dotenv import load_dotenv
 from flask import Flask, redirect, render_template, session, url_for
+from flask import jsonify as _jsonify
 from flask_dance.contrib.google import make_google_blueprint
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -199,6 +200,60 @@ def create_app(config: dict | None = None) -> Flask:
     @app.route("/login")
     def login_page():
         return render_template("login.html")
+
+    @app.route("/api/export")
+    @login_required
+    def export_data(email: str):  # noqa: ARG001
+        """Download a full JSON backup of all tasks, goals, and projects."""
+        from goal_service import list_goals
+        from project_service import list_projects
+
+        all_tasks = list_tasks(status=None)  # all statuses
+        all_goals = list_goals()
+        all_projects = list_projects()
+
+        def serialize_task(t):
+            return {
+                "id": str(t.id), "title": t.title, "tier": t.tier.value,
+                "type": t.type.value, "status": t.status.value,
+                "project_id": str(t.project_id) if t.project_id else None,
+                "goal_id": str(t.goal_id) if t.goal_id else None,
+                "due_date": t.due_date.isoformat() if t.due_date else None,
+                "url": t.url, "notes": t.notes, "checklist": t.checklist,
+                "sort_order": t.sort_order,
+                "created_at": t.created_at.isoformat(),
+                "updated_at": t.updated_at.isoformat(),
+            }
+
+        def serialize_goal(g):
+            return {
+                "id": str(g.id), "title": g.title,
+                "category": g.category.value, "priority": g.priority.value,
+                "priority_rank": g.priority_rank, "actions": g.actions,
+                "target_quarter": g.target_quarter,
+                "status": g.status.value, "notes": g.notes,
+                "created_at": g.created_at.isoformat(),
+                "updated_at": g.updated_at.isoformat(),
+            }
+
+        def serialize_project(p):
+            return {
+                "id": str(p.id), "name": p.name, "color": p.color,
+                "type": p.type.value, "is_active": p.is_active,
+                "created_at": p.created_at.isoformat(),
+            }
+
+        backup = {
+            "exported_at": date.today().isoformat(),
+            "tasks": [serialize_task(t) for t in all_tasks],
+            "goals": [serialize_goal(g) for g in all_goals],
+            "projects": [serialize_project(p) for p in all_projects],
+        }
+        resp = _jsonify(backup)
+        resp.headers["Content-Disposition"] = (
+            f"attachment; filename=taskmanager-backup-{date.today()}.json"
+        )
+        return resp
 
     @app.route("/sw.js")
     def service_worker():
