@@ -340,22 +340,7 @@ def check_digest() -> str:
             return "fail: heartbeat says daily_digest has no next_run_time"
         return "ok"
 
-    # Temporary diagnostics: include the heartbeat path + existence
-    # so we can see on Railway why the fallback isn't finding it.
-    exists = HEARTBEAT_PATH.exists()
-    age = None
-    if exists:
-        try:
-            import json as _json
-            p = _json.loads(HEARTBEAT_PATH.read_text())
-            written = _dt.datetime.fromisoformat(p["written_at"])
-            age = int((_dt.datetime.now(_dt.UTC) - written).total_seconds())
-        except Exception as e:
-            age = f"err:{_short(e)}"
-    return (
-        f"warn: scheduler not registered; hb_path={HEARTBEAT_PATH} "
-        f"exists={exists} age={age}"
-    )
+    return "warn: scheduler not registered (dev/test or pre-boot)"
 
 
 def check_static_assets() -> str:

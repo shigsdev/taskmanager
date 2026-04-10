@@ -4,7 +4,6 @@ Wires up Google OAuth + single-user lockdown, the database, and migrations.
 """
 from __future__ import annotations
 
-import datetime as _dt
 import os
 from datetime import date, timedelta
 
@@ -333,18 +332,23 @@ def _start_digest_scheduler(app: Flask) -> None:
     def _write_heartbeat():
         _health.write_scheduler_heartbeat(scheduler)
 
+    # NOTE: do NOT pass next_run_time here. Passing a naive datetime to
+    # an interval job whose scheduler has a timezone confuses APScheduler
+    # and the interval silently stops firing after the first run — the
+    # exact bug we hit on Railway where age=0 at boot then frozen at 414s.
+    # Letting APScheduler compute its own next fire time (= now + interval)
+    # works correctly.
     scheduler.add_job(
         _write_heartbeat,
         "interval",
-        minutes=1,
+        seconds=45,
         id="scheduler_heartbeat",
         replace_existing=True,
-        next_run_time=_dt.datetime.now(),
     )
     scheduler.start()
 
-    # Also fire once immediately so a freshly-booted container doesn't
-    # show warn for up to 60 seconds before the first interval tick.
+    # Fire once immediately so a freshly-booted container reports ok
+    # without waiting for the first interval tick.
     _write_heartbeat()
 
     # Expose the live scheduler to /healthz so it can verify the job is

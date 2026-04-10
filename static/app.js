@@ -619,14 +619,14 @@ function renderProjectFilter() {
     const allBtn = document.createElement("button");
     allBtn.className = "btn-sm project-filter-btn" + (!projectFilter ? " active" : "");
     allBtn.textContent = "All projects";
-    allBtn.addEventListener("click", () => { projectFilter = null; renderBoard(); renderProjectFilter(); });
+    allBtn.addEventListener("click", () => { projectFilter = null; renderBoard(); renderCompletedList(); renderProjectFilter(); });
     container.appendChild(allBtn);
 
     for (const p of allProjects) {
         const btn = document.createElement("button");
         btn.className = "btn-sm project-filter-btn" + (projectFilter === p.id ? " active" : "");
         btn.innerHTML = `<span class="project-dot" style="background:${p.color || '#999'}"></span> ${escapeHtml(p.name)}`;
-        btn.addEventListener("click", () => { projectFilter = p.id; renderBoard(); renderProjectFilter(); });
+        btn.addEventListener("click", () => { projectFilter = p.id; renderBoard(); renderCompletedList(); renderProjectFilter(); });
         container.appendChild(btn);
     }
 }
@@ -722,6 +722,7 @@ function setupNavTabs() {
             currentView = tab.dataset.view;
             projectFilter = null;
             renderBoard();
+            renderCompletedList();
             // Show/hide project filter bar
             const bar = document.getElementById("projectFilterBar");
             if (bar) {
@@ -758,16 +759,30 @@ function setupCollapse() {
 // --- Completed tasks ---------------------------------------------------------
 
 let completedLoaded = false;
+let allCompleted = [];  // raw cache so view/project filter changes don't re-hit the API
 
 async function loadCompletedTasks() {
-    const list = document.getElementById("completedList");
-    const count = document.getElementById("completedCount");
     const section = document.getElementById("tierCompleted");
-
+    const list = document.getElementById("completedList");
     list.innerHTML = "<div class='loading-msg'>Loading...</div>";
     section.dataset.loaded = "true";
 
-    const tasks = await apiFetch(API + "?status=archived");
+    allCompleted = await apiFetch(API + "?status=archived");
+    renderCompletedList();
+}
+
+function filteredCompleted() {
+    let tasks = allCompleted;
+    if (currentView === "work") tasks = tasks.filter((t) => t.type === "work");
+    if (currentView === "personal") tasks = tasks.filter((t) => t.type === "personal");
+    if (projectFilter) tasks = tasks.filter((t) => t.project_id === projectFilter);
+    return tasks;
+}
+
+function renderCompletedList() {
+    const list = document.getElementById("completedList");
+    const count = document.getElementById("completedCount");
+    const tasks = filteredCompleted();
     list.innerHTML = "";
     count.textContent = tasks.length;
 
