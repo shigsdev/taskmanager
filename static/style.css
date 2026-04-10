@@ -326,6 +326,14 @@ body {
     opacity: 0;
     transition: opacity 0.15s;
     flex-shrink: 0;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: 50%;
+}
+
+/* Hide the redundant complete checkbox on inbox — triage flow owns inbox */
+.tier[data-tier="inbox"] .task-card .task-checkbox {
+    display: none;
 }
 .task-card:hover .task-quick-actions { opacity: 1; }
 

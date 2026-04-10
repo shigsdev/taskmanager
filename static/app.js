@@ -462,16 +462,18 @@ function taskCardEl(task) {
     const actions = document.createElement("div");
     actions.className = "task-quick-actions";
 
-    // Complete button (prominent green)
-    const completeBtn = document.createElement("button");
-    completeBtn.textContent = "✓ Done";
-    completeBtn.title = "Mark complete";
-    completeBtn.className = "quick-complete-btn";
-    completeBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        taskComplete(task.id);
-    });
-    actions.appendChild(completeBtn);
+    // Complete button (not shown on inbox — inbox is triage-only)
+    if (task.tier !== "inbox") {
+        const completeBtn = document.createElement("button");
+        completeBtn.textContent = "✓ Done";
+        completeBtn.title = "Mark complete";
+        completeBtn.className = "quick-complete-btn";
+        completeBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            taskComplete(task.id);
+        });
+        actions.appendChild(completeBtn);
+    }
 
     const tierBtns = TIER_ORDER.filter((t) => t !== task.tier && t !== "inbox");
     for (const t of tierBtns) {

@@ -5,7 +5,7 @@
  * Bump CACHE_VERSION when deploying new static files.
  */
 
-var CACHE_VERSION = "v12";
+var CACHE_VERSION = "v13";
 var CACHE_NAME = "taskmanager-" + CACHE_VERSION;
 
 var APP_SHELL = [
