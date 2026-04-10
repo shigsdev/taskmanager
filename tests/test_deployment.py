@@ -39,9 +39,14 @@ class TestDeploymentFiles:
         assert "web:" in content
         assert "gunicorn" in content
 
-    def test_procfile_has_release_phase(self):
-        content = (PROJECT_ROOT / "Procfile").read_text()
-        assert "release:" in content
+    def test_startcommand_runs_migrations(self):
+        """Migrations run in startCommand, not Procfile release phase.
+
+        The release phase runs during Docker build when there is no
+        network access to the database. Migrations run at container
+        start via railway.toml startCommand instead.
+        """
+        content = (PROJECT_ROOT / "railway.toml").read_text()
         assert "flask db upgrade" in content
 
     def test_railway_toml_exists(self):
