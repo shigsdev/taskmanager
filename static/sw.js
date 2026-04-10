@@ -5,7 +5,7 @@
  * Bump CACHE_VERSION when deploying new static files.
  */
 
-var CACHE_VERSION = "v8";
+var CACHE_VERSION = "v10";
 var CACHE_NAME = "taskmanager-" + CACHE_VERSION;
 
 var APP_SHELL = [
@@ -66,12 +66,13 @@ self.addEventListener("fetch", function (event) {
     if (event.request.method !== "GET") return;
 
     // API calls and HTML pages: network-first with cache fallback
-    if (url.pathname.startsWith("/api/") || event.request.headers.get("accept").includes("text/html")) {
+    var acceptHeader = event.request.headers.get("accept") || "";
+    if (url.pathname.startsWith("/api/") || acceptHeader.includes("text/html")) {
         event.respondWith(
             fetch(event.request)
                 .then(function (response) {
                     // Cache successful page responses for offline fallback
-                    if (response.ok && event.request.headers.get("accept").includes("text/html")) {
+                    if (response.ok && acceptHeader.includes("text/html")) {
                         var clone = response.clone();
                         caches.open(CACHE_NAME).then(function (cache) {
                             cache.put(event.request, clone);

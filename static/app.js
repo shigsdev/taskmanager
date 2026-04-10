@@ -31,7 +31,16 @@ async function apiFetch(url, opts = {}) {
 // --- Data loading ------------------------------------------------------------
 
 async function loadTasks() {
-    allTasks = await apiFetch(API);
+    try {
+        allTasks = await apiFetch(API);
+    } catch (err) {
+        console.error("Failed to load tasks:", err);
+        // Don't wipe existing tasks if fetch fails (offline/cache issue)
+        if (allTasks.length === 0) {
+            alert("Could not load tasks. Please check your connection and reload.");
+        }
+        return;
+    }
     renderBoard();
 }
 
