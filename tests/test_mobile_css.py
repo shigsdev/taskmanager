@@ -135,20 +135,20 @@ class TestMobileCSSRules:
     """
 
     def test_css_has_mobile_media_query(self):
-        with open("static/style.css") as f:
+        with open("static/style.css", encoding="utf-8") as f:
             css = f.read()
         assert "@media" in css
         assert "max-width" in css
 
     def test_css_has_swiped_class(self):
         """The .swiped class applies translateX to slide the card left."""
-        with open("static/style.css") as f:
+        with open("static/style.css", encoding="utf-8") as f:
             css = f.read()
         assert ".task-card.swiped" in css
         assert "translateX" in css
 
     def test_css_has_swipe_actions(self):
-        with open("static/style.css") as f:
+        with open("static/style.css", encoding="utf-8") as f:
             css = f.read()
         assert ".swipe-actions" in css
         assert ".swipe-action-move" in css
@@ -156,19 +156,19 @@ class TestMobileCSSRules:
 
     def test_css_has_44px_touch_targets(self):
         """44px is the minimum recommended touch target size."""
-        with open("static/style.css") as f:
+        with open("static/style.css", encoding="utf-8") as f:
             css = f.read()
         assert "min-height: 44px" in css
 
     def test_css_has_ios_zoom_prevention(self):
         """font-size: 16px on form inputs prevents iOS Safari from
         auto-zooming when the user taps a text field."""
-        with open("static/style.css") as f:
+        with open("static/style.css", encoding="utf-8") as f:
             css = f.read()
         assert "font-size: 16px" in css
 
     def test_css_has_full_width_detail_panel(self):
-        with open("static/style.css") as f:
+        with open("static/style.css", encoding="utf-8") as f:
             css = f.read()
         assert "width: 100vw" in css
 

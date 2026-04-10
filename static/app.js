@@ -179,6 +179,44 @@ function setupDragAndDrop() {
         });
     }
 
+    // --- Completed section: drop-to-archive target ---
+    // The Completed section isn't a tier — it's a status filter — so it
+    // needs its own drop handler that PATCHes {status: "archived"} instead
+    // of the normal tier move. We attach to the whole <section> (not just
+    // the inner list) so the drop zone works even when the list is
+    // collapsed, which is the default state.
+    const completedSection = document.getElementById("tierCompleted");
+    if (completedSection) {
+        completedSection.addEventListener("dragenter", function (e) {
+            if (!draggedCard) return;
+            e.preventDefault();
+            completedSection.classList.add("drag-over");
+        });
+        completedSection.addEventListener("dragover", function (e) {
+            if (!draggedCard) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            completedSection.classList.add("drag-over");
+        });
+        completedSection.addEventListener("dragleave", function (e) {
+            // Only clear when the pointer actually leaves the section,
+            // not when it moves between child elements inside it.
+            if (!completedSection.contains(e.relatedTarget)) {
+                completedSection.classList.remove("drag-over");
+            }
+        });
+        completedSection.addEventListener("drop", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            completedSection.classList.remove("drag-over");
+            if (!draggedCard) return;
+            const taskId = draggedCard.dataset.id;
+            draggedCard.classList.remove("dragging");
+            draggedCard = null;
+            taskComplete(taskId);
+        });
+    }
+
     // --- Mobile: touch events (document-level for cross-tier dragging) ---
     document.addEventListener("touchmove", onTouchMove, { passive: false });
     document.addEventListener("touchend", onTouchEnd);
@@ -196,7 +234,21 @@ function onTouchMove(e) {
     card.style.transform = "translateY(" + dy + "px)";
     card.style.zIndex = "9999";
 
-    // Find which list we're over and reposition
+    // Is the finger over the Completed drop-zone?
+    // Checked BEFORE the tier-list scan so an inbox card dropped on the
+    // completed section archives instead of landing in a tier underneath.
+    var completedSection = document.getElementById("tierCompleted");
+    if (completedSection && isPointOverEl(completedSection, touch.clientX, touch.clientY)) {
+        completedSection.classList.add("drag-over");
+        touchDragState.overCompleted = true;
+        return;
+    }
+    if (completedSection) {
+        completedSection.classList.remove("drag-over");
+    }
+    touchDragState.overCompleted = false;
+
+    // Find which tier list we're over and reposition
     var targetList = getListUnderPoint(touch.clientX, touch.clientY);
     if (targetList) {
         var afterEl = getDragAfterElement(targetList, touch.clientY);
@@ -211,20 +263,37 @@ function onTouchMove(e) {
 function onTouchEnd() {
     if (!touchDragState) return;
     var card = touchDragState.card;
+    var overCompleted = touchDragState.overCompleted;
 
     // Reset visual state
     card.style.transform = "";
     card.style.zIndex = "";
     card.classList.remove("dragging");
+    var completedSection = document.getElementById("tierCompleted");
+    if (completedSection) completedSection.classList.remove("drag-over");
+
+    if (overCompleted) {
+        // Dropped on Completed → archive instead of tier-move
+        var taskId = card.dataset.id;
+        touchDragState = null;
+        draggedCard = null;
+        taskComplete(taskId);
+        return;
+    }
 
     // Find the list it ended up in
     var parentList = card.closest(".task-list");
-    if (parentList) {
+    if (parentList && parentList.dataset.tier) {
         finishDrop(parentList);
     }
 
     touchDragState = null;
     draggedCard = null;
+}
+
+function isPointOverEl(el, x, y) {
+    var rect = el.getBoundingClientRect();
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }
 
 function getListUnderPoint(x, y) {
@@ -462,18 +531,17 @@ function taskCardEl(task) {
     const actions = document.createElement("div");
     actions.className = "task-quick-actions";
 
-    // Complete button (not shown on inbox — inbox is triage-only)
-    if (task.tier !== "inbox") {
-        const completeBtn = document.createElement("button");
-        completeBtn.textContent = "✓ Done";
-        completeBtn.title = "Mark complete";
-        completeBtn.className = "quick-complete-btn";
-        completeBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            taskComplete(task.id);
-        });
-        actions.appendChild(completeBtn);
-    }
+    // Complete button — shown on every tier, including inbox, so users
+    // can archive a task straight from triage without a two-step move.
+    const completeBtn = document.createElement("button");
+    completeBtn.textContent = "✓ Done";
+    completeBtn.title = "Mark complete";
+    completeBtn.className = "quick-complete-btn";
+    completeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        taskComplete(task.id);
+    });
+    actions.appendChild(completeBtn);
 
     const tierBtns = TIER_ORDER.filter((t) => t !== task.tier && t !== "inbox");
     for (const t of tierBtns) {

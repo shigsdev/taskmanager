@@ -300,6 +300,20 @@ body {
 .reopen-dropdown button:hover { background: var(--bg); }
 .completed-title { text-decoration: line-through; color: var(--text-muted); }
 .tier-completed { border-top: 1px dashed var(--border); margin-top: 8px; padding-top: 8px; }
+/* Drop-to-complete: highlight Completed section while a card is dragged over it */
+.tier-completed.drag-over {
+    background: rgba(34, 197, 94, 0.10);
+    border: 2px dashed var(--green);
+    border-radius: 6px;
+    padding: 6px;
+}
+.tier-completed.drag-over .tier-header h2::after {
+    content: " ← drop to complete";
+    color: var(--green);
+    font-size: 0.8rem;
+    font-weight: 400;
+    margin-left: 6px;
+}
 .loading-msg { color: var(--text-muted); padding: 8px; font-size: 0.85rem; }
 
 .task-card .task-checkbox {
