@@ -11,8 +11,11 @@ we keep the same single-user lockdown as every other route.
 """
 from __future__ import annotations
 
+import hmac
 import logging
+import os
 from datetime import UTC, datetime, timedelta
+from functools import wraps
 
 from flask import Blueprint, jsonify, request
 from sqlalchemy import select
@@ -30,6 +33,51 @@ _LEVEL_RANK = {
     "ERROR": 40,
     "CRITICAL": 50,
 }
+
+
+# --- Debug token auth --------------------------------------------------------
+#
+# The /api/debug/* endpoints accept two auth mechanisms:
+#   1. Normal OAuth (login_required) — for the human developer in a browser
+#   2. X-Debug-Token header matching APP_DEBUG_TOKEN env var — for agents or
+#      tooling that need programmatic access to logs without a session cookie
+#
+# Scope is intentionally narrow: the token ONLY works on routes guarded by
+# ``debug_auth_required``. Every token-authenticated access is logged as a
+# WARNING so the developer sees it in the same app_logs table that the token
+# is used to read. APP_DEBUG_TOKEN is optional — when unset, the token path
+# is disabled and only OAuth works.
+
+
+def debug_auth_required(view):
+    """Allow either OAuth login OR a matching X-Debug-Token header.
+
+    Token is compared with ``hmac.compare_digest`` to prevent timing
+    attacks. When the token path is used, a WARNING log is emitted so
+    the developer can see every programmatic access in /api/debug/logs.
+    """
+    oauth_guarded = login_required(view)
+
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        provided = request.headers.get("X-Debug-Token")
+        expected = os.environ.get("APP_DEBUG_TOKEN")
+        if (
+            expected
+            and provided
+            and hmac.compare_digest(
+                provided.encode("utf-8"), expected.encode("utf-8")
+            )
+        ):
+            logger.warning(
+                "debug endpoint accessed via X-Debug-Token: %s %s",
+                request.method,
+                request.path,
+            )
+            return view(*args, email="<debug-token>", **kwargs)
+        return oauth_guarded(*args, **kwargs)
+
+    return wrapped
 
 logger = logging.getLogger("taskmanager.debug")
 
@@ -94,7 +142,7 @@ def _parse_since(raw: str | None) -> datetime:
 
 
 @bp.get("/logs")
-@login_required
+@debug_auth_required
 def get_logs(email: str):  # noqa: ARG001
     """Query recent app_logs rows.
 
@@ -174,7 +222,7 @@ def get_logs(email: str):  # noqa: ARG001
 
 
 @bp.post("/client-error")
-@login_required
+@debug_auth_required
 def client_error(email: str):  # noqa: ARG001
     """Receive a browser-side error report.
 

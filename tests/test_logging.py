@@ -370,6 +370,79 @@ class TestDebugLogsEndpoint:
 # --- /api/debug/client-error -------------------------------------------------
 
 
+class TestDebugTokenAuth:
+    """X-Debug-Token should allow unauthenticated programmatic access."""
+
+    def test_correct_token_grants_access(self, app, client, monkeypatch):
+        monkeypatch.setenv("APP_DEBUG_TOKEN", "secret-token-abc")
+        resp = client.get(
+            "/api/debug/logs",
+            headers={"X-Debug-Token": "secret-token-abc"},
+        )
+        assert resp.status_code == 200
+
+    def test_wrong_token_falls_through_to_oauth(self, client, monkeypatch):
+        monkeypatch.setenv("APP_DEBUG_TOKEN", "secret-token-abc")
+        resp = client.get(
+            "/api/debug/logs",
+            headers={"X-Debug-Token": "wrong-token"},
+        )
+        # No OAuth session → redirect to login
+        assert resp.status_code in (302, 401, 403)
+
+    def test_no_token_configured_blocks_header_auth(self, client, monkeypatch):
+        """If APP_DEBUG_TOKEN is unset, the token path is fully disabled.
+
+        This prevents an attacker from bypassing auth by sending an
+        empty/any X-Debug-Token when the env var happens to not be set.
+        """
+        monkeypatch.delenv("APP_DEBUG_TOKEN", raising=False)
+        resp = client.get(
+            "/api/debug/logs",
+            headers={"X-Debug-Token": "anything"},
+        )
+        assert resp.status_code in (302, 401, 403)
+
+    def test_empty_token_env_blocks_header_auth(self, client, monkeypatch):
+        """Empty string env var must not match an empty header."""
+        monkeypatch.setenv("APP_DEBUG_TOKEN", "")
+        resp = client.get(
+            "/api/debug/logs",
+            headers={"X-Debug-Token": ""},
+        )
+        assert resp.status_code in (302, 401, 403)
+
+    def test_no_header_falls_through_to_oauth(self, client, monkeypatch):
+        monkeypatch.setenv("APP_DEBUG_TOKEN", "secret-token-abc")
+        resp = client.get("/api/debug/logs")
+        assert resp.status_code in (302, 401, 403)
+
+    def test_token_access_is_logged(self, app, client, monkeypatch):
+        """Every token-auth access should create a WARNING app_logs row."""
+        # Install a handler manually (TESTING=True disables configure_logging)
+        handler = DBLogHandler(app, level=logging.WARNING)
+        handler.addFilter(RequestContextFilter())
+        debug_logger = logging.getLogger("taskmanager.debug")
+        debug_logger.addHandler(handler)
+        debug_logger.setLevel(logging.WARNING)
+        try:
+            monkeypatch.setenv("APP_DEBUG_TOKEN", "secret-token-abc")
+            resp = client.get(
+                "/api/debug/logs",
+                headers={"X-Debug-Token": "secret-token-abc"},
+            )
+            assert resp.status_code == 200
+
+            with app.app_context():
+                rows = list(db.session.scalars(select(AppLog)))
+            # At least one row should describe the token-auth access.
+            access_logs = [r for r in rows if "X-Debug-Token" in r.message]
+            assert len(access_logs) >= 1
+            assert access_logs[0].level == "WARNING"
+        finally:
+            debug_logger.removeHandler(handler)
+
+
 class TestClientErrorEndpoint:
     def test_requires_auth(self, client):
         resp = client.post("/api/debug/client-error", json={"message": "x"})
