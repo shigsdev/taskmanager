@@ -183,15 +183,9 @@ class TestAppBoot:
         resp = client.get("/healthz")
         assert resp.get_json()["checks"]["static_assets"] == "ok"
 
-    def test_healthz_reports_missing_table_without_503(self, client, monkeypatch):
-        """A missing expected table is reported in the body but does
-        NOT flip the HTTP status to 503.
-
-        Rationale: Railway's probe only cares about HTTP status, and a
-        bug in a non-critical check (or a transient introspection
-        failure) should never block a deploy. The failure still shows
-        up in the response body so the deploy-validation script can
-        catch it.
+    def test_healthz_503_when_expected_table_missing(self, client, monkeypatch):
+        """A missing expected table is a data-integrity failure and
+        MUST block the deploy — tables is in CRITICAL_CHECKS.
         """
         import health
 
@@ -199,11 +193,11 @@ class TestAppBoot:
             health, "EXPECTED_TABLES", health.EXPECTED_TABLES | {"nonexistent"}
         )
         resp = client.get("/healthz")
-        assert resp.status_code == 200  # still 200 — tables is non-critical
+        assert resp.status_code == 503
         body = resp.get_json()
-        assert body["status"] == "fail"  # but status reflects the fail
+        assert body["status"] == "fail"
         assert "nonexistent" in body["checks"]["tables"]
-        assert "tables" not in body["critical_failed"]
+        assert "tables" in body["critical_failed"]
 
     def test_healthz_reports_missing_static_without_503(self, client, monkeypatch):
         import health
@@ -231,6 +225,59 @@ class TestAppBoot:
         assert resp.status_code == 503
         body = resp.get_json()
         assert "database" in body["critical_failed"]
+
+    def test_healthz_503_when_encryption_key_malformed(self, client, monkeypatch):
+        """A malformed ENCRYPTION_KEY is a real config-drift failure
+        that silently degrades sensitive fields to plaintext. It MUST
+        block the deploy (encryption is in CRITICAL_CHECKS).
+        """
+        import crypto
+
+        monkeypatch.setenv("ENCRYPTION_KEY", "not-a-valid-fernet-key")
+        crypto.reset()
+        try:
+            resp = client.get("/healthz")
+            assert resp.status_code == 503
+            body = resp.get_json()
+            assert body["checks"]["encryption"].startswith("fail:")
+            assert "encryption" in body["critical_failed"]
+        finally:
+            crypto.reset()
+
+    def test_healthz_still_200_when_encryption_key_unset(self, client, monkeypatch):
+        """An UNSET key (dev mode) is a warn, not a fail. Deploys
+        must still go green when running in dev mode.
+        """
+        import crypto
+
+        monkeypatch.delenv("ENCRYPTION_KEY", raising=False)
+        crypto.reset()
+        try:
+            resp = client.get("/healthz")
+            assert resp.status_code == 200
+            body = resp.get_json()
+            assert body["checks"]["encryption"].startswith("warn:")
+            assert "encryption" not in body["critical_failed"]
+        finally:
+            crypto.reset()
+
+    def test_healthz_503_when_migrations_out_of_date(self, client, monkeypatch):
+        """Schema drift (migrations behind head) is a critical failure.
+
+        Tests can't easily simulate a real alembic mismatch because
+        conftest uses db.create_all(). Instead we monkey-patch
+        check_migrations to return a fail string directly and verify
+        it surfaces as critical.
+        """
+        import health
+
+        monkeypatch.setattr(
+            health, "check_migrations", lambda _app: "fail: at abc expected xyz"
+        )
+        resp = client.get("/healthz")
+        assert resp.status_code == 503
+        body = resp.get_json()
+        assert "migrations" in body["critical_failed"]
 
     def test_healthz_encryption_canary_roundtrip(self, client, monkeypatch):
         """With a real ENCRYPTION_KEY set, the Fernet canary must round-trip."""

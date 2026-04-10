@@ -204,6 +204,15 @@ def check_encryption() -> str:
     Encrypts a known string and checks that (a) the ciphertext differs
     from the plaintext (proving Fernet actually ran, not the no-op
     fallback) and (b) decryption returns the original plaintext.
+
+    Distinguishes two failure modes:
+
+    - ``ENCRYPTION_KEY`` is unset → ``warn:``. Fine in dev, acceptable
+      in prod (the app works, sensitive fields just aren't encrypted).
+    - ``ENCRYPTION_KEY`` is SET but malformed → ``fail:``. Something
+      is trying to use Fernet but it can't initialize, which means
+      encryption silently degrades to plaintext — a data-integrity
+      bug. This blocks promotion because it's a real config drift.
     """
     try:
         from crypto import decrypt, encrypt
@@ -211,11 +220,21 @@ def check_encryption() -> str:
         plaintext = "health-canary"
         ciphertext = encrypt(plaintext)
         if ciphertext == plaintext:
+            # Fernet wasn't initialized — either no key set (warn) or
+            # the key is malformed and crypto.py swallowed the error
+            if os.environ.get("ENCRYPTION_KEY"):
+                return "fail: ENCRYPTION_KEY set but not working"
             return "warn: ENCRYPTION_KEY not set"
         if decrypt(ciphertext) != plaintext:
             return "fail: roundtrip mismatch"
         return "ok"
     except Exception as e:
+        # Fernet raised directly during init/encrypt — this is the
+        # "malformed key" path (e.g. wrong length, wrong alphabet).
+        # Treat as fail because it means the app is trying to use
+        # encryption but can't.
+        if os.environ.get("ENCRYPTION_KEY"):
+            return f"fail: {_short(e)}"
         return f"warn: {_short(e)}"
 
 
@@ -273,13 +292,38 @@ def check_static_assets() -> str:
 # --- Public entry point ------------------------------------------------------
 
 
-# Checks whose failure flips HTTP status to 503. Everything else is
-# reported in the response body but never blocks a deploy — that way
-# a bug in one of the rich checks (e.g. an SQLAlchemy/psycopg3 quirk
-# in ``check_writable_db``) cannot keep Railway from promoting a new
-# container, while we can still see exactly what's broken from the
-# live /healthz response.
-CRITICAL_CHECKS = {"database", "env_vars"}
+# Checks whose failure flips HTTP status to 503.
+#
+# Critical checks represent REAL data-integrity conditions where
+# letting the deploy go green would be actively dangerous:
+#
+#   database     — no connection = app can't do anything useful
+#   env_vars     — missing SECRET_KEY/OAuth = auth is broken
+#   encryption   — Fernet key malformed = sensitive fields would be
+#                  stored in plaintext (silent data-integrity bug)
+#   migrations   — alembic_version doesn't match head = schema drift,
+#                  the exact failure mode of the yesterday data-loss
+#                  incident
+#   tables       — an expected table is missing = app will 500 on
+#                  most routes
+#
+# Non-critical checks (writable_db, digest, static_assets) are
+# reported in the response body but never block promotion. These are
+# nice-to-haves whose check logic is most likely to hit a driver/OS
+# quirk that would falsely brick a deploy.
+#
+# In addition, every check runs through ``_safe_call`` which converts
+# any uncaught Python exception to ``warn:``. That means a BUG in a
+# critical check (e.g. an import error, a typo) can never brick a
+# deploy either — only a legitimate ``fail:`` string returned from
+# the check itself can. This is belt + suspenders.
+CRITICAL_CHECKS = {
+    "database",
+    "env_vars",
+    "encryption",
+    "migrations",
+    "tables",
+}
 
 
 def _safe_call(name: str, fn, *args) -> str:
