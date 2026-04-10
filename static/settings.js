@@ -51,43 +51,118 @@
                 data.digest_from ? "Configured" : "(not set)";
         });
 
-    // --- Load import history -------------------------------------------------
+    // --- Load import history + recycle bin count ----------------------------
 
-    fetch("/api/settings/imports")
-        .then(function (r) { return r.json(); })
-        .then(function (logs) {
-            var tbody = document.getElementById("settingsImportBody");
-            var emptyMsg = document.getElementById("settingsImportEmpty");
-            tbody.innerHTML = "";
+    function loadImports() {
+        fetch("/api/settings/imports")
+            .then(function (r) { return r.json(); })
+            .then(function (logs) { renderImports(logs); });
+    }
 
-            if (!logs || logs.length === 0) {
-                emptyMsg.style.display = "";
-                return;
+    function loadBinCount() {
+        fetch("/api/recycle-bin/summary")
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var badge = document.getElementById("settingsBinCount");
+                if (badge) {
+                    var total = (data.task_count || 0) + (data.goal_count || 0);
+                    badge.textContent = total;
+                }
+            });
+    }
+
+    function renderImports(logs) {
+        var tbody = document.getElementById("settingsImportBody");
+        var emptyMsg = document.getElementById("settingsImportEmpty");
+        tbody.innerHTML = "";
+
+        if (!logs || logs.length === 0) {
+            emptyMsg.style.display = "";
+            return;
+        }
+        emptyMsg.style.display = "none";
+
+        logs.forEach(function (log) {
+            var tr = document.createElement("tr");
+
+            var tdSource = document.createElement("td");
+            tdSource.textContent = log.source;
+
+            var tdCount = document.createElement("td");
+            tdCount.textContent = log.task_count;
+
+            var tdDate = document.createElement("td");
+            if (log.imported_at) {
+                var d = new Date(log.imported_at);
+                tdDate.textContent = d.toLocaleDateString() + " " + d.toLocaleTimeString();
+            } else {
+                tdDate.textContent = "--";
             }
 
-            logs.forEach(function (log) {
-                var tr = document.createElement("tr");
+            var tdActions = document.createElement("td");
+            if (!log.batch_id) {
+                // Legacy import (pre-recycle-bin) — cannot be undone.
+                tdActions.innerHTML = '<span class="settings-muted">—</span>';
+            } else if (log.undone_at) {
+                // Already in the bin.
+                tdActions.innerHTML = '<span class="settings-muted">In Recycle Bin</span>';
+            } else {
+                var btn = document.createElement("button");
+                btn.className = "btn btn-sm";
+                btn.textContent = "Undo";
+                btn.dataset.batchId = log.batch_id;
+                btn.dataset.source = log.source;
+                btn.dataset.count = log.task_count;
+                btn.addEventListener("click", onUndoClick);
+                tdActions.appendChild(btn);
+            }
 
-                var tdSource = document.createElement("td");
-                tdSource.textContent = log.source;
-
-                var tdCount = document.createElement("td");
-                tdCount.textContent = log.task_count;
-
-                var tdDate = document.createElement("td");
-                if (log.imported_at) {
-                    var d = new Date(log.imported_at);
-                    tdDate.textContent = d.toLocaleDateString() + " " + d.toLocaleTimeString();
-                } else {
-                    tdDate.textContent = "--";
-                }
-
-                tr.appendChild(tdSource);
-                tr.appendChild(tdCount);
-                tr.appendChild(tdDate);
-                tbody.appendChild(tr);
-            });
+            tr.appendChild(tdSource);
+            tr.appendChild(tdCount);
+            tr.appendChild(tdDate);
+            tr.appendChild(tdActions);
+            tbody.appendChild(tr);
         });
+    }
+
+    function onUndoClick(e) {
+        var btn = e.currentTarget;
+        var batchId = btn.dataset.batchId;
+        var source = btn.dataset.source;
+        var count = btn.dataset.count;
+        var confirmMsg = "Move this import to the recycle bin?\n\n" +
+            "Source: " + source + "\n" +
+            "Items:  " + count + "\n\n" +
+            "You can restore it later from the Recycle Bin page.";
+        if (!confirm(confirmMsg)) return;
+
+        btn.disabled = true;
+        btn.textContent = "Undoing…";
+
+        fetch("/api/recycle-bin/undo/" + batchId, { method: "POST" })
+            .then(function (r) {
+                return r.json().then(function (body) { return { ok: r.ok, body: body }; });
+            })
+            .then(function (res) {
+                if (!res.ok) {
+                    alert("Undo failed: " + (res.body.error || "unknown error"));
+                    btn.disabled = false;
+                    btn.textContent = "Undo";
+                    return;
+                }
+                // Refresh the history table and the bin count.
+                loadImports();
+                loadBinCount();
+            })
+            .catch(function (err) {
+                alert("Undo failed: " + err.message);
+                btn.disabled = false;
+                btn.textContent = "Undo";
+            });
+    }
+
+    loadImports();
+    loadBinCount();
 
     // --- Digest actions ------------------------------------------------------
 

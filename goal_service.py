@@ -141,11 +141,18 @@ def update_goal(goal_id: uuid.UUID, data: dict) -> Goal | None:
 
 
 def delete_goal(goal_id: uuid.UUID) -> bool:
-    """Soft-delete by setting is_active=False. Returns False if not found."""
+    """Soft-delete by setting is_active=False. Returns False if not found.
+
+    Also severs the goal from any bulk-import batch by clearing
+    ``batch_id``. This prevents the recycle bin flow from resurrecting
+    a user-trashed goal when the batch it came from is restored — the
+    user explicitly trashed this one, so it should stay trashed.
+    """
     goal = get_goal(goal_id)
     if goal is None:
         return False
     goal.is_active = False
+    goal.batch_id = None
     db.session.commit()
     return True
 

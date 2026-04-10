@@ -58,10 +58,18 @@
 
     <!-- Import history -->
     <section class="settings-section" id="settingsImports">
-        <h3>Import History</h3>
+        <h3>
+            Import History
+            <a href="{{ url_for('recycle_bin_page') }}"
+               class="btn btn-sm settings-bin-link"
+               id="settingsBinLink"
+               title="View items currently in the recycle bin">
+                Recycle Bin (<span id="settingsBinCount">0</span>)
+            </a>
+        </h3>
         <table class="settings-table" id="settingsImportTable">
             <thead>
-                <tr><th>Source</th><th>Items</th><th>Date</th></tr>
+                <tr><th>Source</th><th>Items</th><th>Date</th><th>Actions</th></tr>
             </thead>
             <tbody id="settingsImportBody"></tbody>
         </table>

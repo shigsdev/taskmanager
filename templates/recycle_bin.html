@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% set active_page = 'settings' %}
+{% block title %}Recycle Bin — Task Manager{% endblock %}
+
+{% block content %}
+<div class="recycle-container" id="recycleContainer">
+    <div class="recycle-header">
+        <h2>Recycle Bin</h2>
+        <a href="{{ url_for('settings_page') }}" class="btn btn-sm">← Back to Settings</a>
+    </div>
+
+    <p class="recycle-hint">
+        Imports you've undone appear here. You can restore a batch to put
+        it back in your task list, or permanently delete it by purging.
+        Nothing in the recycle bin is ever cleaned up automatically —
+        items stay here until you remove them.
+    </p>
+
+    <section class="recycle-summary" id="recycleSummary">
+        <div class="recycle-summary-row">
+            <span id="recycleSummaryText">Loading…</span>
+            <button class="btn btn-sm btn-danger" id="recycleEmptyBtn" disabled>
+                Empty Bin
+            </button>
+        </div>
+    </section>
+
+    <section class="recycle-list-section">
+        <ul class="recycle-list" id="recycleList"></ul>
+        <p class="recycle-empty" id="recycleEmptyMsg" style="display:none">
+            The recycle bin is empty.
+        </p>
+    </section>
+</div>
+
+<div class="modal-overlay" id="recycleModalOverlay" style="display:none">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="recycleModalTitle">
+        <h3 id="recycleModalTitle">Confirm</h3>
+        <p id="recycleModalBody"></p>
+        <div class="modal-type-to-confirm" id="recycleModalConfirmRow" style="display:none">
+            <label for="recycleModalConfirmInput">
+                Type <strong>DELETE</strong> to confirm:
+            </label>
+            <input type="text" id="recycleModalConfirmInput" autocomplete="off" />
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-sm" id="recycleModalCancel">Cancel</button>
+            <button class="btn btn-sm btn-danger" id="recycleModalConfirm">Confirm</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='recycle_bin.js') }}"></script>
+{% endblock %}

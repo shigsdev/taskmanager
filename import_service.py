@@ -14,6 +14,7 @@ from __future__ import annotations
 import io
 import logging
 import re
+import uuid
 from typing import Any
 
 from sqlalchemy import select
@@ -331,7 +332,9 @@ def create_tasks_from_import(
 
     Only candidates with included=True are created.
     All imported tasks land in the Inbox tier.
-    Logs the import to ImportLog.
+    Logs the import to ImportLog and stamps a shared ``batch_id`` on
+    every created Task so the whole import can be undone as a group
+    via the recycle bin flow.
 
     Args:
         candidates: List of candidate dicts from the preview.
@@ -340,6 +343,7 @@ def create_tasks_from_import(
     Returns:
         List of newly created Task records.
     """
+    batch_id = uuid.uuid4()
     created = []
     for candidate in candidates:
         if not candidate.get("included", True):
@@ -355,12 +359,16 @@ def create_tasks_from_import(
         except ValueError:
             task_type = TaskType.WORK
 
-        task = Task(title=title, type=task_type, tier=Tier.INBOX)
+        task = Task(
+            title=title, type=task_type, tier=Tier.INBOX, batch_id=batch_id
+        )
         db.session.add(task)
         created.append(task)
 
     if created:
-        log = ImportLog(source=source, task_count=len(created))
+        log = ImportLog(
+            source=source, task_count=len(created), batch_id=batch_id
+        )
         db.session.add(log)
         db.session.commit()
 
@@ -374,7 +382,9 @@ def create_goals_from_import(
     """Create Goal records from confirmed import candidates.
 
     Only candidates with included=True are created.
-    Logs the import to ImportLog.
+    Logs the import to ImportLog and stamps a shared ``batch_id`` on
+    every created Goal so the whole import can be undone as a group
+    via the recycle bin flow.
 
     Args:
         candidates: List of goal candidate dicts from the preview.
@@ -383,6 +393,7 @@ def create_goals_from_import(
     Returns:
         List of newly created Goal records.
     """
+    batch_id = uuid.uuid4()
     created = []
     for candidate in candidates:
         if not candidate.get("included", True):
@@ -415,12 +426,15 @@ def create_goals_from_import(
             target_quarter=candidate.get("target_quarter") or None,
             status=status,
             notes=candidate.get("notes") or None,
+            batch_id=batch_id,
         )
         db.session.add(goal)
         created.append(goal)
 
     if created:
-        log = ImportLog(source=source, task_count=len(created))
+        log = ImportLog(
+            source=source, task_count=len(created), batch_id=batch_id
+        )
         db.session.add(log)
         db.session.commit()
 

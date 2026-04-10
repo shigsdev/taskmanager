@@ -22,6 +22,7 @@ import goals_api
 import import_api
 import projects_api
 import recurring_api
+import recycle_api
 import review_api
 import scan_api
 import settings_api
@@ -90,6 +91,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(digest_api.bp)
     app.register_blueprint(scan_api.bp)
     app.register_blueprint(import_api.bp)
+    app.register_blueprint(recycle_api.bp)
     app.register_blueprint(settings_api.bp)
 
     # --- Security: Talisman (HTTPS + headers) ---
@@ -174,6 +176,11 @@ def create_app(config: dict | None = None) -> Flask:
     @login_required
     def settings_page(email: str):  # noqa: ARG001
         return render_template("settings.html")
+
+    @app.route("/recycle-bin")
+    @login_required
+    def recycle_bin_page(email: str):  # noqa: ARG001
+        return render_template("recycle_bin.html")
 
     @app.route("/print")
     @login_required

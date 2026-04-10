@@ -16,9 +16,11 @@ import base64
 import json
 import logging
 import os
+import uuid
+from datetime import UTC, datetime
 from typing import Any
 
-from models import Task, TaskType, Tier, db
+from models import ImportLog, Task, TaskType, Tier, db
 
 logger = logging.getLogger(__name__)
 
@@ -215,12 +217,17 @@ def create_tasks_from_candidates(
     Only candidates with included=True are created.
     All created tasks land in the Inbox tier.
 
+    Stamps a shared ``batch_id`` on every created Task and writes an
+    ``ImportLog`` entry so the scan can be undone as a group via the
+    recycle bin flow.
+
     Args:
         candidates: List of candidate dicts from the review screen.
 
     Returns:
         List of newly created Task records.
     """
+    batch_id = uuid.uuid4()
     created = []
     for candidate in candidates:
         if not candidate.get("included", True):
@@ -240,10 +247,16 @@ def create_tasks_from_candidates(
             title=title,
             type=task_type,
             tier=Tier.INBOX,
+            batch_id=batch_id,
         )
         db.session.add(task)
         created.append(task)
 
     if created:
+        source = "scan_" + datetime.now(UTC).strftime("%Y_%m_%d_%H%M%S")
+        log = ImportLog(
+            source=source, task_count=len(created), batch_id=batch_id
+        )
+        db.session.add(log)
         db.session.commit()
     return created

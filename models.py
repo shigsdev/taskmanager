@@ -112,6 +112,11 @@ class Goal(db.Model):
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # batch_id links this goal to a bulk-import operation (ImportLog.batch_id).
+    # Populated by import_service when goals are created via bulk import.
+    # Cleared (set to NULL) when the goal is regular-deleted so that batch
+    # undo/restore never resurrects a user-trashed goal.
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now
@@ -163,6 +168,11 @@ class Task(db.Model):
     )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_reviewed: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # batch_id links this task to a bulk-import operation (ImportLog.batch_id).
+    # Populated by import_service / scan_service when tasks are created via
+    # bulk import. Cleared (set to NULL) when the task is regular-deleted so
+    # that batch undo/restore never resurrects a user-trashed task.
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now
@@ -176,6 +186,7 @@ class Task(db.Model):
         Index("ix_tasks_tier_status", "tier", "status"),
         Index("ix_tasks_project_id", "project_id"),
         Index("ix_tasks_goal_id", "goal_id"),
+        Index("ix_tasks_batch_id", "batch_id"),
     )
 
 
@@ -203,3 +214,15 @@ class ImportLog(db.Model):
     source: Mapped[str] = mapped_column(String(100), nullable=False)
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     task_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # batch_id uniquely identifies this import operation and is stamped on
+    # every Task/Goal row it creates. Used by the recycle bin flow to undo
+    # or purge a whole import. Nullable for backwards compatibility with
+    # ImportLog rows that predate this feature — those rows cannot be
+    # undone through the recycle bin UI.
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
+    # undone_at is set when the batch is moved to the recycle bin (soft
+    # delete). Cleared when the batch is restored. When NULL the batch is
+    # live (rows active). When set the batch is in the recycle bin.
+    undone_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

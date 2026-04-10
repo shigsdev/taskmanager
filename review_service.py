@@ -65,6 +65,9 @@ def review_task(task: Task, action: str) -> str:
         task.last_reviewed = today
     elif action == "delete":
         task.status = TaskStatus.DELETED
+        # Sever from any bulk-import batch — see delete_task() in
+        # task_service.py for the same rationale.
+        task.batch_id = None
     elif action == "snooze":
         task.last_reviewed = today
     else:

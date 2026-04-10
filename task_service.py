@@ -177,10 +177,17 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
 
 
 def delete_task(task_id: uuid.UUID) -> bool:
-    """Soft-delete by setting status to DELETED. Returns False if not found."""
+    """Soft-delete by setting status to DELETED. Returns False if not found.
+
+    Also severs the task from any bulk-import batch by clearing
+    ``batch_id``. This prevents the recycle bin flow from resurrecting
+    a user-trashed task when the batch it came from is restored — the
+    user explicitly trashed this one, so it should stay trashed.
+    """
     task = get_task(task_id)
     if task is None:
         return False
     task.status = TaskStatus.DELETED
+    task.batch_id = None
     db.session.commit()
     return True
