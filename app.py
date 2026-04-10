@@ -98,7 +98,7 @@ def create_app(config: dict | None = None) -> Flask:
             "script-src": "'self' 'unsafe-inline'",
             "style-src": "'self' 'unsafe-inline'",
             "img-src": "'self' data:",
-            "font-src": "'self'",
+            "font-src": "'self' https://fonts.gstatic.com",
             "connect-src": "'self'",
             "worker-src": "'self'",
             "frame-ancestors": "'none'",
@@ -199,6 +199,15 @@ def create_app(config: dict | None = None) -> Flask:
     @app.route("/login")
     def login_page():
         return render_template("login.html")
+
+    @app.route("/sw.js")
+    def service_worker():
+        """Serve SW from root so it can control scope '/'."""
+        return app.send_static_file("sw.js"), 200, {
+            "Content-Type": "application/javascript",
+            "Service-Worker-Allowed": "/",
+            "Cache-Control": "no-cache",
+        }
 
     @app.route("/healthz")
     def healthz():

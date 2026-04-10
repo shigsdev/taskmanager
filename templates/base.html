@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
     <meta name="theme-color" content="#2563eb">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Tasks">
@@ -26,7 +27,7 @@
     {% block scripts %}{% endblock %}
     <script>
     if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("/static/sw.js", { scope: "/" })
+        navigator.serviceWorker.register("/sw.js", { scope: "/" })
             .then(function (reg) {
                 // Force check for updated SW on every page load
                 reg.update();
