@@ -24,31 +24,105 @@
     <main>
         {% block content %}{% endblock %}
     </main>
+    <div id="updateBanner" class="update-banner" role="status" aria-live="polite" hidden>
+        <span>New version available</span>
+        <button type="button" id="updateBannerBtn">Tap to refresh</button>
+    </div>
     {% block scripts %}{% endblock %}
     <script>
+    // --- Service worker auto-update (A + B: poll + banner fallback) ---
     if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("/sw.js", { scope: "/" })
-            .then(function (reg) {
-                // Force check for updated SW on every page load
-                reg.update();
-                // When a new SW is waiting, activate it immediately
-                if (reg.waiting) {
-                    reg.waiting.postMessage({ type: "SKIP_WAITING" });
+        (function () {
+            var reloading = false;
+            var pendingWorker = null;
+
+            function userIsBusy() {
+                // Don't auto-reload if the user is actively typing or has the
+                // detail panel open — we'd throw away their in-flight edits.
+                var el = document.activeElement;
+                if (el) {
+                    var tag = (el.tagName || "").toLowerCase();
+                    if (tag === "input" || tag === "textarea" || tag === "select") return true;
+                    if (el.isContentEditable) return true;
                 }
-                reg.addEventListener("updatefound", function () {
-                    var newWorker = reg.installing;
-                    newWorker.addEventListener("statechange", function () {
-                        if (newWorker.state === "activated") {
-                            // New SW active — reload to use fresh assets
-                            window.location.reload();
+                var overlay = document.getElementById("detailOverlay");
+                if (overlay && overlay.style.display !== "none") return true;
+                return false;
+            }
+
+            function showBanner() {
+                var banner = document.getElementById("updateBanner");
+                if (banner) banner.hidden = false;
+            }
+
+            function applyUpdate(worker) {
+                // Tell the waiting SW to take over; controllerchange will reload.
+                if (worker && worker.postMessage) {
+                    worker.postMessage({ type: "SKIP_WAITING" });
+                }
+            }
+
+            function handleNewWorker(worker) {
+                if (!worker) return;
+                pendingWorker = worker;
+                worker.addEventListener("statechange", function () {
+                    if (worker.state === "installed" && navigator.serviceWorker.controller) {
+                        // A new SW is ready and an old one is still in charge.
+                        if (userIsBusy()) {
+                            showBanner();
+                        } else {
+                            applyUpdate(worker);
                         }
-                    });
+                    }
                 });
+            }
+
+            navigator.serviceWorker.register("/sw.js", { scope: "/" })
+                .then(function (reg) {
+                    // Handle a SW that's already waiting from a previous load
+                    if (reg.waiting && navigator.serviceWorker.controller) {
+                        handleNewWorker(reg.waiting);
+                        if (userIsBusy()) {
+                            showBanner();
+                        } else {
+                            applyUpdate(reg.waiting);
+                        }
+                    }
+                    // Handle a SW installing right now
+                    if (reg.installing) handleNewWorker(reg.installing);
+                    // Handle future updatefound events
+                    reg.addEventListener("updatefound", function () {
+                        handleNewWorker(reg.installing);
+                    });
+
+                    // Poll for updates every 60s while the PWA is open
+                    setInterval(function () { reg.update(); }, 60000);
+                    // And whenever the PWA returns to foreground
+                    document.addEventListener("visibilitychange", function () {
+                        if (document.visibilityState === "visible") reg.update();
+                    });
+                    // And on initial load
+                    reg.update();
+
+                    // Banner click → apply the pending update
+                    var banner = document.getElementById("updateBanner");
+                    var btn = document.getElementById("updateBannerBtn");
+                    if (btn) {
+                        btn.addEventListener("click", function () {
+                            if (banner) banner.hidden = true;
+                            if (pendingWorker) applyUpdate(pendingWorker);
+                            else window.location.reload();
+                        });
+                    }
+                });
+
+            // Reload once the new SW takes over (guarded against double-fire)
+            navigator.serviceWorker.addEventListener("controllerchange", function () {
+                if (reloading) return;
+                reloading = true;
+                window.location.reload();
             });
-        // Reload when a new SW takes over
-        navigator.serviceWorker.addEventListener("controllerchange", function () {
-            window.location.reload();
-        });
+        })();
     }
     // Clear SW cache on logout so stale authenticated pages aren't served
     document.querySelectorAll('a[href*="/logout"]').forEach(function (link) {

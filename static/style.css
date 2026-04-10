@@ -25,6 +25,38 @@ body {
     min-height: 100vh;
 }
 
+/* === Update Banner === */
+.update-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 16px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+.update-banner[hidden] { display: none; }
+.update-banner button {
+    background: #fff;
+    color: var(--accent);
+    border: none;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    min-height: 36px;
+}
+.update-banner button:active { background: #e5e7eb; }
+
 /* === Navigation === */
 .nav {
     display: flex;

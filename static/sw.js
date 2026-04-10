@@ -5,7 +5,7 @@
  * Bump CACHE_VERSION when deploying new static files.
  */
 
-var CACHE_VERSION = "v13";
+var CACHE_VERSION = "v14";
 var CACHE_NAME = "taskmanager-" + CACHE_VERSION;
 
 var APP_SHELL = [
@@ -17,14 +17,15 @@ var APP_SHELL = [
     "/static/manifest.json",
 ];
 
-// Install — pre-cache the app shell
+// Install — pre-cache the app shell. Note: no skipWaiting() here — the page
+// decides when to activate (see base.html SW update handshake) so we can
+// avoid interrupting the user mid-edit.
 self.addEventListener("install", function (event) {
     event.waitUntil(
         caches.open(CACHE_NAME).then(function (cache) {
             return cache.addAll(APP_SHELL);
         })
     );
-    self.skipWaiting();
 });
 
 // Activate — clean up old caches
