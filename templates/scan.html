@@ -14,8 +14,14 @@
             <label for="scanFile" class="scan-file-label" id="scanFileLabel">
                 Choose image or take photo
             </label>
+            <!-- No capture="environment" — iOS Safari forces camera-only when
+                 that attribute is set, preventing users from picking an
+                 existing image from their Photo Library. Without it, iOS
+                 shows its native Take Photo / Photo Library / Choose File
+                 sheet on tap. One extra tap to get to the camera in exchange
+                 for library access. -->
             <input type="file" id="scanFile" accept="image/jpeg,image/png,image/webp"
-                   capture="environment" style="display:none">
+                   style="display:none">
             <div class="scan-preview" id="scanPreview" style="display:none">
                 <img id="scanPreviewImg" alt="Preview">
             </div>
