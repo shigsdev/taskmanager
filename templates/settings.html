@@ -1,13 +1,6 @@
 {% extends "base.html" %}
+{% set active_page = 'settings' %}
 {% block title %}Settings — Task Manager{% endblock %}
-
-{% block nav %}
-    <a href="{{ url_for('index') }}" class="nav-tab">Tasks</a>
-    <a href="{{ url_for('goals_page') }}" class="nav-tab">Goals</a>
-    <a href="{{ url_for('settings_page') }}" class="nav-tab active">Settings</a>
-    <span class="inbox-badge" id="inboxBadge" title="Inbox items">0</span>
-    <a href="{{ url_for('logout') }}" class="btn-link">Log out</a>
-{% endblock %}
 
 {% block content %}
 <div class="settings-container" id="settingsContainer">

@@ -109,6 +109,42 @@ body {
 }
 .inbox-badge.empty { background: var(--border); color: var(--text-muted); }
 
+/* Top-left quick-upload button (shortcut to /scan) */
+.upload-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    text-decoration: none;
+    color: var(--text);
+    font-size: 0.85rem;
+    padding: 4px 10px;
+    margin-left: 4px;
+    white-space: nowrap;
+}
+.upload-btn:hover { background: var(--bg); }
+
+/* View filter sub-nav: All / Work / Personal (Tasks page only) */
+.view-filter-bar {
+    display: flex;
+    gap: 4px;
+    padding: 6px 14px 0;
+    margin-bottom: 4px;
+}
+.view-filter-btn {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    padding: 4px 12px;
+    border-radius: var(--radius);
+    text-decoration: none;
+    border: 1px solid transparent;
+}
+.view-filter-btn:hover { background: var(--bg); }
+.view-filter-btn.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    font-weight: 600;
+}
+
 /* === Capture Bar === */
 .capture-bar {
     display: flex;

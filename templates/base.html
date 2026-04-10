@@ -16,9 +16,26 @@
 <body>
     <header class="nav">
         <a href="{{ url_for('index') }}" class="brand">Task Manager</a>
+        {# Top-left quick-upload: opens the Scan page for image→task.
+           Anchored to the brand so it's on every page, not just Tasks. #}
+        <a href="{{ url_for('scan_page') }}" class="icon-btn upload-btn"
+           id="topUploadBtn" title="Upload an image to scan">📷 Upload</a>
         {% block capture %}{% endblock %}
         <nav class="nav-links">
-            {% block nav %}{% endblock %}
+            {# Canonical page nav. Pages set `active_page` (e.g. goals,
+               import) to highlight the current tab. Defined here so
+               every page shows the same entries. #}
+            {% block nav %}
+            <a href="{{ url_for('index') }}" class="nav-tab {% if active_page == 'tasks' %}active{% endif %}">Tasks</a>
+            <a href="{{ url_for('goals_page') }}" class="nav-tab {% if active_page == 'goals' %}active{% endif %}">Goals</a>
+            <a href="{{ url_for('import_page') }}" class="nav-tab {% if active_page == 'import' %}active{% endif %}">Import</a>
+            <a href="{{ url_for('scan_page') }}" class="nav-tab {% if active_page == 'scan' %}active{% endif %}">Scan</a>
+            <a href="{{ url_for('review_page') }}" class="nav-tab {% if active_page == 'review' %}active{% endif %}">Review</a>
+            <a href="{{ url_for('settings_page') }}" class="nav-tab {% if active_page == 'settings' %}active{% endif %}">Settings</a>
+            <a href="{{ url_for('print_page') }}" class="nav-tab {% if active_page == 'print' %}active{% endif %}">Print</a>
+            <span class="inbox-badge" id="inboxBadge" title="Inbox items">0</span>
+            <a href="{{ url_for('logout') }}" class="btn-link">Log out</a>
+            {% endblock %}
         </nav>
     </header>
     <main>

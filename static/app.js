@@ -717,7 +717,10 @@ function setupNavTabs() {
     document.querySelectorAll(".nav-tab[data-view]").forEach((tab) => {
         tab.addEventListener("click", (e) => {
             e.preventDefault();
-            document.querySelectorAll(".nav-tab").forEach((t) => t.classList.remove("active"));
+            // Only clear active state on the view-filter sub-nav, not on
+            // the main page tabs in the header (which now include a
+            // permanent .active marker for the current page).
+            document.querySelectorAll(".view-filter-btn").forEach((t) => t.classList.remove("active"));
             tab.classList.add("active");
             currentView = tab.dataset.view;
             projectFilter = null;
