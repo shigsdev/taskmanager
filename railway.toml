@@ -2,7 +2,7 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "flask db upgrade && gunicorn app:app -c gunicorn.conf.py"
+startCommand = "gunicorn app:app -c gunicorn.conf.py"
 healthcheckPath = "/healthz"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"
