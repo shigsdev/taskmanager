@@ -66,11 +66,13 @@ class TestCheckWritableDb:
         with app.app_context():
             assert health.check_writable_db(db) == "ok"
 
-    def test_fail_when_engine_broken(self):
+    def test_warn_when_engine_broken(self):
+        """An engine error is reported as warn, not fail — a health
+        check bug should never block a deploy."""
         fake_db = MagicMock()
-        fake_db.engine.connect.side_effect = RuntimeError("read-only")
+        fake_db.engine.begin.side_effect = RuntimeError("read-only")
         result = health.check_writable_db(fake_db)
-        assert result.startswith("fail:")
+        assert result.startswith("warn:")
         assert "read-only" in result
 
 

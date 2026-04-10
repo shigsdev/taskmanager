@@ -120,28 +120,32 @@ def check_migrations(app: Any) -> str:
 
         from models import db as _db
 
-        with app.app_context():
-            try:
-                row = _db.session.execute(
-                    text("SELECT version_num FROM alembic_version")
-                ).fetchone()
-                current_rev = row[0] if row else None
-            except Exception:
-                return "fail: alembic_version table missing"
+        try:
+            row = _db.session.execute(
+                text("SELECT version_num FROM alembic_version")
+            ).fetchone()
+            current_rev = row[0] if row else None
+        except Exception:
+            return "fail: alembic_version table missing"
 
-            migrations_dir = PROJECT_ROOT / "migrations"
-            if not migrations_dir.exists():
-                return "skipped: no migrations dir"
-            cfg = Config()
-            cfg.set_main_option("script_location", str(migrations_dir))
-            script = ScriptDirectory.from_config(cfg)
-            head_rev = script.get_current_head()
+        migrations_dir = PROJECT_ROOT / "migrations"
+        if not migrations_dir.exists():
+            return "skipped: no migrations dir"
+        cfg = Config()
+        cfg.set_main_option("script_location", str(migrations_dir))
+        script = ScriptDirectory.from_config(cfg)
+        head_rev = script.get_current_head()
 
         if current_rev == head_rev:
             return "ok"
+        # Actual mismatch is still a real fail — that's the whole
+        # point of the check.
         return f"fail: at {current_rev} expected {head_rev}"
     except Exception as e:
-        return f"fail: {_short(e)}"
+        # Any unexpected error (bad alembic version, missing
+        # dependency, etc.) is a WARN, not a fail — we never want
+        # a broken health check to block a deploy.
+        return f"warn: {_short(e)}"
 
 
 def check_tables(db: Any) -> str:
@@ -156,7 +160,9 @@ def check_tables(db: Any) -> str:
             return f"fail: missing {', '.join(sorted(missing))}"
         return "ok"
     except Exception as e:
-        return f"fail: {_short(e)}"
+        # An error introspecting tables is a warn, not fail — we
+        # don't want SQLAlchemy introspection quirks to block a deploy.
+        return f"warn: {_short(e)}"
 
 
 def check_writable_db(db: Any) -> str:
@@ -165,22 +171,31 @@ def check_writable_db(db: Any) -> str:
     Uses a temporary table inside a rolled-back transaction so no real
     state is changed. Catches read-only mode (e.g. during Railway
     Postgres maintenance windows) and hot-standby replicas.
+
+    Returns ``warn:`` instead of ``fail:`` on error — this check is a
+    nice-to-have, and an SQLAlchemy/driver quirk should never take
+    down a deploy.
     """
     try:
         from sqlalchemy import text
 
-        with db.engine.connect() as conn:
-            trans = conn.begin()
-            try:
-                conn.execute(
-                    text("CREATE TEMPORARY TABLE _health_canary (x INTEGER)")
-                )
-                conn.execute(text("INSERT INTO _health_canary VALUES (1)"))
-            finally:
-                trans.rollback()
+        # ``engine.begin()`` handles the transaction lifecycle cleanly
+        # on SQLAlchemy 2.x + psycopg3. Using ``connect()`` + manual
+        # ``conn.begin()`` can collide with autobegin semantics.
+        with db.engine.begin() as conn:
+            conn.execute(text("CREATE TEMPORARY TABLE _health_canary (x INTEGER)"))
+            conn.execute(text("INSERT INTO _health_canary VALUES (1)"))
+            # Force rollback by raising — caught below and swallowed
+            raise _Rollback
+    except _Rollback:
         return "ok"
     except Exception as e:
-        return f"fail: {_short(e)}"
+        return f"warn: {_short(e)}"
+
+
+class _Rollback(Exception):
+    """Sentinel exception used to force a transaction rollback in
+    ``check_writable_db`` without leaving the canary table behind."""
 
 
 def check_encryption() -> str:
@@ -201,7 +216,7 @@ def check_encryption() -> str:
             return "fail: roundtrip mismatch"
         return "ok"
     except Exception as e:
-        return f"fail: {_short(e)}"
+        return f"warn: {_short(e)}"
 
 
 def check_digest() -> str:
@@ -258,6 +273,24 @@ def check_static_assets() -> str:
 # --- Public entry point ------------------------------------------------------
 
 
+# Checks whose failure flips HTTP status to 503. Everything else is
+# reported in the response body but never blocks a deploy — that way
+# a bug in one of the rich checks (e.g. an SQLAlchemy/psycopg3 quirk
+# in ``check_writable_db``) cannot keep Railway from promoting a new
+# container, while we can still see exactly what's broken from the
+# live /healthz response.
+CRITICAL_CHECKS = {"database", "env_vars"}
+
+
+def _safe_call(name: str, fn, *args) -> str:
+    """Run a check but never let it raise — convert any unhandled
+    exception to a ``warn:`` so /healthz stays up."""
+    try:
+        return fn(*args)
+    except Exception as e:
+        return f"warn: {name} crashed: {_short(e)}"
+
+
 def run_health_checks(app: Any, db: Any) -> dict:
     """Run every check and return a full health report.
 
@@ -267,20 +300,24 @@ def run_health_checks(app: Any, db: Any) -> dict:
     time. Locally this returns ``"dev"``.
     """
     checks = {
-        "database": check_database(db),
-        "env_vars": check_env_vars(app),
-        "migrations": check_migrations(app),
-        "tables": check_tables(db),
-        "writable_db": check_writable_db(db),
-        "encryption": check_encryption(),
-        "digest": check_digest(),
-        "static_assets": check_static_assets(),
+        "database": _safe_call("database", check_database, db),
+        "env_vars": _safe_call("env_vars", check_env_vars, app),
+        "migrations": _safe_call("migrations", check_migrations, app),
+        "tables": _safe_call("tables", check_tables, db),
+        "writable_db": _safe_call("writable_db", check_writable_db, db),
+        "encryption": _safe_call("encryption", check_encryption),
+        "digest": _safe_call("digest", check_digest),
+        "static_assets": _safe_call("static_assets", check_static_assets),
     }
 
+    # Overall ``status`` reflects ANY fail (for the report). HTTP 503
+    # only fires for ``CRITICAL_CHECKS`` — see route handler.
     failed = [k for k, v in checks.items() if v.startswith("fail")]
+    critical_failed = [k for k in failed if k in CRITICAL_CHECKS]
 
     return {
         "status": "fail" if failed else "ok",
+        "critical_failed": critical_failed,
         "git_sha": os.environ.get("RAILWAY_GIT_COMMIT_SHA", "dev"),
         "started_at": _STARTED_AT,
         "checks": checks,

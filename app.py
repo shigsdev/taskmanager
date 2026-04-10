@@ -277,7 +277,12 @@ def create_app(config: dict | None = None) -> Flask:
         import health as _health
 
         report = _health.run_health_checks(app, db)
-        status_code = 503 if report["status"] == "fail" else 200
+        # HTTP 503 only fires if a CRITICAL check failed. Non-critical
+        # failures (bad migration state, missing table, scheduler not
+        # running, etc.) are reported in the body but don't block
+        # Railway from promoting the container — otherwise a bug in a
+        # new check could brick every deploy.
+        status_code = 503 if report["critical_failed"] else 200
         return report, status_code
 
     # --- Scheduled digest email ---

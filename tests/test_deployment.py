@@ -183,11 +183,15 @@ class TestAppBoot:
         resp = client.get("/healthz")
         assert resp.get_json()["checks"]["static_assets"] == "ok"
 
-    def test_healthz_fails_when_table_missing(self, client, monkeypatch):
-        """If a required table disappears, healthz must return 503.
+    def test_healthz_reports_missing_table_without_503(self, client, monkeypatch):
+        """A missing expected table is reported in the body but does
+        NOT flip the HTTP status to 503.
 
-        Simulates the "You have no tables" incident by monkey-patching
-        EXPECTED_TABLES to include a table that doesn't exist.
+        Rationale: Railway's probe only cares about HTTP status, and a
+        bug in a non-critical check (or a transient introspection
+        failure) should never block a deploy. The failure still shows
+        up in the response body so the deploy-validation script can
+        catch it.
         """
         import health
 
@@ -195,12 +199,13 @@ class TestAppBoot:
             health, "EXPECTED_TABLES", health.EXPECTED_TABLES | {"nonexistent"}
         )
         resp = client.get("/healthz")
-        assert resp.status_code == 503
+        assert resp.status_code == 200  # still 200 — tables is non-critical
         body = resp.get_json()
-        assert body["status"] == "fail"
+        assert body["status"] == "fail"  # but status reflects the fail
         assert "nonexistent" in body["checks"]["tables"]
+        assert "tables" not in body["critical_failed"]
 
-    def test_healthz_fails_when_static_asset_missing(self, client, monkeypatch):
+    def test_healthz_reports_missing_static_without_503(self, client, monkeypatch):
         import health
 
         monkeypatch.setattr(
@@ -209,8 +214,23 @@ class TestAppBoot:
             health.EXPECTED_STATIC_FILES + ("static/does_not_exist.js",),
         )
         resp = client.get("/healthz")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert "does_not_exist" in body["checks"]["static_assets"]
+
+    def test_healthz_503_when_critical_check_fails(self, client, monkeypatch):
+        """Only failures in CRITICAL_CHECKS should flip HTTP to 503."""
+        import health
+
+        # Break the database check — database is in CRITICAL_CHECKS
+        def _boom(*_a, **_kw):
+            return "fail: db down"
+
+        monkeypatch.setattr(health, "check_database", _boom)
+        resp = client.get("/healthz")
         assert resp.status_code == 503
-        assert "does_not_exist" in resp.get_json()["checks"]["static_assets"]
+        body = resp.get_json()
+        assert "database" in body["critical_failed"]
 
     def test_healthz_encryption_canary_roundtrip(self, client, monkeypatch):
         """With a real ENCRYPTION_KEY set, the Fernet canary must round-trip."""
