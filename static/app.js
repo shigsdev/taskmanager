@@ -136,12 +136,13 @@ function renderTierGroupedByProject(list, tasks) {
 }
 
 // --- Drag and drop reordering ------------------------------------------------
+// Supports both desktop (HTML5 drag) and mobile (touch events).
 
 let draggedCard = null;
 let dragDropInitialized = false;
+let touchDragState = null; // { card, placeholder, startY, scrollInterval }
 
 function setupDragAndDrop() {
-    // Only attach listeners once — they use event delegation on stable elements
     if (dragDropInitialized) return;
     dragDropInitialized = true;
 
@@ -149,6 +150,7 @@ function setupDragAndDrop() {
         const list = document.querySelector(`.task-list[data-tier="${tier}"]`);
         if (!list) continue;
 
+        // --- Desktop: HTML5 drag events ---
         list.addEventListener("dragover", function (e) {
             e.preventDefault();
             if (!draggedCard) return;
@@ -164,28 +166,91 @@ function setupDragAndDrop() {
         list.addEventListener("drop", function (e) {
             e.preventDefault();
             if (!draggedCard) return;
-            const targetTier = list.dataset.tier;
-            const taskId = draggedCard.dataset.id;
-            const sourceTier = draggedCard.dataset.sourceTier;
-
-            // Collect new order of task IDs in this tier
-            const cardIds = Array.from(list.querySelectorAll(".task-card"))
-                .map(function (c) { return c.dataset.id; });
-
-            // If moved to a different tier, update tier first
-            if (sourceTier !== targetTier) {
-                apiFetch(API + "/" + taskId, {
-                    method: "PATCH",
-                    body: JSON.stringify({ tier: targetTier }),
-                }).then(function () {
-                    return saveReorder(targetTier, cardIds);
-                }).then(function () {
-                    loadTasks();
-                });
-            } else {
-                saveReorder(targetTier, cardIds);
-            }
+            finishDrop(list);
         });
+    }
+
+    // --- Mobile: touch events (document-level for cross-tier dragging) ---
+    document.addEventListener("touchmove", onTouchMove, { passive: false });
+    document.addEventListener("touchend", onTouchEnd);
+}
+
+function onTouchMove(e) {
+    if (!touchDragState) return;
+    e.preventDefault(); // stop page scrolling while dragging
+
+    var touch = e.touches[0];
+    var card = touchDragState.card;
+
+    // Move the card visually
+    var dy = touch.clientY - touchDragState.startY;
+    card.style.transform = "translateY(" + dy + "px)";
+    card.style.zIndex = "9999";
+
+    // Find which list we're over and reposition
+    var targetList = getListUnderPoint(touch.clientX, touch.clientY);
+    if (targetList) {
+        var afterEl = getDragAfterElement(targetList, touch.clientY);
+        if (afterEl) {
+            targetList.insertBefore(card, afterEl);
+        } else {
+            targetList.appendChild(card);
+        }
+    }
+}
+
+function onTouchEnd() {
+    if (!touchDragState) return;
+    var card = touchDragState.card;
+
+    // Reset visual state
+    card.style.transform = "";
+    card.style.zIndex = "";
+    card.classList.remove("dragging");
+
+    // Find the list it ended up in
+    var parentList = card.closest(".task-list");
+    if (parentList) {
+        finishDrop(parentList);
+    }
+
+    touchDragState = null;
+    draggedCard = null;
+}
+
+function getListUnderPoint(x, y) {
+    for (var i = 0; i < TIER_ORDER.length; i++) {
+        var list = document.querySelector('.task-list[data-tier="' + TIER_ORDER[i] + '"]');
+        if (!list) continue;
+        var rect = list.getBoundingClientRect();
+        // Use generous vertical bounds for easier targeting
+        if (y >= rect.top - 20 && y <= rect.bottom + 20 && x >= rect.left && x <= rect.right) {
+            return list;
+        }
+    }
+    return null;
+}
+
+function finishDrop(list) {
+    if (!draggedCard) return;
+    var targetTier = list.dataset.tier;
+    var taskId = draggedCard.dataset.id;
+    var sourceTier = draggedCard.dataset.sourceTier;
+
+    var cardIds = Array.from(list.querySelectorAll(".task-card"))
+        .map(function (c) { return c.dataset.id; });
+
+    if (sourceTier !== targetTier) {
+        apiFetch(API + "/" + taskId, {
+            method: "PATCH",
+            body: JSON.stringify({ tier: targetTier }),
+        }).then(function () {
+            return saveReorder(targetTier, cardIds);
+        }).then(function () {
+            loadTasks();
+        });
+    } else {
+        saveReorder(targetTier, cardIds);
     }
 }
 
@@ -232,6 +297,8 @@ function taskCardEl(task) {
     card.dataset.id = task.id;
     card.dataset.sourceTier = task.tier;
     card.draggable = true;
+
+    // Desktop drag events
     card.addEventListener("dragstart", function (e) {
         draggedCard = card;
         card.classList.add("dragging");
@@ -241,6 +308,35 @@ function taskCardEl(task) {
     card.addEventListener("dragend", function () {
         card.classList.remove("dragging");
         draggedCard = null;
+    });
+
+    // Mobile touch: long-press to start drag (500ms hold)
+    var longPressTimer = null;
+    card.addEventListener("touchstart", function (e) {
+        longPressTimer = setTimeout(function () {
+            longPressTimer = null;
+            draggedCard = card;
+            touchDragState = {
+                card: card,
+                startY: e.touches[0].clientY,
+            };
+            card.classList.add("dragging");
+            // Haptic feedback if available
+            if (navigator.vibrate) navigator.vibrate(50);
+        }, 500);
+    }, { passive: true });
+    card.addEventListener("touchmove", function () {
+        // If finger moves before long-press completes, cancel drag initiation
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+    }, { passive: true });
+    card.addEventListener("touchend", function () {
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
     });
 
     const today = new Date().toISOString().slice(0, 10);
