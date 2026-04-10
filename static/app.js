@@ -60,6 +60,9 @@ async function init() {
     setupNavTabs();
     setupCollapse();
     setupDetailPanel();
+    // Populate the Completed section immediately so its header count is
+    // correct even before the user expands it for the first time.
+    loadCompletedTasks();
 }
 
 // --- Rendering ---------------------------------------------------------------
@@ -189,11 +192,14 @@ function setupDragAndDrop() {
     if (completedSection) {
         completedSection.addEventListener("dragenter", function (e) {
             if (!draggedCard) return;
+            // Don't offer to "complete" a card that's already completed.
+            if (draggedCard.dataset.sourceTier === "completed") return;
             e.preventDefault();
             completedSection.classList.add("drag-over");
         });
         completedSection.addEventListener("dragover", function (e) {
             if (!draggedCard) return;
+            if (draggedCard.dataset.sourceTier === "completed") return;
             e.preventDefault();
             e.dataTransfer.dropEffect = "move";
             completedSection.classList.add("drag-over");
@@ -237,8 +243,12 @@ function onTouchMove(e) {
     // Is the finger over the Completed drop-zone?
     // Checked BEFORE the tier-list scan so an inbox card dropped on the
     // completed section archives instead of landing in a tier underneath.
+    // Skip this when the card being dragged ALREADY lives in completed —
+    // dropping it back on itself would be a no-op.
     var completedSection = document.getElementById("tierCompleted");
-    if (completedSection && isPointOverEl(completedSection, touch.clientX, touch.clientY)) {
+    var draggingFromCompleted = card.dataset.sourceTier === "completed";
+    if (!draggingFromCompleted && completedSection &&
+            isPointOverEl(completedSection, touch.clientX, touch.clientY)) {
         completedSection.classList.add("drag-over");
         touchDragState.overCompleted = true;
         return;
@@ -318,7 +328,18 @@ function finishDrop(list) {
     var cardIds = Array.from(list.querySelectorAll(".task-card"))
         .map(function (c) { return c.dataset.id; });
 
-    if (sourceTier !== targetTier) {
+    if (sourceTier === "completed") {
+        // Completed → tier: restore status=active AND set new tier
+        apiFetch(API + "/" + taskId, {
+            method: "PATCH",
+            body: JSON.stringify({ status: "active", tier: targetTier }),
+        }).then(function () {
+            return saveReorder(targetTier, cardIds);
+        }).then(function () {
+            loadTasks();
+            loadCompletedTasks();
+        });
+    } else if (sourceTier !== targetTier) {
         apiFetch(API + "/" + taskId, {
             method: "PATCH",
             body: JSON.stringify({ tier: targetTier }),
@@ -677,11 +698,11 @@ async function taskComplete(id) {
         body: JSON.stringify({ status: "archived" }),
     });
     await loadTasks();
-    // Refresh completed list if it was already loaded
-    const section = document.getElementById("tierCompleted");
-    if (section && section.dataset.loaded) {
-        loadCompletedTasks();
-    }
+    // Always refresh the Completed list so the header count stays in
+    // sync even when the section is still collapsed. loadCompletedTasks
+    // renders into hidden DOM — cheap, and the list is already populated
+    // for the first expand.
+    loadCompletedTasks();
 }
 
 async function taskDelete(id) {
@@ -762,6 +783,54 @@ async function loadCompletedTasks() {
         const card = document.createElement("div");
         card.className = "task-card completed-card";
         card.dataset.id = task.id;
+        // Marker used by finishDrop() + touch handlers to route drops
+        // from the Completed list into taskRestore instead of a tier move.
+        card.dataset.sourceTier = "completed";
+        card.draggable = true;
+
+        // Desktop drag
+        card.addEventListener("dragstart", function (e) {
+            draggedCard = card;
+            card.classList.add("dragging");
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", task.id);
+        });
+        card.addEventListener("dragend", function () {
+            card.classList.remove("dragging");
+            draggedCard = null;
+        });
+
+        // Mobile long-press to drag
+        var cLongPress = null;
+        var cStartX = 0;
+        var cStartY = 0;
+        card.addEventListener("touchstart", function (e) {
+            cStartX = e.touches[0].clientX;
+            cStartY = e.touches[0].clientY;
+            cLongPress = setTimeout(function () {
+                cLongPress = null;
+                draggedCard = card;
+                touchDragState = {
+                    card: card,
+                    startY: e.touches[0].clientY,
+                };
+                card.classList.add("dragging");
+                if (navigator.vibrate) navigator.vibrate(50);
+            }, 500);
+        }, { passive: true });
+        card.addEventListener("touchmove", function (e) {
+            if (cLongPress) {
+                var dx = e.touches[0].clientX - cStartX;
+                var dy = e.touches[0].clientY - cStartY;
+                if (Math.sqrt(dx * dx + dy * dy) > 10) {
+                    clearTimeout(cLongPress);
+                    cLongPress = null;
+                }
+            }
+        }, { passive: true });
+        card.addEventListener("touchend", function () {
+            if (cLongPress) { clearTimeout(cLongPress); cLongPress = null; }
+        });
 
         const title = document.createElement("div");
         title.className = "task-title completed-title";
@@ -833,11 +902,9 @@ async function taskRestore(id, tier) {
         body: JSON.stringify({ status: "active", tier: tier }),
     });
     await loadTasks();
-    // Reload completed list
-    const section = document.getElementById("tierCompleted");
-    if (section.dataset.loaded) {
-        loadCompletedTasks();
-    }
+    // Always reload — keeps #completedCount in sync even if the
+    // Completed section hasn't been expanded yet.
+    loadCompletedTasks();
 }
 
 // --- Detail panel ------------------------------------------------------------
