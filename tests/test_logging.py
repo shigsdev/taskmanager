@@ -281,14 +281,32 @@ class TestDebugLogsEndpoint:
         assert "first" in messages
         assert "second" in messages
 
-    def test_level_filter(self, app, authed_client):
+    def test_level_filter_exact(self, app, authed_client):
+        """?level=ERROR includes ERROR and CRITICAL (standard logging semantics)."""
+        self._seed(app, message="info1", level="INFO")
         self._seed(app, message="warn1", level="WARNING")
         self._seed(app, message="err1", level="ERROR")
+        self._seed(app, message="crit1", level="CRITICAL")
 
         resp = authed_client.get("/api/debug/logs?level=ERROR")
         data = resp.get_json()
-        assert data["count"] == 1
-        assert data["logs"][0]["message"] == "err1"
+        messages = {log["message"] for log in data["logs"]}
+        assert "err1" in messages
+        assert "crit1" in messages
+        assert "warn1" not in messages
+        assert "info1" not in messages
+
+    def test_level_filter_warning_includes_above(self, app, authed_client):
+        self._seed(app, message="info1", level="INFO")
+        self._seed(app, message="warn1", level="WARNING")
+        self._seed(app, message="err1", level="ERROR")
+
+        resp = authed_client.get("/api/debug/logs?level=WARNING")
+        data = resp.get_json()
+        messages = {log["message"] for log in data["logs"]}
+        assert "warn1" in messages
+        assert "err1" in messages
+        assert "info1" not in messages
 
     def test_invalid_level_400(self, authed_client):
         resp = authed_client.get("/api/debug/logs?level=BANANA")

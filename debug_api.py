@@ -21,6 +21,16 @@ from auth import login_required
 from logging_service import scrub_sensitive
 from models import AppLog, db
 
+# Numeric ordering so ?level=WARNING returns WARNING, ERROR, and CRITICAL
+# — matches standard Python logging "this level and above" semantics.
+_LEVEL_RANK = {
+    "DEBUG": 10,
+    "INFO": 20,
+    "WARNING": 30,
+    "ERROR": 40,
+    "CRITICAL": 50,
+}
+
 logger = logging.getLogger("taskmanager.debug")
 
 bp = Blueprint("debug_api", __name__, url_prefix="/api/debug")
@@ -122,7 +132,13 @@ def get_logs(email: str):  # noqa: ARG001
 
     stmt = select(AppLog).where(AppLog.timestamp >= since)
     if level:
-        stmt = stmt.where(AppLog.level == level)
+        # "WARNING and above" semantics — include every level with rank
+        # >= the requested level, matching standard logging behavior.
+        min_rank = _LEVEL_RANK[level]
+        included = [
+            name for name, rank in _LEVEL_RANK.items() if rank >= min_rank
+        ]
+        stmt = stmt.where(AppLog.level.in_(included))
     if route_prefix:
         stmt = stmt.where(AppLog.route.like(f"{route_prefix}%"))
     if source:
