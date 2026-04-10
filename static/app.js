@@ -713,9 +713,20 @@ async function loadCompletedTasks() {
 
         card.appendChild(meta);
 
-        // Click to restore
-        card.addEventListener("click", function () {
+        // Restore button
+        const restoreBtn = document.createElement("button");
+        restoreBtn.className = "btn-sm";
+        restoreBtn.textContent = "Restore";
+        restoreBtn.title = "Move back to active tasks";
+        restoreBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
             taskRestore(task.id);
+        });
+        card.appendChild(restoreBtn);
+
+        // Click to view detail
+        card.addEventListener("click", function () {
+            taskDetailOpen(task);
         });
 
         list.appendChild(card);
@@ -725,7 +736,7 @@ async function loadCompletedTasks() {
 async function taskRestore(id) {
     await apiFetch(API + "/" + id, {
         method: "PATCH",
-        body: JSON.stringify({ status: "active" }),
+        body: JSON.stringify({ status: "active", tier: "inbox" }),
     });
     await loadTasks();
     // Reload completed list
