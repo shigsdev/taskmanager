@@ -306,6 +306,16 @@ body {
     color: var(--text-muted);
 }
 .task-quick-actions button:hover { background: var(--border); color: var(--text); }
+.task-quick-actions .quick-complete-btn {
+    color: var(--green);
+    font-weight: 700;
+    border: 1px solid var(--green);
+    border-radius: 4px;
+}
+.task-quick-actions .quick-complete-btn:hover {
+    background: var(--green);
+    color: #fff;
+}
 
 /* Inbox bulk triage checkbox */
 .task-card .triage-check {

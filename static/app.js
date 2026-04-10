@@ -312,7 +312,11 @@ function taskCardEl(task) {
 
     // Mobile touch: long-press to start drag (500ms hold)
     var longPressTimer = null;
+    var touchStartX = 0;
+    var touchStartY = 0;
     card.addEventListener("touchstart", function (e) {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
         longPressTimer = setTimeout(function () {
             longPressTimer = null;
             draggedCard = card;
@@ -325,11 +329,15 @@ function taskCardEl(task) {
             if (navigator.vibrate) navigator.vibrate(50);
         }, 500);
     }, { passive: true });
-    card.addEventListener("touchmove", function () {
-        // If finger moves before long-press completes, cancel drag initiation
+    card.addEventListener("touchmove", function (e) {
+        // Only cancel long-press if finger moves more than 10px (natural jitter tolerance)
         if (longPressTimer) {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
+            var dx = e.touches[0].clientX - touchStartX;
+            var dy = e.touches[0].clientY - touchStartY;
+            if (Math.sqrt(dx * dx + dy * dy) > 10) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
         }
     }, { passive: true });
     card.addEventListener("touchend", function () {
@@ -444,6 +452,17 @@ function taskCardEl(task) {
     // Quick actions
     const actions = document.createElement("div");
     actions.className = "task-quick-actions";
+
+    // Complete button (prominent green)
+    const completeBtn = document.createElement("button");
+    completeBtn.textContent = "✓ Done";
+    completeBtn.title = "Mark complete";
+    completeBtn.className = "quick-complete-btn";
+    completeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        taskComplete(task.id);
+    });
+    actions.appendChild(completeBtn);
 
     const tierBtns = TIER_ORDER.filter((t) => t !== task.tier && t !== "inbox");
     for (const t of tierBtns) {
