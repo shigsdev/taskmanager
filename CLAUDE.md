@@ -105,6 +105,39 @@ says otherwise.
      or mobile-specific features (touch, voice, PWA standalone mode)
   3. For API-only changes, hit the affected endpoints with curl to verify
 
+- **SOP Change Report** (mandatory at the end of every change):
+
+  After every discrete change — not just the final commit of a session —
+  print an **SOP Change Report** showing exactly which SOP steps ran and
+  their status. This is in addition to the Quality Gate Report and
+  Deploy Validation Report. A visible checklist makes it impossible to
+  quietly skip a step (e.g. forgetting to update ARCHITECTURE.md when the
+  topology changed). Use this exact format:
+
+  ```
+  SOP Change Report
+  ──────────────────
+  Change:             <one-line description>
+  Files touched:      <list>
+
+  Code changes        DONE | N/A
+  Tests added/updated DONE | N/A
+  Ruff                PASS | FAIL
+  Pytest              <n passed>, <coverage>%
+  ARCHITECTURE.md     UPDATED | N/A — <reason if N/A>
+  README.md           UPDATED | N/A — <reason if N/A>
+  BACKLOG.md          UPDATED | N/A — <reason if N/A>
+  CLAUDE.md           UPDATED | N/A — <reason if N/A>
+  Commit + push       DONE | SKIPPED
+  Deploy validation   GREEN  | RED | N/A (no push)
+  Smoke test          DONE | N/A
+  ```
+
+  N/A is acceptable ONLY with a short reason ("no topology change",
+  "no new env vars", etc.). Never mark a row DONE that wasn't actually
+  done. If ARCHITECTURE.md or README.md needed updating and didn't get
+  it, the report must say FAIL and the change is not complete.
+
 ---
 
 ## Testing Requirements
