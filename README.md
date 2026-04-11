@@ -131,6 +131,43 @@ flask db upgrade
 flask run
 ```
 
+### Local browser testing with bypass mode
+
+Some UI work needs an actual browser preview to verify (does the radio toggle look right? does the click handler fire?). Real Google OAuth doesn't work in headless preview, so the project ships with an opt-in **dev bypass** that lets the local Flask server skip auth entirely. It is **localhost-only** and triple-gated so it cannot activate on Railway.
+
+**To start a bypass session:**
+
+1. Copy the template: `cp .env.dev-bypass.example .env.dev-bypass`
+2. Start the bypass server: `python scripts/run_dev_bypass.py` (or, if you use the Claude Preview tool, ask Claude to start the `taskmanager-dev-bypass` server)
+3. Watch for the loud banner in stderr:
+   ```
+   ================================================================
+     ⚠  LOCAL_DEV_BYPASS_AUTH IS ACTIVE  ⚠
+     All auth checks are disabled. You are logged in as:
+       you@example.com
+     This must NEVER be set on Railway. Tripwires verified:
+       RAILWAY_PROJECT_ID         not set ✓
+       RAILWAY_ENVIRONMENT_NAME   not set ✓
+       RAILWAY_SERVICE_ID         not set ✓
+     Bypass will remain active until this server stops.
+   ================================================================
+   ```
+4. Every protected route accessed during the session writes a `WARNING` row to the `app_logs` table. Query `/api/debug/logs?level=WARNING` to see the audit trail.
+
+**To end a bypass session (REQUIRED before any commit):**
+
+1. Stop the Flask server (Ctrl+C or `preview_stop`)
+2. **Delete `.env.dev-bypass`** — the file's existence is the on/off switch
+3. Verify with `ls .env.dev-bypass` (should say "no such file")
+
+**The four gates** (all must pass for the bypass to fire — see `auth._dev_bypass_active`):
+1. `LOCAL_DEV_BYPASS_AUTH=1` is set
+2. `FLASK_ENV=development` is set
+3. NONE of `RAILWAY_PROJECT_ID`, `RAILWAY_ENVIRONMENT_NAME`, `RAILWAY_SERVICE_ID` are set
+4. `AUTHORIZED_EMAIL` is set
+
+The triple Railway tripwire means a single Railway env var rename cannot disarm the gate — they would have to rename all three at once. The `scripts/run_dev_bypass.py` launcher applies the same Railway check **before** Flask even imports, so even if you manage to ssh into a Railway shell and run the script, it exits with status 2.
+
 ### Run tests
 
 ```bash

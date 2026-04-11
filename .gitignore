@@ -1,6 +1,7 @@
 # Secrets
 .env
 .env.local
+.env.dev-bypass
 *.pem
 *.key
 
@@ -31,6 +32,7 @@ instance/
 .vscode/
 .idea/
 .claude/settings.local.json
+.claude/launch.local.json
 *.swp
 .DS_Store
 Thumbs.db

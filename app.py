@@ -28,7 +28,7 @@ import review_api
 import scan_api
 import settings_api
 import tasks_api
-from auth import login_required
+from auth import log_bypass_startup_banner, login_required
 from logging_service import configure_logging
 from models import TaskStatus, Tier, db
 from task_service import list_tasks
@@ -105,6 +105,10 @@ def create_app(config: dict | None = None) -> Flask:
     # logging tests re-enable via a fixture.
     if not app.config.get("TESTING"):
         configure_logging(app)
+        # Print the loud bypass banner AFTER logging is configured so the
+        # WARNING row from the banner lands in app_logs alongside future
+        # bypass-served requests. No-op if the bypass is not active.
+        log_bypass_startup_banner()
 
     # --- Security: Talisman (HTTPS + headers) ---
     if not app.config.get("TESTING") and os.environ.get("FLASK_ENV") != "development":
