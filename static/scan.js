@@ -38,6 +38,30 @@
     const scanAgainBtn = document.getElementById("scanAgainBtn");
 
     let currentCandidates = [];
+    // Tracks whether the current batch is tasks or goals. Set from the
+    // upload response so review/confirm use the same mode the server saw.
+    let currentKind = "tasks";
+
+    const GOAL_CATEGORIES = [
+        ["health", "Health"],
+        ["personal_growth", "Personal Growth"],
+        ["relationships", "Relationships"],
+        ["work", "Work"],
+    ];
+    const GOAL_PRIORITIES = [
+        ["must", "Must"],
+        ["should", "Should"],
+        ["could", "Could"],
+        ["need_more_info", "Need More Info"],
+    ];
+
+    function getSelectedParseAs() {
+        var radios = document.getElementsByName("parseAs");
+        for (var i = 0; i < radios.length; i++) {
+            if (radios[i].checked) return radios[i].value;
+        }
+        return "tasks";
+    }
 
     // --- Helpers --------------------------------------------------------------
 
@@ -97,6 +121,7 @@
 
         var formData = new FormData();
         formData.append("image", file);
+        formData.append("parse_as", getSelectedParseAs());
 
         try {
             var resp = await fetch(UPLOAD_API, {
@@ -113,6 +138,7 @@
 
             if (data.candidates && data.candidates.length > 0) {
                 currentCandidates = data.candidates;
+                currentKind = data.kind === "goals" ? "goals" : "tasks";
                 ocrTextEl.textContent = data.ocr_text || "(no text)";
                 renderCandidates();
                 showSection(reviewSection);
@@ -128,11 +154,26 @@
 
     // --- Review candidates ----------------------------------------------------
 
+    function buildSelect(className, options, value, onChange) {
+        var sel = document.createElement("select");
+        sel.className = className;
+        options.forEach(function (pair) {
+            var opt = document.createElement("option");
+            opt.value = pair[0];
+            opt.textContent = pair[1];
+            sel.appendChild(opt);
+        });
+        sel.value = value;
+        sel.addEventListener("change", onChange);
+        return sel;
+    }
+
     function renderCandidates() {
         candidatesEl.innerHTML = "";
         currentCandidates.forEach(function (c, i) {
             var row = document.createElement("div");
-            row.className = "scan-candidate";
+            row.className =
+                "scan-candidate scan-candidate-" + currentKind;
 
             var cb = document.createElement("input");
             cb.type = "checkbox";
@@ -143,30 +184,60 @@
             });
             row.appendChild(cb);
 
-            var input = document.createElement("input");
-            input.type = "text";
-            input.value = c.title;
-            input.className = "scan-candidate-title";
-            input.addEventListener("input", function () {
-                currentCandidates[i].title = input.value;
+            var titleInput = document.createElement("input");
+            titleInput.type = "text";
+            titleInput.value = c.title;
+            titleInput.className = "scan-candidate-title";
+            titleInput.addEventListener("input", function () {
+                currentCandidates[i].title = titleInput.value;
             });
-            row.appendChild(input);
+            row.appendChild(titleInput);
 
-            var typeSelect = document.createElement("select");
-            typeSelect.className = "scan-candidate-type";
-            var workOpt = document.createElement("option");
-            workOpt.value = "work";
-            workOpt.textContent = "Work";
-            var persOpt = document.createElement("option");
-            persOpt.value = "personal";
-            persOpt.textContent = "Personal";
-            typeSelect.appendChild(workOpt);
-            typeSelect.appendChild(persOpt);
-            typeSelect.value = c.type || "work";
-            typeSelect.addEventListener("change", function () {
-                currentCandidates[i].type = typeSelect.value;
-            });
-            row.appendChild(typeSelect);
+            if (currentKind === "goals") {
+                row.appendChild(
+                    buildSelect(
+                        "scan-candidate-category",
+                        GOAL_CATEGORIES,
+                        c.category || "personal_growth",
+                        function (e) {
+                            currentCandidates[i].category = e.target.value;
+                        }
+                    )
+                );
+                row.appendChild(
+                    buildSelect(
+                        "scan-candidate-priority",
+                        GOAL_PRIORITIES,
+                        c.priority || "need_more_info",
+                        function (e) {
+                            currentCandidates[i].priority = e.target.value;
+                        }
+                    )
+                );
+                var quarter = document.createElement("input");
+                quarter.type = "text";
+                quarter.className = "scan-candidate-quarter";
+                quarter.placeholder = "Target quarter (e.g. Q2 2026)";
+                quarter.value = c.target_quarter || "";
+                quarter.addEventListener("input", function () {
+                    currentCandidates[i].target_quarter = quarter.value;
+                });
+                row.appendChild(quarter);
+            } else {
+                row.appendChild(
+                    buildSelect(
+                        "scan-candidate-type",
+                        [
+                            ["work", "Work"],
+                            ["personal", "Personal"],
+                        ],
+                        c.type || "work",
+                        function (e) {
+                            currentCandidates[i].type = e.target.value;
+                        }
+                    )
+                );
+            }
 
             candidatesEl.appendChild(row);
         });
@@ -176,24 +247,39 @@
 
     async function confirmCandidates(allIncluded) {
         var toSend = currentCandidates.map(function (c) {
-            return {
+            var base = {
                 title: c.title,
-                type: c.type || "work",
                 included: allIncluded ? true : c.included,
             };
+            if (currentKind === "goals") {
+                base.category = c.category || "personal_growth";
+                base.priority = c.priority || "need_more_info";
+                base.target_quarter = c.target_quarter || "";
+                base.actions = c.actions || "";
+            } else {
+                base.type = c.type || "work";
+            }
+            return base;
         });
 
         try {
             var resp = await fetch(CONFIRM_API, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ candidates: toSend }),
+                body: JSON.stringify({
+                    kind: currentKind,
+                    candidates: toSend,
+                }),
             });
             var data = await resp.json();
 
             if (resp.ok) {
-                doneMessage.textContent =
-                    data.created + " task(s) added to your inbox.";
+                var label = currentKind === "goals" ? "goal(s)" : "task(s)";
+                var suffix =
+                    currentKind === "goals"
+                        ? " added to your goals."
+                        : " added to your inbox.";
+                doneMessage.textContent = data.created + " " + label + suffix;
                 showSection(doneSection);
             } else {
                 alert("Error: " + (data.error || "Confirm failed"));

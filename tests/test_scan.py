@@ -23,7 +23,7 @@ from unittest.mock import patch
 import pytest
 
 import auth
-from models import TaskType, Tier
+from models import GoalCategory, GoalPriority, ImportLog, TaskType, Tier
 
 # --- JSON array extraction (internal helper) ----------------------------------
 
@@ -378,6 +378,387 @@ class TestConfirmAPI:
         assert resp.get_json()["created"] == 0
 
 
+# --- Goal JSON extraction -----------------------------------------------------
+
+
+class TestExtractJsonObjectList:
+    """Verify _extract_json_object_list parses goal arrays from Claude output."""
+
+    def test_direct_array_of_objects(self):
+        from scan_service import _extract_json_object_list
+
+        text = (
+            '[{"title": "Lose weight", "category": "health", '
+            '"priority": "should"}]'
+        )
+        result = _extract_json_object_list(text)
+        assert len(result) == 1
+        assert result[0]["title"] == "Lose weight"
+        assert result[0]["category"] == "health"
+
+    def test_markdown_fenced_array(self):
+        from scan_service import _extract_json_object_list
+
+        text = (
+            '```json\n[{"title": "Ship v2", "category": "work", '
+            '"priority": "must"}]\n```'
+        )
+        result = _extract_json_object_list(text)
+        assert result[0]["title"] == "Ship v2"
+
+    def test_surrounding_text(self):
+        from scan_service import _extract_json_object_list
+
+        text = (
+            'Here you go:\n[{"title": "Read more", "category": '
+            '"personal_growth", "priority": "could"}]\nEnjoy!'
+        )
+        result = _extract_json_object_list(text)
+        assert result[0]["category"] == "personal_growth"
+
+    def test_no_array_returns_empty(self):
+        from scan_service import _extract_json_object_list
+
+        assert _extract_json_object_list("no goals here") == []
+
+    def test_filters_non_dict_items(self):
+        from scan_service import _extract_json_object_list
+
+        text = '[{"title": "Real goal"}, "stray string", 42]'
+        result = _extract_json_object_list(text)
+        assert len(result) == 1
+        assert result[0]["title"] == "Real goal"
+
+
+# --- Goal parsing (Claude API) — mocked --------------------------------------
+
+
+class TestParseGoalsFromText:
+    """Verify parse_goals_from_text requires the key and forwards results."""
+
+    def test_raises_without_api_key(self, app, monkeypatch):
+        from scan_service import parse_goals_from_text
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        with app.app_context(), pytest.raises(
+            RuntimeError, match="ANTHROPIC_API_KEY"
+        ):
+            parse_goals_from_text("some notes")
+
+    def test_returns_goal_dicts(self, app, monkeypatch):
+        from scan_service import parse_goals_from_text
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        goal = {
+            "title": "Run a marathon",
+            "category": "health",
+            "priority": "should",
+            "target_quarter": "Q4 2026",
+            "actions": "Train weekly",
+        }
+        with (
+            app.app_context(),
+            patch(
+                "scan_service._call_claude_api_goals",
+                return_value=[goal],
+            ),
+        ):
+            result = parse_goals_from_text("goal notes")
+        assert result == [goal]
+
+    def test_empty_text_returns_empty(self, app):
+        from scan_service import parse_goals_from_text
+
+        with app.app_context():
+            assert parse_goals_from_text("") == []
+            assert parse_goals_from_text("   \n  ") == []
+
+
+# --- Goal creation from candidates -------------------------------------------
+
+
+class TestCreateGoalsFromCandidates:
+    """Verify create_goals_from_candidates creates Goal records with batch_id."""
+
+    def test_creates_included_goals(self, app):
+        from scan_service import create_goals_from_candidates
+
+        with app.app_context():
+            goals = create_goals_from_candidates([
+                {
+                    "title": "Goal A",
+                    "category": "health",
+                    "priority": "must",
+                    "included": True,
+                },
+                {
+                    "title": "Goal B",
+                    "category": "work",
+                    "priority": "should",
+                    "included": True,
+                },
+            ])
+            assert len(goals) == 2
+            assert goals[0].category == GoalCategory.HEALTH
+            assert goals[1].priority == GoalPriority.SHOULD
+
+    def test_skips_excluded(self, app):
+        from scan_service import create_goals_from_candidates
+
+        with app.app_context():
+            goals = create_goals_from_candidates([
+                {"title": "In", "included": True},
+                {"title": "Out", "included": False},
+            ])
+            assert len(goals) == 1
+            assert goals[0].title == "In"
+
+    def test_skips_empty_titles(self, app):
+        from scan_service import create_goals_from_candidates
+
+        with app.app_context():
+            goals = create_goals_from_candidates([
+                {"title": "", "included": True},
+                {"title": "  ", "included": True},
+            ])
+            assert goals == []
+
+    def test_invalid_category_falls_back(self, app):
+        from scan_service import create_goals_from_candidates
+
+        with app.app_context():
+            goals = create_goals_from_candidates([
+                {"title": "Bad cat", "category": "nonsense", "included": True},
+            ])
+            assert goals[0].category == GoalCategory.PERSONAL_GROWTH
+
+    def test_invalid_priority_falls_back(self, app):
+        from scan_service import create_goals_from_candidates
+
+        with app.app_context():
+            goals = create_goals_from_candidates([
+                {"title": "Bad pri", "priority": "garbage", "included": True},
+            ])
+            assert goals[0].priority == GoalPriority.NEED_MORE_INFO
+
+    def test_missing_category_defaults(self, app):
+        from scan_service import create_goals_from_candidates
+
+        with app.app_context():
+            goals = create_goals_from_candidates([
+                {"title": "No category", "included": True},
+            ])
+            assert goals[0].category == GoalCategory.PERSONAL_GROWTH
+            assert goals[0].priority == GoalPriority.NEED_MORE_INFO
+
+    def test_shared_batch_id_and_import_log(self, app):
+        """All goals created in one call share a batch_id; ImportLog has
+        the matching batch_id and source starting with 'scan_'."""
+        from sqlalchemy import select
+
+        from scan_service import create_goals_from_candidates
+
+        with app.app_context():
+            from models import db
+
+            goals = create_goals_from_candidates([
+                {"title": "G1", "included": True},
+                {"title": "G2", "included": True},
+            ])
+            assert goals[0].batch_id is not None
+            assert goals[0].batch_id == goals[1].batch_id
+
+            log = db.session.scalar(
+                select(ImportLog).where(
+                    ImportLog.batch_id == goals[0].batch_id
+                )
+            )
+            assert log is not None
+            assert log.source.startswith("scan_")
+            assert log.task_count == 2
+
+    def test_truncates_long_fields(self, app):
+        from scan_service import create_goals_from_candidates
+
+        with app.app_context():
+            goals = create_goals_from_candidates([
+                {
+                    "title": "x" * 600,
+                    "target_quarter": "q" * 50,
+                    "included": True,
+                },
+            ])
+            assert len(goals[0].title) == 500
+            assert len(goals[0].target_quarter) == 20
+
+
+# --- Upload API: goal mode ----------------------------------------------------
+
+
+class TestUploadAPIGoals:
+    """Verify POST /api/scan/upload with parse_as=goals routes to goal parser."""
+
+    def test_upload_parses_goals(self, authed_client, monkeypatch):
+        monkeypatch.setenv("GOOGLE_VISION_API_KEY", "fake-key")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        with (
+            patch(
+                "scan_service._call_vision_api",
+                return_value="Run marathon\nLearn spanish",
+            ),
+            patch(
+                "scan_service._call_claude_api_goals",
+                return_value=[
+                    {
+                        "title": "Run marathon",
+                        "category": "health",
+                        "priority": "should",
+                        "target_quarter": "Q4 2026",
+                        "actions": "Train weekly",
+                    },
+                    {
+                        "title": "Learn Spanish",
+                        "category": "personal_growth",
+                        "priority": "could",
+                    },
+                ],
+            ),
+        ):
+            data = {
+                "image": (io.BytesIO(b"fake jpeg"), "goals.jpg", "image/jpeg"),
+                "parse_as": "goals",
+            }
+            resp = authed_client.post(
+                "/api/scan/upload",
+                data=data,
+                content_type="multipart/form-data",
+            )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["kind"] == "goals"
+        assert len(body["candidates"]) == 2
+        first = body["candidates"][0]
+        assert first["title"] == "Run marathon"
+        assert first["category"] == "health"
+        assert first["priority"] == "should"
+        assert first["target_quarter"] == "Q4 2026"
+
+    def test_upload_defaults_to_tasks(self, authed_client, monkeypatch):
+        """Omitting parse_as should keep the existing task-parsing behavior."""
+        monkeypatch.setenv("GOOGLE_VISION_API_KEY", "fake-key")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        with (
+            patch("scan_service._call_vision_api", return_value="Buy milk"),
+            patch(
+                "scan_service._call_claude_api",
+                return_value=["Buy milk"],
+            ),
+        ):
+            data = {
+                "image": (io.BytesIO(b"fake"), "a.jpg", "image/jpeg"),
+            }
+            resp = authed_client.post(
+                "/api/scan/upload",
+                data=data,
+                content_type="multipart/form-data",
+            )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["kind"] == "tasks"
+        assert body["candidates"][0]["type"] == "work"
+
+
+# --- Confirm API: goal mode ---------------------------------------------------
+
+
+class TestConfirmAPIGoals:
+    """Verify POST /api/scan/confirm with kind=goals creates Goal records."""
+
+    def test_confirm_creates_goals(self, authed_client):
+        resp = authed_client.post(
+            "/api/scan/confirm",
+            json={
+                "kind": "goals",
+                "candidates": [
+                    {
+                        "title": "Ship v2",
+                        "category": "work",
+                        "priority": "must",
+                        "included": True,
+                    },
+                    {
+                        "title": "Run 5k",
+                        "category": "health",
+                        "priority": "should",
+                        "included": True,
+                    },
+                ],
+            },
+        )
+        assert resp.status_code == 201
+        body = resp.get_json()
+        assert body["kind"] == "goals"
+        assert body["created"] == 2
+        assert body["goals"][0]["category"] == "work"
+        assert body["goals"][1]["priority"] == "should"
+
+    def test_confirm_goals_land_in_goals_list(self, authed_client):
+        authed_client.post(
+            "/api/scan/confirm",
+            json={
+                "kind": "goals",
+                "candidates": [
+                    {
+                        "title": "Scanned goal",
+                        "category": "personal_growth",
+                        "priority": "could",
+                        "included": True,
+                    }
+                ],
+            },
+        )
+        # Goals API returns all active goals
+        resp = authed_client.get("/api/goals")
+        assert resp.status_code == 200
+        titles = [g["title"] for g in resp.get_json()]
+        assert "Scanned goal" in titles
+
+    def test_confirm_goals_share_batch_id_with_import_log(self, app, authed_client):
+        """Goals created via the scan confirm path must be stamped with a
+        batch_id that matches an ImportLog row — so the recycle bin undo
+        flow can treat the whole scan as one group."""
+        from sqlalchemy import select
+
+        authed_client.post(
+            "/api/scan/confirm",
+            json={
+                "kind": "goals",
+                "candidates": [
+                    {"title": "Batch goal A", "included": True},
+                    {"title": "Batch goal B", "included": True},
+                ],
+            },
+        )
+        with app.app_context():
+            from models import Goal, db
+
+            goals = list(
+                db.session.scalars(
+                    select(Goal).where(Goal.title.like("Batch goal%"))
+                )
+            )
+            assert len(goals) == 2
+            assert goals[0].batch_id is not None
+            assert goals[0].batch_id == goals[1].batch_id
+            log = db.session.scalar(
+                select(ImportLog).where(
+                    ImportLog.batch_id == goals[0].batch_id
+                )
+            )
+            assert log is not None
+            assert log.source.startswith("scan_")
+
+
 # --- Scan page HTML -----------------------------------------------------------
 
 
@@ -417,11 +798,27 @@ class TestScanPageView:
         html = client.get("/scan").data.decode()
         assert "scan.js" in html
 
-    def test_accepts_camera_capture(self, client, monkeypatch):
-        """Mobile browsers use capture='environment' for rear camera."""
+    def test_omits_capture_attribute(self, client, monkeypatch):
+        """iOS Safari forces camera-only when capture='environment' is set,
+        blocking Photo Library access. The attribute must be absent from the
+        file input tag so the native Take Photo / Photo Library sheet
+        appears on tap. (A comment in the template explaining the omission
+        is allowed — we only care about the <input> itself.)"""
+        import re
+
         monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
         html = client.get("/scan").data.decode()
-        assert 'capture="environment"' in html
+        # Find the scanFile input tag and confirm it has no capture attr.
+        match = re.search(r'<input[^>]*id="scanFile"[^>]*>', html)
+        assert match is not None, "scanFile input not found"
+        assert "capture=" not in match.group(0)
+
+    def test_has_parse_as_toggle(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/scan").data.decode()
+        assert 'name="parseAs"' in html
+        assert 'value="tasks"' in html
+        assert 'value="goals"' in html
 
     def test_requires_auth(self, client, monkeypatch):
         monkeypatch.setattr(auth, "get_current_user_email", lambda: None)

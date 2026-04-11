@@ -6,9 +6,22 @@
 <div class="scan-container" id="scanContainer">
     <!-- Upload section -->
     <div class="scan-upload" id="scanUpload">
-        <h2>Scan Image to Tasks</h2>
+        <h2>Scan Image to Tasks or Goals</h2>
         <p>Upload a photo of handwritten notes, a meeting agenda, or a screenshot.
-           The text will be extracted and parsed into task candidates for your inbox.</p>
+           The text will be extracted and parsed into either task or goal
+           candidates, depending on the mode you pick below.</p>
+
+        <fieldset class="scan-mode" id="scanMode">
+            <legend>Parse as:</legend>
+            <label>
+                <input type="radio" name="parseAs" value="tasks" checked>
+                Tasks
+            </label>
+            <label>
+                <input type="radio" name="parseAs" value="goals">
+                Goals
+            </label>
+        </fieldset>
 
         <div class="scan-input-area" id="scanInputArea">
             <label for="scanFile" class="scan-file-label" id="scanFileLabel">
