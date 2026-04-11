@@ -128,6 +128,9 @@ says otherwise.
   README.md           UPDATED | N/A — <reason if N/A>
   BACKLOG.md          UPDATED | N/A — <reason if N/A>
   CLAUDE.md           UPDATED | N/A — <reason if N/A>
+  Bypass status       OFF (never enabled)
+                    | OFF (enabled during session, torn down pre-commit)
+                    | ⚠ ON — MUST NOT COMMIT
   Commit + push       DONE | SKIPPED
   Deploy validation   GREEN  | RED | N/A (no push)
   Smoke test          DONE | N/A
@@ -137,6 +140,15 @@ says otherwise.
   "no new env vars", etc.). Never mark a row DONE that wasn't actually
   done. If ARCHITECTURE.md or README.md needed updating and didn't get
   it, the report must say FAIL and the change is not complete.
+
+  **Bypass status is mandatory on every report** — never omit the row.
+  To compute it: if `.env.dev-bypass` does not exist → OFF (never
+  enabled). If it was created and then deleted earlier in the session →
+  OFF (enabled during session, torn down pre-commit). If the file still
+  exists at the time the report is printed → ⚠ ON, which means **do
+  not commit** — delete `.env.dev-bypass` first, re-verify, then
+  re-print the report. Verify by running `ls .env.dev-bypass` (should
+  return "no such file") before marking OFF.
 
 ---
 
