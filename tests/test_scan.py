@@ -298,6 +298,25 @@ class TestUploadAPI:
         assert resp.status_code == 200
         assert resp.get_json()["candidates"] == []
 
+    def test_oversize_upload_returns_413(self, authed_client):
+        """Requests larger than Flask's MAX_CONTENT_LENGTH should 413.
+
+        Without this cap iPhone uploads exceeding the server's in-route
+        10 MB check could be dropped by the WSGI layer before a clean
+        response was sent, which Safari then surfaces as an opaque
+        "Load failed" fetch TypeError. The config limit makes the
+        rejection deterministic.
+        """
+        # 13 MB payload — above the 12 MB app config cap.
+        big = b"x" * (13 * 1024 * 1024)
+        data = {"image": (io.BytesIO(big), "huge.jpg", "image/jpeg")}
+        resp = authed_client.post(
+            "/api/scan/upload",
+            data=data,
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 413
+
     def test_vision_api_not_configured(self, authed_client, monkeypatch):
         monkeypatch.delenv("GOOGLE_VISION_API_KEY", raising=False)
         data = {

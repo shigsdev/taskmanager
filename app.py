@@ -68,6 +68,12 @@ def create_app(config: dict | None = None) -> Flask:
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=os.environ.get("FLASK_ENV") != "development",
         PERMANENT_SESSION_LIFETIME=timedelta(hours=24),
+        # Cap request bodies at 12 MB so iPhone photo uploads that exceed
+        # the scan pipeline's 10 MB limit get a clean HTTP 413 instead of
+        # being dropped mid-stream (which surfaces as Safari's opaque
+        # "Load failed" fetch TypeError). 12 MB leaves headroom above
+        # scan_api.MAX_IMAGE_SIZE for multipart boundary overhead.
+        MAX_CONTENT_LENGTH=12 * 1024 * 1024,
     )
     if config:
         app.config.update(config)
