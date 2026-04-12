@@ -13,9 +13,11 @@ from auth import login_required
 from models import Task, TaskStatus, TaskType, Tier
 from task_service import (
     ValidationError,
+    complete_parent_task,
     create_task,
     delete_task,
     get_task,
+    list_subtasks,
     list_tasks,
     update_task,
 )
@@ -25,12 +27,15 @@ bp = Blueprint("tasks_api", __name__, url_prefix="/api/tasks")
 
 
 def _serialize(task: Task) -> dict:
+    active_subtasks = [s for s in task.subtasks if s.status == TaskStatus.ACTIVE]
+    done_subtasks = [s for s in task.subtasks if s.status == TaskStatus.ARCHIVED]
     return {
         "id": str(task.id),
         "title": task.title,
         "tier": task.tier.value,
         "type": task.type.value,
         "status": task.status.value,
+        "parent_id": str(task.parent_id) if task.parent_id else None,
         "project_id": str(task.project_id) if task.project_id else None,
         "goal_id": str(task.goal_id) if task.goal_id else None,
         "due_date": task.due_date.isoformat() if task.due_date else None,
@@ -39,6 +44,8 @@ def _serialize(task: Task) -> dict:
         "checklist": task.checklist or [],
         "sort_order": task.sort_order,
         "last_reviewed": task.last_reviewed.isoformat() if task.last_reviewed else None,
+        "subtask_count": len(active_subtasks) + len(done_subtasks),
+        "subtask_done": len(done_subtasks),
         "created_at": task.created_at.isoformat(),
         "updated_at": task.updated_at.isoformat(),
     }
@@ -120,6 +127,33 @@ def patch(email: str, task_id: uuid.UUID):  # noqa: ARG001
         return jsonify({"error": "JSON body required"}), 400
     try:
         task = update_task(task_id, data)
+    except ValidationError as e:
+        return jsonify({"error": str(e), "field": e.field}), 422
+    if task is None:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(_serialize(task))
+
+
+@bp.get("/<uuid:task_id>/subtasks")
+@login_required
+def subtasks(email: str, task_id: uuid.UUID):  # noqa: ARG001
+    task = get_task(task_id)
+    if task is None:
+        return jsonify({"error": "not found"}), 404
+    return jsonify([_serialize(s) for s in list_subtasks(task_id)])
+
+
+@bp.post("/<uuid:task_id>/complete")
+@login_required
+def complete(email: str, task_id: uuid.UUID):  # noqa: ARG001
+    """Complete a task. For parent tasks with open subtasks, pass
+    ``{"complete_subtasks": true}`` to archive them too, or omit to
+    get a 422 with the count of open subtasks.
+    """
+    data = request.get_json(silent=True) or {}
+    complete_subs = bool(data.get("complete_subtasks"))
+    try:
+        task = complete_parent_task(task_id, complete_subtasks=complete_subs)
     except ValidationError as e:
         return jsonify({"error": str(e), "field": e.field}), 422
     if task is None:

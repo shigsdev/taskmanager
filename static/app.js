@@ -545,6 +545,27 @@ function taskCardEl(task) {
         meta.appendChild(clBadge);
     }
 
+    // Subtask progress badge (parent tasks only)
+    if (task.subtask_count > 0) {
+        const stBadge = document.createElement("span");
+        stBadge.className = "badge badge-subtask";
+        if (task.subtask_done === task.subtask_count) stBadge.classList.add("all-done");
+        stBadge.textContent = `${task.subtask_done}/${task.subtask_count} subtasks`;
+        meta.appendChild(stBadge);
+    }
+
+    // Parent indicator (subtasks only)
+    if (task.parent_id) {
+        const parent = allTasks.find((t) => t.id === task.parent_id);
+        if (parent) {
+            const parentBadge = document.createElement("span");
+            parentBadge.className = "badge badge-parent";
+            parentBadge.textContent = `↳ ${parent.title}`;
+            parentBadge.title = `Subtask of: ${parent.title}`;
+            meta.appendChild(parentBadge);
+        }
+    }
+
     body.appendChild(meta);
     card.appendChild(body);
 
@@ -693,15 +714,28 @@ async function taskMoveTier(id, tier) {
 }
 
 async function taskComplete(id) {
-    await apiFetch(`${API}/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: "archived" }),
-    });
+    const task = allTasks.find((t) => t.id === id);
+
+    // Parent tasks with open subtasks: use the /complete endpoint which
+    // returns a 422 warning. Prompt user to auto-close or cancel.
+    if (task && task.subtask_count > task.subtask_done) {
+        const open = task.subtask_count - task.subtask_done;
+        const ok = confirm(
+            `This task has ${open} open subtask(s).\n\nComplete all subtasks too?`
+        );
+        if (!ok) return;
+        await apiFetch(`${API}/${id}/complete`, {
+            method: "POST",
+            body: JSON.stringify({ complete_subtasks: true }),
+        });
+    } else {
+        await apiFetch(`${API}/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ status: "archived" }),
+        });
+    }
+
     await loadTasks();
-    // Always refresh the Completed list so the header count stays in
-    // sync even when the section is still collapsed. loadCompletedTasks
-    // renders into hidden DOM — cheap, and the list is already populated
-    // for the first expand.
     loadCompletedTasks();
 }
 
@@ -947,6 +981,7 @@ function setupDetailPanel() {
     document.getElementById("addChecklistItem").addEventListener("click", () => {
         taskDetailAddChecklistRow("", false);
     });
+    setupAddSubtask();
 }
 
 function taskDetailOpen(task) {
@@ -988,6 +1023,18 @@ function taskDetailOpen(task) {
         for (const item of task.checklist) {
             taskDetailAddChecklistRow(item.text, item.checked);
         }
+    }
+
+    // Subtasks section — only for non-subtask tasks (one level deep)
+    const subtaskSection = document.getElementById("subtaskSection");
+    const subtaskList = document.getElementById("subtaskItems");
+    subtaskList.innerHTML = "";
+    if (task.parent_id) {
+        // This IS a subtask — hide the subtask section and show parent link
+        subtaskSection.style.display = "none";
+    } else {
+        subtaskSection.style.display = "";
+        taskDetailLoadSubtasks(task.id);
     }
 
     // Meta
@@ -1096,6 +1143,95 @@ async function taskDetailSave(e) {
         taskDetailClose();
     } catch (err) {
         alert("Save failed: " + err.message);
+    }
+}
+
+// --- Subtasks in detail panel ------------------------------------------------
+
+async function taskDetailLoadSubtasks(parentId) {
+    const list = document.getElementById("subtaskItems");
+    list.innerHTML = "";
+    let subtasks;
+    try {
+        subtasks = await apiFetch(`${API}/${parentId}/subtasks`);
+    } catch {
+        return;
+    }
+    for (const sub of subtasks) {
+        const row = document.createElement("div");
+        row.className = "subtask-row";
+
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.title = "Complete subtask";
+        cb.addEventListener("change", async () => {
+            await apiFetch(`${API}/${sub.id}`, {
+                method: "PATCH",
+                body: JSON.stringify({ status: "archived" }),
+            });
+            await loadTasks();
+            taskDetailLoadSubtasks(parentId);
+        });
+        row.appendChild(cb);
+
+        const titleEl = document.createElement("span");
+        titleEl.className = "subtask-title";
+        titleEl.textContent = sub.title;
+        titleEl.addEventListener("click", () => {
+            const full = allTasks.find((t) => t.id === sub.id) || sub;
+            taskDetailOpen(full);
+        });
+        row.appendChild(titleEl);
+
+        const tierBadge = document.createElement("span");
+        tierBadge.className = "badge badge-subtask-tier";
+        tierBadge.textContent = tierLabel(sub.tier);
+        row.appendChild(tierBadge);
+
+        list.appendChild(row);
+    }
+}
+
+function setupAddSubtask() {
+    const btn = document.getElementById("addSubtaskBtn");
+    const input = document.getElementById("subtaskInput");
+    if (!btn || !input) return;
+
+    btn.addEventListener("click", addSubtask);
+    input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            addSubtask();
+        }
+    });
+}
+
+async function addSubtask() {
+    const input = document.getElementById("subtaskInput");
+    const title = input.value.trim();
+    if (!title) return;
+
+    const parentId = document.getElementById("detailId").value;
+    if (!parentId) return;
+
+    const parentTask = allTasks.find((t) => t.id === parentId);
+    const type = parentTask ? parentTask.type : "work";
+
+    try {
+        await apiFetch(API, {
+            method: "POST",
+            body: JSON.stringify({
+                title,
+                type,
+                tier: "inbox",
+                parent_id: parentId,
+            }),
+        });
+        input.value = "";
+        await loadTasks();
+        taskDetailLoadSubtasks(parentId);
+    } catch (err) {
+        alert("Failed to add subtask: " + err.message);
     }
 }
 

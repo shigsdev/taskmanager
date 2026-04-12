@@ -407,6 +407,30 @@ body {
 .badge-due.overdue { color: var(--red); font-weight: 700; }
 .badge-checklist { color: var(--text-muted); }
 .badge-checklist.all-done { color: var(--green); }
+.badge-subtask { color: var(--text-muted); }
+.badge-subtask.all-done { color: var(--green); }
+.badge-parent { color: var(--text-muted); font-style: italic; }
+.badge-url { color: #2563eb; text-decoration: none; cursor: pointer; }
+.badge-url:hover { text-decoration: underline; }
+.badge-subtask-tier { font-size: 0.7rem; color: var(--text-muted); }
+
+/* Subtask section in detail panel */
+.subtask-section { margin-top: 12px; }
+.subtask-section label { font-weight: 600; margin-bottom: 4px; display: block; }
+.subtask-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+}
+.subtask-row input[type="checkbox"] { cursor: pointer; flex-shrink: 0; }
+.subtask-title {
+    flex: 1;
+    cursor: pointer;
+    font-size: 0.88rem;
+}
+.subtask-title:hover { text-decoration: underline; }
 
 .task-card .task-quick-actions {
     display: flex;

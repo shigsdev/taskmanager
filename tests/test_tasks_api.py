@@ -469,6 +469,160 @@ def test_url_preview_returns_null_title_on_fetch_failure(authed_client, monkeypa
     assert resp.get_json()["title"] is None
 
 
+# --- Subtasks ----------------------------------------------------------------
+
+
+def test_create_subtask(authed_client, app):
+    # Create parent
+    resp = authed_client.post("/api/tasks", json={"title": "Parent", "type": "work"})
+    parent_id = resp.get_json()["id"]
+
+    # Create subtask
+    resp = authed_client.post(
+        "/api/tasks",
+        json={"title": "Child", "type": "work", "parent_id": parent_id},
+    )
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert body["parent_id"] == parent_id
+
+
+def test_create_subtask_of_subtask_rejected(authed_client, app):
+    """One level deep only — subtasks cannot have their own subtasks."""
+    resp = authed_client.post("/api/tasks", json={"title": "Parent", "type": "work"})
+    parent_id = resp.get_json()["id"]
+
+    resp = authed_client.post(
+        "/api/tasks",
+        json={"title": "Child", "type": "work", "parent_id": parent_id},
+    )
+    child_id = resp.get_json()["id"]
+
+    resp = authed_client.post(
+        "/api/tasks",
+        json={"title": "Grandchild", "type": "work", "parent_id": child_id},
+    )
+    assert resp.status_code == 422
+    assert resp.get_json()["field"] == "parent_id"
+
+
+def test_create_subtask_nonexistent_parent(authed_client):
+    resp = authed_client.post(
+        "/api/tasks",
+        json={"title": "Orphan", "type": "work", "parent_id": str(uuid.uuid4())},
+    )
+    assert resp.status_code == 422
+    assert resp.get_json()["field"] == "parent_id"
+
+
+def test_list_subtasks_endpoint(authed_client, app):
+    resp = authed_client.post("/api/tasks", json={"title": "Parent", "type": "work"})
+    parent_id = resp.get_json()["id"]
+
+    authed_client.post(
+        "/api/tasks",
+        json={"title": "Sub A", "type": "work", "parent_id": parent_id},
+    )
+    authed_client.post(
+        "/api/tasks",
+        json={"title": "Sub B", "type": "work", "parent_id": parent_id},
+    )
+
+    resp = authed_client.get(f"/api/tasks/{parent_id}/subtasks")
+    assert resp.status_code == 200
+    subs = resp.get_json()
+    assert len(subs) == 2
+    assert {s["title"] for s in subs} == {"Sub A", "Sub B"}
+
+
+def test_subtask_count_in_serializer(authed_client, app):
+    resp = authed_client.post("/api/tasks", json={"title": "Parent", "type": "work"})
+    parent_id = resp.get_json()["id"]
+
+    authed_client.post(
+        "/api/tasks",
+        json={"title": "Sub 1", "type": "work", "parent_id": parent_id},
+    )
+
+    resp = authed_client.get(f"/api/tasks/{parent_id}")
+    body = resp.get_json()
+    assert body["subtask_count"] == 1
+    assert body["subtask_done"] == 0
+
+
+def test_complete_parent_warns_about_open_subtasks(authed_client, app):
+    resp = authed_client.post("/api/tasks", json={"title": "Parent", "type": "work"})
+    parent_id = resp.get_json()["id"]
+
+    authed_client.post(
+        "/api/tasks",
+        json={"title": "Sub", "type": "work", "parent_id": parent_id},
+    )
+
+    # Without complete_subtasks flag → 422 warning
+    resp = authed_client.post(f"/api/tasks/{parent_id}/complete")
+    assert resp.status_code == 422
+    assert "open subtask" in resp.get_json()["error"]
+
+
+def test_complete_parent_with_force_completes_subtasks(authed_client, app):
+    resp = authed_client.post("/api/tasks", json={"title": "Parent", "type": "work"})
+    parent_id = resp.get_json()["id"]
+
+    sub_resp = authed_client.post(
+        "/api/tasks",
+        json={"title": "Sub", "type": "work", "parent_id": parent_id},
+    )
+    sub_id = sub_resp.get_json()["id"]
+
+    resp = authed_client.post(
+        f"/api/tasks/{parent_id}/complete",
+        json={"complete_subtasks": True},
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["status"] == "archived"
+
+    # Subtask should also be archived
+    resp = authed_client.get(f"/api/tasks/{sub_id}")
+    assert resp.get_json()["status"] == "archived"
+
+
+def test_complete_parent_no_subtasks_works(authed_client, app):
+    resp = authed_client.post("/api/tasks", json={"title": "Solo", "type": "work"})
+    task_id = resp.get_json()["id"]
+
+    resp = authed_client.post(f"/api/tasks/{task_id}/complete")
+    assert resp.status_code == 200
+    assert resp.get_json()["status"] == "archived"
+
+
+def test_patch_cannot_set_self_as_parent(authed_client, app):
+    resp = authed_client.post("/api/tasks", json={"title": "Task", "type": "work"})
+    task_id = resp.get_json()["id"]
+
+    resp = authed_client.patch(
+        f"/api/tasks/{task_id}", json={"parent_id": task_id}
+    )
+    assert resp.status_code == 422
+    assert resp.get_json()["field"] == "parent_id"
+
+
+def test_patch_clear_parent_id(authed_client, app):
+    resp = authed_client.post("/api/tasks", json={"title": "Parent", "type": "work"})
+    parent_id = resp.get_json()["id"]
+
+    resp = authed_client.post(
+        "/api/tasks",
+        json={"title": "Child", "type": "work", "parent_id": parent_id},
+    )
+    child_id = resp.get_json()["id"]
+
+    # Remove parent
+    resp = authed_client.patch(f"/api/tasks/{child_id}", json={"parent_id": None})
+    assert resp.status_code == 200
+    assert resp.get_json()["parent_id"] is None
+
+
 # --- Reorder -----------------------------------------------------------------
 
 

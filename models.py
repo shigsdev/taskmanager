@@ -178,8 +178,16 @@ class Task(db.Model):
         DateTime(timezone=True), default=_now, onupdate=_now
     )
 
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("tasks.id"), nullable=True
+    )
+
     project: Mapped[Project | None] = relationship(back_populates="tasks")
     goal: Mapped[Goal | None] = relationship(back_populates="tasks")
+    parent: Mapped[Task | None] = relationship(
+        remote_side="Task.id", back_populates="subtasks"
+    )
+    subtasks: Mapped[list[Task]] = relationship(back_populates="parent")
 
     __table_args__ = (
         Index("ix_tasks_status", "status"),
@@ -187,6 +195,7 @@ class Task(db.Model):
         Index("ix_tasks_project_id", "project_id"),
         Index("ix_tasks_goal_id", "goal_id"),
         Index("ix_tasks_batch_id", "batch_id"),
+        Index("ix_tasks_parent_id", "parent_id"),
     )
 
 

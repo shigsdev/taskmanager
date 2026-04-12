@@ -64,10 +64,19 @@ def create_task(data: dict) -> Task:
 
     tier = _parse_enum(Tier, data.get("tier"), "tier") or Tier.INBOX
 
+    parent_id = _parse_uuid(data.get("parent_id"), "parent_id")
+    if parent_id is not None:
+        parent = get_task(parent_id)
+        if parent is None:
+            raise ValidationError("parent task not found", "parent_id")
+        if parent.parent_id is not None:
+            raise ValidationError("subtasks cannot have their own subtasks", "parent_id")
+
     task = Task(
         title=title,
         type=task_type,
         tier=tier,
+        parent_id=parent_id,
         project_id=_parse_uuid(data.get("project_id"), "project_id"),
         goal_id=_parse_uuid(data.get("goal_id"), "goal_id"),
         due_date=_parse_date(data.get("due_date")),
@@ -113,6 +122,7 @@ _UPDATABLE_FIELDS = {
     "type",
     "tier",
     "status",
+    "parent_id",
     "project_id",
     "goal_id",
     "due_date",
@@ -144,6 +154,18 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
     if "status" in data:
         task.status = _parse_enum(TaskStatus, data["status"], "status") or task.status
 
+    if "parent_id" in data:
+        new_parent_id = _parse_uuid(data["parent_id"], "parent_id")
+        if new_parent_id is not None:
+            parent = get_task(new_parent_id)
+            if parent is None:
+                raise ValidationError("parent task not found", "parent_id")
+            if parent.parent_id is not None:
+                raise ValidationError("subtasks cannot have their own subtasks", "parent_id")
+            if new_parent_id == task.id:
+                raise ValidationError("task cannot be its own parent", "parent_id")
+        task.parent_id = new_parent_id
+
     if "project_id" in data:
         task.project_id = _parse_uuid(data["project_id"], "project_id")
 
@@ -172,6 +194,36 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
     if unknown:
         raise ValidationError(f"unknown fields: {sorted(unknown)}", next(iter(unknown)))
 
+    db.session.commit()
+    return task
+
+
+def list_subtasks(parent_id: uuid.UUID) -> list[Task]:
+    """Return active subtasks for a given parent task."""
+    stmt = (
+        select(Task)
+        .where(Task.parent_id == parent_id, Task.status == TaskStatus.ACTIVE)
+        .order_by(Task.sort_order.asc(), Task.created_at.desc())
+    )
+    return list(db.session.scalars(stmt))
+
+
+def complete_parent_task(task_id: uuid.UUID, complete_subtasks: bool = False) -> Task | None:
+    """Archive a parent task. If it has open subtasks, either archive them too
+    or raise a ValidationError so the UI can prompt the user."""
+    task = get_task(task_id)
+    if task is None:
+        return None
+    open_subtasks = list_subtasks(task_id)
+    if open_subtasks and not complete_subtasks:
+        raise ValidationError(
+            f"{len(open_subtasks)} open subtask(s) — complete all or close individually first",
+            "subtasks",
+        )
+    if complete_subtasks:
+        for sub in open_subtasks:
+            sub.status = TaskStatus.ARCHIVED
+    task.status = TaskStatus.ARCHIVED
     db.session.commit()
     return task
 
