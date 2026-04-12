@@ -65,6 +65,7 @@ def create_task(data: dict) -> Task:
     tier = _parse_enum(Tier, data.get("tier"), "tier") or Tier.INBOX
 
     parent_id = _parse_uuid(data.get("parent_id"), "parent_id")
+    parent = None
     if parent_id is not None:
         parent = get_task(parent_id)
         if parent is None:
@@ -72,13 +73,22 @@ def create_task(data: dict) -> Task:
         if parent.parent_id is not None:
             raise ValidationError("subtasks cannot have their own subtasks", "parent_id")
 
+    # Subtasks inherit goal and project from parent when not explicitly set
+    goal_id = _parse_uuid(data.get("goal_id"), "goal_id")
+    project_id = _parse_uuid(data.get("project_id"), "project_id")
+    if parent is not None:
+        if goal_id is None:
+            goal_id = parent.goal_id
+        if project_id is None:
+            project_id = parent.project_id
+
     task = Task(
         title=title,
         type=task_type,
         tier=tier,
         parent_id=parent_id,
-        project_id=_parse_uuid(data.get("project_id"), "project_id"),
-        goal_id=_parse_uuid(data.get("goal_id"), "goal_id"),
+        project_id=project_id,
+        goal_id=goal_id,
         due_date=_parse_date(data.get("due_date")),
         url=_parse_url(data.get("url")),
         notes=(data.get("notes") or None),

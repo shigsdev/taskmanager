@@ -1216,16 +1216,21 @@ async function addSubtask() {
 
     const parentTask = allTasks.find((t) => t.id === parentId);
     const type = parentTask ? parentTask.type : "work";
+    const goalId = parentTask ? parentTask.goal_id : null;
+    const projectId = parentTask ? parentTask.project_id : null;
 
     try {
+        const body = {
+            title,
+            type,
+            tier: "inbox",
+            parent_id: parentId,
+        };
+        if (goalId) body.goal_id = goalId;
+        if (projectId) body.project_id = projectId;
         await apiFetch(API, {
             method: "POST",
-            body: JSON.stringify({
-                title,
-                type,
-                tier: "inbox",
-                parent_id: parentId,
-            }),
+            body: JSON.stringify(body),
         });
         input.value = "";
         await loadTasks();

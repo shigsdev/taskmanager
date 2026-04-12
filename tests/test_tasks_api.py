@@ -487,6 +487,74 @@ def test_create_subtask(authed_client, app):
     assert body["parent_id"] == parent_id
 
 
+def test_subtask_inherits_goal_and_project(authed_client, app):
+    """Subtasks inherit goal_id and project_id from parent when not provided."""
+    # Create a goal
+    g = authed_client.post(
+        "/api/goals",
+        json={"title": "Ship v2", "category": "work", "priority": "must"},
+    )
+    goal_id = g.get_json()["id"]
+
+    # Create a project
+    p = authed_client.post("/api/projects", json={"name": "Backend"})
+    project_id = p.get_json()["id"]
+
+    # Create parent with goal + project
+    resp = authed_client.post(
+        "/api/tasks",
+        json={
+            "title": "Parent",
+            "type": "work",
+            "goal_id": goal_id,
+            "project_id": project_id,
+        },
+    )
+    parent_id = resp.get_json()["id"]
+
+    # Create subtask WITHOUT goal or project — should inherit
+    resp = authed_client.post(
+        "/api/tasks",
+        json={"title": "Child", "type": "work", "parent_id": parent_id},
+    )
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert body["goal_id"] == goal_id
+    assert body["project_id"] == project_id
+
+
+def test_subtask_explicit_goal_overrides_parent(authed_client, app):
+    """If a subtask explicitly sets goal_id, it should NOT be overridden."""
+    g1 = authed_client.post(
+        "/api/goals",
+        json={"title": "Goal A", "category": "work", "priority": "must"},
+    )
+    g2 = authed_client.post(
+        "/api/goals",
+        json={"title": "Goal B", "category": "health", "priority": "should"},
+    )
+    goal_a = g1.get_json()["id"]
+    goal_b = g2.get_json()["id"]
+
+    resp = authed_client.post(
+        "/api/tasks",
+        json={"title": "Parent", "type": "work", "goal_id": goal_a},
+    )
+    parent_id = resp.get_json()["id"]
+
+    resp = authed_client.post(
+        "/api/tasks",
+        json={
+            "title": "Child",
+            "type": "work",
+            "parent_id": parent_id,
+            "goal_id": goal_b,
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.get_json()["goal_id"] == goal_b
+
+
 def test_create_subtask_of_subtask_rejected(authed_client, app):
     """One level deep only — subtasks cannot have their own subtasks."""
     resp = authed_client.post("/api/tasks", json={"title": "Parent", "type": "work"})
