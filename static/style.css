@@ -1286,8 +1286,16 @@ body {
         flex-basis: 100%;
         max-width: none;
     }
-    .nav-links { gap: 4px; }
-    .nav-tab { font-size: 0.8rem; padding: 6px 8px; }
+    .nav-links {
+        gap: 4px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;          /* Firefox */
+        flex-wrap: nowrap;
+        white-space: nowrap;
+    }
+    .nav-links::-webkit-scrollbar { display: none; }  /* Chrome/Safari */
+    .nav-tab { font-size: 0.8rem; padding: 6px 8px; white-space: nowrap; }
 
     /* Tier board: single column, tighter spacing */
     .tier-board { padding: 8px; gap: 10px; }
@@ -1342,6 +1350,7 @@ body {
 
     /* Detail panel: full screen on mobile */
     .detail-panel { width: 100vw; }
+    .detail-panel .form-row { flex-direction: column; gap: 0; }
     .detail-panel input[type="text"],
     .detail-panel input[type="date"],
     .detail-panel textarea,

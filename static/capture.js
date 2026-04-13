@@ -74,30 +74,8 @@
             result._titleProvided = remaining.length > 0; // true if user typed a title too
         }
 
-        // Tier shortcuts: #today #week #backlog
-        const tierMap = {
-            "#today": "today",
-            "#week": "this_week",
-            "#backlog": "backlog",
-            "#freezer": "freezer",
-        };
-        for (const [tag, tier] of Object.entries(tierMap)) {
-            if (result.title.toLowerCase().includes(tag)) {
-                result.tier = tier;
-                result.title = result.title.replace(new RegExp(tag, "gi"), "").trim();
-            }
-        }
-
-        // Type shortcuts: #work #personal
-        if (result.title.toLowerCase().includes("#work")) {
-            result.type = "work";
-            result.title = result.title.replace(/#work/gi, "").trim();
-        } else if (result.title.toLowerCase().includes("#personal")) {
-            result.type = "personal";
-            result.title = result.title.replace(/#personal/gi, "").trim();
-        }
-
-        // Repeat shortcuts: #daily #weekdays #weekly #monthly
+        // Repeat shortcuts first (before tier) — longer tags like #weekly
+        // must be consumed before #week matches as a tier prefix.
         const repeatMap = {
             "#daily": { frequency: "daily" },
             "#weekdays": { frequency: "weekdays" },
@@ -109,6 +87,29 @@
                 result.repeat = repeat;
                 result.title = result.title.replace(new RegExp(tag, "gi"), "").trim();
                 break;
+            }
+        }
+
+        // Type shortcuts (before tier — #work must not match #week prefix)
+        if (result.title.toLowerCase().includes("#personal")) {
+            result.type = "personal";
+            result.title = result.title.replace(/#personal/gi, "").trim();
+        } else if (result.title.toLowerCase().includes("#work")) {
+            result.type = "work";
+            result.title = result.title.replace(/#work/gi, "").trim();
+        }
+
+        // Tier shortcuts: #today #week #backlog
+        const tierMap = {
+            "#today": "today",
+            "#week": "this_week",
+            "#backlog": "backlog",
+            "#freezer": "freezer",
+        };
+        for (const [tag, tier] of Object.entries(tierMap)) {
+            if (result.title.toLowerCase().includes(tag)) {
+                result.tier = tier;
+                result.title = result.title.replace(new RegExp(tag, "gi"), "").trim();
             }
         }
 

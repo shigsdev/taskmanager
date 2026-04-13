@@ -113,41 +113,57 @@ says otherwise.
   2. For API-only changes, hit the affected endpoints with curl to verify
   3. For any UI/frontend change, also run the **mobile viewport check** below
 
-- **Mobile viewport check** (mandatory for any UI/frontend change):
+- **Visual + functional regression** (mandatory for any UI/frontend change):
 
-  After verifying at desktop width, repeat verification at mobile (375×812).
-  This catches overflow, truncation, and touch-target issues before the user
-  has to test manually.
+  Before committing UI changes, run a deep regression at both desktop
+  (1280×800) and mobile (375×812). This covers layout AND functionality.
 
-  **Procedure:**
-  1. Start the local bypass server if not already running:
+  **Setup:**
+  1. Seed the local dev DB with realistic data (idempotent, safe to re-run):
      ```
-     preview_start with /usr/local/bin/python3.14 scripts/run_dev_bypass.py
+     /usr/local/bin/python3.14 scripts/seed_dev_data.py
      ```
-  2. Resize to mobile viewport:
+  2. Start the local bypass server:
      ```
-     preview_resize 375 812
+     preview_start taskmanager-dev-bypass
      ```
+  3. Always navigate with `?nosw=1` to prevent service worker reload loops
+     in the headless browser (e.g. `http://localhost:5111/?nosw=1`)
+
+  **Visual checks** (both viewports — desktop first, then mobile):
   3. Navigate to every page affected by the change
   4. For each page, check:
      - `preview_console_logs` — no errors
      - `preview_snapshot` — elements visible, not overlapping, text not
-       truncated, buttons/inputs are tappable size (min 44×44px)
-     - `preview_click` / `preview_fill` — interactive elements work
-       (dropdowns open, modals fit, forms submit)
+       truncated, buttons/inputs are tappable size (min 44×44px on mobile)
   5. Take a `preview_screenshot` of each affected page as proof
-  6. Resize back to desktop (`preview_resize 1280 800`) and verify no
-     regressions
-  7. Stop the bypass server and delete `.env.dev-bypass` before committing
 
-  **What mobile testing CANNOT cover** (tell the user to manually verify):
+  **Functional checks** (both viewports):
+  6. **Tasks page**: create a task via capture bar, verify it appears in the
+     correct tier. Open detail panel, change fields, save, verify changes
+     persist on reload. Click Done/Week/Backlog tier buttons, verify task
+     moves. Test repeat dropdown (select Weekly, verify day picker appears).
+  7. **Goals page**: verify goal cards show progress bars with correct task
+     counts. Filter by category/priority/status, verify results change.
+  8. **Review page**: click Keep/Freeze/Snooze, verify the card advances
+     and the progress counter updates.
+  9. **Settings page**: verify stats reflect the seeded data counts.
+  10. **Import page**: verify buttons render and are clickable.
+  11. **Scan page**: verify radio buttons toggle and upload area is tappable.
+  12. **Recycle bin**: verify batch entries show, Empty Bin button is visible.
+  13. **Print view**: verify tasks are listed with correct tier grouping.
+
+  **Cleanup:**
+  14. Stop the bypass server and delete `.env.dev-bypass` before committing
+
+  **What automated testing CANNOT cover** (tell the user to manually verify):
   - OAuth-protected pages on Railway (bypass is local-only)
   - Native mobile features: touch gestures, PWA standalone mode, Web Speech
   - Real device quirks: iOS Safari address bar, Android keyboard overlap
 
   **Include in the SOP Change Report:**
   ```
-  Mobile check        DONE (375×812) | N/A — no UI change
+  Regression test     DONE (desktop + mobile) | N/A — no UI change
   ```
 
 - **SOP Change Report** (mandatory at the end of every change):
@@ -173,7 +189,7 @@ says otherwise.
   README.md           UPDATED | N/A — <reason if N/A>
   BACKLOG.md          UPDATED | N/A — <reason if N/A>
   CLAUDE.md           UPDATED | N/A — <reason if N/A>
-  Mobile check        DONE (375×812) | N/A — <reason if N/A>
+  Regression test     DONE (desktop + mobile) | N/A — <reason if N/A>
   Bypass status       OFF (never enabled)
                     | OFF (enabled during session, torn down pre-commit)
                     | ⚠ ON — MUST NOT COMMIT

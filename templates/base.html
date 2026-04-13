@@ -48,7 +48,14 @@
     {% block scripts %}{% endblock %}
     <script>
     // --- Service worker auto-update (A + B: poll + banner fallback) ---
-    if ("serviceWorker" in navigator) {
+    // Skip SW registration when ?nosw=1 is in the URL (used by Claude Preview
+    // and local dev to avoid cached-SW reload loops in headless browsers).
+    if ("serviceWorker" in navigator && new URLSearchParams(location.search).has("nosw")) {
+        // Unregister any cached SW to stop reload loops in headless browsers
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+            regs.forEach(function (r) { r.unregister(); });
+        });
+    } else if ("serviceWorker" in navigator) {
         (function () {
             var reloading = false;
             var pendingWorker = null;
