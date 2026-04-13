@@ -161,6 +161,56 @@ says otherwise.
   - Native mobile features: touch gestures, PWA standalone mode, Web Speech
   - Real device quirks: iOS Safari address bar, Android keyboard overlap
 
+  **Regression Test Report** (mandatory after every regression run):
+
+  After completing the regression, print a **Regression Test Report** so
+  the user can see exactly what was tested and at which viewport. Use this
+  exact format:
+
+  ```
+  Regression Test Report
+  ───────────────────────
+  Seed data:          24 active, 5 completed, 3 recycled, 4 goals, 4 projects, 5 recurring
+  Console errors:     0
+
+  Desktop (1280×800)                          Mobile (375×812)
+  ─────────────────────                       ─────────────────────
+  Tasks: capture bar create     PASS          Tasks: capture bar create     PASS
+  Tasks: detail panel save      PASS          Tasks: detail panel save      PASS
+  Tasks: persist on reload      PASS          Tasks: persist on reload      PASS
+  Tasks: tier button move       PASS          Tasks: tier button move       PASS
+  Tasks: repeat dropdown        PASS          Tasks: repeat dropdown        PASS
+  Goals: progress bars          PASS          Goals: progress bars          PASS
+  Goals: filter category        PASS          Goals: filter category        PASS
+  Goals: filter priority        PASS          Goals: filter priority        PASS
+  Goals: filter status          PASS          Goals: filter status          PASS
+  Review: Keep                  PASS          Review: Keep                  PASS
+  Review: Freeze                PASS          Review: Freeze                PASS
+  Review: Snooze                PASS          Review: Snooze                PASS
+  Settings: stats               PASS          Settings: stats               PASS
+  Import: button click          PASS          Import: button click          PASS
+  Scan: radio toggle            PASS          Scan: radio toggle            PASS
+  Scan: upload area             PASS          Scan: upload area             PASS
+  Recycle bin: batch entries    PASS          Recycle bin: batch entries    PASS
+  Recycle bin: Empty Bin btn    PASS          Recycle bin: Empty Bin btn    PASS
+  Print: tier grouping          PASS          Print: tier grouping          PASS
+
+  Status: ALL PASS | <N> FAIL (list failures)
+  ```
+
+  Mark each test PASS, FAIL, or SKIP (with reason). Any FAIL means the
+  change is not ready to commit — fix and re-test before proceeding.
+
+  **Updating the test checklist when adding features:**
+
+  When a new feature adds a page, UI element, or user interaction, you
+  MUST add corresponding functional check lines to the checklist above
+  (steps 6–13) AND to the Regression Test Report template. This ensures
+  every feature is tested on every future change. Examples:
+  - New "Calendar" page → add step 14 and two report rows
+  - New "drag to reorder" interaction on Tasks → add a line under step 6
+  - New filter on Goals → add a line under step 7
+
   **Include in the SOP Change Report:**
   ```
   Regression test     DONE (desktop + mobile) | N/A — no UI change
