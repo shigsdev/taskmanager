@@ -110,10 +110,45 @@ says otherwise.
 - **Post-deploy smoke tests** (after health check passes):
   1. Use Claude Preview (headless browser) to verify affected pages render
      without errors — check for console errors, broken layouts, missing elements
-  2. For any UI/frontend change, tell the user which pages to manually test
-     on mobile and what to look for — Claude cannot test OAuth-protected pages
-     or mobile-specific features (touch, voice, PWA standalone mode)
-  3. For API-only changes, hit the affected endpoints with curl to verify
+  2. For API-only changes, hit the affected endpoints with curl to verify
+  3. For any UI/frontend change, also run the **mobile viewport check** below
+
+- **Mobile viewport check** (mandatory for any UI/frontend change):
+
+  After verifying at desktop width, repeat verification at mobile (375×812).
+  This catches overflow, truncation, and touch-target issues before the user
+  has to test manually.
+
+  **Procedure:**
+  1. Start the local bypass server if not already running:
+     ```
+     preview_start with /usr/local/bin/python3.14 scripts/run_dev_bypass.py
+     ```
+  2. Resize to mobile viewport:
+     ```
+     preview_resize 375 812
+     ```
+  3. Navigate to every page affected by the change
+  4. For each page, check:
+     - `preview_console_logs` — no errors
+     - `preview_snapshot` — elements visible, not overlapping, text not
+       truncated, buttons/inputs are tappable size (min 44×44px)
+     - `preview_click` / `preview_fill` — interactive elements work
+       (dropdowns open, modals fit, forms submit)
+  5. Take a `preview_screenshot` of each affected page as proof
+  6. Resize back to desktop (`preview_resize 1280 800`) and verify no
+     regressions
+  7. Stop the bypass server and delete `.env.dev-bypass` before committing
+
+  **What mobile testing CANNOT cover** (tell the user to manually verify):
+  - OAuth-protected pages on Railway (bypass is local-only)
+  - Native mobile features: touch gestures, PWA standalone mode, Web Speech
+  - Real device quirks: iOS Safari address bar, Android keyboard overlap
+
+  **Include in the SOP Change Report:**
+  ```
+  Mobile check        DONE (375×812) | N/A — no UI change
+  ```
 
 - **SOP Change Report** (mandatory at the end of every change):
 
@@ -138,6 +173,7 @@ says otherwise.
   README.md           UPDATED | N/A — <reason if N/A>
   BACKLOG.md          UPDATED | N/A — <reason if N/A>
   CLAUDE.md           UPDATED | N/A — <reason if N/A>
+  Mobile check        DONE (375×812) | N/A — <reason if N/A>
   Bypass status       OFF (never enabled)
                     | OFF (enabled during session, torn down pre-commit)
                     | ⚠ ON — MUST NOT COMMIT
