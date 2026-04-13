@@ -128,15 +128,26 @@
             window.SpeechRecognition || window.webkitSpeechRecognition;
         const recognition = new SpeechRecognition();
         recognition.continuous = false;
-        recognition.interimResults = true;
         recognition.lang = "en-US";
+        recognition.maxAlternatives = 1;
+
+        // iOS Safari (especially PWA standalone) is unreliable with
+        // interimResults — it may never fire result events at all, or
+        // fire them without ever marking isFinal.  Disable interim on
+        // iOS so we get a single, reliable final result instead.
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        recognition.interimResults = !isIOS;
 
         let listening = false;
         let pendingTranscript = "";
+        let appliedFinal = false;
+        let gotAnyResult = false;
 
         function setVoiceListening() {
             listening = true;
             pendingTranscript = "";
+            appliedFinal = false;
+            gotAnyResult = false;
             voiceBtn.textContent = "⏹";
             voiceBtn.classList.add("voice-listening");
             voiceBtn.title = "Listening… tap to stop";
@@ -151,7 +162,10 @@
 
         function applyTranscript(text) {
             if (!text) return;
-            input.value = (input.value ? input.value + " " : "") + text;
+            const prefix = input.value ? input.value + " " : "";
+            input.value = prefix + text;
+            // Force iOS to acknowledge the value change
+            input.dispatchEvent(new Event("input", { bubbles: true }));
             input.focus();
         }
 
@@ -169,17 +183,20 @@
         });
 
         recognition.addEventListener("result", (e) => {
+            gotAnyResult = true;
             let finalText = "";
             let interimText = "";
             for (let i = 0; i < e.results.length; i++) {
+                const transcript = e.results[i][0].transcript;
                 if (e.results[i].isFinal) {
-                    finalText += e.results[i][0].transcript;
+                    finalText += transcript;
                 } else {
-                    interimText += e.results[i][0].transcript;
+                    interimText += transcript;
                 }
             }
             if (finalText) {
                 applyTranscript(finalText);
+                appliedFinal = true;
                 pendingTranscript = "";
             } else {
                 pendingTranscript = interimText;
@@ -187,9 +204,10 @@
         });
 
         recognition.addEventListener("end", () => {
-            // On iOS Safari, manual stop() skips the final result event.
-            // Apply any pending interim transcript so speech isn't lost.
-            if (pendingTranscript) {
+            // On iOS Safari, manual stop() may skip the final result
+            // event.  Apply any pending interim transcript so speech
+            // isn't lost.
+            if (!appliedFinal && pendingTranscript) {
                 applyTranscript(pendingTranscript);
                 pendingTranscript = "";
             }
@@ -199,7 +217,8 @@
         recognition.addEventListener("error", (e) => {
             setVoiceIdle();
             if (e.error === "not-allowed") {
-                alert("Microphone access denied. Please allow microphone permissions in your browser settings.");
+                alert("Microphone access denied. Allow microphone " +
+                      "permissions in your browser settings.");
             } else if (e.error === "no-speech") {
                 // Silently reset — user just didn't speak
             } else {

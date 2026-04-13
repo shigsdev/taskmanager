@@ -43,9 +43,7 @@ _(nothing currently in progress)_
 
 ## Bugs
 
-| Item | Risks / Notes |
-|---|---|
-| Voice input on iPhone — recording starts and stops but captured text does not appear in the task input bar (reported 2026-04-09) | iOS WebKit Web Speech API is flaky in PWA standalone mode. May need polyfill or server-side Whisper fallback. Hard to reproduce without physical iPhone. |
+_(no open bugs)_
 
 ## Backlog (prioritized)
 
