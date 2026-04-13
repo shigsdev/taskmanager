@@ -25,6 +25,7 @@ from models import (  # noqa: E402
     GoalStatus,
     ImportLog,
     Project,
+    ProjectType,
     RecurringFrequency,
     RecurringTask,
     Task,
@@ -95,8 +96,15 @@ def _seed():
         projects = [
             Project(name="Task Manager App", color="#4285f4", goal_id=goals[0].id),
             Project(name="Q2 OKRs", color="#ea4335"),
-            Project(name="Home Renovation", color="#34a853"),
-            Project(name="Book Club", color="#fbbc05", goal_id=goals[1].id),
+            Project(name="Home Renovation", color="#34a853", type=ProjectType.PERSONAL),
+            Project(
+                name="Book Club", color="#fbbc05",
+                type=ProjectType.PERSONAL, goal_id=goals[1].id,
+            ),
+            Project(
+                name="Fitness", color="#ef4444",
+                type=ProjectType.PERSONAL, goal_id=goals[2].id,
+            ),
         ]
         db.session.add_all(projects)
         db.session.flush()
@@ -188,6 +196,7 @@ def _seed():
                 title="Exercise — run or gym",
                 tier=Tier.TODAY,
                 type=TaskType.PERSONAL,
+                project_id=projects[4].id,
                 recurring_task_id=recurring[4].id,
                 goal_id=goals[2].id,
                 notes="At least 30 minutes. Log distance in Strava.",

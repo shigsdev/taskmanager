@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 
 import auth
-from models import Goal, GoalCategory, GoalPriority, Project, db
+from models import Goal, GoalCategory, GoalPriority, Project, ProjectType, db
 
 
 def _make_project(**overrides) -> Project:
@@ -79,6 +79,38 @@ def test_create_project_422_blank_name(authed_client):
     assert resp.status_code == 422
 
 
+def test_create_project_personal(authed_client):
+    resp = authed_client.post(
+        "/api/projects", json={"name": "Fitness", "type": "personal"}
+    )
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert body["name"] == "Fitness"
+    assert body["type"] == "personal"
+
+
+def test_create_project_explicit_work(authed_client):
+    resp = authed_client.post(
+        "/api/projects", json={"name": "Sprint", "type": "work"}
+    )
+    assert resp.status_code == 201
+    assert resp.get_json()["type"] == "work"
+
+
+def test_create_project_default_type_is_work(authed_client):
+    resp = authed_client.post("/api/projects", json={"name": "NoType"})
+    assert resp.status_code == 201
+    assert resp.get_json()["type"] == "work"
+
+
+def test_create_project_422_invalid_type(authed_client):
+    resp = authed_client.post(
+        "/api/projects", json={"name": "Bad", "type": "banana"}
+    )
+    assert resp.status_code == 422
+    assert resp.get_json()["field"] == "type"
+
+
 def test_create_project_400_no_json(authed_client):
     resp = authed_client.post("/api/projects", data="bad", content_type="text/plain")
     assert resp.status_code == 400
@@ -112,6 +144,39 @@ def test_list_projects_sorted_by_order(authed_client, app):
     resp = authed_client.get("/api/projects")
     names = [p["name"] for p in resp.get_json()]
     assert names == ["A", "B"]
+
+
+def test_list_projects_filter_by_type_personal(authed_client, app):
+    with app.app_context():
+        _make_project(name="Work Proj", type=ProjectType.WORK)
+        _make_project(name="Personal Proj", type=ProjectType.PERSONAL)
+    resp = authed_client.get("/api/projects?type=personal")
+    assert resp.status_code == 200
+    names = [p["name"] for p in resp.get_json()]
+    assert names == ["Personal Proj"]
+
+
+def test_list_projects_filter_by_type_work(authed_client, app):
+    with app.app_context():
+        _make_project(name="Work Proj", type=ProjectType.WORK)
+        _make_project(name="Personal Proj", type=ProjectType.PERSONAL)
+    resp = authed_client.get("/api/projects?type=work")
+    assert resp.status_code == 200
+    names = [p["name"] for p in resp.get_json()]
+    assert names == ["Work Proj"]
+
+
+def test_list_projects_no_type_filter_returns_all(authed_client, app):
+    with app.app_context():
+        _make_project(name="Work Proj", type=ProjectType.WORK)
+        _make_project(name="Personal Proj", type=ProjectType.PERSONAL)
+    resp = authed_client.get("/api/projects")
+    assert len(resp.get_json()) == 2
+
+
+def test_list_projects_422_invalid_type(authed_client):
+    resp = authed_client.get("/api/projects?type=banana")
+    assert resp.status_code == 422
 
 
 # --- GET one -----------------------------------------------------------------
@@ -162,6 +227,23 @@ def test_patch_update_all(authed_client, app):
     assert body["color"] == "#123456"
     assert body["is_active"] is False
     assert body["sort_order"] == 9
+
+
+def test_patch_change_type(authed_client, app):
+    with app.app_context():
+        p = _make_project(name="X", type=ProjectType.WORK)
+        pid = p.id
+    resp = authed_client.patch(f"/api/projects/{pid}", json={"type": "personal"})
+    assert resp.status_code == 200
+    assert resp.get_json()["type"] == "personal"
+
+
+def test_patch_422_invalid_type(authed_client, app):
+    with app.app_context():
+        p = _make_project(name="X")
+        pid = p.id
+    resp = authed_client.patch(f"/api/projects/{pid}", json={"type": "banana"})
+    assert resp.status_code == 422
 
 
 def test_patch_422_blank_name(authed_client, app):

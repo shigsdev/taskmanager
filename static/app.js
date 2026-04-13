@@ -89,8 +89,8 @@ function renderBoard() {
             list.classList.remove("empty-state");
             list.removeAttribute("data-empty-msg");
 
-            // In work view with no project filter, group by project
-            if (currentView === "work" && !projectFilter) {
+            // In work/personal view with no project filter, group by project
+            if ((currentView === "work" || currentView === "personal") && !projectFilter) {
                 renderTierGroupedByProject(list, tasks);
             } else {
                 for (const task of tasks) {
@@ -652,13 +652,16 @@ function renderProjectFilter() {
     if (!container) return;
     container.innerHTML = "";
 
+    // Filter projects to match the current view (work or personal)
+    const viewProjects = allProjects.filter((p) => p.type === currentView);
+
     const allBtn = document.createElement("button");
     allBtn.className = "btn-sm project-filter-btn" + (!projectFilter ? " active" : "");
     allBtn.textContent = "All projects";
     allBtn.addEventListener("click", () => { projectFilter = null; renderBoard(); renderCompletedList(); renderProjectFilter(); });
     container.appendChild(allBtn);
 
-    for (const p of allProjects) {
+    for (const p of viewProjects) {
         const btn = document.createElement("button");
         btn.className = "btn-sm project-filter-btn" + (projectFilter === p.id ? " active" : "");
         btn.innerHTML = `<span class="project-dot" style="background:${p.color || '#999'}"></span> ${escapeHtml(p.name)}`;
@@ -775,10 +778,10 @@ function setupNavTabs() {
             projectFilter = null;
             renderBoard();
             renderCompletedList();
-            // Show/hide project filter bar
+            // Show/hide project filter bar (visible in work + personal views)
             const bar = document.getElementById("projectFilterBar");
             if (bar) {
-                bar.style.display = currentView === "work" ? "" : "none";
+                bar.style.display = (currentView === "work" || currentView === "personal") ? "" : "none";
                 renderProjectFilter();
             }
         });
@@ -1064,10 +1067,7 @@ function taskDetailOpen(task) {
 }
 
 function taskDetailToggleProject(type) {
-    const projectField = document.getElementById("detailProjectField");
-    if (projectField) {
-        projectField.style.display = type === "work" ? "" : "none";
-    }
+    taskDetailPopulateProjects(type);
 }
 
 function taskDetailClose() {
@@ -1111,15 +1111,23 @@ function taskDetailPopulateGoals() {
     }
 }
 
-function taskDetailPopulateProjects() {
+function taskDetailPopulateProjects(filterType) {
     const sel = document.getElementById("detailProject");
     if (!sel) return;
+    const currentValue = sel.value;
     while (sel.options.length > 1) sel.remove(1);
-    for (const p of allProjects) {
+    const filtered = filterType
+        ? allProjects.filter((p) => p.type === filterType)
+        : allProjects;
+    for (const p of filtered) {
         const opt = document.createElement("option");
         opt.value = p.id;
         opt.textContent = p.name;
         sel.appendChild(opt);
+    }
+    // Restore selection if it's still in the filtered list
+    if (currentValue && filtered.some((p) => p.id === currentValue)) {
+        sel.value = currentValue;
     }
 }
 

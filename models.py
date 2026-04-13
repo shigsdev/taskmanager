@@ -54,6 +54,7 @@ class TaskStatus(enum.StrEnum):
 
 class ProjectType(enum.StrEnum):
     WORK = "work"
+    PERSONAL = "personal"
 
 
 class RecurringFrequency(enum.StrEnum):

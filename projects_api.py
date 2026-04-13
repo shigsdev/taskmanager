@@ -6,7 +6,7 @@ import uuid
 from flask import Blueprint, jsonify, request
 
 from auth import login_required
-from models import Project
+from models import Project, ProjectType
 from project_service import (
     ValidationError,
     create_project,
@@ -44,7 +44,15 @@ def index(email: str):  # noqa: ARG001
     else:
         is_active = True
 
-    projects = list_projects(is_active=is_active)
+    type_arg = request.args.get("type")
+    project_type = None
+    if type_arg is not None:
+        try:
+            project_type = ProjectType(type_arg)
+        except ValueError:
+            return jsonify({"error": f"invalid type: {type_arg}"}), 422
+
+    projects = list_projects(is_active=is_active, project_type=project_type)
     return jsonify([_serialize(p) for p in projects])
 
 
