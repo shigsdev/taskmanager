@@ -73,7 +73,7 @@ def print_report(
 
     print()
     print("Deploy Validation Report")
-    print("\u2500" * 25)
+    print("-" * 25)
     print(f"Expected SHA:   {expected_sha[:8]}")
     print(f"Deployed SHA:   {deployed[:8]}")
     print(f"SHA match:      {sha_match}")
@@ -122,7 +122,7 @@ def main() -> int:
             deployed = data.get("git_sha", "")
             print(f"  [{i}] deployed={deployed[:8]}", end="")
             if deployed[:8] == expected[:8]:
-                print(" — MATCH")
+                print(" -- MATCH")
                 last_data = data
                 break
             print()
