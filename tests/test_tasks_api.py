@@ -555,6 +555,216 @@ def test_subtask_explicit_goal_overrides_parent(authed_client, app):
     assert resp.get_json()["goal_id"] == goal_b
 
 
+def test_update_parent_goal_cascades_to_matching_subtasks(authed_client, app):
+    """Moving a parent to a new goal cascades to subtasks that still mirror
+    the parent's OLD goal. Subtasks with an explicit override are preserved."""
+    g1 = authed_client.post(
+        "/api/goals",
+        json={"title": "Goal A", "category": "work", "priority": "must"},
+    )
+    g2 = authed_client.post(
+        "/api/goals",
+        json={"title": "Goal B", "category": "work", "priority": "should"},
+    )
+    g3 = authed_client.post(
+        "/api/goals",
+        json={"title": "Goal C", "category": "work", "priority": "could"},
+    )
+    goal_a = g1.get_json()["id"]
+    goal_b = g2.get_json()["id"]
+    goal_c = g3.get_json()["id"]
+
+    # Parent starts on Goal A
+    p = authed_client.post(
+        "/api/tasks",
+        json={"title": "Parent", "type": "work", "goal_id": goal_a},
+    )
+    parent_id = p.get_json()["id"]
+
+    # Subtask 1 inherits Goal A (no explicit goal)
+    s1 = authed_client.post(
+        "/api/tasks",
+        json={"title": "Inherited sub", "type": "work", "parent_id": parent_id},
+    )
+    inherited_id = s1.get_json()["id"]
+    assert s1.get_json()["goal_id"] == goal_a
+
+    # Subtask 2 is explicitly on Goal B (override)
+    s2 = authed_client.post(
+        "/api/tasks",
+        json={
+            "title": "Overridden sub",
+            "type": "work",
+            "parent_id": parent_id,
+            "goal_id": goal_b,
+        },
+    )
+    overridden_id = s2.get_json()["id"]
+    assert s2.get_json()["goal_id"] == goal_b
+
+    # Move the parent to Goal C
+    resp = authed_client.patch(
+        f"/api/tasks/{parent_id}", json={"goal_id": goal_c}
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["goal_id"] == goal_c
+
+    # Inherited subtask follows the parent
+    assert (
+        authed_client.get(f"/api/tasks/{inherited_id}").get_json()["goal_id"]
+        == goal_c
+    )
+    # Overridden subtask stays put
+    assert (
+        authed_client.get(f"/api/tasks/{overridden_id}").get_json()["goal_id"]
+        == goal_b
+    )
+
+
+def test_update_parent_project_cascades_to_matching_subtasks(authed_client, app):
+    """Same cascade rule applies to project_id, for symmetry with goal_id."""
+    proj_a = authed_client.post("/api/projects", json={"name": "Proj A"}).get_json()["id"]
+    proj_b = authed_client.post("/api/projects", json={"name": "Proj B"}).get_json()["id"]
+    proj_c = authed_client.post("/api/projects", json={"name": "Proj C"}).get_json()["id"]
+
+    parent_id = authed_client.post(
+        "/api/tasks",
+        json={"title": "Parent", "type": "work", "project_id": proj_a},
+    ).get_json()["id"]
+
+    inherited_id = authed_client.post(
+        "/api/tasks",
+        json={"title": "Inherited", "type": "work", "parent_id": parent_id},
+    ).get_json()["id"]
+
+    overridden_id = authed_client.post(
+        "/api/tasks",
+        json={
+            "title": "Overridden",
+            "type": "work",
+            "parent_id": parent_id,
+            "project_id": proj_b,
+        },
+    ).get_json()["id"]
+
+    resp = authed_client.patch(
+        f"/api/tasks/{parent_id}", json={"project_id": proj_c}
+    )
+    assert resp.status_code == 200
+
+    assert (
+        authed_client.get(f"/api/tasks/{inherited_id}").get_json()["project_id"]
+        == proj_c
+    )
+    assert (
+        authed_client.get(f"/api/tasks/{overridden_id}").get_json()["project_id"]
+        == proj_b
+    )
+
+
+def test_update_parent_goal_to_null_cascades(authed_client, app):
+    """Clearing a parent's goal propagates null to inherited subtasks."""
+    goal_id = authed_client.post(
+        "/api/goals",
+        json={"title": "G", "category": "work", "priority": "must"},
+    ).get_json()["id"]
+
+    parent_id = authed_client.post(
+        "/api/tasks",
+        json={"title": "Parent", "type": "work", "goal_id": goal_id},
+    ).get_json()["id"]
+
+    sub_id = authed_client.post(
+        "/api/tasks",
+        json={"title": "Sub", "type": "work", "parent_id": parent_id},
+    ).get_json()["id"]
+
+    resp = authed_client.patch(
+        f"/api/tasks/{parent_id}", json={"goal_id": None}
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["goal_id"] is None
+    assert authed_client.get(f"/api/tasks/{sub_id}").get_json()["goal_id"] is None
+
+
+def test_update_parent_goal_from_null_cascades(authed_client, app):
+    """Setting a goal on a goalless parent fills it in on subtasks with null goal."""
+    parent_id = authed_client.post(
+        "/api/tasks", json={"title": "Parent", "type": "work"}
+    ).get_json()["id"]
+
+    sub_id = authed_client.post(
+        "/api/tasks",
+        json={"title": "Sub", "type": "work", "parent_id": parent_id},
+    ).get_json()["id"]
+    assert (
+        authed_client.get(f"/api/tasks/{sub_id}").get_json()["goal_id"] is None
+    )
+
+    goal_id = authed_client.post(
+        "/api/goals",
+        json={"title": "G", "category": "work", "priority": "must"},
+    ).get_json()["id"]
+
+    resp = authed_client.patch(
+        f"/api/tasks/{parent_id}", json={"goal_id": goal_id}
+    )
+    assert resp.status_code == 200
+    assert (
+        authed_client.get(f"/api/tasks/{sub_id}").get_json()["goal_id"] == goal_id
+    )
+
+
+def test_update_parent_unrelated_field_does_not_touch_subtask_goal(authed_client, app):
+    """Changing a field like title must not cascade or disturb subtask goals."""
+    goal_id = authed_client.post(
+        "/api/goals",
+        json={"title": "G", "category": "work", "priority": "must"},
+    ).get_json()["id"]
+
+    parent_id = authed_client.post(
+        "/api/tasks",
+        json={"title": "Parent", "type": "work", "goal_id": goal_id},
+    ).get_json()["id"]
+
+    sub_id = authed_client.post(
+        "/api/tasks",
+        json={"title": "Sub", "type": "work", "parent_id": parent_id},
+    ).get_json()["id"]
+
+    resp = authed_client.patch(
+        f"/api/tasks/{parent_id}", json={"title": "Parent renamed"}
+    )
+    assert resp.status_code == 200
+    assert (
+        authed_client.get(f"/api/tasks/{sub_id}").get_json()["goal_id"] == goal_id
+    )
+
+
+def test_update_subtask_goal_does_not_cascade(authed_client, app):
+    """Subtasks cannot have subtasks, so updating a subtask's own goal is a
+    plain field update — no cascade pass, no error."""
+    parent_id = authed_client.post(
+        "/api/tasks", json={"title": "Parent", "type": "work"}
+    ).get_json()["id"]
+
+    sub_id = authed_client.post(
+        "/api/tasks",
+        json={"title": "Sub", "type": "work", "parent_id": parent_id},
+    ).get_json()["id"]
+
+    goal_id = authed_client.post(
+        "/api/goals",
+        json={"title": "G", "category": "work", "priority": "must"},
+    ).get_json()["id"]
+
+    resp = authed_client.patch(
+        f"/api/tasks/{sub_id}", json={"goal_id": goal_id}
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["goal_id"] == goal_id
+
+
 def test_create_subtask_of_subtask_rejected(authed_client, app):
     """One level deep only — subtasks cannot have their own subtasks."""
     resp = authed_client.post("/api/tasks", json={"title": "Parent", "type": "work"})

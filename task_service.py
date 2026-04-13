@@ -149,6 +149,11 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
     if task is None:
         return None
 
+    # Snapshot pre-update values so we can cascade goal/project changes to
+    # subtasks that still mirror the parent's old value (see below).
+    old_goal_id = task.goal_id
+    old_project_id = task.project_id
+
     if "title" in data:
         title = (data["title"] or "").strip()
         if not title:
@@ -203,6 +208,24 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
     unknown = set(data) - _UPDATABLE_FIELDS
     if unknown:
         raise ValidationError(f"unknown fields: {sorted(unknown)}", next(iter(unknown)))
+
+    # Cascade goal/project changes from a parent task down to its active
+    # subtasks. Mirrors the creation-time inheritance rule: only subtasks
+    # that still match the parent's OLD value are updated, so an explicit
+    # override (subtask.goal_id != old_goal_id) is left alone. Subtasks
+    # cannot themselves have subtasks (one-level-deep), so tasks with a
+    # parent_id never cascade.
+    if task.parent_id is None:
+        goal_changed = "goal_id" in data and task.goal_id != old_goal_id
+        project_changed = "project_id" in data and task.project_id != old_project_id
+        if goal_changed or project_changed:
+            for sub in task.subtasks:
+                if sub.status != TaskStatus.ACTIVE:
+                    continue
+                if goal_changed and sub.goal_id == old_goal_id:
+                    sub.goal_id = task.goal_id
+                if project_changed and sub.project_id == old_project_id:
+                    sub.project_id = task.project_id
 
     db.session.commit()
     return task
