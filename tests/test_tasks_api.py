@@ -947,3 +947,177 @@ class TestReorder:
             json={"tier": "invalid", "task_ids": []},
         )
         assert resp.status_code == 400
+
+
+# --- Repeat (task ↔ recurring template) --------------------------------------
+
+
+class TestRepeatOnCreate:
+    """Creating a task with a repeat field should auto-create a RecurringTask."""
+
+    def test_create_task_with_daily_repeat(self, authed_client):
+        resp = authed_client.post(
+            "/api/tasks",
+            json={
+                "title": "Morning standup",
+                "type": "work",
+                "repeat": {"frequency": "daily"},
+            },
+        )
+        assert resp.status_code == 201
+        body = resp.get_json()
+        assert body["repeat"] is not None
+        assert body["repeat"]["frequency"] == "daily"
+
+    def test_create_task_with_weekdays_repeat(self, authed_client):
+        resp = authed_client.post(
+            "/api/tasks",
+            json={
+                "title": "Check email",
+                "type": "work",
+                "repeat": {"frequency": "weekdays"},
+            },
+        )
+        assert resp.status_code == 201
+        assert resp.get_json()["repeat"]["frequency"] == "weekdays"
+
+    def test_create_task_with_weekly_repeat(self, authed_client):
+        resp = authed_client.post(
+            "/api/tasks",
+            json={
+                "title": "Weekly review",
+                "type": "personal",
+                "repeat": {"frequency": "weekly", "day_of_week": 4},
+            },
+        )
+        assert resp.status_code == 201
+        body = resp.get_json()
+        assert body["repeat"]["frequency"] == "weekly"
+        assert body["repeat"]["day_of_week"] == 4
+
+    def test_create_task_with_monthly_date_repeat(self, authed_client):
+        resp = authed_client.post(
+            "/api/tasks",
+            json={
+                "title": "Pay rent",
+                "type": "personal",
+                "repeat": {"frequency": "monthly_date", "day_of_month": 1},
+            },
+        )
+        assert resp.status_code == 201
+        body = resp.get_json()
+        assert body["repeat"]["frequency"] == "monthly_date"
+        assert body["repeat"]["day_of_month"] == 1
+
+    def test_create_task_with_monthly_nth_weekday_repeat(self, authed_client):
+        resp = authed_client.post(
+            "/api/tasks",
+            json={
+                "title": "Team retro",
+                "type": "work",
+                "repeat": {
+                    "frequency": "monthly_nth_weekday",
+                    "week_of_month": 2,
+                    "day_of_week": 3,
+                },
+            },
+        )
+        assert resp.status_code == 201
+        body = resp.get_json()
+        assert body["repeat"]["frequency"] == "monthly_nth_weekday"
+        assert body["repeat"]["week_of_month"] == 2
+        assert body["repeat"]["day_of_week"] == 3
+
+    def test_create_task_without_repeat_has_null(self, authed_client):
+        resp = authed_client.post(
+            "/api/tasks",
+            json={"title": "One-off", "type": "work"},
+        )
+        assert resp.status_code == 201
+        assert resp.get_json()["repeat"] is None
+
+    def test_repeat_creates_recurring_template(self, authed_client):
+        """The recurring template should be visible via /api/recurring."""
+        authed_client.post(
+            "/api/tasks",
+            json={
+                "title": "Auto-template",
+                "type": "work",
+                "repeat": {"frequency": "daily"},
+            },
+        )
+        resp = authed_client.get("/api/recurring")
+        titles = [r["title"] for r in resp.get_json()]
+        assert "Auto-template" in titles
+
+    def test_repeat_inherits_task_details(self, authed_client):
+        """Recurring template should copy notes, URL, project, goal from task."""
+        authed_client.post(
+            "/api/tasks",
+            json={
+                "title": "Detailed repeat",
+                "type": "work",
+                "notes": "Important notes",
+                "url": "https://example.com",
+                "repeat": {"frequency": "daily"},
+            },
+        )
+        resp = authed_client.get("/api/recurring")
+        templates = [r for r in resp.get_json() if r["title"] == "Detailed repeat"]
+        assert len(templates) == 1
+        assert templates[0]["notes"] == "Important notes"
+        assert templates[0]["url"] == "https://example.com"
+
+
+class TestRepeatOnUpdate:
+    """Updating a task's repeat field should create/update/remove the template."""
+
+    def test_add_repeat_to_existing_task(self, authed_client, app):
+        with app.app_context():
+            task = _make_task(title="Now repeats")
+            task_id = task.id
+        resp = authed_client.patch(
+            f"/api/tasks/{task_id}",
+            json={"repeat": {"frequency": "daily"}},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["repeat"]["frequency"] == "daily"
+
+    def test_remove_repeat_from_task(self, authed_client):
+        # Create with repeat
+        resp = authed_client.post(
+            "/api/tasks",
+            json={
+                "title": "Will un-repeat",
+                "type": "work",
+                "repeat": {"frequency": "daily"},
+            },
+        )
+        task_id = resp.get_json()["id"]
+
+        # Remove repeat
+        resp = authed_client.patch(
+            f"/api/tasks/{task_id}",
+            json={"repeat": None},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["repeat"] is None
+
+    def test_change_repeat_frequency(self, authed_client):
+        resp = authed_client.post(
+            "/api/tasks",
+            json={
+                "title": "Freq change",
+                "type": "work",
+                "repeat": {"frequency": "daily"},
+            },
+        )
+        task_id = resp.get_json()["id"]
+
+        resp = authed_client.patch(
+            f"/api/tasks/{task_id}",
+            json={"repeat": {"frequency": "weekly", "day_of_week": 2}},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["repeat"]["frequency"] == "weekly"
+        assert resp.get_json()["repeat"]["day_of_week"] == 2

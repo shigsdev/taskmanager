@@ -137,6 +137,67 @@
                 </div>
             </div>
 
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="detailRepeat">Repeat</label>
+                    <select id="detailRepeat" onchange="taskDetailRepeatChanged()">
+                        <option value="">None</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekdays">Weekdays (Mon-Fri)</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly_date">Monthly (same date)</option>
+                        <option value="monthly_nth_weekday">Monthly (nth weekday)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row" id="repeatWeeklyField" style="display:none">
+                <div class="form-field">
+                    <label for="detailRepeatDay">Day of week</label>
+                    <select id="detailRepeatDay">
+                        <option value="0">Monday</option>
+                        <option value="1">Tuesday</option>
+                        <option value="2">Wednesday</option>
+                        <option value="3">Thursday</option>
+                        <option value="4">Friday</option>
+                        <option value="5">Saturday</option>
+                        <option value="6">Sunday</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row" id="repeatMonthlyDateField" style="display:none">
+                <div class="form-field">
+                    <label for="detailRepeatDayOfMonth">Day of month</label>
+                    <select id="detailRepeatDayOfMonth">
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row" id="repeatMonthlyNthField" style="display:none">
+                <div class="form-field">
+                    <label for="detailRepeatWeekOfMonth">Which week</label>
+                    <select id="detailRepeatWeekOfMonth">
+                        <option value="1">First</option>
+                        <option value="2">Second</option>
+                        <option value="3">Third</option>
+                        <option value="4">Fourth</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="detailRepeatNthDay">Day of week</label>
+                    <select id="detailRepeatNthDay">
+                        <option value="0">Monday</option>
+                        <option value="1">Tuesday</option>
+                        <option value="2">Wednesday</option>
+                        <option value="3">Thursday</option>
+                        <option value="4">Friday</option>
+                        <option value="5">Saturday</option>
+                        <option value="6">Sunday</option>
+                    </select>
+                </div>
+            </div>
+
             <label for="detailNotes">Notes</label>
             <textarea id="detailNotes" rows="3"></textarea>
 

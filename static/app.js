@@ -522,6 +522,21 @@ function taskCardEl(task) {
         }
     }
 
+    // Repeat badge
+    if (task.repeat) {
+        const repeatBadge = document.createElement("span");
+        repeatBadge.className = "badge badge-repeat";
+        const freqLabels = {
+            daily: "Daily",
+            weekdays: "Weekdays",
+            weekly: "Weekly",
+            monthly_date: "Monthly",
+            monthly_nth_weekday: "Monthly",
+        };
+        repeatBadge.textContent = "\u21BB " + (freqLabels[task.repeat.frequency] || "Repeat");
+        meta.appendChild(repeatBadge);
+    }
+
     // URL / article badge
     if (task.url) {
         const urlBadge = document.createElement("a");
@@ -1016,6 +1031,9 @@ function taskDetailOpen(task) {
     // Show/hide project selector based on type
     taskDetailToggleProject(task.type);
 
+    // Repeat
+    taskDetailPopulateRepeat(task);
+
     // Checklist
     const container = document.getElementById("checklistItems");
     container.innerHTML = "";
@@ -1105,6 +1123,66 @@ function taskDetailPopulateProjects() {
     }
 }
 
+function taskDetailInitRepeat() {
+    // Populate day-of-month dropdown (1-31)
+    const domSel = document.getElementById("detailRepeatDayOfMonth");
+    if (domSel && domSel.options.length === 0) {
+        for (let i = 1; i <= 31; i++) {
+            const opt = document.createElement("option");
+            opt.value = String(i);
+            opt.textContent = String(i);
+            domSel.appendChild(opt);
+        }
+    }
+}
+
+function taskDetailRepeatChanged() {
+    const freq = document.getElementById("detailRepeat").value;
+    document.getElementById("repeatWeeklyField").style.display =
+        freq === "weekly" ? "" : "none";
+    document.getElementById("repeatMonthlyDateField").style.display =
+        freq === "monthly_date" ? "" : "none";
+    document.getElementById("repeatMonthlyNthField").style.display =
+        freq === "monthly_nth_weekday" ? "" : "none";
+}
+
+function taskDetailPopulateRepeat(task) {
+    taskDetailInitRepeat();
+    const repeat = task.repeat;
+    const sel = document.getElementById("detailRepeat");
+    if (!repeat) {
+        sel.value = "";
+    } else {
+        sel.value = repeat.frequency || "";
+        if (repeat.day_of_week != null) {
+            document.getElementById("detailRepeatDay").value = String(repeat.day_of_week);
+            document.getElementById("detailRepeatNthDay").value = String(repeat.day_of_week);
+        }
+        if (repeat.day_of_month != null) {
+            document.getElementById("detailRepeatDayOfMonth").value = String(repeat.day_of_month);
+        }
+        if (repeat.week_of_month != null) {
+            document.getElementById("detailRepeatWeekOfMonth").value = String(repeat.week_of_month);
+        }
+    }
+    taskDetailRepeatChanged();
+}
+
+function taskDetailCollectRepeat() {
+    const freq = document.getElementById("detailRepeat").value;
+    if (!freq) return null;
+    const repeat = { frequency: freq };
+    if (freq === "weekly") {
+        repeat.day_of_week = parseInt(document.getElementById("detailRepeatDay").value);
+    } else if (freq === "monthly_date") {
+        repeat.day_of_month = parseInt(document.getElementById("detailRepeatDayOfMonth").value);
+    } else if (freq === "monthly_nth_weekday") {
+        repeat.week_of_month = parseInt(document.getElementById("detailRepeatWeekOfMonth").value);
+        repeat.day_of_week = parseInt(document.getElementById("detailRepeatNthDay").value);
+    }
+    return repeat;
+}
+
 async function taskDetailSave(e) {
     e.preventDefault();
     const id = document.getElementById("detailId").value;
@@ -1132,6 +1210,7 @@ async function taskDetailSave(e) {
         url: rawUrl || null,
         notes: document.getElementById("detailNotes").value || "",
         checklist: clItems,
+        repeat: taskDetailCollectRepeat(),
     };
 
     try {

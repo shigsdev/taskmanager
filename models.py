@@ -58,8 +58,11 @@ class ProjectType(enum.StrEnum):
 
 class RecurringFrequency(enum.StrEnum):
     DAILY = "daily"
+    WEEKDAYS = "weekdays"
     WEEKLY = "weekly"
     DAY_OF_WEEK = "day_of_week"
+    MONTHLY_DATE = "monthly_date"
+    MONTHLY_NTH_WEEKDAY = "monthly_nth_weekday"
 
 
 class GoalCategory(enum.StrEnum):
@@ -181,6 +184,9 @@ class Task(db.Model):
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("tasks.id"), nullable=True
     )
+    recurring_task_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("recurring_tasks.id"), nullable=True
+    )
 
     project: Mapped[Project | None] = relationship(back_populates="tasks")
     goal: Mapped[Goal | None] = relationship(back_populates="tasks")
@@ -188,6 +194,7 @@ class Task(db.Model):
         remote_side="Task.id", back_populates="subtasks"
     )
     subtasks: Mapped[list[Task]] = relationship(back_populates="parent")
+    recurring_task: Mapped[RecurringTask | None] = relationship()
 
     __table_args__ = (
         Index("ix_tasks_status", "status"),
@@ -196,6 +203,7 @@ class Task(db.Model):
         Index("ix_tasks_goal_id", "goal_id"),
         Index("ix_tasks_batch_id", "batch_id"),
         Index("ix_tasks_parent_id", "parent_id"),
+        Index("ix_tasks_recurring_task_id", "recurring_task_id"),
     )
 
 
@@ -208,10 +216,18 @@ class RecurringTask(db.Model):
         Enum(RecurringFrequency), nullable=False
     )
     day_of_week: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    day_of_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    week_of_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
     type: Mapped[TaskType] = mapped_column(Enum(TaskType), nullable=False)
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("projects.id"), nullable=True
     )
+    goal_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("goals.id"), nullable=True
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    checklist: Mapped[list | None] = mapped_column(JSONType, nullable=True, default=list)
+    url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 

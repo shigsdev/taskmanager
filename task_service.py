@@ -11,7 +11,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from models import Task, TaskStatus, TaskType, Tier, db
+from models import RecurringTask, Task, TaskStatus, TaskType, Tier, db
 from utils import ValidationError  # noqa: F401 — re-exported for API layer
 from utils import parse_enum as _parse_enum
 from utils import parse_int as _parse_int
@@ -48,6 +48,64 @@ def _parse_checklist(value: Any) -> list:
     if not isinstance(value, list):
         raise ValidationError("checklist must be a list", "checklist")
     return value
+
+
+# --- Repeat helpers ----------------------------------------------------------
+
+
+def _apply_repeat(task: Task, repeat: dict) -> None:
+    """Create or update a RecurringTask template linked to the given task."""
+    from recurring_service import create_recurring
+
+    rt_data = {
+        "title": task.title,
+        "type": task.type.value,
+        "frequency": repeat.get("frequency"),
+        "day_of_week": repeat.get("day_of_week"),
+        "day_of_month": repeat.get("day_of_month"),
+        "week_of_month": repeat.get("week_of_month"),
+        "project_id": str(task.project_id) if task.project_id else None,
+        "goal_id": str(task.goal_id) if task.goal_id else None,
+        "notes": task.notes,
+        "checklist": task.checklist,
+        "url": task.url,
+    }
+    rt = create_recurring(rt_data)
+    task.recurring_task_id = rt.id
+
+
+def _update_repeat(task: Task, repeat: dict | None) -> None:
+    """Update or remove the recurring template linked to a task."""
+    if repeat is None:
+        # Remove repeat — deactivate linked template
+        if task.recurring_task_id:
+            rt = db.session.get(RecurringTask, task.recurring_task_id)
+            if rt:
+                rt.is_active = False
+            task.recurring_task_id = None
+        return
+
+    if task.recurring_task_id:
+        # Update existing template
+        from recurring_service import update_recurring
+
+        update_data = {
+            "title": task.title,
+            "type": task.type.value,
+            "frequency": repeat.get("frequency"),
+            "day_of_week": repeat.get("day_of_week"),
+            "day_of_month": repeat.get("day_of_month"),
+            "week_of_month": repeat.get("week_of_month"),
+            "project_id": str(task.project_id) if task.project_id else None,
+            "goal_id": str(task.goal_id) if task.goal_id else None,
+            "notes": task.notes,
+            "checklist": task.checklist,
+            "url": task.url,
+            "is_active": True,
+        }
+        update_recurring(task.recurring_task_id, update_data)
+    else:
+        _apply_repeat(task, repeat)
 
 
 # --- CRUD --------------------------------------------------------------------
@@ -96,6 +154,12 @@ def create_task(data: dict) -> Task:
         sort_order=_parse_int(data.get("sort_order", 0), "sort_order"),
     )
     db.session.add(task)
+    db.session.flush()  # assign task.id before linking recurring template
+
+    repeat = data.get("repeat")
+    if isinstance(repeat, dict):
+        _apply_repeat(task, repeat)
+
     db.session.commit()
     return task
 
@@ -141,6 +205,7 @@ _UPDATABLE_FIELDS = {
     "checklist",
     "sort_order",
     "last_reviewed",
+    "repeat",
 }
 
 
@@ -204,6 +269,9 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
 
     if "sort_order" in data:
         task.sort_order = _parse_int(data["sort_order"], "sort_order")
+
+    if "repeat" in data:
+        _update_repeat(task, data["repeat"])
 
     unknown = set(data) - _UPDATABLE_FIELDS
     if unknown:

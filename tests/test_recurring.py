@@ -1,4 +1,4 @@
-"""Integration tests for recurring tasks (Step 13).
+"""Integration tests for recurring tasks.
 
 Recurring tasks are *templates* — they define tasks that should be
 auto-created on certain days. This is different from regular tasks:
@@ -10,8 +10,10 @@ Key concepts tested:
 - CRUD for recurring templates via /api/recurring
 - Seeding system defaults (morning/evening routines, day-specific tasks)
 - Spawning: creating real Tasks from templates based on today's day
-- Frequency types: daily (every day), day_of_week (specific weekday)
+- Frequency types: daily, weekdays, weekly/day_of_week, monthly_date,
+  monthly_nth_weekday
 - Soft-disable: deactivating a template so it stops spawning
+- Full-detail inheritance on spawn (notes, checklist, goal, url)
 """
 from __future__ import annotations
 
@@ -411,3 +413,217 @@ class TestRecurringBlueprint:
         assert "/api/recurring" in rules
         assert "/api/recurring/seed" in rules
         assert "/api/recurring/spawn" in rules
+
+
+# --- New frequency types -----------------------------------------------------
+
+
+class TestWeekdaysFrequency:
+    """Weekdays frequency fires Mon-Fri only."""
+
+    def test_weekday_spawn(self, app):
+        from recurring_service import tasks_due_today
+
+        with app.app_context():
+            _make_recurring(title="Weekday task", frequency=RecurringFrequency.WEEKDAYS)
+
+            # Monday (weekday=0) should fire
+            result = tasks_due_today(target_date=date(2026, 4, 13))  # Monday
+            assert any(rt.title == "Weekday task" for rt in result)
+
+    def test_weekend_no_spawn(self, app):
+        from recurring_service import tasks_due_today
+
+        with app.app_context():
+            _make_recurring(title="Weekday only", frequency=RecurringFrequency.WEEKDAYS)
+
+            # Saturday (weekday=5) should NOT fire
+            result = tasks_due_today(target_date=date(2026, 4, 18))  # Saturday
+            assert not any(rt.title == "Weekday only" for rt in result)
+
+    def test_create_weekdays_via_api(self, authed_client):
+        resp = authed_client.post(
+            "/api/recurring",
+            json={"title": "Weekday thing", "frequency": "weekdays", "type": "work"},
+        )
+        assert resp.status_code == 201
+        assert resp.get_json()["frequency"] == "weekdays"
+
+
+class TestMonthlyDateFrequency:
+    """Monthly date frequency fires on a specific day of month."""
+
+    def test_matching_day_fires(self, app):
+        from recurring_service import tasks_due_today
+
+        with app.app_context():
+            _make_recurring(
+                title="Pay rent",
+                frequency=RecurringFrequency.MONTHLY_DATE,
+                day_of_month=15,
+            )
+
+            result = tasks_due_today(target_date=date(2026, 5, 15))
+            assert any(rt.title == "Pay rent" for rt in result)
+
+    def test_non_matching_day_skips(self, app):
+        from recurring_service import tasks_due_today
+
+        with app.app_context():
+            _make_recurring(
+                title="Pay rent skip",
+                frequency=RecurringFrequency.MONTHLY_DATE,
+                day_of_month=15,
+            )
+
+            result = tasks_due_today(target_date=date(2026, 5, 14))
+            assert not any(rt.title == "Pay rent skip" for rt in result)
+
+    def test_create_monthly_date_via_api(self, authed_client):
+        resp = authed_client.post(
+            "/api/recurring",
+            json={
+                "title": "Monthly bill",
+                "frequency": "monthly_date",
+                "type": "personal",
+                "day_of_month": 1,
+            },
+        )
+        assert resp.status_code == 201
+        body = resp.get_json()
+        assert body["frequency"] == "monthly_date"
+        assert body["day_of_month"] == 1
+
+    def test_422_missing_day_of_month(self, authed_client):
+        resp = authed_client.post(
+            "/api/recurring",
+            json={"title": "No day", "frequency": "monthly_date", "type": "work"},
+        )
+        assert resp.status_code == 422
+
+
+class TestMonthlyNthWeekdayFrequency:
+    """Monthly nth weekday fires on e.g. the 'first Monday' of the month."""
+
+    def test_first_monday_fires(self, app):
+        from recurring_service import tasks_due_today
+
+        with app.app_context():
+            _make_recurring(
+                title="First Monday",
+                frequency=RecurringFrequency.MONTHLY_NTH_WEEKDAY,
+                day_of_week=0,  # Monday
+                week_of_month=1,  # first
+            )
+
+            # 2026-04-06 is the first Monday of April 2026
+            result = tasks_due_today(target_date=date(2026, 4, 6))
+            assert any(rt.title == "First Monday" for rt in result)
+
+    def test_second_monday_skips_first(self, app):
+        from recurring_service import tasks_due_today
+
+        with app.app_context():
+            _make_recurring(
+                title="Second Monday",
+                frequency=RecurringFrequency.MONTHLY_NTH_WEEKDAY,
+                day_of_week=0,
+                week_of_month=2,
+            )
+
+            # First Monday (2026-04-06) should NOT fire for second-Monday template
+            result = tasks_due_today(target_date=date(2026, 4, 6))
+            assert not any(rt.title == "Second Monday" for rt in result)
+
+            # Second Monday (2026-04-13) SHOULD fire
+            result = tasks_due_today(target_date=date(2026, 4, 13))
+            assert any(rt.title == "Second Monday" for rt in result)
+
+    def test_third_friday(self, app):
+        from recurring_service import tasks_due_today
+
+        with app.app_context():
+            _make_recurring(
+                title="Third Friday",
+                frequency=RecurringFrequency.MONTHLY_NTH_WEEKDAY,
+                day_of_week=4,  # Friday
+                week_of_month=3,
+            )
+
+            # 2026-04-17 is the third Friday of April 2026
+            result = tasks_due_today(target_date=date(2026, 4, 17))
+            assert any(rt.title == "Third Friday" for rt in result)
+
+    def test_422_missing_week_of_month(self, authed_client):
+        resp = authed_client.post(
+            "/api/recurring",
+            json={
+                "title": "No week",
+                "frequency": "monthly_nth_weekday",
+                "type": "work",
+                "day_of_week": 0,
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_422_missing_day_of_week(self, authed_client):
+        resp = authed_client.post(
+            "/api/recurring",
+            json={
+                "title": "No day",
+                "frequency": "monthly_nth_weekday",
+                "type": "work",
+                "week_of_month": 1,
+            },
+        )
+        assert resp.status_code == 422
+
+
+class TestSpawnFullDetails:
+    """Spawned tasks should inherit full details from templates."""
+
+    def test_spawn_copies_notes_and_url(self, authed_client, app):
+        with app.app_context():
+            _make_recurring(
+                title="Full detail spawn",
+                frequency=RecurringFrequency.DAILY,
+                notes="Remember to check X",
+                url="https://example.com/guide",
+            )
+
+        authed_client.post("/api/recurring/spawn")
+
+        resp = authed_client.get("/api/tasks?tier=today")
+        tasks = [t for t in resp.get_json() if t["title"] == "Full detail spawn"]
+        assert len(tasks) == 1
+        assert tasks[0]["notes"] == "Remember to check X"
+        assert tasks[0]["url"] == "https://example.com/guide"
+
+    def test_spawn_copies_checklist(self, authed_client, app):
+        checklist = [{"id": "1", "text": "Step 1", "checked": False}]
+        with app.app_context():
+            _make_recurring(
+                title="Checklist spawn",
+                frequency=RecurringFrequency.DAILY,
+                checklist=checklist,
+            )
+
+        authed_client.post("/api/recurring/spawn")
+
+        resp = authed_client.get("/api/tasks?tier=today")
+        tasks = [t for t in resp.get_json() if t["title"] == "Checklist spawn"]
+        assert len(tasks) == 1
+        assert len(tasks[0]["checklist"]) == 1
+        assert tasks[0]["checklist"][0]["text"] == "Step 1"
+
+    def test_spawn_sets_recurring_task_id(self, authed_client, app):
+        with app.app_context():
+            _make_recurring(title="Linked spawn", frequency=RecurringFrequency.DAILY)
+
+        authed_client.post("/api/recurring/spawn")
+
+        resp = authed_client.get("/api/tasks?tier=today")
+        tasks = [t for t in resp.get_json() if t["title"] == "Linked spawn"]
+        assert len(tasks) == 1
+        assert tasks[0]["repeat"] is not None
+        assert tasks[0]["repeat"]["frequency"] == "daily"

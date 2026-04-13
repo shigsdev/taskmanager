@@ -26,6 +26,21 @@ from utils import enum_or_400 as _enum_or_400
 bp = Blueprint("tasks_api", __name__, url_prefix="/api/tasks")
 
 
+def _serialize_repeat(task: Task) -> dict | None:
+    """Build the repeat object from a task's linked RecurringTask template."""
+    rt = task.recurring_task if task.recurring_task_id else None
+    if rt is None or not rt.is_active:
+        return None
+    result = {"frequency": rt.frequency.value}
+    if rt.day_of_week is not None:
+        result["day_of_week"] = rt.day_of_week
+    if rt.day_of_month is not None:
+        result["day_of_month"] = rt.day_of_month
+    if rt.week_of_month is not None:
+        result["week_of_month"] = rt.week_of_month
+    return result
+
+
 def _serialize(task: Task) -> dict:
     active_subtasks = [s for s in task.subtasks if s.status == TaskStatus.ACTIVE]
     done_subtasks = [s for s in task.subtasks if s.status == TaskStatus.ARCHIVED]
@@ -44,6 +59,7 @@ def _serialize(task: Task) -> dict:
         "checklist": task.checklist or [],
         "sort_order": task.sort_order,
         "last_reviewed": task.last_reviewed.isoformat() if task.last_reviewed else None,
+        "repeat": _serialize_repeat(task),
         "subtask_count": len(active_subtasks) + len(done_subtasks),
         "subtask_done": len(done_subtasks),
         "created_at": task.created_at.isoformat(),

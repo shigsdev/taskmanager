@@ -97,6 +97,21 @@
             result.title = result.title.replace(/#personal/gi, "").trim();
         }
 
+        // Repeat shortcuts: #daily #weekdays #weekly #monthly
+        const repeatMap = {
+            "#daily": { frequency: "daily" },
+            "#weekdays": { frequency: "weekdays" },
+            "#weekly": { frequency: "weekly", day_of_week: new Date().getDay() === 0 ? 6 : new Date().getDay() - 1 },
+            "#monthly": { frequency: "monthly_date", day_of_month: new Date().getDate() },
+        };
+        for (const [tag, repeat] of Object.entries(repeatMap)) {
+            if (result.title.toLowerCase().includes(tag)) {
+                result.repeat = repeat;
+                result.title = result.title.replace(new RegExp(tag, "gi"), "").trim();
+                break;
+            }
+        }
+
         // If title is now empty (e.g. user pasted only a URL), will be filled by url-preview
         if (!result.title && result.url) {
             result.title = result.url;
