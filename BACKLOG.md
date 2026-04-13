@@ -8,9 +8,7 @@ moved between sections, never deleted.
 
 ## In Progress
 
-| Item | Risks / Notes |
-|---|---|
-| Bulk-import undo + Recycle Bin (narrow scope, manual cleanup only) | Building now. Recycle bin is import-undo only — regular task delete stays hard-delete. No automated TTL cleanup — user manually empties bin or purges individual batches. Five new routes + new page + global `do_orm_execute` filter for soft-delete. Schema: `batch_id UUID` + `deleted_at DATETIME` on `tasks`/`goals`, `batch_id UUID` + `undone_at DATETIME` on `import_log`. |
+_(nothing currently in progress)_
 
 
 
@@ -36,6 +34,11 @@ moved between sections, never deleted.
 - [x] Settings page — app stats, service status, digest controls, import history, quick links — completed 2026-04-06
 - [x] Security hardening — Fernet encryption, CSP headers, rate limiting, session hardening, auth audit — completed 2026-04-06
 - [x] Railway deployment — Procfile, gunicorn config, runtime.txt, deployment readiness tests, full README — completed 2026-04-06
+- [x] Bulk-import undo + Recycle Bin (narrow scope) — import-undo only, manual cleanup, batch_id UUID soft-delete, five new routes — completed 2026-04-09
+- [x] Photo-to-goal scan — image scan page parses into Goals (not just Tasks) via radio toggle, shared batch_id with ImportLog — completed 2026-04-10
+- [x] LOCAL_DEV_BYPASS_AUTH — four-gate localhost-only auth bypass for agent browser testing, triple Railway tripwire, audit trail — completed 2026-04-10
+- [x] URL save on tasks — quick-capture auto-detects URLs, server-side SSRF-protected title fetch, clickable link on task card — completed 2026-04-11
+- [x] Subtasks (one-level deep) — parent_id self-referential FK, subtask badge on parent card, goal/project inheritance + cascade, force-complete — completed 2026-04-11
 
 ## Bugs
 
@@ -47,8 +50,7 @@ moved between sections, never deleted.
 
 | Item | Risks / Notes |
 |---|---|
-| Personal projects — extend Projects to support personal tasks, not just work | Currently `ProjectType` enum only has `WORK`. Need to add `PERSONAL` value, update project CRUD + UI to allow personal projects, update task detail panel project selector to show personal projects when type is personal. Moderate scope — schema change (enum + migration), API update, UI filter logic. Could combine with subtasks feature or keep separate. |
-| Subtasks — one level deep, extensible to multi-level later | `parent_id` FK on Task (self-referential). Subtasks are full tasks with own tier/due date. Show on main board independently. Parent shows subtask progress badge. Complete parent → warn + offer auto-complete. One-level enforced via validation (removable later for deeper nesting). |
+| Personal projects — extend Projects to support personal tasks, not just work | Currently `ProjectType` enum only has `WORK`. Need to add `PERSONAL` value, update project CRUD + UI to allow personal projects, update task detail panel project selector to show personal projects when type is personal. Moderate scope — schema change (enum + migration), API update, UI filter logic. |
 | JS/E2E testing infrastructure — Jest for unit tests + Playwright for browser API testing (Web Speech, Notifications) across engines (Chromium, WebKit) | Adds a whole new toolchain + CI surface. Playwright browser binaries are ~500MB. Start with Jest-only for unit tests, add Playwright later only if browser-API bugs keep slipping through. |
 | Live post-deploy browser testing against Railway — agent-driven end-to-end smoke test of the deployed production URL after every push, not just localhost | **Why we want it:** the local `LOCAL_DEV_BYPASS_AUTH` flow (added 2026-04-10) lets the agent click through pages on localhost, but those tests run against local Flask + local DB. They prove the *code* renders correctly; they do not prove that the *deployed Railway version* serves correctly with real env vars, real Postgres, real CSP/Talisman headers. SHA-pinned `/healthz` only proves the container booted — it does not prove the UI is interactive. **Approach options, in increasing order of complexity:** (1) **Second OAuth identity** — add a second authorized email (e.g. `taskmanager-bot@...` Google account) to a new `BOT_AUTHORIZED_EMAIL` env var, log into it once via real OAuth in a headless browser, persist the session cookie to a secret store, and have the agent reuse that cookie for post-deploy tests. Risks: cookie expiry (~24h with current session settings), real Google account needed, cookie is a long-lived credential the agent must handle carefully. (2) **Service-account API token** — instead of a browser session, mint a long-lived bearer token tied to the bot identity and accept it on a `Authorization: Bearer ...` header in `auth.py` (parallel to the `X-Debug-Token` pattern but for the full app, not just `/api/debug`). Simpler than cookies but expands the auth surface. (3) **Dedicated `/api/test/*` endpoints** — narrow JSON-only endpoints that the agent hits with a token to verify each post-deploy invariant (e.g. `GET /api/test/scan-page-renders`). No browser at all; just contract tests against the live deployment. Smallest blast radius, but only catches API breakage, not visual/JS regressions. **Recommended sequence:** start with (3) for the next deploy cycle (cheap, low-risk, immediate value), revisit (1) only once we have a UI bug that (3) can't catch. Either way: every endpoint must be rate-limited, must log every access as WARNING (same pattern as `X-Debug-Token`), and the bot identity's email must be on a separate allowlist from the real user. |
 

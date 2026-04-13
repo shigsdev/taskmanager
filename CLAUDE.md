@@ -39,6 +39,16 @@ says otherwise.
   will happily return 200 OK from the OLD container while the new build
   is still running. Version-pinned validation is mandatory.
 
+  **Preferred method — run the validation script:**
+  ```
+  python scripts/validate_deploy.py
+  ```
+  It auto-detects the expected SHA from `git rev-parse HEAD`, polls
+  `/healthz` every 15s for up to 10 minutes, and prints the Deploy
+  Validation Report. Exit code 0 = GREEN, 1 = RED.
+
+  **Manual method** (if the script is unavailable):
+
   1. Capture the expected commit SHA BEFORE validating:
      `EXPECTED_SHA=$(git rev-parse HEAD)`
   2. Poll `/healthz` every 15s, up to 10 minutes:

@@ -13,7 +13,11 @@ work and personal life, with a regulated (air-gapped) work environment.
   with priority ranking, progress tracking, and linked tasks
 - **Projects** — work task grouping with color coding and goal linkage
 - **Inbox triage** — single and bulk triage flow for new tasks
-- **Checklists** — subtask checklists on tasks with progress tracking
+- **Subtasks** — one-level-deep child tasks with progress badge on parent,
+  goal/project inheritance, cascade on parent update, force-complete option
+- **URL save** — paste a URL in quick capture, server fetches page title
+  (SSRF-protected), saves as task with clickable link
+- **Checklists** — checklist items on tasks with progress tracking
 - **Weekly review** — step-through stale task review (keep/freeze/delete/snooze)
 - **Recurring tasks** — 16 system defaults plus custom templates, daily/weekly/day-of-week
 - **Print view** — printer-friendly Today + This Week + Overdue layout

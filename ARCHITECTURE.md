@@ -28,10 +28,12 @@ component is added, a data flow changes, or a security boundary shifts.
         │           ▼                 ▼                ▼           │
         │   ┌───────────────┐  ┌────────────┐  ┌──────────────┐   │
         │   │  PostgreSQL   │  │ APScheduler│  │  In-memory   │   │
-        │   │ tasks·goals·  │  │ daily      │  │  image buffer│   │
-        │   │ projects·     │  │ digest @   │  │ (never       │   │
-        │   │ recurring·    │  │ DIGEST_TIME│  │  persisted)  │   │
-        │   │ import_log    │  │            │  │              │   │
+        │   │ tasks (url,   │  │ daily      │  │  image buffer│   │
+        │   │  parent_id)·  │  │ digest @   │  │ (never       │   │
+        │   │ goals·projects│  │ DIGEST_TIME│  │  persisted)  │   │
+        │   │ recurring·    │  │            │  │              │   │
+        │   │ import_log·   │  │            │  │              │   │
+        │   │ app_logs      │  │            │  │              │   │
         │   └───────────────┘  └─────┬──────┘  └──────┬───────┘   │
         └──────────────────────────┬─┴─────────────────┬──────────┘
                                    │                   │
@@ -54,8 +56,9 @@ component is added, a data flow changes, or a security boundary shifts.
   browser over HTTPS.
 - **Flask app** — the single web service. Hosts routes, auth, services, and
   scheduler. One process, gunicorn-served.
-- **PostgreSQL** — Railway-managed. Stores tasks, projects, goals, recurring
-  tasks, and import log.
+- **PostgreSQL** — Railway-managed. Stores tasks (with optional `url` and
+  self-referential `parent_id` for one-level subtasks), projects, goals,
+  recurring tasks, import log, and app_logs.
 - **APScheduler** — in-process scheduler that fires the daily digest at
   `DIGEST_TIME` in the user's configured timezone.
 - **Fernet crypto module** — symmetric encryption for sensitive fields
@@ -64,8 +67,8 @@ component is added, a data flow changes, or a security boundary shifts.
   against `AUTHORIZED_EMAIL` before any data is served.
 - **SendGrid** — outbound daily digest email to work Outlook.
 - **Google Vision API** — OCR for the image scan feature. Server-side only.
-- **Anthropic Claude API** — parses OCR text into discrete task candidates.
-  Server-side only.
+- **Anthropic Claude API** — parses OCR text into discrete task or goal
+  candidates. Server-side only.
 - **Work Outlook** — receives the daily digest. Air-gapped from the app;
   digest is the only bridge.
 - **GitHub repo** (`shigsdev/taskmanager`) — source of truth. Push to main
@@ -92,6 +95,18 @@ component is added, a data flow changes, or a security boundary shifts.
   tier; goals land with sensible enum fallbacks
   (`PERSONAL_GROWTH` / `NEED_MORE_INFO`) that the user can edit before
   confirming. See "Scan pipeline" diagram below.
+- **URL save**: user pastes or types a URL in the quick-capture bar → the
+  browser `POST`s to `/api/tasks/url-preview` → Flask resolves the hostname,
+  validates it is not a private/loopback IP (SSRF protection), fetches the
+  page, and extracts the `<title>` → title returned to the browser as the
+  suggested task title → user confirms → task created with `url` field.
+- **Subtasks**: tasks have an optional `parent_id` self-referential FK.
+  Subtasks are full tasks (own tier, due date, status) limited to one level
+  deep (a subtask cannot itself have subtasks). Parent cards show a badge
+  with active/done counts. Completing a parent warns about open subtasks.
+  Subtasks inherit `goal_id` and `project_id` from their parent unless
+  explicitly overridden. Updating a parent's goal/project cascades to
+  subtasks that still match the old value.
 - **Import**: user pastes OneNote text or uploads Excel goals file → parser
   produces preview → user confirms → records written to DB, entry written
   to `import_log`.
@@ -102,7 +117,8 @@ component is added, a data flow changes, or a security boundary shifts.
 
 ## External Dependencies (version pins maintained in `requirements.txt`)
 
-- flask, flask-sqlalchemy, flask-migrate, flask-dance, flask-talisman
+- flask, flask-sqlalchemy, flask-migrate, flask-dance, flask-talisman,
+  flask-limiter
 - psycopg (v3, binary) — SQLAlchemy URL scheme `postgresql+psycopg://`
 - cryptography (Fernet)
 - apscheduler
@@ -129,6 +145,10 @@ component is added, a data flow changes, or a security boundary shifts.
 - **Image handling boundary**: uploaded images live only in memory for the
   duration of one request. Never written to disk, never written to DB, no
   metadata retained.
+- **SSRF boundary**: the URL preview endpoint (`/api/tasks/url-preview`)
+  resolves the hostname and validates the resolved IP is not in any
+  private or reserved range (127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12,
+  192.168.0.0/16, 169.254.0.0/16) before making the outbound request.
 - **Air-gap boundary**: the user's work VDI cannot reach the app directly.
   The daily digest email to work Outlook is the only (one-way) bridge.
 
