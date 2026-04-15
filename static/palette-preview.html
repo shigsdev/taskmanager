@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TaskManager — Palette Preview</title>
+<style>
+/* =========================================================
+   BEFORE palette — mirrors current static/style.css :root
+   ========================================================= */
+body.before {
+    --bg:            #f5f5f7;
+    --surface:       #ffffff;
+    --surface-sunk:  #f5f5f7;
+    --surface-raised:#ffffff;
+    --border:        #e0e0e0;
+    --border-strong: #e0e0e0;
+    --text:          #1a1a1a;
+    --text-muted:    #777777;
+    --accent:        #2563eb;
+    --accent-hover:  #1d4ed8;
+    --accent-soft:   #eff3fe;
+    --danger:        #dc2626;
+    --amber:         #d97706;
+    --green:         #16a34a;
+    --radius:        8px;
+    --shadow-sm:     0 1px 3px rgba(0,0,0,0.08);
+    --shadow-md:     0 1px 3px rgba(0,0,0,0.08);
+    --shadow-lg:     -4px 0 16px rgba(0,0,0,0.10);
+}
+
+/* =========================================================
+   AFTER palette — layered neutrals proposal
+   ========================================================= */
+body.after {
+    --bg:            #eceef3;
+    --surface:       #ffffff;
+    --surface-sunk:  #f4f5f8;
+    --surface-raised:#ffffff;
+    --border:        #d4d7de;
+    --border-strong: #b8bcc6;
+    --text:          #111418;
+    --text-muted:    #5c6370;
+    --accent:        #2563eb;
+    --accent-hover:  #1d4ed8;
+    --accent-soft:   #e4ecff;
+    --danger:        #dc2626;
+    --amber:         #d97706;
+    --green:         #16a34a;
+    --radius:        8px;
+    --shadow-sm:     0 1px 2px rgba(17,24,39,0.06), 0 1px 3px rgba(17,24,39,0.08);
+    --shadow-md:     0 4px 12px rgba(17,24,39,0.10), 0 1px 3px rgba(17,24,39,0.06);
+    --shadow-lg:     0 16px 40px rgba(17,24,39,0.18), 0 4px 12px rgba(17,24,39,0.10);
+}
+
+/* =========================================================
+   Shared layout — uses the variables above
+   ========================================================= */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+    padding-bottom: 80px;
+    transition: background 0.25s ease;
+}
+
+/* === Preview chrome === */
+.preview-bar {
+    position: sticky;
+    top: 0;
+    z-index: 500;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 18px;
+    background: #111418;
+    color: #fff;
+    font-size: 13px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+.preview-bar .title { font-weight: 700; letter-spacing: 0.2px; }
+.preview-bar .state {
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.state.before { background: #6b7280; color: #fff; }
+.state.after  { background: #22c55e; color: #04220f; }
+.preview-bar .spacer { flex: 1; }
+.preview-bar button {
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    padding: 7px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.preview-bar button:hover { background: #1d4ed8; }
+.preview-bar .hint { color: #9ca3af; font-size: 12px; }
+
+/* === Nav (matches .nav in real app) === */
+.nav {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 18px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border-strong);
+    position: sticky;
+    top: 45px;
+    z-index: 100;
+    flex-wrap: wrap;
+}
+.brand { font-weight: 700; font-size: 1rem; color: var(--text); }
+.capture-bar {
+    display: flex;
+    gap: 6px;
+    flex: 1;
+    max-width: 500px;
+}
+.capture-bar input {
+    flex: 1;
+    padding: 7px 11px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.9rem;
+    outline: none;
+    background: var(--surface);
+    color: var(--text);
+}
+.capture-bar input:focus { border-color: var(--accent); }
+.capture-bar select {
+    padding: 7px 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.8rem;
+    background: var(--surface);
+    color: var(--text);
+}
+.icon-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 1rem;
+    color: var(--text);
+}
+.icon-btn:hover { background: var(--surface-sunk); }
+.nav-links { display: flex; gap: 10px; margin-left: auto; }
+.nav-tab {
+    text-decoration: none;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    padding: 4px 10px;
+    border-radius: var(--radius);
+}
+.nav-tab.active { color: var(--accent); font-weight: 600; }
+.nav-tab:hover { background: var(--surface-sunk); }
+
+/* === Tier Board === */
+.layout {
+    display: grid;
+    grid-template-columns: 1fr 460px;
+    gap: 20px;
+    padding: 20px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+.tier-board {
+    display: grid;
+    gap: 16px;
+}
+@media (min-width: 900px) {
+    .tier-board {
+        grid-template-columns: 1fr 1fr;
+    }
+    .tier[data-tier="inbox"] {
+        grid-column: 1 / -1;
+    }
+}
+
+.tier {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+    overflow: visible;
+}
+body.before .tier { box-shadow: var(--shadow-sm); border: none; }
+
+.tier-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-strong);
+    user-select: none;
+}
+.tier-header h2 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.tier-count { color: var(--text-muted); font-weight: 400; font-size: 0.8rem; }
+.tier-body { padding: 8px; min-height: 40px; }
+
+/* === Task Card === */
+.task-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.task-card:hover { background: var(--surface-sunk); }
+.task-card + .task-card { margin-top: 4px; }
+.task-checkbox {
+    margin-top: 3px;
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--green);
+    border-radius: 4px;
+    background: var(--surface);
+    flex-shrink: 0;
+}
+.task-body { flex: 1; min-width: 0; }
+.task-title { font-size: 0.9rem; }
+.task-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 3px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+.badge-work { background: #dbeafe; color: #1e40af; }
+.badge-personal { background: #fef3c7; color: #92400e; }
+.badge-goal { background: #ede9fe; color: #5b21b6; }
+.badge-project { border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.badge-due { color: var(--text-muted); }
+.badge-due.overdue { color: var(--danger); font-weight: 700; }
+
+/* === Detail Panel (floating on right) === */
+.detail-panel {
+    background: var(--surface-raised);
+    border-radius: var(--radius);
+    padding: 20px;
+    box-shadow: var(--shadow-lg);
+    align-self: start;
+    position: sticky;
+    top: 115px;
+    border: 1px solid var(--border);
+}
+body.before .detail-panel { border: none; }
+.detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+}
+.detail-header h3 { font-size: 1rem; }
+.detail-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.1rem;
+    color: var(--text-muted);
+}
+.detail-panel label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin: 12px 0 4px;
+}
+.detail-panel input,
+.detail-panel textarea,
+.detail-panel select {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    outline: none;
+    background: var(--surface);
+    color: var(--text);
+}
+.detail-panel input:focus,
+.detail-panel textarea:focus,
+.detail-panel select:focus { border-color: var(--accent); }
+.form-row { display: flex; gap: 10px; }
+.form-field { flex: 1; }
+.detail-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 18px;
+}
+
+/* === Buttons === */
+.btn {
+    display: inline-block;
+    padding: 8px 16px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+.btn:hover { background: var(--accent-hover); }
+.btn-sm {
+    padding: 5px 10px;
+    font-size: 0.8rem;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+.btn-sm:hover { background: var(--surface-sunk); }
+.btn-complete { background: var(--green); }
+.btn-complete:hover { background: #15803d; }
+
+/* === Goals + Settings section row === */
+.secondary-row {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 20px 20px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+.goal-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    cursor: pointer;
+}
+body.before .goal-card { border: none; }
+.goal-card:hover { box-shadow: var(--shadow-md); }
+.goal-title { font-size: 0.95rem; font-weight: 600; margin-bottom: 4px; }
+.goal-preview { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; }
+.goal-progress-row { display: flex; align-items: center; gap: 10px; }
+.progress-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--surface-sunk);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    max-width: 220px;
+}
+.progress-fill {
+    height: 100%;
+    background: var(--accent);
+}
+.progress-label { font-size: 0.75rem; color: var(--text-muted); }
+
+.settings-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 18px;
+}
+body.before .settings-section { border: 1px solid var(--border); box-shadow: none; }
+.settings-section h3 { font-size: 1rem; margin-bottom: 12px; }
+.settings-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+}
+.settings-stat {
+    text-align: center;
+    padding: 14px 8px;
+    background: var(--surface-sunk);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+.settings-stat-value {
+    display: block;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--accent);
+}
+.settings-stat-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* === Tokens swatch row === */
+.swatches {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 20px 20px;
+}
+.swatches h4 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+.swatch-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px;
+}
+.swatch {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 0.75rem;
+    box-shadow: var(--shadow-sm);
+}
+body.before .swatch { border: 1px solid var(--border); box-shadow: none; }
+.swatch .chip {
+    display: block;
+    height: 28px;
+    border-radius: 4px;
+    border: 1px solid rgba(0,0,0,0.08);
+    margin-bottom: 6px;
+}
+.swatch .name { font-weight: 600; }
+.swatch .value { color: var(--text-muted); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+/* === Section header helper === */
+.section-label {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px 20px 6px;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+    font-weight: 700;
+}
+</style>
+</head>
+<body class="before">
+
+<!-- Preview chrome -->
+<div class="preview-bar">
+    <span class="title">TaskManager — Palette Preview</span>
+    <span class="state before" id="stateBadge">BEFORE</span>
+    <span class="hint" id="stateDesc">current production palette</span>
+    <span class="spacer"></span>
+    <button id="toggle">Toggle Before / After</button>
+    <span class="hint">or press <b>space</b></span>
+</div>
+
+<!-- App nav -->
+<nav class="nav">
+    <span class="brand">TaskManager</span>
+    <div class="capture-bar">
+        <input type="text" placeholder="Quick capture… #work @goals" />
+        <select><option>Backlog</option></select>
+        <button class="icon-btn">🎤</button>
+        <button class="icon-btn" style="color:#16a34a;font-weight:700;">+</button>
+    </div>
+    <div class="nav-links">
+        <a href="#" class="nav-tab active">Tasks</a>
+        <a href="#" class="nav-tab">Goals</a>
+        <a href="#" class="nav-tab">Review</a>
+        <a href="#" class="nav-tab">Settings</a>
+    </div>
+</nav>
+
+<!-- Tier board + detail panel -->
+<div class="section-label">Tasks board — tier cards on the left, detail panel on the right</div>
+<div class="layout">
+    <div class="tier-board">
+        <!-- Inbox -->
+        <section class="tier" data-tier="inbox">
+            <header class="tier-header">
+                <h2>📥 Inbox <span class="tier-count">3</span></h2>
+                <button class="btn-sm">Triage</button>
+            </header>
+            <div class="tier-body">
+                <div class="task-card">
+                    <div class="task-checkbox"></div>
+                    <div class="task-body">
+                        <div class="task-title">Review Q2 roadmap draft from Dana</div>
+                        <div class="task-meta">
+                            <span class="badge badge-work">work</span>
+                            <span class="badge badge-goal">Team OKRs</span>
+                            <span class="badge badge-due overdue">Overdue · Apr 12</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="task-card">
+                    <div class="task-checkbox"></div>
+                    <div class="task-body">
+                        <div class="task-title">Fix ios voice input glitch on capture bar</div>
+                        <div class="task-meta">
+                            <span class="badge badge-work">work</span>
+                            <span class="badge badge-project">taskmanager</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="task-card">
+                    <div class="task-checkbox"></div>
+                    <div class="task-body">
+                        <div class="task-title">Book dentist appointment</div>
+                        <div class="task-meta">
+                            <span class="badge badge-personal">personal</span>
+                            <span class="badge badge-due">Apr 22</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Today -->
+        <section class="tier" data-tier="today">
+            <header class="tier-header">
+                <h2>🔥 Today <span class="tier-count">4</span></h2>
+                <button class="btn-sm">Collapse</button>
+            </header>
+            <div class="tier-body">
+                <div class="task-card">
+                    <div class="task-checkbox"></div>
+                    <div class="task-body">
+                        <div class="task-title">Ship palette refresh PR</div>
+                        <div class="task-meta">
+                            <span class="badge badge-work">work</span>
+                            <span class="badge badge-project">taskmanager</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="task-card">
+                    <div class="task-checkbox"></div>
+                    <div class="task-body">
+                        <div class="task-title">1:1 prep — agenda for Friday</div>
+                        <div class="task-meta">
+                            <span class="badge badge-work">work</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="task-card">
+                    <div class="task-checkbox"></div>
+                    <div class="task-body">
+                        <div class="task-title">Gym — legs</div>
+                        <div class="task-meta">
+                            <span class="badge badge-personal">personal</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- This Week -->
+        <section class="tier" data-tier="week">
+            <header class="tier-header">
+                <h2>📅 This Week <span class="tier-count">6</span></h2>
+                <button class="btn-sm">Collapse</button>
+            </header>
+            <div class="tier-body">
+                <div class="task-card">
+                    <div class="task-checkbox"></div>
+                    <div class="task-body">
+                        <div class="task-title">Draft weekly digest copy</div>
+                        <div class="task-meta">
+                            <span class="badge badge-work">work</span>
+                            <span class="badge badge-goal">Growth</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="task-card">
+                    <div class="task-checkbox"></div>
+                    <div class="task-body">
+                        <div class="task-title">Submit expense report</div>
+                        <div class="task-meta">
+                            <span class="badge badge-work">work</span>
+                            <span class="badge badge-due">Apr 18</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Backlog -->
+        <section class="tier" data-tier="backlog">
+            <header class="tier-header">
+                <h2>🗂 Backlog <span class="tier-count">24</span></h2>
+                <button class="btn-sm">Collapse</button>
+            </header>
+            <div class="tier-body">
+                <div class="task-card">
+                    <div class="task-checkbox"></div>
+                    <div class="task-body">
+                        <div class="task-title">Explore Whisper fallback for voice capture</div>
+                        <div class="task-meta">
+                            <span class="badge badge-work">work</span>
+                            <span class="badge badge-project">taskmanager</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="task-card">
+                    <div class="task-checkbox"></div>
+                    <div class="task-body">
+                        <div class="task-title">Refactor goal_service progress helper</div>
+                        <div class="task-meta">
+                            <span class="badge badge-work">work</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Completed -->
+        <section class="tier" data-tier="done">
+            <header class="tier-header">
+                <h2>✅ Completed today <span class="tier-count">2</span></h2>
+            </header>
+            <div class="tier-body">
+                <div class="task-card">
+                    <div class="task-checkbox" style="background:var(--green);"></div>
+                    <div class="task-body">
+                        <div class="task-title" style="color:var(--text-muted);text-decoration:line-through;">
+                            Reply to design review comments
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Detail panel -->
+    <aside class="detail-panel">
+        <header class="detail-header">
+            <h3>Ship palette refresh PR</h3>
+            <button class="detail-close">✕</button>
+        </header>
+        <label>Title</label>
+        <input type="text" value="Ship palette refresh PR" />
+        <label>Notes</label>
+        <textarea rows="3">Layered neutrals — darker page canvas, stronger borders on nav/tier headers, shadow-based elevation for floating panels.</textarea>
+        <div class="form-row">
+            <div class="form-field">
+                <label>Tier</label>
+                <select><option>Today</option><option>This Week</option></select>
+            </div>
+            <div class="form-field">
+                <label>Due</label>
+                <input type="text" value="2026-04-15" />
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-field">
+                <label>Goal</label>
+                <select><option>Team OKRs</option></select>
+            </div>
+            <div class="form-field">
+                <label>Project</label>
+                <select><option>taskmanager</option></select>
+            </div>
+        </div>
+        <div class="detail-actions">
+            <button class="btn btn-complete">✓ Complete</button>
+            <button class="btn-sm">Move</button>
+            <button class="btn-sm">Delete</button>
+        </div>
+    </aside>
+</div>
+
+<!-- Goals + Settings row -->
+<div class="section-label">Goals cards &amp; Settings sections</div>
+<div class="secondary-row">
+    <div>
+        <div class="goal-card">
+            <div class="goal-title">🎯 Ship v2 of TaskManager</div>
+            <div class="goal-preview">10 linked tasks · 3 projects</div>
+            <div class="goal-progress-row">
+                <div class="progress-bar"><div class="progress-fill" style="width:65%;"></div></div>
+                <span class="progress-label">6 / 10 done</span>
+            </div>
+        </div>
+        <div class="goal-card">
+            <div class="goal-title">📈 Grow weekly active streak</div>
+            <div class="goal-preview">4 linked tasks · 1 project</div>
+            <div class="goal-progress-row">
+                <div class="progress-bar"><div class="progress-fill" style="width:25%;"></div></div>
+                <span class="progress-label">1 / 4 done</span>
+            </div>
+        </div>
+        <div class="goal-card">
+            <div class="goal-title">💪 Train for half marathon</div>
+            <div class="goal-preview">8 linked tasks · 0 projects</div>
+            <div class="goal-progress-row">
+                <div class="progress-bar"><div class="progress-fill" style="width:88%;"></div></div>
+                <span class="progress-label">7 / 8 done</span>
+            </div>
+        </div>
+    </div>
+    <div class="settings-section">
+        <h3>Stats</h3>
+        <div class="settings-stats-grid">
+            <div class="settings-stat">
+                <span class="settings-stat-value">24</span>
+                <span class="settings-stat-label">Active</span>
+            </div>
+            <div class="settings-stat">
+                <span class="settings-stat-value">5</span>
+                <span class="settings-stat-label">Done</span>
+            </div>
+            <div class="settings-stat">
+                <span class="settings-stat-value">4</span>
+                <span class="settings-stat-label">Goals</span>
+            </div>
+            <div class="settings-stat">
+                <span class="settings-stat-value">3</span>
+                <span class="settings-stat-label">Bin</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Token swatches -->
+<div class="section-label">Palette tokens (current state)</div>
+<div class="swatches">
+    <div class="swatch-row" id="swatchRow">
+        <!-- JS fills this in from the current body class -->
+    </div>
+</div>
+
+<script>
+const TOKENS = [
+    { name: '--bg',            label: 'page canvas' },
+    { name: '--surface',       label: 'panel surface' },
+    { name: '--surface-sunk',  label: 'inset / hover' },
+    { name: '--surface-raised',label: 'floating panel' },
+    { name: '--border',        label: 'panel border' },
+    { name: '--border-strong', label: 'divider' },
+    { name: '--text',          label: 'body text' },
+    { name: '--text-muted',    label: 'muted text' },
+    { name: '--accent',        label: 'accent blue' },
+    { name: '--green',         label: 'success' },
+    { name: '--amber',         label: 'warning' },
+    { name: '--danger',        label: 'danger' },
+];
+
+function renderSwatches() {
+    const styles = getComputedStyle(document.body);
+    const row = document.getElementById('swatchRow');
+    row.innerHTML = TOKENS.map(t => {
+        const value = styles.getPropertyValue(t.name).trim();
+        return `<div class="swatch">
+            <span class="chip" style="background:${value};"></span>
+            <div class="name">${t.name}</div>
+            <div class="value">${value || '—'}</div>
+            <div class="value">${t.label}</div>
+        </div>`;
+    }).join('');
+}
+
+const STATE_DESC = {
+    before: 'current production palette',
+    after:  'proposed — layered neutrals'
+};
+
+function setState(state) {
+    document.body.className = state;
+    const badge = document.getElementById('stateBadge');
+    badge.className = 'state ' + state;
+    badge.textContent = state.toUpperCase();
+    document.getElementById('stateDesc').textContent = STATE_DESC[state];
+    renderSwatches();
+}
+
+document.getElementById('toggle').addEventListener('click', () => {
+    setState(document.body.classList.contains('before') ? 'after' : 'before');
+});
+document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        setState(document.body.classList.contains('before') ? 'after' : 'before');
+    }
+});
+
+renderSwatches();
+</script>
+</body>
+</html>
