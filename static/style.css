@@ -84,8 +84,9 @@ body {
     align-items: center;
     gap: 12px;
     padding: 8px 16px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
+    /* Accent-tinted top bar — brand-forward, contrasts with light panels */
+    background: var(--accent);
+    border-bottom: 1px solid var(--accent-hover);
     position: sticky;
     top: 0;
     z-index: 100;
@@ -96,7 +97,7 @@ body {
     font-weight: 700;
     font-size: 1rem;
     text-decoration: none;
-    color: var(--text);
+    color: #fff;
     white-space: nowrap;
 }
 
@@ -109,40 +110,59 @@ body {
 
 .nav-tab {
     text-decoration: none;
-    color: var(--text-muted);
+    color: rgba(255, 255, 255, 0.82);
     font-size: 0.85rem;
     padding: 4px 10px;
     border-radius: var(--radius);
-    transition: background 0.15s;
+    transition: background 0.15s, color 0.15s;
 }
-.nav-tab:hover { background: var(--surface-sunk); }
-.nav-tab.active { color: var(--accent); font-weight: 600; }
+.nav-tab:hover { background: rgba(255, 255, 255, 0.15); color: #fff; }
+.nav-tab.active { color: #fff; font-weight: 700; background: rgba(255, 255, 255, 0.22); }
 
+/* Inbox badge — inverted on blue bar (white pill, blue text) */
 .inbox-badge {
-    background: var(--accent);
-    color: #fff;
+    background: #fff;
+    color: var(--accent);
     font-size: 0.75rem;
-    font-weight: 600;
+    font-weight: 700;
     padding: 2px 8px;
     border-radius: 10px;
     min-width: 20px;
     text-align: center;
 }
-.inbox-badge.empty { background: var(--border); color: var(--text-muted); }
+.inbox-badge.empty { background: rgba(255, 255, 255, 0.28); color: #fff; }
 
-/* Top-left quick-upload button (shortcut to /scan) */
+/* Top-left quick-upload button (shortcut to /scan). Uses both
+   .icon-btn and .upload-btn classes, so we must override the
+   white-pill icon-btn styling below with transparent + white text. */
 .upload-btn {
     display: inline-flex;
     align-items: center;
     gap: 4px;
     text-decoration: none;
-    color: var(--text);
+    color: #fff;
     font-size: 0.85rem;
     padding: 4px 10px;
     margin-left: 4px;
     white-space: nowrap;
+    border-radius: var(--radius);
+    background: transparent;
+    border-color: rgba(255, 255, 255, 0.5);
 }
-.upload-btn:hover { background: var(--surface-sunk); }
+.upload-btn:hover { background: rgba(255, 255, 255, 0.15); }
+
+/* Capture bar controls inside the accent-tinted nav — keep white
+   backgrounds so inputs/buttons stay legible against the blue bar.
+   Excludes .upload-btn which needs transparent + white text. */
+.nav .icon-btn:not(.upload-btn) {
+    background: #fff;
+    border-color: rgba(255, 255, 255, 0.6);
+}
+.nav .icon-btn:not(.upload-btn):hover { background: #f1f5ff; }
+
+/* Log-out link inside the nav — ensure it's readable on the blue bar */
+.nav .btn-link { color: rgba(255, 255, 255, 0.82); padding: 4px 10px; border-radius: var(--radius); }
+.nav .btn-link:hover { color: #fff; background: rgba(255, 255, 255, 0.15); }
 
 /* View filter sub-nav: All / Work / Personal (Tasks page only) */
 .view-filter-bar {
@@ -252,7 +272,12 @@ body {
     align-items: center;
     justify-content: space-between;
     padding: 10px 14px;
+    /* Soft accent tint + rounded top corners so each panel has a
+       distinct title band matching the tinted nav bar. */
+    background: var(--accent-soft);
     border-bottom: 1px solid var(--border-strong);
+    border-top-left-radius: var(--radius);
+    border-top-right-radius: var(--radius);
     user-select: none;
 }
 
@@ -1139,8 +1164,16 @@ body {
 
 /* === Settings === */
 .settings-container { max-width: 700px; margin: 0 auto; padding: 16px; }
-.settings-section { margin-bottom: 24px; padding: 16px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; }
-.settings-section h3 { margin: 0 0 12px; font-size: 16px; }
+.settings-section { margin-bottom: 24px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.settings-section > :not(h3) { margin-left: 16px; margin-right: 16px; }
+.settings-section > :last-child { margin-bottom: 16px; }
+.settings-section h3 {
+    margin: 0 0 16px;
+    padding: 10px 16px;
+    font-size: 16px;
+    background: var(--accent-soft);
+    border-bottom: 1px solid var(--border);
+}
 .settings-hint { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
 .settings-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
 .settings-stat { text-align: center; padding: 12px; background: var(--surface-sunk); border-radius: 6px; }
