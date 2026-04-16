@@ -2,6 +2,9 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
+    /* Opt out of browser auto-dark: this app is light-only. Without this,
+       Chrome/Safari on OS-level dark mode will invert our palette. */
+    color-scheme: light;
     /* Page canvas — deeper so white panels pop */
     --bg: #eceef3;
     /* Panel surfaces — three tiers */
