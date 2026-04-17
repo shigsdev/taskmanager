@@ -10,8 +10,6 @@ moved between sections, never deleted.
 
 _(nothing currently in progress)_
 
-
-
 ## Completed
 
 - [x] Project documentation scaffolding — CLAUDE.md, BACKLOG.md, README.md, ARCHITECTURE.md — completed 2026-04-05
@@ -48,38 +46,35 @@ _(no open bugs)_
 
 ## Backlog (prioritized)
 
-| Item | Risks / Notes |
-|---|---|
-| Playwright browser API testing — E2E tests for Web Speech, Notifications, SW lifecycle across engines (Chromium, WebKit) | Jest unit tests done (2026-04-16). Playwright adds ~500MB browser binaries + CI surface. Only add if browser-API bugs keep slipping through manual smoke tests. |
-| Live post-deploy browser testing against Railway — agent-driven end-to-end smoke test of the deployed production URL after every push, not just localhost | **Why we want it:** the local `LOCAL_DEV_BYPASS_AUTH` flow (added 2026-04-10) lets the agent click through pages on localhost, but those tests run against local Flask + local DB. They prove the *code* renders correctly; they do not prove that the *deployed Railway version* serves correctly with real env vars, real Postgres, real CSP/Talisman headers. SHA-pinned `/healthz` only proves the container booted — it does not prove the UI is interactive. **Approach options, in increasing order of complexity:** (1) **Second OAuth identity** — add a second authorized email (e.g. `taskmanager-bot@...` Google account) to a new `BOT_AUTHORIZED_EMAIL` env var, log into it once via real OAuth in a headless browser, persist the session cookie to a secret store, and have the agent reuse that cookie for post-deploy tests. Risks: cookie expiry (~24h with current session settings), real Google account needed, cookie is a long-lived credential the agent must handle carefully. (2) **Service-account API token** — instead of a browser session, mint a long-lived bearer token tied to the bot identity and accept it on a `Authorization: Bearer ...` header in `auth.py` (parallel to the `X-Debug-Token` pattern but for the full app, not just `/api/debug`). Simpler than cookies but expands the auth surface. (3) **Dedicated `/api/test/*` endpoints** — narrow JSON-only endpoints that the agent hits with a token to verify each post-deploy invariant (e.g. `GET /api/test/scan-page-renders`). No browser at all; just contract tests against the live deployment. Smallest blast radius, but only catches API breakage, not visual/JS regressions. **Recommended sequence:** start with (3) for the next deploy cycle (cheap, low-risk, immediate value), revisit (1) only once we have a UI bug that (3) can't catch. Either way: every endpoint must be rate-limited, must log every access as WARNING (same pattern as `X-Debug-Token`), and the bot identity's email must be on a separate allowlist from the real user. |
-
-- [x] Mobile-responsive CSS — phase: 1 (done)
-- [x] Weekly review mode — phase: 1 (done)
-- [x] Recurring tasks (system defaults + user-defined) — phase: 1 (done)
-- [x] Print view (/print) — phase: 1 (done)
-- [x] Email digest with goals summary (SendGrid + APScheduler) — phase: 1 (done)
-- [x] Image scan to tasks (Google Vision + Claude API parsing + review screen) — phase: 1 (done)
-- [x] Import tool — OneNote tasks + Excel goals (/import) — phase: 1 (done)
-- [x] Settings page — phase: 1 (done)
-- [x] Security hardening (Talisman, session expiry, encryption audit) — phase: 1 (done)
-- [x] Railway deployment + DNS — phase: 1 (done)
+| # | Item | Category | Priority | Value | Effort | Complexity | Status |
+|---|---|---|---|---|---|---|---|
+| 1 | **Playwright browser API testing** — E2E tests for Web Speech, Notifications, SW lifecycle across engines (Chromium, WebKit) | Testing | Medium | Catches browser-specific bugs that Jest/jsdom can't — real SW lifecycle, real speech API, real permission dialogs | Medium — ~500MB browser binaries, new test harness, CI integration | Medium — Playwright API is well-documented but browser permission mocking is fiddly; flaky test risk | Jest done (2026-04-16). Add only if browser-API bugs keep slipping through manual smoke tests |
+| 2 | **Live post-deploy browser testing** — agent-driven smoke test of deployed Railway URL after every push | Testing / Infra | Medium-High | Proves the *deployed* app works, not just localhost — catches env var issues, CSP headers, real Postgres differences | Low (option 3) to High (option 1) — `/api/test/*` endpoints are a day; full OAuth bot is multi-day | Low (option 3) to High (option 1) — test endpoints are simple JSON; browser session needs cookie mgmt + secret storage | 3 approaches scoped. Start with `/api/test/*` endpoints (option 3) |
 
 ## Freezer (good ideas, not now)
 
-| Item | Risks / Notes |
-|---|---|
-| Recycle bin: wide-scope (route regular task/goal delete through recycle bin) | Deferred at build time to avoid UX confusion and doubled test surface. Current recycle bin is import-undo only. To enable: drop the `batch_id` requirement on undo routes, add a soft-delete path in the regular delete API, and audit all "delete" UX copy for clarity. Modest code change but non-trivial UX implications. |
-| Recycle bin: automated TTL cleanup | Deferred at build time. Would add a scheduled APScheduler job that hard-deletes soft-deleted rows older than N days (candidate: 30). Risk: silent data loss if user forgets the bin exists. If added, surface a prominent "Expires in X days" countdown on each batch in the bin UI, and make the TTL configurable via env var. Only enable once manual cleanup has proven insufficient. |
-| Infra monitoring: TLS certificate expiry check in `/healthz` | Railway terminates TLS at their edge and auto-renews Let's Encrypt certs, so the app has no cert to check and a failure would be outside our control. Revisit if we move to a custom domain with a self-provisioned cert, migrate off Railway to a VPS with certbot, or add mTLS client certs for outbound API calls. When revisited, implement as a `warn`-only check (never `fail`) that opens a TLS socket to the public hostname and compares `notAfter` to now (<14 days or expired → `warn`). Cert issues are loud and immediate in browsers anyway, so this is a nice-to-have early warning, not a critical signal. |
-| Doc upload (PDF / DOCX) via top-left Upload button — extend `/scan` to accept documents alongside images, parse text via `pdfplumber` / `python-docx`, feed to existing Claude task parser, reuse review screen | **Primary blocker: Claude API token cost.** A 40-page PDF can blow past Claude's input window or cost many multiples of an image scan per upload. Need per-upload char cap (~50k) with truncation warning, and likely a monthly usage budget before enabling. **Other risks:** (1) scanned PDFs have no extractable text — would need Vision OCR fallback, doubling the code paths; (2) legacy `.doc` (binary Word 97-2003) requires `textract` / `antiword` system binaries — reject `.doc` with "Save As → .docx" error instead; (3) new deps `pdfplumber` + `python-docx` (both pure-Python, low risk, but Railway rebuild required); (4) iOS file picker needs user to tap "Browse" not "Photo Library" — UI copy must say so; (5) must stay in-memory only per security rules, same as image scan; (6) MIME spoofing — validate file magic bytes, not just `Content-Type` header; (7) SW cache version bump needed if scan page template changes. **Design decision already made:** route stays `/scan` (no URL breakage), page heading becomes "Upload & Scan", top button stays single-button (no dropdown), file input accepts `image/*,.pdf,.docx`. Revisit once (a) there is a monthly Claude budget in place, or (b) a cheaper local text-to-tasks extraction path exists. |
+| # | Item | Category | Priority | Value | Effort | Complexity | Blocked on |
+|---|---|---|---|---|---|---|---|
+| 3 | **Recycle bin: wide-scope** — route regular task/goal delete through soft-delete | UX | Low | Undo accidental deletes, not just import undos — safety net for daily use | Low-Medium — drop `batch_id` requirement, add soft-delete path, update UX copy | Low — straightforward DB change, but every "delete" button needs UX clarity review | UX design for soft vs. hard delete messaging |
+| 4 | **Recycle bin: TTL cleanup** — auto-purge soft-deleted rows after N days | Infra | Low | Prevents DB bloat — set-and-forget maintenance | Low — one APScheduler job, one env var, one UI countdown | Low — simple scheduled query + "expires in X days" UI | Only after manual cleanup proves insufficient |
+| 5 | **TLS certificate expiry check** — warn-only check in `/healthz` | Infra | Very Low | Early warning on cert expiry — but Railway auto-renews, so near-zero risk today | Very Low — one function, TLS socket check | Very Low — well-understood pattern, warn-only | Only if moving off Railway-managed TLS |
+| 6 | **Doc upload (PDF/DOCX)** — extend `/scan` to accept documents via pdfplumber/python-docx | Feature | Medium | Capture tasks from meeting notes and PDFs without manual retyping | Medium — two new deps, text extraction, Claude prompt tuning, MIME validation | Medium-High — scanned PDFs need OCR fallback (doubles code paths), `.doc` rejection, token cost control | Claude API monthly budget + per-upload char cap |
 
 ## Phase 2 Roadmap
 
-- reMarkable integration via remarkable-mcp (USB bridge on Mac)
-- Native iPhone app (React Native or Swift)
-- Voice memo processing — record during commute, auto-parse tasks
-- Weekly summary email (Friday EOD)
-- iCloud calendar integration
-- AI-assisted triage suggestions based on task age and patterns
-- Habit tracking streaks (morning/evening routine completion)
-- AI strategy quality checker (check tasks against goals alignment)
+| # | Item | Category | Priority | Value | Effort | Complexity | Notes |
+|---|---|---|---|---|---|---|---|
+| 7 | **reMarkable integration** — USB bridge via remarkable-mcp on Mac | Feature | Medium | Capture handwritten notes to tasks directly from the tablet | Medium — depends on remarkable-mcp maturity and USB reliability | High — third-party MCP dependency, USB quirks, handwriting OCR accuracy varies by writing style | Needs remarkable-mcp stable first |
+| 8 | **Native iPhone app** — React Native or Swift | Feature | Medium-High | Faster capture, push notifications, offline support, native feel | Very High — entire new codebase, App Store process, offline sync, push infra | Very High — offline-first sync is notoriously hard, two codebases to maintain | Largest item on roadmap; evaluate after web app is stable |
+| 9 | **Voice memo processing** — record during commute, auto-parse tasks | Feature | High | Hands-free task capture while driving/walking — biggest friction point today | Medium — audio recording UI, Whisper/Deepgram transcription, Claude parsing, review screen | Medium — transcription API selection, audio format handling, cost per minute of audio | High value, moderate effort — strong candidate for next feature |
+| 10 | **Weekly summary email** — Friday EOD digest | Feature | Medium | End-of-week reflection: what got done, what slipped, what's next week | Low — extend existing digest service with weekly template + Friday APScheduler job | Low — reuses digest infrastructure, just a new template and "completed this week" query | Quick win — builds on existing digest |
+| 11 | **iCloud calendar integration** — sync due dates and time-blocked tasks | Feature | Medium | See tasks alongside meetings, block time for deep work | High — Apple CalDAV auth, two-way sync, conflict resolution, timezone handling | High — CalDAV protocol is verbose, Apple OAuth is quirky, two-way sync means conflict resolution | Significant auth + sync complexity |
+| 12 | **AI-assisted triage suggestions** — recommend tier based on task age and patterns | Feature | Medium | Reduce inbox pile-up — AI suggests "this has sat 14 days, freeze or delete?" | Medium — data analysis queries, Claude prompt, accept/dismiss UI | Low-Medium — heuristics are simple (age, tier, patterns); main work is suggestion UI | Needs enough historical data to be useful |
+| 13 | **Habit tracking streaks** — morning/evening routine completion tracking | Feature | Low-Medium | Visualize consistency, motivate daily habits — builds on existing recurring tasks | Medium — streak model/columns, calculation logic, calendar heatmap or counter UI | Low-Medium — builds on recurring task data; main complexity is streak visualization | UI design needed for heatmap vs. counter |
+| 14 | **AI strategy quality checker** — check tasks against goals alignment | Feature | Low-Medium | "12 Work tasks but none link to Q2 OKR goal" — strategic drift detection | Low-Medium — query tasks vs. goals linkage, Claude analysis prompt, summary UI | Low — mostly read-only analysis; hard part is a Claude prompt that gives genuinely useful advice | Interesting but low urgency until goal count grows |
+
+### Quick-win picks (high value, low effort)
+
+1. **Weekly summary email (#10)** — Low effort, reuses digest infra, immediate user value
+2. **AI triage suggestions (#12)** — Medium effort, reduces daily friction, leverages existing data
+3. **Voice memo processing (#9)** — Medium effort, solves biggest capture friction point
