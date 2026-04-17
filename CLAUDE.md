@@ -259,56 +259,79 @@ says otherwise.
   - New "drag to reorder" interaction on Tasks → add a line under step 6
   - New filter on Goals → add a line under step 7
 
-  **Include in the SOP Change Report:**
-  ```
-  Regression test     DONE (desktop + mobile) | N/A — no UI change
-  ```
+  **Include in the SOP Compliance Report** under Phase 6 (Regression).
 
-- **SOP Change Report** (mandatory at the end of every change):
+- **SOP Compliance Report** (mandatory at the end of every change):
 
   After every discrete change — not just the final commit of a session —
-  print an **SOP Change Report** showing exactly which SOP steps ran and
-  their status. This is in addition to the Quality Gate Report and
+  print an **SOP Compliance Report** showing exactly which SOP phases ran
+  and their status. This is in addition to the Quality Gate Report and
   Deploy Validation Report. A visible checklist makes it impossible to
   quietly skip a step (e.g. forgetting to update ARCHITECTURE.md when the
-  topology changed). Use this exact format:
+  topology changed).
+
+  **Status indicators:**
+  - `[✅]` — done and passed
+  - `[⏭️]` — skipped (N/A) with reason
+  - `[❌]` — failed or not done (change is NOT complete)
+
+  Use this exact format, adapting the one-line description and phases to
+  the actual work done:
 
   ```
-  SOP Change Report
-  ──────────────────
-  Change:             <one-line description>
-  Files touched:      <list>
-
-  Code changes        DONE | N/A
-  Tests added/updated DONE | N/A
-  Ruff                PASS | FAIL
-  Pytest              <n passed>, <coverage>%
-  ARCHITECTURE.md     UPDATED | N/A — <reason if N/A>
-  README.md           UPDATED | N/A — <reason if N/A>
-  BACKLOG.md          UPDATED | N/A — <reason if N/A>
-  CLAUDE.md           UPDATED | N/A — <reason if N/A>
-  Regression test     DONE (desktop + mobile) | N/A — <reason if N/A>
-  Bypass status       OFF (never enabled)
-                    | OFF (enabled during session, torn down pre-commit)
-                    | ⚠ ON — MUST NOT COMMIT
-  Commit + push       DONE | SKIPPED
-  Deploy validation   GREEN  | RED | N/A (no push)
-  Smoke test          DONE | N/A
+  SOP Compliance Report — <one-line description>
+  ──────────────────────────────────────────────────
+  Phase 1  Planning
+    [✅] Checked backlog                        <backlog item or reason>
+    [✅] Scoped work                            <brief scope>
+    [✅] Identified affected files              <file list>
+  Phase 2  Git Workflow
+    [✅] Pulled latest main                     <branch state>
+    [✅] Feature branch created                 feature/<name>
+    [✅] Small logical commits                  <N> commits: <summaries>
+    [✅] Merged to main + pushed                fast-forward | merge commit
+    [✅] Feature branch cleaned up              deleted
+  Phase 3  Coding Standards
+    [✅] Code changes                           <what changed>
+    [⏭️] Frontend changes                       N/A — no UI change
+    [✅] Security rules followed                <relevant checks>
+  Phase 4  Quality Gates
+    [✅] Ruff                                   PASS (0 warnings)
+    [✅] Pytest                                 <n> passed, <coverage>%
+    [✅] Jest                                   <n> passed, 0 failed
+  Phase 5  Tests
+    [✅] Tests added/updated                    <what was tested>
+    [⏭️] Route tests                            N/A — no new routes
+  Phase 6  Regression (UI changes only)
+    [✅] Bypass server started                  seed + preview_start
+    [✅] Desktop (1280x800)                     all pages pass
+    [✅] Mobile (375x812)                       all pages pass
+    [✅] Console errors                         0
+    [✅] Bypass torn down                       .env.dev-bypass deleted
+  Phase 7  Documentation
+    [✅] ARCHITECTURE.md                        <what updated or N/A reason>
+    [✅] README.md                              <what updated or N/A reason>
+    [✅] BACKLOG.md                             <what updated or N/A reason>
+    [⏭️] CLAUDE.md                              N/A — no SOP change
+  Phase 8  Deploy
+    [✅] Deploy validation                      GREEN — <SHA>, all checks ok
+    [✅] Post-deploy smoke test                 <what was verified>
+  Summary: <N> done, <N> skipped (N/A), <N> not done
+  Commits: <SHA list>
   ```
 
-  N/A is acceptable ONLY with a short reason ("no topology change",
-  "no new env vars", etc.). Never mark a row DONE that wasn't actually
-  done. If ARCHITECTURE.md or README.md needed updating and didn't get
-  it, the report must say FAIL and the change is not complete.
-
-  **Bypass status is mandatory on every report** — never omit the row.
-  To compute it: if `.env.dev-bypass` does not exist → OFF (never
-  enabled). If it was created and then deleted earlier in the session →
-  OFF (enabled during session, torn down pre-commit). If the file still
-  exists at the time the report is printed → ⚠ ON, which means **do
-  not commit** — delete `.env.dev-bypass` first, re-verify, then
-  re-print the report. Verify by running `ls .env.dev-bypass` (should
-  return "no such file") before marking OFF.
+  **Rules:**
+  - `[⏭️]` is acceptable ONLY with a short reason after it.
+  - Never mark `[✅]` for a step that wasn't actually done.
+  - Any `[❌]` means the change is not complete — fix and re-run.
+  - If ARCHITECTURE.md or README.md needed updating and didn't get it,
+    mark `[❌]` and the change is blocked.
+  - **Phase 6 is mandatory for any UI/frontend change.** For non-UI
+    changes, skip the entire phase with `[⏭️] N/A — no UI change`.
+  - **Bypass status check:** before printing the report, verify
+    `.env.dev-bypass` does not exist by running `ls .env.dev-bypass`
+    (should return "no such file"). If the file still exists, mark
+    `[❌]` on the bypass row — **do not commit** until it's deleted.
 
 ---
 
