@@ -15,10 +15,12 @@ says otherwise.
 1. **ruff** — `ruff check .` — zero warnings
 2. **pytest** — `pytest --cov` — FULL test suite, 80% coverage floor.
    Never run only the affected test file. Always run all tests.
-3. **Test report** — before committing, print a summary to the user:
+3. **jest** — `npm test` — FULL JS test suite, all tests must pass.
+   If Node.js is not available, note it in the report as SKIPPED.
+4. **Test report** — before committing, print a summary to the user:
    - Ruff status (pass/fail, warning count)
-   - Total tests run, passed, failed
-   - Coverage percentage
+   - Python tests run, passed, failed + coverage percentage
+   - Jest tests run, passed, failed
    - Any skipped or errored tests
    - Files changed in this commit
    Example:
@@ -26,8 +28,9 @@ says otherwise.
    Quality Gate Report
    ─────────────────────
    Ruff:      PASS (0 warnings)
-   Tests:     247 passed, 0 failed
+   Python:    247 passed, 0 failed
    Coverage:  93.7% (floor: 80%)
+   Jest:      34 passed, 0 failed
    Files:     app.js, capture.js, style.css
    Status:    READY TO COMMIT
    ```

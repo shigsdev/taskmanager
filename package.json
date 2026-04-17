@@ -1,0 +1,15 @@
+{
+  "name": "taskmanager-js-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Jest test suite for Task Manager client-side JavaScript",
+  "scripts": {
+    "test": "jest",
+    "test:verbose": "jest --verbose",
+    "test:watch": "jest --watch"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0"
+  }
+}

@@ -60,66 +60,9 @@
     }
 
     // --- Parse hashtags, @project, and URLs ---
-
-    function parseCapture(text) {
-        const result = { title: text, tier: "inbox" };
-
-        // Detect a URL anywhere in the text
-        const urlMatch = text.match(/https?:\/\/\S+/i);
-        if (urlMatch) {
-            result.url = urlMatch[0];
-            // Remove the URL from title; remaining text becomes the title
-            const remaining = text.replace(urlMatch[0], "").trim();
-            result.title = remaining || urlMatch[0]; // fall back to URL if nothing else
-            result._titleProvided = remaining.length > 0; // true if user typed a title too
-        }
-
-        // Repeat shortcuts first (before tier) — longer tags like #weekly
-        // must be consumed before #week matches as a tier prefix.
-        const repeatMap = {
-            "#daily": { frequency: "daily" },
-            "#weekdays": { frequency: "weekdays" },
-            "#weekly": { frequency: "weekly", day_of_week: new Date().getDay() === 0 ? 6 : new Date().getDay() - 1 },
-            "#monthly": { frequency: "monthly_date", day_of_month: new Date().getDate() },
-        };
-        for (const [tag, repeat] of Object.entries(repeatMap)) {
-            if (result.title.toLowerCase().includes(tag)) {
-                result.repeat = repeat;
-                result.title = result.title.replace(new RegExp(tag, "gi"), "").trim();
-                break;
-            }
-        }
-
-        // Type shortcuts (before tier — #work must not match #week prefix)
-        if (result.title.toLowerCase().includes("#personal")) {
-            result.type = "personal";
-            result.title = result.title.replace(/#personal/gi, "").trim();
-        } else if (result.title.toLowerCase().includes("#work")) {
-            result.type = "work";
-            result.title = result.title.replace(/#work/gi, "").trim();
-        }
-
-        // Tier shortcuts: #today #week #backlog
-        const tierMap = {
-            "#today": "today",
-            "#week": "this_week",
-            "#backlog": "backlog",
-            "#freezer": "freezer",
-        };
-        for (const [tag, tier] of Object.entries(tierMap)) {
-            if (result.title.toLowerCase().includes(tag)) {
-                result.tier = tier;
-                result.title = result.title.replace(new RegExp(tag, "gi"), "").trim();
-            }
-        }
-
-        // If title is now empty (e.g. user pasted only a URL), will be filled by url-preview
-        if (!result.title && result.url) {
-            result.title = result.url;
-        }
-
-        return result;
-    }
+    // parseCapture() lives in parse_capture.js (loaded before this file
+    // via a <script> tag in base.html).  This keeps capture.js focused on
+    // DOM wiring while the pure parsing logic is importable by Jest.
 
     // --- Voice input (Web Speech API) ---
 

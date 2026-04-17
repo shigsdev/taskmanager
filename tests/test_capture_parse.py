@@ -1,14 +1,17 @@
 """Tests for the capture bar's parseCapture() logic.
 
-capture.js runs client-side, so we can't execute it directly in pytest.
-Instead we maintain a Python mirror of the parsing rules and test every
-shortcut combination — including the prefix-collision cases that caused
+The canonical implementation lives in static/parse_capture.js (extracted
+from capture.js so Jest can import it directly).  This file maintains a
+Python mirror of those parsing rules so we can test every shortcut
+combination in pytest — including the prefix-collision cases that caused
 bugs (#weekly vs #week, #weekdays vs #week, #work vs #personal).
 
-If capture.js changes, update ``_parse_capture()`` here to match and
-ensure the new tests still pass.  The API round-trip tests (at the
-bottom) hit ``POST /api/tasks`` with the exact payloads that
-parseCapture would produce, verifying the server honours them.
+If parse_capture.js changes, update ``_parse_capture()`` here to match
+and ensure the new tests still pass.  The Jest suite in
+tests/js/unit/parse_capture.test.js tests the real JS implementation;
+this file is the cross-check.  The API round-trip tests (at the bottom)
+hit ``POST /api/tasks`` with the exact payloads that parseCapture would
+produce, verifying the server honours them.
 """
 from __future__ import annotations
 

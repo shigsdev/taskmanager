@@ -115,6 +115,22 @@ component is added, a data flow changes, or a security boundary shifts.
 
 ---
 
+## JavaScript Testing
+
+Pure client-side logic is extracted into importable modules so Jest can
+test them in Node without a browser.  The canonical example is
+`static/parse_capture.js` — the quick-capture parsing function, which is
+loaded via `<script>` tag in the browser and via `require()` in Jest.
+
+- **Test runner**: Jest 29 (Node environment)
+- **Test location**: `tests/js/unit/` (mirrors the Python `tests/` layout)
+- **Config**: `jest.config.js` at repo root
+- **Run**: `npm test` (after `npm install`)
+- **Future**: jsdom environment for DOM tests, Playwright for browser
+  API tests (Web Speech, Notifications, SW lifecycle)
+
+---
+
 ## External Dependencies (version pins maintained in `requirements.txt`)
 
 - flask, flask-sqlalchemy, flask-migrate, flask-dance, flask-talisman,

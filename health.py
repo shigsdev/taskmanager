@@ -109,6 +109,7 @@ EXPECTED_STATIC_FILES = (
     "static/app.js",
     "static/style.css",
     "static/sw.js",
+    "static/parse_capture.js",
     "static/capture.js",
     "static/manifest.json",
 )

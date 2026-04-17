@@ -175,8 +175,13 @@ The triple Railway tripwire means a single Railway env var rename cannot disarm 
 ### Run tests
 
 ```bash
+# Python (Flask routes, models, services)
 pytest --cov
 ruff check .
+
+# JavaScript (parseCapture unit tests — requires Node.js)
+npm install   # first time only
+npm test
 ```
 
 ### Standards
