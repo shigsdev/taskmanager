@@ -16,7 +16,9 @@ says otherwise.
 2. **pytest** — `pytest --cov` — FULL test suite, 80% coverage floor.
    Never run only the affected test file. Always run all tests.
 3. **jest** — `npm test` — FULL JS test suite, all tests must pass.
-   If Node.js is not available, note it in the report as SKIPPED.
+   Node.js is required on all dev machines. If `node` is not found,
+   STOP and install it before proceeding — do NOT skip unless the user
+   explicitly approves it.
 4. **Test report** — before committing, print a summary to the user:
    - Ruff status (pass/fail, warning count)
    - Python tests run, passed, failed + coverage percentage
