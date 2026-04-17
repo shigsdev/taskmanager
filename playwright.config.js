@@ -1,36 +1,65 @@
 /**
  * Playwright E2E test config.
  *
- * Tests run against the local bypass server (taskmanager-dev-bypass on
- * port 5111). The server must be started manually BEFORE running tests:
+ * Two projects:
  *
+ *   "chromium"       — local E2E against the bypass server on port 5111
+ *                      (tests in tests/e2e/). This is the default target
+ *                      and runs as part of the standard quality gates.
+ *
+ *   "chromium-prod"  — post-deploy smoke tests against the deployed
+ *                      Railway URL (tests in tests/e2e-prod/). Requires
+ *                      TASKMANAGER_SESSION_COOKIE env var set to a valid
+ *                      Flask session cookie. Run with:
+ *                        npm run test:e2e:prod
+ *                      See README for cookie setup.
+ *
+ * Local setup:
  *   cp .env.dev-bypass.example .env.dev-bypass
  *   python scripts/run_dev_bypass.py
- *
- * Then:  npx playwright test
+ *   npx playwright test --project=chromium
  */
 // @ts-check
 const { defineConfig } = require("@playwright/test");
 
+const PROD_BASE_URL =
+    process.env.TASKMANAGER_PROD_URL ||
+    "https://web-production-3e3ae.up.railway.app";
+
 module.exports = defineConfig({
-    testDir: "./tests/e2e",
     timeout: 30000,
     retries: 0,
-    workers: 1, // sequential — single Flask server
+    workers: 1, // sequential
     reporter: [["list"]],
-
-    use: {
-        baseURL: "http://localhost:5111",
-        headless: true,
-        // Disable SW in E2E tests to avoid cached-page issues, UNLESS
-        // the test explicitly navigates without ?nosw=1
-        actionTimeout: 10000,
-    },
 
     projects: [
         {
             name: "chromium",
-            use: { browserName: "chromium" },
+            testDir: "./tests/e2e",
+            use: {
+                baseURL: "http://localhost:5111",
+                headless: true,
+                browserName: "chromium",
+                actionTimeout: 10000,
+            },
+        },
+        {
+            name: "chromium-prod",
+            testDir: "./tests/e2e-prod",
+            // Prod smoke tests MUST be run explicitly, never as part of the
+            // default test run. They hit a live server and need a cookie.
+            testIgnore: process.env.TASKMANAGER_SESSION_COOKIE
+                ? undefined
+                : /.*/,
+            use: {
+                baseURL: PROD_BASE_URL,
+                headless: true,
+                browserName: "chromium",
+                actionTimeout: 15000, // prod has real network latency
+                // Retain HAR + trace for prod runs so failures are debuggable
+                // even when we can't reproduce locally.
+                trace: "retain-on-failure",
+            },
         },
     ],
 });

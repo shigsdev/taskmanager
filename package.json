@@ -7,8 +7,9 @@
     "test": "jest",
     "test:verbose": "jest --verbose",
     "test:watch": "jest --watch",
-    "test:e2e": "playwright test",
-    "test:e2e:headed": "playwright test --headed"
+    "test:e2e": "playwright test --project=chromium",
+    "test:e2e:headed": "playwright test --project=chromium --headed",
+    "test:e2e:prod": "playwright test --project=chromium-prod"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",

@@ -17,6 +17,7 @@ from flask_migrate import Migrate
 from flask_talisman import Talisman
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+import auth_api
 import debug_api
 import digest_api
 import goals_api
@@ -96,6 +97,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(recycle_api.bp)
     app.register_blueprint(settings_api.bp)
     app.register_blueprint(debug_api.bp)
+    app.register_blueprint(auth_api.bp)
 
     # --- Persistent application logging (see logging_service.py) ---
     # Installs DBLogHandler on the root logger so WARNING+ events land

@@ -189,6 +189,59 @@ npm run test:e2e                  # runs against localhost:5111
 npm run test:e2e:headed           # same, but visible browser window
 ```
 
+### Post-deploy validation
+
+After every `git push`, run `python scripts/validate_deploy.py` to confirm the
+deploy actually reached Railway (SHA match) and that every check on `/healthz`
+is green. This catches the failure mode where Railway's rolling deploy keeps
+the **old** container serving traffic because the new build failed its health
+check — a plain `curl /healthz` returns 200 from the old container and looks
+fine.
+
+**Basic usage** (unchanged from before):
+```bash
+python scripts/validate_deploy.py
+```
+
+**Extended: `--auth-check`** also verifies that a saved session cookie is
+still accepted by the live server. This catches the "I could log in yesterday
+but something broke OAuth" class of bug. One-time setup (~60 seconds):
+
+1. Open `https://web-production-3e3ae.up.railway.app/` in Chrome
+2. Sign in with `shigsdev@gmail.com` (the configured `AUTHORIZED_EMAIL`)
+3. Open DevTools → **Application** tab → **Cookies** → the Railway URL
+4. Find the `session` row, right-click the Value column → **Copy value**
+5. Save to `~/.taskmanager-session-cookie` (one line, no quotes, no whitespace)
+
+Then run:
+```bash
+python scripts/validate_deploy.py --auth-check
+```
+
+Exit codes:
+- `0` — DEPLOY GREEN (and auth OK if checked)
+- `1` — DEPLOY RED (SHA mismatch, failed checks, or timeout)
+- `2` — COOKIE EXPIRED (refresh it — the script prints copy-pasteable instructions)
+- `3` — Usage error (missing cookie file or bad args)
+
+Cookies expire after 24 hours of inactivity. On a `2` exit code, the script
+walks you through re-capturing the cookie from your browser.
+
+### Prod smoke tests (optional)
+
+After the validator is green, you can optionally run a small suite of Playwright
+tests against the **live deployed URL** (not localhost) to verify real browser
+behavior end-to-end:
+
+```bash
+# Pull the cookie you just saved into an env var
+export TASKMANAGER_SESSION_COOKIE="$(cat ~/.taskmanager-session-cookie)"
+npm run test:e2e:prod
+```
+
+Covers: auth preflight, home/goals page renders, `/api/tasks` shape check,
+`/healthz` reports real SHA. Tests live in `tests/e2e-prod/`.
+
 ### Standards
 
 See `CLAUDE.md` for coding standards, quality gates, security rules, and

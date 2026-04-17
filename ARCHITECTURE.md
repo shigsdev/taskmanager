@@ -127,12 +127,42 @@ loaded via `<script>` tag in the browser and via `require()` in Jest.
 - **Config**: `jest.config.js` at repo root
 - **Run**: `npm test` (after `npm install`)
 - **E2E runner**: Playwright (Chromium) — real browser API tests
-- **E2E location**: `tests/e2e/` (3 spec files, 23 tests)
+- **Local E2E**: `tests/e2e/` (3 spec files, 23 tests)
   - `service-worker.spec.js` — SW lifecycle, cache, CLEAR_CACHE
   - `pages.spec.js` — page navigation, capture bar round-trip, detail panel
   - `browser-apis.spec.js` — Web Speech, client error reporter, update banner
-- **E2E config**: `playwright.config.js` (baseURL: localhost:5111, 1 worker)
-- **Run E2E**: `npm run test:e2e` (requires bypass server on port 5111)
+- **Prod E2E**: `tests/e2e-prod/smoke.spec.js` — 5 smoke tests against the
+  deployed Railway URL. Requires `TASKMANAGER_SESSION_COOKIE` env var.
+  Catches bugs that manifest only in prod (CSP, cookie flags, HTTPS, Railway
+  proxy quirks).
+- **E2E config**: `playwright.config.js` — two projects (`chromium`,
+  `chromium-prod`); prod project is auto-skipped if the cookie env var is
+  unset.
+- **Run local E2E**: `npm run test:e2e` (requires bypass server on port 5111)
+- **Run prod E2E**: `npm run test:e2e:prod` (requires cookie env var set)
+
+### Post-deploy validation pipeline
+
+After every `git push`, `scripts/validate_deploy.py` runs a structured
+validation against the live Railway URL:
+
+1. Poll `/healthz` every 15s until `git_sha` matches the local HEAD (up to
+   10 minutes). This proves Railway's rolling deploy replaced the old
+   container — a plain `curl /healthz` would return 200 from the old
+   container during the rollout and falsely look green.
+2. Verify every check in the health report is `ok`, `warn:`, or `skipped:`.
+   Any `fail:` status = DEPLOY RED.
+3. **Optional `--auth-check`**: hit `/api/auth/status` with a saved session
+   cookie (default `~/.taskmanager-session-cookie`). On 200 → auth pipeline
+   healthy. On 401 → prints copy-pasteable cookie-refresh instructions and
+   exits with code 2 (distinct from DEPLOY RED to let CI treat it as a
+   human-action-needed signal rather than a pipeline failure).
+
+The `/api/auth/status` endpoint (see `auth_api.py`) is a deliberately
+narrow, public, read-only JSON endpoint that reports the caller's
+authentication state. It enforces the same single-user lockdown as
+`login_required` — a valid Google session for an email other than
+`AUTHORIZED_EMAIL` still returns 401.
 
 ---
 
