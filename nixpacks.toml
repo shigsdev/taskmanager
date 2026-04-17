@@ -1,0 +1,8 @@
+# Force Nixpacks to use the Python provider.
+#
+# Without this, the presence of package.json causes Nixpacks to detect
+# the project as Node.js, skipping Python entirely.  package.json exists
+# only for Jest dev-dependencies (client-side JS tests) — the app itself
+# is Python/Flask.  Node is NOT needed at runtime.
+
+providers = ["python"]
