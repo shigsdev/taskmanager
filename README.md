@@ -203,20 +203,40 @@ fine.
 python scripts/validate_deploy.py
 ```
 
-**Extended: `--auth-check`** also verifies that a saved session cookie is
+**Extended: `--auth-check`** also verifies that a saved credential is
 still accepted by the live server. This catches the "I could log in yesterday
-but something broke OAuth" class of bug. One-time setup (~60 seconds):
+but something broke OAuth" class of bug.
 
-1. Open `https://web-production-3e3ae.up.railway.app/` in Chrome
-2. Sign in with `shigsdev@gmail.com` (the configured `AUTHORIZED_EMAIL`)
-3. Open DevTools → **Application** tab → **Cookies** → the Railway URL
-4. Find the `session` row, right-click the Value column → **Copy value**
-5. Save to `~/.taskmanager-session-cookie` (one line, no quotes, no whitespace)
+**Preferred setup — mint a long-lived validator cookie** (once per ~90
+days). The validator cookie is signed with the same `SECRET_KEY` as
+Flask sessions but lives in a dedicated cookie (`validator_token`) that
+authenticates **only** `/api/auth/status` — it cannot access tasks,
+goals, or any user data.
 
-Then run:
 ```bash
+# From a local checkout that has SECRET_KEY + AUTHORIZED_EMAIL in env,
+# OR from a Railway shell. Both mints must use the SAME SECRET_KEY as
+# the deployed app, otherwise the server rejects the cookie.
+flask mint-validator-cookie > ~/.taskmanager-session-cookie
+
+# Default lifetime is 90 days. Override with --days if needed:
+flask mint-validator-cookie --days 30 > ~/.taskmanager-session-cookie
+
+# Then any time after:
 python scripts/validate_deploy.py --auth-check
 ```
+
+Rotate by re-running the same command. Rotating `SECRET_KEY` on the
+server instantly invalidates all minted validator cookies — that's the
+emergency revocation lever.
+
+**Legacy fallback — copy the session cookie from Chrome.** Not
+recommended because Flask-Dance's auto-refresh silently invalidates the
+captured cookie during normal browser use. Kept for the case where you
+don't have `flask mint-validator-cookie` available (e.g. different
+environment). Steps: open `https://web-production-3e3ae.up.railway.app/`
+in Chrome, sign in, DevTools → Application → Cookies → copy the
+`session` value, save to `~/.taskmanager-session-cookie`.
 
 Exit codes:
 - `0` — DEPLOY GREEN (and auth OK if checked)

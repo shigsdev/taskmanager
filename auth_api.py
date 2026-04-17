@@ -31,9 +31,10 @@ from __future__ import annotations
 
 import os
 
-from flask import Blueprint, current_app, jsonify
+from flask import Blueprint, current_app, jsonify, request
 
 import auth
+import validator_cookie
 
 bp = Blueprint("auth_api", __name__, url_prefix="/api/auth")
 
@@ -68,6 +69,27 @@ def auth_status():
             "bypass": True,
         })
 
+    # Dedicated validator-cookie path (see validator_cookie.py). Accepted
+    # ONLY on this endpoint — other protected routes continue to require
+    # a real OAuth session via login_required. A leaked validator cookie
+    # therefore grants access to nothing except the auth-status reporter.
+    authorized = (current_app.config.get("AUTHORIZED_EMAIL") or "").strip().lower()
+    token = request.cookies.get(validator_cookie.COOKIE_NAME)
+    if token and authorized:
+        secret = current_app.config.get("SECRET_KEY") or ""
+        validator_email = validator_cookie.parse(
+            secret_key=secret,
+            token=token,
+            authorized_email=authorized,
+        )
+        if validator_email:
+            return jsonify({
+                "authenticated": True,
+                "email": validator_email,
+                "bypass": False,
+                "via": "validator_cookie",
+            })
+
     email = auth.get_current_user_email()
     if email is None:
         return jsonify({"authenticated": False}), 401
@@ -76,7 +98,6 @@ def auth_status():
     # OAuth session for a *different* email must not report as
     # authenticated. Otherwise an intruder could use this endpoint to
     # confirm their Google login works against our app.
-    authorized = (current_app.config.get("AUTHORIZED_EMAIL") or "").strip().lower()
     if not authorized or email.strip().lower() != authorized:
         return jsonify({"authenticated": False}), 401
 

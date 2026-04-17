@@ -79,6 +79,15 @@ def fetch_auth_status(url: str, cookie_value: str) -> tuple[int, dict | None]:
     try:
         # -w "%{http_code}" appends HTTP status on its own line at the end;
         # -s suppresses curl's progress output so we get a clean body.
+        #
+        # We send the cookie under BOTH names so this script works with:
+        #   (a) a long-lived validator token minted via
+        #       `flask mint-validator-cookie` (preferred, 90-day lifetime)
+        #   (b) a raw Flask session cookie copied from a browser (legacy
+        #       path, expires on any Flask-Dance token refresh)
+        # The server's /api/auth/status tries the validator token first,
+        # then falls back to the session cookie — whichever one matches
+        # wins.
         result = subprocess.run(
             [
                 "curl",
@@ -88,7 +97,7 @@ def fetch_auth_status(url: str, cookie_value: str) -> tuple[int, dict | None]:
                 "-w",
                 "\n%{http_code}",
                 "-b",
-                f"session={cookie_value}",
+                f"validator_token={cookie_value}; session={cookie_value}",
                 url,
             ],
             capture_output=True,
@@ -127,45 +136,41 @@ def read_cookie_file(path: Path) -> str | None:
 
 COOKIE_REFRESH_INSTRUCTIONS = """\
 \u2554{bar}\u2557
-\u2551  SESSION COOKIE EXPIRED - refresh needed before re-running        \u2551
+\u2551  VALIDATOR COOKIE REJECTED - refresh needed before re-running     \u2551
 \u255a{bar}\u255d
 
 Why you're seeing this:
-  Your stored cookie at {cookie_path} is no longer
-  accepted by the server. Flask sessions expire after 24 hours of
-  inactivity. This is normal and expected.
+  Your stored cookie at {cookie_path} is no longer accepted by the
+  server. Either it expired (validator cookies live ~90 days by default),
+  or SECRET_KEY was rotated, or it was a legacy browser-copied session
+  cookie that got invalidated by a Flask-Dance token refresh.
 
-How to refresh (takes ~30 seconds):
+How to refresh (preferred: mint a fresh validator cookie):
 
-  1. Open this URL in Chrome (or whatever browser you log into Google with):
-       {base_url}/
+  A validator cookie is signed with SECRET_KEY and baked with
+  AUTHORIZED_EMAIL. It authenticates ONLY /api/auth/status -- it cannot
+  access tasks or goals -- so a fresh 90-day cookie is safe to store.
 
-  2. If you're not already signed in, log in with shigsdev@gmail.com.
-     You should land on the Tasks page (not a Google login screen).
+  From a local checkout with the same SECRET_KEY in your env:
+      flask mint-validator-cookie > {cookie_path}
 
-  3. Open DevTools:
-       - Windows: F12  or  Ctrl+Shift+I
-       - Mac:     Cmd+Option+I
+  Or, minting on Railway and pulling the output locally:
+      railway run flask mint-validator-cookie > {cookie_path}
 
-  4. In DevTools, go to:
-       Application tab  ->  Cookies (left sidebar)
-       ->  {base_url}
+  Then re-run:
+      python scripts/validate_deploy.py --auth-check
 
-  5. Find the row named:  session
-     Right-click the Value column  ->  "Copy value"
-     (The value is a long string starting with something like
-      "eyJfZnJlc2giOnRydWUs...")
+Legacy fallback (not recommended -- Flask-Dance token refresh
+silently invalidates this path during normal browser use):
 
-  6. Paste it into the cookie file, replacing the old contents:
-       Windows:  notepad {cookie_path}
-       Mac/Linux: nano {cookie_path}
+  1. Open {base_url}/ in Chrome, sign in with shigsdev@gmail.com
+  2. DevTools -> Application -> Cookies -> copy the `session` value
+  3. Paste into {cookie_path} (no newline, no quotes)
+  4. Re-run the validator
 
-  7. Save the file and re-run:
-       python scripts/validate_deploy.py --auth-check
-
-If step 2 fails (Google OAuth broken, can't sign in, etc.) - that's
-a real auth bug, not a cookie refresh issue. Investigate /login
-behavior on the deployed app.
+If the `flask mint-validator-cookie` command itself fails, that's a
+deploy / env-var bug, not a cookie refresh issue. Check that
+SECRET_KEY and AUTHORIZED_EMAIL are set where you're running it.
 """
 
 

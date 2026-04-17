@@ -316,7 +316,68 @@ def create_app(config: dict | None = None) -> Flask:
     # Gunicorn master process where the background thread dies after fork.
     # For local dev (flask run), call _start_digest_scheduler() manually.
 
+    # --- CLI commands ---
+    _register_cli_commands(app)
+
     return app
+
+
+def _register_cli_commands(app: Flask) -> None:
+    """Register ``flask <command>`` CLI commands on the app.
+
+    Commands here are operator tools, not user-facing features. They run
+    in the Flask CLI context so they have full access to ``app.config``
+    without needing to spin up a real HTTP server.
+    """
+    import click
+
+    import validator_cookie
+
+    @app.cli.command("mint-validator-cookie")
+    @click.option(
+        "--days",
+        default=90,
+        show_default=True,
+        type=click.IntRange(min=1, max=3650),
+        help="Lifetime of the minted cookie in days.",
+    )
+    @click.option(
+        "--email",
+        default=None,
+        help=(
+            "Email to bake into the cookie. Defaults to AUTHORIZED_EMAIL "
+            "from config. Must match AUTHORIZED_EMAIL at parse time or "
+            "the cookie is rejected."
+        ),
+    )
+    def mint_validator_cookie(days: int, email: str | None) -> None:
+        """Mint a long-lived validator cookie and print the value.
+
+        Typical use::
+
+            flask mint-validator-cookie > ~/.taskmanager-session-cookie
+
+        Then ``python scripts/validate_deploy.py --auth-check`` reads
+        the file and sends the token to ``/api/auth/status``. The cookie
+        authenticates ONLY that one endpoint — it cannot access tasks,
+        goals, or any user data.
+        """
+        secret = app.config.get("SECRET_KEY")
+        if not secret:
+            raise click.ClickException("SECRET_KEY is not configured.")
+        target_email = email or app.config.get("AUTHORIZED_EMAIL")
+        if not target_email:
+            raise click.ClickException(
+                "AUTHORIZED_EMAIL is not set and no --email was provided."
+            )
+        token = validator_cookie.mint(
+            secret_key=secret,
+            email=target_email,
+            days=days,
+        )
+        # Plain print, no trailing metadata — the user pipes this
+        # directly into ~/.taskmanager-session-cookie.
+        click.echo(token, nl=False)
 
 
 def _start_digest_scheduler(app: Flask) -> None:

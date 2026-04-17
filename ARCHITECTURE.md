@@ -164,6 +164,42 @@ authentication state. It enforces the same single-user lockdown as
 `login_required` — a valid Google session for an email other than
 `AUTHORIZED_EMAIL` still returns 401.
 
+### Long-lived validator cookie (`validator_cookie.py`)
+
+The naive "copy your browser session cookie" path for the validator has
+a silent failure mode: Flask-Dance auto-refreshes the Google OAuth
+token during normal browser use, which re-signs the `session` cookie
+and invalidates any previously-captured copy.
+
+The fix is a **dedicated, signed, opt-in credential** minted offline via
+a Flask CLI command:
+
+```
+flask mint-validator-cookie [--days 90] [--email me@example.com]
+```
+
+Properties:
+
+- Signed with `SECRET_KEY` using `itsdangerous.URLSafeTimedSerializer`
+  with a dedicated salt (`taskmanager-validator-v1`) — distinct from
+  Flask's own `cookie-session` salt, so the session signer cannot
+  forge validator cookies and vice versa.
+- Lives in its own cookie name (`validator_token`) independent of
+  Flask's `session` cookie. Not affected by `PERMANENT_SESSION_LIFETIME`.
+- Default 90-day lifetime (enforced by re-validating against the
+  signed timestamp + the `days` baked into the payload).
+- Carries only the authorized email — no OAuth token, no user data.
+- Authenticates **only** `/api/auth/status` — other protected routes
+  still require OAuth via `login_required`. A leaked validator cookie
+  therefore grants access to nothing except the auth-state reporter.
+- Rotating `SECRET_KEY` instantly invalidates all previously-minted
+  validator cookies — the emergency revocation mechanism.
+
+The validator script (`scripts/validate_deploy.py`) sends the stored
+cookie under both names (`validator_token=X; session=X`) so a single
+file works for both the preferred long-lived path and the legacy
+browser-copied session path.
+
 ---
 
 ## External Dependencies (version pins maintained in `requirements.txt`)
