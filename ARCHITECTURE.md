@@ -126,8 +126,13 @@ loaded via `<script>` tag in the browser and via `require()` in Jest.
 - **Test location**: `tests/js/unit/` (mirrors the Python `tests/` layout)
 - **Config**: `jest.config.js` at repo root
 - **Run**: `npm test` (after `npm install`)
-- **Future**: jsdom environment for DOM tests, Playwright for browser
-  API tests (Web Speech, Notifications, SW lifecycle)
+- **E2E runner**: Playwright (Chromium) — real browser API tests
+- **E2E location**: `tests/e2e/` (3 spec files, 23 tests)
+  - `service-worker.spec.js` — SW lifecycle, cache, CLEAR_CACHE
+  - `pages.spec.js` — page navigation, capture bar round-trip, detail panel
+  - `browser-apis.spec.js` — Web Speech, client error reporter, update banner
+- **E2E config**: `playwright.config.js` (baseURL: localhost:5111, 1 worker)
+- **Run E2E**: `npm run test:e2e` (requires bypass server on port 5111)
 
 ---
 

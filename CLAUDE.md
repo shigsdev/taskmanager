@@ -82,10 +82,15 @@ says otherwise.
 4. Only after the report shows all green: commit and push
 - **Post-push deploy validation** (after every `git push`):
 
+  **Skip for doc-only changes.** If the push only touches `.md` files,
+  `.gitignore`, or other non-code files that don't affect the running
+  app, deploy validation is not required. Mark Phase 8 as
+  `[⏭️] N/A — doc-only change` in the SOP Compliance Report.
+
   Railway does **rolling deploys** — the old container keeps serving
   traffic until the new container is healthy. A plain `curl /healthz`
   will happily return 200 OK from the OLD container while the new build
-  is still running. Version-pinned validation is mandatory.
+  is still running. Version-pinned validation is mandatory for code changes.
 
   **Preferred method — run the validation script:**
   ```

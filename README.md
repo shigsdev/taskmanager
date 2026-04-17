@@ -182,10 +182,15 @@ ruff check .
 # JavaScript (parseCapture unit tests — requires Node.js)
 npm install   # first time only
 npm test
+
+# Playwright E2E tests (real browser — requires bypass server on port 5111)
+npx playwright install chromium   # first time only
+npm run test:e2e                  # runs against localhost:5111
+npm run test:e2e:headed           # same, but visible browser window
 ```
 
 ### Standards
 
 See `CLAUDE.md` for coding standards, quality gates, security rules, and
-naming conventions. Every commit must pass `pytest --cov` (80% floor) and
-`ruff check .` with zero warnings.
+naming conventions. Every commit must pass `pytest --cov` (80% floor),
+`ruff check .` with zero warnings, and `npm test` (Jest unit tests).

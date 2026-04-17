@@ -14,9 +14,11 @@ __pycache__/
 venv/
 env/
 
-# Node.js (Jest tests)
+# Node.js (Jest + Playwright)
 node_modules/
 coverage-js/
+test-results/
+playwright-report/
 
 # Testing / lint caches
 .pytest_cache/

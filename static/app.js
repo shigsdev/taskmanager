@@ -56,6 +56,12 @@ async function loadProjects() {
 }
 
 async function init() {
+    // Only run task-board setup on the tasks page (index.html).
+    // Other pages (goals, review, etc.) load app.js for shared utilities
+    // like apiFetch() but don't have the task detail panel DOM elements.
+    const isTasksPage = !!document.getElementById("detailOverlay");
+    if (!isTasksPage) return;
+
     await Promise.all([loadTasks(), loadGoals(), loadProjects()]);
     setupNavTabs();
     setupCollapse();
@@ -674,13 +680,15 @@ function renderProjectFilter() {
 
 function updateBulkTriageBtn() {
     const btn = document.getElementById("bulkTriageBtn");
+    if (!btn) return;
     const checked = document.querySelectorAll(
         '.tier[data-tier="inbox"] .triage-check:checked'
     );
     btn.style.display = checked.length > 0 ? "" : "none";
 }
 
-document.getElementById("bulkTriageBtn").addEventListener("click", (e) => {
+const _bulkTriageBtn = document.getElementById("bulkTriageBtn");
+if (_bulkTriageBtn) _bulkTriageBtn.addEventListener("click", (e) => {
     const existing = document.querySelector(".triage-dropdown");
     if (existing) { existing.remove(); return; }
 
