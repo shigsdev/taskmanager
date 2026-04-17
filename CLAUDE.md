@@ -6,6 +6,49 @@ previous system failed because of complexity overhead.
 
 ---
 
+## Branching Workflow (mandatory for all changes)
+
+Never commit directly to `main`. All work happens on a feature branch,
+gets tested there, and only merges to `main` when all quality gates pass.
+
+1. **Create a feature branch** before writing any code:
+   ```
+   git checkout -b feature/<short-name>
+   ```
+   Use a descriptive kebab-case name: `feature/jest-testing`,
+   `fix/sw-cache-bump`, `feature/calendar-view`, etc.
+
+2. **Do all development on the feature branch.** Commit as often as
+   needed — messy WIP commits are fine here.
+
+3. **Run all quality gates** on the feature branch (ruff, pytest, jest,
+   regression if UI changed). Everything must be green.
+
+4. **Merge locally into `main`:**
+   ```
+   git checkout main
+   git pull origin main        # catch any remote changes first
+   git merge feature/<name>    # fast-forward or merge commit, either OK
+   ```
+
+5. **Push `main`:**
+   ```
+   git push
+   ```
+
+6. **Run deploy validation** (`python scripts/validate_deploy.py`).
+
+7. **Clean up** the feature branch after deploy is green:
+   ```
+   git branch -d feature/<name>
+   ```
+
+**Exceptions** — the user may explicitly approve pushing directly to
+`main` for trivial changes (typo fixes, doc-only edits). When in doubt,
+use a branch.
+
+---
+
 ## Quality Gates (mandatory on every commit — NO EXCEPTIONS)
 
 These gates run on EVERY change, no matter how small. Do not skip steps.
