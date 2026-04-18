@@ -459,12 +459,14 @@ Report.
 
 A backlog item is **NOT** marked ✅ complete in `BACKLOG.md` until BOTH:
 
-1. **Pre-deploy gates pass**: ruff, pytest with coverage floor, jest, local
-   Playwright (when applicable). All green on the feature branch before merge.
+1. **Pre-deploy gates pass**: ruff, pytest with coverage floor, jest,
+   local Playwright. **ALL of them. Always.** There is no "when
+   applicable" — the judgment call always errs toward skipping. See
+   anti-pattern #2 below. Run via `bash scripts/run_all_gates.sh`.
 2. **Post-deploy validation passes**: `python scripts/validate_deploy.py`
-   returns DEPLOY GREEN with the new SHA, AND any feature-relevant prod
-   smoke (e.g. `npm run test:e2e:prod` for changes that affect HTTP-served
-   behavior) passes against the live URL.
+   returns DEPLOY GREEN with the new SHA, AND `npm run test:e2e:prod`
+   passes against the live URL for any change that could affect
+   HTTP-served behavior (any Python, template, or route change).
 
 Until both are green, the backlog row uses status `🔄 IN PROGRESS — <what's
 done, what's pending>` not ✅. The reason: a feature that's "code complete"
@@ -474,3 +476,52 @@ hides that risk from the next session's planner.
 If a feature is purely doc-only (no code change to deploy), only the
 pre-deploy gate applies — but this is rare; almost any code change requires
 post-deploy verification.
+
+### Anti-pattern #2: skipping gates that "can't fail on this change"
+
+**Incident 2026-04-18 (voice memo iOS Safari content-type fix):** A
+small backend regex fix in `voice_api.py` passed ruff + pytest, was
+committed + merged + deployed, and reported "done" — but jest, local
+Playwright, and prod Playwright were silently skipped. The skipped
+gates would not have caught a bug in this specific change, but their
+absence violated the gate rule and normalized under-testing.
+
+Why this happens:
+- "Small backend fix" triggers a `mental shortcut: "Jest tests JS, this
+  is Python, Jest can't catch anything here"`.
+- Hotfix urgency (user is blocked) pressures shipping over discipline.
+- Rules phrased with judgment language (*"when applicable"*) invite
+  this erosion.
+
+Rules going forward:
+- Run `bash scripts/run_all_gates.sh` before every commit. Full stop.
+- The script runs ruff + pytest + jest + local Playwright in order.
+  Zero human-judgment calls about which gates "apply."
+- If a gate genuinely cannot run in this environment (e.g. node not
+  installed on a mac without node dev setup), the commit message must
+  include a `Gates-skipped: jest (no node env)` trailer. Silent skip
+  is an SOP violation.
+
+### Pre-commit checklist (mandatory)
+
+Before `git commit` on a feature branch:
+
+```
+bash scripts/run_all_gates.sh
+```
+
+The script exits 0 only if ALL gates pass. Paste the tail (at minimum
+the "ALL GATES GREEN" line and any gate that printed a summary) into
+the bottom of your commit message, after a blank line, like:
+
+```
+<commit message body>
+
+Gates:
+  ruff: PASS
+  pytest: 903 passed, 89% coverage
+  jest: 34 passed
+  playwright-local: 23 passed
+```
+
+Any skipped gate in this trailer requires a one-line reason.
