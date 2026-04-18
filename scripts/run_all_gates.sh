@@ -158,6 +158,75 @@ else
     exit 1
 fi
 
+# --- 5. Bandit (Python security linter) -------------------------------------
+
+banner "5. Bandit (security lint)"
+# -ll = HIGH severity threshold; -ii = HIGH confidence threshold.
+# Anything below those prints to stderr but doesn't fail the gate
+# (keeps false-positive noise out of the must-fix bucket).
+if python -m bandit -r . -c .bandit.yml -ll -ii --quiet; then
+    pass "bandit"
+else
+    fail "bandit found a HIGH severity / HIGH confidence security issue"
+    exit 1
+fi
+
+# --- 6. pip-audit (Python CVE check) ----------------------------------------
+
+banner "6. pip-audit (dependency CVEs)"
+if python -m pip_audit -r requirements.txt; then
+    pass "pip-audit"
+else
+    fail "pip-audit found a known vulnerability — bump the affected package in requirements.txt"
+    exit 1
+fi
+
+# --- 7. npm audit (Node CVE check) ------------------------------------------
+
+banner "7. npm audit (dependency CVEs)"
+# --audit-level=high means low/medium are reported but don't fail the
+# gate. High and critical do.
+if npm audit --audit-level=high; then
+    pass "npm audit"
+else
+    fail "npm audit found a HIGH/CRITICAL vulnerability — bump the affected package in package.json"
+    exit 1
+fi
+
+# --- 8. Docs sync check (env vars in code <-> README) -----------------------
+
+banner "8. Docs sync check"
+if python scripts/docs_sync_check.py; then
+    pass "docs sync"
+else
+    fail "docs sync check failed"
+    exit 1
+fi
+
+# --- 9. Semgrep (security pattern scanner) — DEFERRED ----------------------
+#
+# Semgrep was intended here but was deferred because the pip-installed
+# semgrep CLI binary doesn't reliably end up on PATH for Python 3.14 on
+# Windows. Bandit (gate 5) already covers ~70% of the same ground for
+# Python security antipatterns — semgrep adds extra Flask-specific
+# rules and OWASP coverage but isn't a replacement.
+#
+# To re-enable on a machine where `semgrep` is on PATH (mac/linux,
+# or Windows after fixing PATH):
+#
+#   banner "9. Semgrep (security patterns)"
+#   if semgrep scan --config=p/python --config=p/security-audit \
+#           --error --quiet --exclude=.venv --exclude=.venv-mac \
+#           --exclude=node_modules --exclude=.claude --exclude=tests \
+#           --exclude=migrations --metrics=off; then
+#       pass "semgrep"
+#   else
+#       fail "semgrep found a security issue — review the report above"
+#       exit 1
+#   fi
+#
+# Tracked as backlog item: "Semgrep gate (cross-platform fix)".
+
 # --- Summary ----------------------------------------------------------------
 
 banner "ALL GATES GREEN"
