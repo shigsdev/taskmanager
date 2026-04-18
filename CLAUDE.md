@@ -525,3 +525,81 @@ Gates:
 ```
 
 Any skipped gate in this trailer requires a one-line reason.
+
+### Cascade check — when you change X, what else must change?
+
+A surprising number of bugs come from "I updated the code but forgot
+to update the comment / test / docstring / README / ADR." This table
+is the explicit checklist. After every change, walk it line by line.
+Mark each row in the SOP Compliance Report (Phase 3 or new Phase 3b)
+as ✅ done / ⏭️ N/A:
+
+| If you changed... | Then also update / verify |
+|---|---|
+| An auth decorator (`login_required`, validator-cookie path, dev-bypass gates) | Module docstrings of all auth files (auth.py, auth_api.py, validator_cookie.py) so scope claims still match; add a test asserting the new boundary; consider whether an ADR-supersede is needed |
+| Any code reading or writing env vars | README.md env-var table; `.env.example`; `scripts/docs_sync_check.py` passes (it will catch missed README rows) |
+| A new file-upload endpoint | `MAX_CONTENT_LENGTH` already covers the global cap, but per-endpoint MIME whitelist (with `;codecs=` parameter normalization), size check BEFORE read, and empty-file guard AFTER read; add oversize + empty + bad-MIME tests |
+| A new external API caller (Whisper, Claude, Vision, etc.) | Key goes in `Authorization` or vendor-specific header NEVER in URL query string; `scrub_sensitive` regex covers the key format; add a `test_strips_<vendor>_key` test in test_logging.py; `requests.post(..., timeout=N)` (never bare); error message uses `type(e).__name__` not the URL |
+| A new HTTP route that mutates state | `@login_required` (real OAuth — validator cookie won't authenticate POST/PATCH/DELETE/PUT); rate-limited if user-controlled; input validated; CSRF not strictly needed (single-user) but think about it |
+| A new HTTP route that reads state | `@login_required`; validator cookie WILL authenticate it on GET — that's intentional but document if the route exposes anything sensitive |
+| A new static asset (CSS/JS/icon) | `static/sw.js` `APP_SHELL` includes it; `health.py` `EXPECTED_STATIC_FILES` includes it; bump `CACHE_VERSION` |
+| A new HTML template / route renderer | Add to nav in `base.html` if user-visible (or capture-bar button if quick-action); set `active_page`; **Phase 6 manual regression** at desktop + mobile — bandit/Playwright don't substitute |
+| Refactored a security-sensitive function (e.g. broadened a scope, changed an auth check) | Write a new ADR superseding the old one in `docs/adr/`; grep all docstrings/comments for the OLD claim and update them; add a regression test that asserts the new scope |
+| Bumped a dependency in requirements.txt or package.json | `pip-audit` / `npm audit` clean; pytest still passes (some bumps break APIs) |
+| Added a new SOP rule or process change to CLAUDE.md | Mention it in the next commit message so future sessions notice; consider whether `run_all_gates.sh` can enforce it |
+
+If a row triggers and you're not sure how to handle it: STOP, write
+a one-paragraph note, and commit-message it. Don't silently skip.
+
+### Threat model (for audit-eye perspective)
+
+Re-read this at the top of every session that touches auth, uploads,
+external APIs, logging, or anything that handles user-controllable input.
+
+This app is a **single-user personal tool** with:
+
+- One authorized email (configured via `AUTHORIZED_EMAIL`)
+- OAuth session cookies (Google) as the primary auth mechanism, 24h
+  sliding expiry
+- A long-lived signed validator cookie (`validator_token`) for
+  automation — read-only access via the `login_required` GET branch
+- External API keys for Google (Vision, OAuth), OpenAI (Whisper),
+  Anthropic (Claude), SendGrid
+
+**Realistic attack scenarios to defend against:**
+
+1. **Cookie theft** via malicious browser extension, stolen laptop, or
+   network interception — mitigated by `SESSION_COOKIE_SECURE`,
+   `HttpOnly`, `SameSite=Lax`, HTTPS-only deploy
+2. **API key leak** via logs, error messages, accidental commits —
+   mitigated by `scrub_sensitive` regex chain, `.gitignore` covering
+   `.env*` and `.flaskenv`, never including keys in URLs
+3. **SSRF** from server-side URL fetching (`url-preview`, `scan` if
+   we ever add URL inputs) — mitigated by IP-pin + redirect-disable
+   in `tasks_api.url_preview` (see ADR-006)
+4. **Memory-exhaustion DoS** via huge uploads — mitigated by Flask
+   `MAX_CONTENT_LENGTH=30MB` + per-endpoint size checks
+5. **Accidental commits of secrets** (.env, cookie files) — mitigated
+   by `.gitignore`, would be further mitigated by a gitleaks pre-commit
+   hook (TODO)
+6. **Validator cookie leak** via a sloppy commit or paste — mitigated
+   by 90-day expiry, GET-only scope (no mutations possible), and the
+   `SECRET_KEY` rotation kill-switch
+
+**Out of threat model for this app** (different apps would worry
+about these — they're not relevant here):
+
+- Multi-tenant data leakage (only one tenant)
+- Account takeover of other users (no other users exist)
+- Sophisticated APT / nation-state attacker (not a target)
+- DDoS at scale (Railway provides basic protection; not worth
+  engineering against)
+
+**Things that are technically risky but acceptable trade-offs:**
+
+- `/healthz` is unauthenticated and returns the deployed git_sha
+  (deliberate — Railway needs it for health probes)
+- Validator cookie can read all your tasks/goals for 90 days if
+  leaked (read-only, no mutation, rotatable via `SECRET_KEY`)
+- `LOCAL_DEV_BYPASS_AUTH` exists at all (acceptable because of the
+  four-gate defense including the triple Railway tripwire)
