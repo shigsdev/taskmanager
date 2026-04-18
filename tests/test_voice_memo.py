@@ -97,6 +97,98 @@ class TestVoiceUpload:
         assert "Unsupported audio type" in body["error"]
         assert "audio/webm" in body["allowed"]
 
+    def test_accepts_ios_safari_content_type_with_codec_semicolon(
+        self, client, monkeypatch,
+    ):
+        """iOS Safari sends ``audio/mp4;codecs=mp4a.40.2`` — the codec
+        suffix must NOT cause rejection. Regression test for the
+        2026-04-18 iPhone upload bug."""
+        _bypass_auth(monkeypatch)
+        monkeypatch.setenv("OPENAI_API_KEY", "fake-key")
+
+        with (
+            patch(
+                "voice_api.transcribe_audio",
+                return_value={"transcript": "test", "duration_seconds": 1.0, "cost_usd": 0.0001},
+            ),
+            patch("voice_api.parse_tasks_from_text", return_value=["test"]),
+        ):
+            resp = client.post(
+                "/api/voice-memo",
+                data={
+                    "audio": (
+                        io.BytesIO(b"fake mp4 audio"),
+                        "memo.mp4",
+                        "audio/mp4;codecs=mp4a.40.2",
+                    ),
+                },
+                content_type="multipart/form-data",
+            )
+
+        assert resp.status_code == 200, (
+            f"iOS Safari content-type with codec params was rejected: "
+            f"{resp.status_code} {resp.get_json()}"
+        )
+
+    def test_accepts_ios_safari_content_type_with_codec_colon_variant(
+        self, client, monkeypatch,
+    ):
+        """Some iOS versions use ':' instead of ';' as the parameter
+        separator — e.g. ``audio/mp4:codecs-mp4a.40.2``. Server must
+        normalize both forms."""
+        _bypass_auth(monkeypatch)
+        monkeypatch.setenv("OPENAI_API_KEY", "fake-key")
+
+        with (
+            patch(
+                "voice_api.transcribe_audio",
+                return_value={"transcript": "test", "duration_seconds": 1.0, "cost_usd": 0.0001},
+            ),
+            patch("voice_api.parse_tasks_from_text", return_value=["test"]),
+        ):
+            resp = client.post(
+                "/api/voice-memo",
+                data={
+                    "audio": (
+                        io.BytesIO(b"fake mp4 audio"),
+                        "memo.mp4",
+                        "audio/mp4:codecs-mp4a.40.2",
+                    ),
+                },
+                content_type="multipart/form-data",
+            )
+
+        assert resp.status_code == 200, (
+            f"colon-separated codec param was rejected: "
+            f"{resp.status_code} {resp.get_json()}"
+        )
+
+    def test_accepts_chrome_webm_opus_content_type(self, client, monkeypatch):
+        """Chrome/Android MediaRecorder sends ``audio/webm;codecs=opus``."""
+        _bypass_auth(monkeypatch)
+        monkeypatch.setenv("OPENAI_API_KEY", "fake-key")
+
+        with (
+            patch(
+                "voice_api.transcribe_audio",
+                return_value={"transcript": "test", "duration_seconds": 1.0, "cost_usd": 0.0001},
+            ),
+            patch("voice_api.parse_tasks_from_text", return_value=["test"]),
+        ):
+            resp = client.post(
+                "/api/voice-memo",
+                data={
+                    "audio": (
+                        io.BytesIO(b"fake webm audio"),
+                        "memo.webm",
+                        "audio/webm;codecs=opus",
+                    ),
+                },
+                content_type="multipart/form-data",
+            )
+
+        assert resp.status_code == 200
+
     def test_rejects_oversize_file(self, client, monkeypatch):
         _bypass_auth(monkeypatch)
         # 26 MB > the 25 MB Whisper limit

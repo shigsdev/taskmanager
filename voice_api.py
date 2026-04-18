@@ -13,6 +13,7 @@ Audio is processed entirely in memory — never written to disk or DB.
 from __future__ import annotations
 
 import logging
+import re
 
 from flask import Blueprint, jsonify, request
 
@@ -58,15 +59,25 @@ def upload(email: str):  # noqa: ARG001
     if not file.filename:
         return jsonify({"error": "No filename"}), 400
 
-    # Validate content type. Log the rejected type so we can see what
-    # browsers send (Safari and Chrome differ on default codecs).
-    if file.content_type not in ALLOWED_AUDIO_TYPES:
+    # Validate content type. Browsers (especially iOS Safari) append
+    # codec parameters to the MIME type — e.g.
+    #   "audio/mp4;codecs=mp4a.40.2"   (Safari)
+    #   "audio/webm;codecs=opus"       (Chrome)
+    # RFC 7231 parameter separator is ';', but we normalize on both ';'
+    # and ':' because some iOS versions send the less standard ':' form.
+    # Strip everything from the first parameter separator so the
+    # whitelist stays as a simple set of base MIME types.
+    raw_content_type = file.content_type or ""
+    base_type = re.split(r"[;:]", raw_content_type, maxsplit=1)[0].strip().lower()
+    if base_type not in ALLOWED_AUDIO_TYPES:
         logger.warning(
-            "voice memo upload rejected: unsupported content_type=%r",
-            file.content_type,
+            "voice memo upload rejected: unsupported content_type=%r "
+            "(normalized base=%r)",
+            raw_content_type,
+            base_type,
         )
         return jsonify({
-            "error": f"Unsupported audio type: {file.content_type}",
+            "error": f"Unsupported audio type: {raw_content_type}",
             "allowed": sorted(ALLOWED_AUDIO_TYPES),
         }), 422
 

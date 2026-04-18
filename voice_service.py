@@ -41,15 +41,14 @@ WHISPER_USD_PER_MINUTE = 0.006
 WHISPER_MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 # Audio MIME types we'll accept from the browser. MediaRecorder produces
-# webm/opus on Chrome/Android and mp4 on Safari. We accept both plus a
-# few common fallbacks; Whisper handles all of these natively.
+# webm/opus on Chrome/Android and mp4 on Safari. Browsers append codec
+# parameters (e.g. "audio/mp4;codecs=mp4a.40.2") which voice_api strips
+# before consulting this whitelist — keep the list to bare type/subtype.
 ALLOWED_AUDIO_TYPES = frozenset({
     "audio/webm",
-    "audio/webm;codecs=opus",
     "audio/mp4",
     "audio/mpeg",
     "audio/ogg",
-    "audio/ogg;codecs=opus",
     "audio/wav",
     "audio/x-wav",
 })
@@ -86,8 +85,14 @@ def _filename_for_mime(mime_type: str) -> str:
     """Whisper inspects the filename extension to detect the audio
     format. Browser-supplied MIME types don't always match (some
     browsers report ``audio/webm`` for opus-in-webm), so we map to the
-    extension Whisper expects."""
-    mt = (mime_type or "").lower().split(";")[0].strip()
+    extension Whisper expects.
+
+    Accepts both ``;`` and ``:`` as parameter separators — iOS Safari
+    has been observed sending the non-standard ``:`` form in some
+    versions (e.g. ``audio/mp4:codecs-mp4a.40.2``).
+    """
+    import re
+    mt = re.split(r"[;:]", (mime_type or "").lower(), maxsplit=1)[0].strip()
     return {
         "audio/webm": "memo.webm",
         "audio/mp4": "memo.mp4",
