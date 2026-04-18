@@ -64,9 +64,13 @@ test.beforeEach(async ({ context, baseURL }) => {
 
 test.describe("Prod smoke — auth preflight", () => {
     test("session cookie is accepted by /api/auth/status", async ({
-        request,
+        page,
     }) => {
-        const resp = await request.get("/api/auth/status");
+        // page.request shares the browser context's cookie jar, so the
+        // cookies set in beforeEach are sent. The standalone `request`
+        // fixture has its OWN jar and would need extraHTTPHeaders
+        // configured separately.
+        const resp = await page.request.get("/api/auth/status");
         expect(
             resp.status(),
             "cookie may be expired — run scripts/validate_deploy.py --auth-check for refresh instructions",
@@ -106,17 +110,20 @@ test.describe("Prod smoke — page renders", () => {
 
 test.describe("Prod smoke — API responds correctly", () => {
     test("/api/tasks returns an array (shape check, not content)", async ({
-        request,
+        page,
     }) => {
-        const resp = await request.get("/api/tasks");
+        // Use page.request so the validator_token cookie is sent.
+        const resp = await page.request.get("/api/tasks");
         expect(resp.status()).toBe(200);
         const body = await resp.json();
         expect(Array.isArray(body)).toBe(true);
         // Don't assert length — production data is whatever the user has.
     });
 
-    test("/healthz reports ok and exposes git_sha", async ({ request }) => {
-        const resp = await request.get("/healthz");
+    test("/healthz reports ok and exposes git_sha", async ({ page }) => {
+        // /healthz is public so request fixture would also work, but we
+        // standardize on page.request for consistency.
+        const resp = await page.request.get("/healthz");
         expect(resp.status()).toBe(200);
         const data = await resp.json();
         expect(data.status).toBe("ok");
