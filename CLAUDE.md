@@ -55,6 +55,39 @@ These gates run on EVERY change, no matter how small. Do not skip steps.
 Do not run partial test suites. Do not deviate unless the user explicitly
 says otherwise.
 
+### CRITICAL: Phase 6 UI regression is NOT optional for UI changes
+
+Any change that touches:
+- a template file (`templates/*.html`)
+- a static asset (`static/*.css`, `static/*.js`)
+- a new route that renders HTML
+- any CSS selector, layout change, or new UI element
+
+REQUIRES a live-browser regression via Claude Preview at BOTH desktop
+(1280×800) and mobile (375×812). Passing Playwright tests that don't
+specifically exercise the changed page/element DO NOT substitute for
+Phase 6. Backend tests DO NOT substitute for Phase 6. HTTP 200 on
+`curl` DO NOT substitute for Phase 6.
+
+**Anti-pattern that happened on 2026-04-18 (voice memo feature):**
+The feature passed 16 backend tests, the full Jest suite, 23 local
+Playwright tests, prod validation, and 5 prod Playwright tests. The
+BACKLOG got marked ✅. Claude Preview was never opened on the new
+page. A subsequent manual Preview pass found TWO real bugs:
+  1. `.icon-btn` display mismatch between `<a>` and `<button>` — caused
+     the new voice-memo button to render ~3px off compared to other
+     icon-btns
+  2. Capture bar overflowed on mobile (375px) because the added 4th
+     icon-btn pushed it past the bar width — `<input>`'s intrinsic
+     min-width from placeholder text prevented it from shrinking
+Both bugs were invisible to every automated test in the suite. Both
+would have been caught in 5 minutes of Preview at desktop+mobile.
+
+**If the regression is skipped, the change is not complete.** Mark
+BACKLOG status `🔄 IN PROGRESS — Phase 6 not yet run` rather than ✅
+until a human-viewable regression is documented in the Regression Test
+Report.
+
 1. **ruff** — `ruff check .` — zero warnings
 2. **pytest** — `pytest --cov` — FULL test suite, 80% coverage floor.
    Never run only the affected test file. Always run all tests.

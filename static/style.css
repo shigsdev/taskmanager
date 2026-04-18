@@ -198,6 +198,10 @@ body {
 
 .capture-bar input[type="text"] {
     flex: 1;
+    min-width: 0; /* override the browser default that prevents a flex
+                     input from shrinking below its placeholder's
+                     intrinsic width — needed on mobile so the capture
+                     bar fits all icon-btns without overflowing */
     padding: 6px 10px;
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -223,6 +227,16 @@ body {
     cursor: pointer;
     font-size: 1rem;
     transition: background 0.15s;
+    /* Explicit flex + text-decoration reset so icon-btns render
+       identically whether they are <button> or <a> (the voice-memo
+       link uses an anchor so the whole row remains linkable from
+       middle-click / Ctrl-click / keyboard Enter). */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    color: inherit;
+    line-height: 1;
 }
 .icon-btn:hover { background: var(--surface-sunk); }
 #captureSubmit { color: var(--green); font-weight: bold; font-size: 1.1rem; }
