@@ -213,18 +213,31 @@ Flask sessions but lives in a dedicated cookie (`validator_token`) that
 authenticates **only** `/api/auth/status` — it cannot access tasks,
 goals, or any user data.
 
-```bash
-# From a local checkout that has SECRET_KEY + AUTHORIZED_EMAIL in env,
-# OR from a Railway shell. Both mints must use the SAME SECRET_KEY as
-# the deployed app, otherwise the server rejects the cookie.
-flask mint-validator-cookie > ~/.taskmanager-session-cookie
+Two ways to mint, depending on what's installed locally:
 
-# Default lifetime is 90 days. Override with --days if needed:
-flask mint-validator-cookie --days 30 > ~/.taskmanager-session-cookie
+```bash
+# (A) Standalone script — no Flask app boot, only needs `itsdangerous`
+#     (which ships with Flask). Works even if your local Python is
+#     missing psycopg or other deploy-only deps.
+#     Use this with `railway run` to inject the prod SECRET_KEY.
+railway run python scripts/mint_validator_cookie.py | Set-Content -NoNewline -Path "$HOME\.taskmanager-session-cookie"
+
+# (B) Flask CLI command — same effect, but needs the full app to import
+#     successfully (so `pip install -r requirements.txt` must be done
+#     first, including the postgres driver).
+railway run python -m flask mint-validator-cookie | Set-Content -NoNewline -Path "$HOME\.taskmanager-session-cookie"
+
+# Both default to 90 days. Override with --days if needed:
+railway run python scripts/mint_validator_cookie.py --days 30 | Set-Content -NoNewline -Path "$HOME\.taskmanager-session-cookie"
 
 # Then any time after:
 python scripts/validate_deploy.py --auth-check
 ```
+
+**On Mac/Linux** the equivalent shell redirect is `> ~/.taskmanager-session-cookie`
+(but watch for trailing newlines added by some shells — use
+`printf '%s' "$(railway run python scripts/mint_validator_cookie.py)" > ~/.taskmanager-session-cookie`
+if `>` adds a newline).
 
 Rotate by re-running the same command. Rotating `SECRET_KEY` on the
 server instantly invalidates all minted validator cookies — that's the

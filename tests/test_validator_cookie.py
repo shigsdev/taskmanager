@@ -203,3 +203,61 @@ def test_mint_cli_command_fails_without_email(app):
     result = runner.invoke(args=["mint-validator-cookie"])
     assert result.exit_code != 0
     assert "AUTHORIZED_EMAIL" in result.output or "email" in result.output.lower()
+
+
+# --- Standalone script tests (scripts/mint_validator_cookie.py) --------------
+#
+# The standalone script exists for environments that can't import the
+# full Flask app (e.g. missing psycopg). It must work using only env
+# vars, with no Flask imports.
+
+
+def test_standalone_mint_script_round_trips(monkeypatch, capsys, tmp_path):
+    """Standalone script reads env vars, mints, and prints a token that
+    parses back to the configured email."""
+    import importlib.util
+    import sys
+
+    monkeypatch.setenv("SECRET_KEY", SECRET)
+    monkeypatch.setenv("AUTHORIZED_EMAIL", EMAIL)
+    monkeypatch.setattr(sys, "argv", ["mint_validator_cookie.py", "--days", "7"])
+
+    spec = importlib.util.spec_from_file_location(
+        "mint_validator_cookie",
+        "scripts/mint_validator_cookie.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    exit_code = module.main()
+    assert exit_code == 0
+
+    captured = capsys.readouterr()
+    token = captured.out
+    assert token, "expected a token on stdout"
+    assert "\n" not in token, "must not have trailing newline"
+
+    parsed = validator_cookie.parse(SECRET, token, EMAIL)
+    assert parsed == EMAIL
+
+
+def test_standalone_mint_script_errors_without_secret(monkeypatch, capsys):
+    """No SECRET_KEY in env → exit 2 with a helpful error message."""
+    import importlib.util
+    import sys
+
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    monkeypatch.setenv("AUTHORIZED_EMAIL", EMAIL)
+    monkeypatch.setattr(sys, "argv", ["mint_validator_cookie.py"])
+
+    spec = importlib.util.spec_from_file_location(
+        "mint_validator_cookie",
+        "scripts/mint_validator_cookie.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    exit_code = module.main()
+    assert exit_code == 2
+    captured = capsys.readouterr()
+    assert "SECRET_KEY" in captured.err
