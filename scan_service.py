@@ -70,10 +70,14 @@ def _call_vision_api(api_key: str, image_bytes: bytes) -> str:
     """
     import requests
 
-    url = (
-        "https://vision.googleapis.com/v1/images:annotate"
-        f"?key={api_key}"
-    )
+    # API key in header (X-Goog-Api-Key) instead of URL query param.
+    # URL query params show up in proxy/CDN/Railway egress logs;
+    # headers don't. See docs/adr/007-api-key-in-header.md.
+    url = "https://vision.googleapis.com/v1/images:annotate"
+    headers = {
+        "X-Goog-Api-Key": api_key,
+        "Content-Type": "application/json",
+    }
     payload = {
         "requests": [
             {
@@ -84,10 +88,9 @@ def _call_vision_api(api_key: str, image_bytes: bytes) -> str:
     }
 
     try:
-        resp = requests.post(url, json=payload, timeout=30)
+        resp = requests.post(url, headers=headers, json=payload, timeout=30)
     except requests.RequestException as e:
-        # Network error, DNS, timeout, etc. Don't leak the full URL
-        # (which contains the API key) into the error message.
+        # Network error, DNS, timeout, etc.
         raise RuntimeError(f"Vision API network error: {type(e).__name__}") from e
 
     if not resp.ok:

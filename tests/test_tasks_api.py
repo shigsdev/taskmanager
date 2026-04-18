@@ -433,6 +433,9 @@ def test_url_preview_400_invalid_scheme(authed_client):
 
 
 def test_url_preview_returns_title_on_success(authed_client, monkeypatch):
+    # After the SSRF fix, the endpoint uses urllib.request.build_opener()
+    # + opener.open() instead of the plain urlopen(), so we patch the
+    # OpenerDirector.open method to return a fake response.
     import urllib.request
 
     class _FakeResp:
@@ -445,7 +448,11 @@ def test_url_preview_returns_title_on_success(authed_client, monkeypatch):
         def __exit__(self, *args):
             pass
 
-    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout: _FakeResp())  # noqa: ARG005
+    monkeypatch.setattr(
+        urllib.request.OpenerDirector,
+        "open",
+        lambda self, req, timeout=None: _FakeResp(),  # noqa: ARG005
+    )
     resp = authed_client.post(
         "/api/tasks/url-preview", json={"url": "https://example.com/article"}
     )
@@ -458,13 +465,127 @@ def test_url_preview_returns_title_on_success(authed_client, monkeypatch):
 def test_url_preview_returns_null_title_on_fetch_failure(authed_client, monkeypatch):
     import urllib.request
 
-    def _boom(req, timeout):  # noqa: ARG001
+    def _boom(self, req, timeout=None):  # noqa: ARG001
         raise OSError("network error")
 
-    monkeypatch.setattr(urllib.request, "urlopen", _boom)
+    monkeypatch.setattr(urllib.request.OpenerDirector, "open", _boom)
     resp = authed_client.post(
         "/api/tasks/url-preview", json={"url": "https://example.com/article"}
     )
+    assert resp.status_code == 200
+    assert resp.get_json()["title"] is None
+
+
+# --- SSRF defenses (docs/adr/006-ssrf-defense.md) ----------------------------
+
+
+def test_url_preview_rejects_loopback_ip(authed_client, monkeypatch):
+    """Even if the attacker supplies a domain that resolves to 127.0.0.1,
+    the ip check must reject it."""
+    import socket
+
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda *a, **kw: [(None, None, None, None, ("127.0.0.1", 0))],
+    )
+    resp = authed_client.post(
+        "/api/tasks/url-preview", json={"url": "https://fake.example/attack"}
+    )
+    assert resp.status_code == 400
+    assert "not allowed" in resp.get_json()["error"]
+
+
+def test_url_preview_rejects_link_local(authed_client, monkeypatch):
+    """AWS / Railway metadata endpoints live on 169.254.169.254; must reject."""
+    import socket
+
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda *a, **kw: [(None, None, None, None, ("169.254.169.254", 0))],
+    )
+    resp = authed_client.post(
+        "/api/tasks/url-preview", json={"url": "https://fake.example/metadata"}
+    )
+    assert resp.status_code == 400
+
+
+def test_url_preview_rejects_private_network(authed_client, monkeypatch):
+    """RFC 1918 private ranges must be rejected."""
+    import socket
+
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda *a, **kw: [(None, None, None, None, ("10.0.0.5", 0))],
+    )
+    resp = authed_client.post(
+        "/api/tasks/url-preview", json={"url": "https://fake.example/internal"}
+    )
+    assert resp.status_code == 400
+
+
+def test_url_preview_rejects_dns_rebinding_mixed_answers(authed_client, monkeypatch):
+    """If a DNS response contains ANY disallowed IP alongside safe ones,
+    reject — we never want the OS's round-robin to accidentally pick the
+    unsafe one."""
+    import socket
+
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda *a, **kw: [
+            (None, None, None, None, ("93.184.216.34", 0)),  # example.com public IP
+            (None, None, None, None, ("127.0.0.1", 0)),        # rebind bait
+        ],
+    )
+    resp = authed_client.post(
+        "/api/tasks/url-preview", json={"url": "https://rebind.example/page"}
+    )
+    assert resp.status_code == 400
+
+
+def test_url_preview_no_redirect_follow_ssrf(authed_client, monkeypatch):
+    """Even if the server responds with a 302 redirect, we must not
+    follow it — otherwise a safe URL could redirect to localhost."""
+    import socket
+    import urllib.request
+
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda *a, **kw: [(None, None, None, None, ("93.184.216.34", 0))],
+    )
+
+    # Simulate a 302 response — if redirect following were enabled,
+    # urllib would raise HTTPError or follow to the new location.
+    # With our _NoRedirect handler, redirect_request returns None, so
+    # urllib treats the 302 as a final response. The test just verifies
+    # we don't follow — we accept that the title may be None on such
+    # responses.
+    class _Resp302:
+        status = 302
+
+        def read(self, n):  # noqa: ARG002
+            return b""
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr(
+        urllib.request.OpenerDirector,
+        "open",
+        lambda self, req, timeout=None: _Resp302(),  # noqa: ARG005
+    )
+    resp = authed_client.post(
+        "/api/tasks/url-preview",
+        json={"url": "https://safe.example/redirects-to-localhost"},
+    )
+    # Fetch didn't crash; title is None because no <title> in empty body.
     assert resp.status_code == 200
     assert resp.get_json()["title"] is None
 

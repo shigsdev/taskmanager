@@ -81,8 +81,11 @@ _SCRUB_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
         re.compile(r"sk-ant-[A-Za-z0-9_-]{20,}"),
         "[REDACTED:ANTHROPIC_API_KEY]",
     ),
-    # OpenAI-style keys (sk-...)
-    (re.compile(r"sk-[A-Za-z0-9]{20,}"), "[REDACTED:API_KEY]"),
+    # OpenAI-style keys (sk-..., sk-proj-..., etc.). Include `-` in the
+    # character class so newer sk-proj- keys (which embed extra hyphens)
+    # match. Anthropic's sk-ant- pattern runs first so the more specific
+    # redaction label is applied for those.
+    (re.compile(r"sk-[A-Za-z0-9_-]{20,}"), "[REDACTED:API_KEY]"),
     # Bearer tokens
     (re.compile(r"Bearer\s+[A-Za-z0-9._\-]+", re.IGNORECASE), "Bearer [REDACTED]"),
     # Authorization headers
@@ -359,10 +362,18 @@ def _should_skip_path(path: str) -> bool:
 def _before_request() -> None:
     """Stamp a request id and capture route/method on flask.g.
 
-    ``request_id`` is either the ``X-Request-ID`` header (if the caller
-    sent one — useful for log correlation across clients) or a new UUID.
+    ``request_id`` is either a sane ``X-Request-ID`` header value (if
+    the caller sent one — useful for log correlation across clients)
+    or a freshly minted UUID. We accept the client-supplied value only
+    if it is short (≤64 chars) and ASCII; otherwise we generate our
+    own. Without this filter, any pre-auth caller could inject
+    arbitrary strings of arbitrary length into the app_logs table.
     """
-    g.request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    raw = request.headers.get("X-Request-ID", "")
+    if raw and len(raw) <= 64 and raw.isascii():
+        g.request_id = raw
+    else:
+        g.request_id = str(uuid.uuid4())
     g.route = request.path
     g.method = request.method
     g.request_start = monotonic()

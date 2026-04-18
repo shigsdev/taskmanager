@@ -134,6 +134,18 @@
         };
 
         mediaRecorder.onerror = function (e) {
+            // CRITICAL: detach onstop before it fires. On Android WebView
+            // (and some Chrome versions) MediaRecorder fires `stop` after
+            // an error. Without this guard, onstop kicks off the upload
+            // pipeline, overwriting our error UI with the processing
+            // spinner — and then failing again on the partial audio.
+            // See docs/adr/005-voice-memo-error-handling.md.
+            mediaRecorder.onstop = null;
+            if (recordCapTimeoutId) {
+                clearTimeout(recordCapTimeoutId);
+                recordCapTimeoutId = null;
+            }
+            stopTimer();
             stopMediaStream();
             showError("Recording error: " + (e.error && e.error.message || "unknown"));
         };
@@ -144,6 +156,20 @@
         mediaRecorder.start();
         showState("recording");
     }
+
+    // iOS Safari (and most mobile browsers) freeze setTimeout when the
+    // tab is backgrounded, so the 10-min auto-stop above never fires if
+    // the user locks their phone or switches apps mid-recording. When
+    // the tab returns to foreground, check if we're past the cap and
+    // stop immediately so the user doesn't end up with a 30-minute
+    // recording that then bounces off the 25 MB Whisper upload limit.
+    document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState !== "visible") return;
+        if (!mediaRecorder || mediaRecorder.state !== "recording") return;
+        if (Date.now() - recordStartMs >= MAX_RECORDING_MS) {
+            stopRecording();
+        }
+    });
 
     function stopRecording() {
         if (recordCapTimeoutId) {

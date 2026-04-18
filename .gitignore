@@ -2,8 +2,12 @@
 .env
 .env.local
 .env.dev-bypass
+.flaskenv
 *.pem
 *.key
+# Validator cookie file lives in $HOME, but ignore it if accidentally
+# placed in repo root.
+.taskmanager-session-cookie
 
 # Python
 __pycache__/

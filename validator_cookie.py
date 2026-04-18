@@ -18,18 +18,30 @@ that:
 - Uses a different ``itsdangerous`` salt so it cannot be confused with
   or replay-attacked against the real session cookie
 - Carries only the authorized email as its payload — no OAuth token, no
-  user data — so the worst a leaked validator cookie can do is hit the
-  two endpoints that accept it (``/api/auth/status`` and nothing else)
-- Is minted offline via ``flask mint-validator-cookie`` and lives for
-  90 days by default (configurable per-mint via ``--days``)
+  user data
+- Is minted offline via ``flask mint-validator-cookie`` (or
+  ``scripts/mint_validator_cookie.py`` standalone) and lives for 90
+  days by default (configurable per-mint via ``--days``)
 
 Scope of what this cookie can do
 --------------------------------
-The validator cookie authenticates ONLY on ``/api/auth/status``. All
-other protected routes continue to use ``login_required`` and require a
-real Google OAuth session. This narrow scope means a leaked validator
-cookie grants no access to tasks, goals, or any user data — only to the
-auth-state reporter endpoint.
+The validator cookie authenticates:
+
+1. ``/api/auth/status`` directly (its own branch in ``auth_api.py``)
+2. **Any login_required-protected route on safe HTTP methods** (GET,
+   HEAD, OPTIONS) via ``auth.login_required``'s read-only branch.
+   This was widened from "auth-status only" on 2026-04-17 so the
+   prod Playwright suite could verify page renders end-to-end (see
+   ``docs/adr/004-validator-cookie-broaden-to-reads.md``).
+
+The cookie does NOT authenticate mutation methods (POST, PATCH,
+DELETE, PUT) — those always fall through to OAuth. So a leaked
+validator cookie can read your tasks/goals/projects for up to 90
+days, but cannot create, modify, or delete anything.
+
+If the cookie ever leaks (committed to git, sent in plaintext, etc.):
+rotate ``SECRET_KEY`` on Railway. That instantly invalidates every
+validator cookie ever minted with the old key.
 """
 from __future__ import annotations
 

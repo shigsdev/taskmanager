@@ -148,14 +148,19 @@ Why you're seeing this:
 How to refresh (preferred: mint a fresh validator cookie):
 
   A validator cookie is signed with SECRET_KEY and baked with
-  AUTHORIZED_EMAIL. It authenticates ONLY /api/auth/status -- it cannot
-  access tasks or goals -- so a fresh 90-day cookie is safe to store.
+  AUTHORIZED_EMAIL. It authenticates /api/auth/status AND read-only
+  (GET) requests on protected routes, but never POST/PATCH/DELETE.
+  90-day default lifetime.
 
-  From a local checkout with the same SECRET_KEY in your env:
-      flask mint-validator-cookie > {cookie_path}
+  Preferred -- standalone mint script (no Flask app boot, only needs
+  itsdangerous; works on machines without psycopg installed):
+      railway run python scripts/mint_validator_cookie.py |
+          Set-Content -NoNewline -Path "{cookie_path}"   (PowerShell)
+      railway run python scripts/mint_validator_cookie.py > {cookie_path}
+                                                          (bash/zsh)
 
-  Or, minting on Railway and pulling the output locally:
-      railway run flask mint-validator-cookie > {cookie_path}
+  Alternative -- Flask CLI (requires full app + psycopg installed):
+      railway run python -m flask mint-validator-cookie > {cookie_path}
 
   Then re-run:
       python scripts/validate_deploy.py --auth-check

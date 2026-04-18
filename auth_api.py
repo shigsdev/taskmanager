@@ -69,10 +69,11 @@ def auth_status():
             "bypass": True,
         })
 
-    # Dedicated validator-cookie path (see validator_cookie.py). Accepted
-    # ONLY on this endpoint — other protected routes continue to require
-    # a real OAuth session via login_required. A leaked validator cookie
-    # therefore grants access to nothing except the auth-status reporter.
+    # Dedicated validator-cookie path (see validator_cookie.py).
+    # Accepted here AND on any GET/HEAD/OPTIONS to a login_required-
+    # protected route (the read-only branch in auth.login_required).
+    # Mutation methods always require real OAuth, so a leaked validator
+    # cookie can read but never modify user data.
     authorized = (current_app.config.get("AUTHORIZED_EMAIL") or "").strip().lower()
     token = request.cookies.get(validator_cookie.COOKIE_NAME)
     if token and authorized:

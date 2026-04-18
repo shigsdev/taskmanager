@@ -260,27 +260,78 @@ def url_preview(email: str):  # noqa: ARG001
     if not url.startswith(("http://", "https://")):
         return jsonify({"error": "invalid url"}), 400
 
-    # SSRF protection: resolve hostname and block private/internal IPs
+    # SSRF protection — see docs/adr/006-ssrf-defense.md.
+    #
+    # Defense in depth (3 layers):
+    #   1. Resolve hostname → IP, reject private/loopback/link-local IPs.
+    #   2. Pin the resolved IP into the URL we actually fetch, so DNS
+    #      rebinding cannot swap the IP between check and connect.
+    #   3. Refuse to follow HTTP redirects (a 302 to http://localhost
+    #      would otherwise bypass our IP check on the second hop).
     try:
-        from urllib.parse import urlparse
+        from urllib.parse import urlparse, urlunparse
 
-        hostname = urlparse(url).hostname
+        parsed = urlparse(url)
+        hostname = parsed.hostname
         if not hostname:
             return jsonify({"error": "invalid url"}), 400
         resolved = socket.getaddrinfo(hostname, None)
-        for _, _, _, _, addr in resolved:
-            ip = ipaddress.ip_address(addr[0])
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+        if not resolved:
+            return jsonify({"error": "url not allowed"}), 400
+        # Use the FIRST resolved IP for both the check and the connect,
+        # so even a rebind-attacker who returns one safe IP and one
+        # unsafe IP gets caught (we only ever use the one we validated).
+        first_addr = resolved[0][4][0]
+        ip = ipaddress.ip_address(first_addr)
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            return jsonify({"error": "url not allowed"}), 400
+        # Also check every additional IP in the response — if ANY is
+        # disallowed, reject (some operating systems may end up using
+        # round-robin and we want a hard "no" if any answer is unsafe).
+        for _, _, _, _, addr in resolved[1:]:
+            other = ipaddress.ip_address(addr[0])
+            if (
+                other.is_private
+                or other.is_loopback
+                or other.is_link_local
+                or other.is_reserved
+            ):
                 return jsonify({"error": "url not allowed"}), 400
     except (socket.gaierror, ValueError):
         return jsonify({"title": None, "url": url})
 
+    # Pin the validated IP into the URL we actually fetch; preserve the
+    # original Host header so the upstream server still routes correctly.
+    # IPv6 addresses must be bracketed in URLs.
+    netloc_ip = f"[{first_addr}]" if ":" in first_addr else first_addr
+    if parsed.port:
+        netloc_ip = f"{netloc_ip}:{parsed.port}"
+    safe_url = urlunparse(parsed._replace(netloc=netloc_ip))
+
+    # Custom redirect handler that rejects all redirects — defends against
+    # safe-URL-redirects-to-localhost. The first hop is already pinned;
+    # any 3xx response just becomes a fetch failure.
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *args, **kwargs):  # noqa: ARG002
+            return None  # disables redirect
+
     try:
         req = urllib.request.Request(  # noqa: S310
-            url,
-            headers={"User-Agent": "Mozilla/5.0 TaskManager/1.0"},
+            safe_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 TaskManager/1.0",
+                "Host": hostname if not parsed.port else f"{hostname}:{parsed.port}",
+            },
         )
-        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
+        opener = urllib.request.build_opener(_NoRedirect())
+        with opener.open(req, timeout=5) as resp:  # noqa: S310
             # Only read the first 32 KB — enough for any <head> section
             raw = resp.read(32768).decode("utf-8", errors="replace")
     except Exception:  # noqa: BLE001

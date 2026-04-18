@@ -75,11 +75,14 @@ All secrets live in the Railway dashboard — never committed to git.
 | `DIGEST_TO_EMAIL` | Recipient email for the daily digest |
 | `DIGEST_FROM_EMAIL` | Sender email (default: noreply@taskmanager.app) |
 | `DIGEST_TIME` | Time of day digest is sent (default `07:00`) |
+| `DIGEST_TZ` | IANA timezone for the digest scheduler (default `America/New_York`) |
+| `APP_URL` | Public base URL of the deployed app, embedded as a clickable link in the digest email body. Optional — link is omitted if unset. |
 | `GOOGLE_VISION_API_KEY` | Google Cloud Vision API key for OCR |
 | `ANTHROPIC_API_KEY` | Anthropic API key for Claude task parsing |
 | `OPENAI_API_KEY` | OpenAI API key for Whisper voice-memo transcription. **Optional** — voice memo feature returns a clear error if unset, rest of app works fine. |
 | `APP_LOG_LEVEL` | Minimum level persisted to `app_logs` table (default `WARNING`). Set `INFO` to capture per-request summary rows. |
 | `APP_LOG_DISABLE` | If set to any truthy value, disables the DB log handler entirely. Useful only for debugging the logger itself. |
+| `APP_DEBUG_TOKEN` | Optional shared secret. If set, `/api/debug/logs` and `/api/debug/client-error` accept the `X-Debug-Token: <value>` header in lieu of OAuth — useful for agent / CI tooling that needs log access without a session cookie. Keep secret. Unset = OAuth-only access (default). |
 
 ### Debug / logging endpoints
 
@@ -305,5 +308,17 @@ Covers: auth preflight, home/goals page renders, `/api/tasks` shape check,
 ### Standards
 
 See `CLAUDE.md` for coding standards, quality gates, security rules, and
-naming conventions. Every commit must pass `pytest --cov` (80% floor),
-`ruff check .` with zero warnings, and `npm test` (Jest unit tests).
+naming conventions.
+
+**Every commit must pass:**
+```bash
+bash scripts/run_all_gates.sh
+```
+
+That single command runs **all** pre-deploy gates in sequence — ruff +
+pytest (with 80% coverage floor) + jest + local Playwright + bandit +
+semgrep + gitleaks + pip-audit + npm audit + docs-sync check. It auto-
+manages the bypass server and exits non-zero on any failure. Skipping
+individual gates is an SOP violation; if a gate genuinely cannot run
+in this environment, document why in a `Gates-skipped: <gate> (<reason>)`
+trailer in the commit message.

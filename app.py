@@ -70,6 +70,12 @@ def create_app(config: dict | None = None) -> Flask:
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=os.environ.get("FLASK_ENV") != "development",
         PERMANENT_SESSION_LIFETIME=timedelta(hours=24),
+        # Hard cap on every incoming request body. 30 MB covers our
+        # largest legitimate upload (25 MB Whisper limit + multipart
+        # overhead). Werkzeug rejects bigger requests with 413 BEFORE
+        # they reach view code, preventing memory-exhaustion DoS via
+        # huge audio/image uploads even from authenticated clients.
+        MAX_CONTENT_LENGTH=30 * 1024 * 1024,
     )
     if config:
         app.config.update(config)

@@ -52,6 +52,23 @@ class TestScrubSensitive:
         assert key not in result
         assert "[REDACTED:ANTHROPIC_API_KEY]" in result
 
+    def test_strips_openai_key(self):
+        # OpenAI keys are sk-... or sk-proj-... and are matched by the
+        # generic "sk-" pattern (after the more specific sk-ant- pattern
+        # has had its chance). Critical for the voice-memo feature which
+        # uses OPENAI_API_KEY in production.
+        key = "sk-" + "x" * 25
+        result = scrub_sensitive(f"openai error: api_key={key}")
+        assert key not in result
+        assert "[REDACTED:API_KEY]" in result
+
+    def test_strips_openai_proj_key(self):
+        # Newer OpenAI keys use sk-proj- prefix.
+        key = "sk-proj-" + "y" * 30
+        result = scrub_sensitive(f"key from env: {key}")
+        assert key not in result
+        assert "[REDACTED:API_KEY]" in result
+
     def test_strips_bearer_token(self):
         result = scrub_sensitive("Authorization: Bearer abc123.def456-ghi")
         assert "abc123.def456-ghi" not in result
@@ -69,6 +86,53 @@ class TestScrubSensitive:
         # Even with weird input, it should not crash.
         assert scrub_sensitive("") == ""
         assert scrub_sensitive("🚀" * 100).count("🚀") == 100
+
+
+class TestRequestIdValidation:
+    """The X-Request-ID header is client-controllable and stored in
+    app_logs. Validate it gets rejected if too long or non-ASCII, so
+    pre-auth callers can't pollute the log table with garbage."""
+
+    def test_valid_short_ascii_header_accepted(self, client):
+
+        resp = client.get("/healthz", headers={"X-Request-ID": "abc-123-xyz"})
+        assert resp.status_code in (200, 503)
+        # No direct g introspection post-request in Flask's test client;
+        # we verify behavior by round-tripping via log query in other
+        # tests. Here we just confirm the request doesn't crash.
+
+    def test_oversize_header_triggers_fresh_uuid(self, app):
+        """Headers longer than 64 chars must be replaced with a generated
+        UUID, not persisted as-is."""
+        from flask import g
+
+        from logging_service import _before_request
+
+        attacker_value = "A" * 500  # 500-char garbage
+        with app.test_request_context("/", headers={"X-Request-ID": attacker_value}):
+            _before_request()
+            assert g.request_id != attacker_value
+            assert len(g.request_id) == 36  # UUID length
+
+    def test_non_ascii_header_triggers_fresh_uuid(self, app):
+        from flask import g
+
+        from logging_service import _before_request
+
+        with app.test_request_context("/", headers={"X-Request-ID": "héllo"}):
+            _before_request()
+            assert g.request_id != "héllo"
+            assert len(g.request_id) == 36
+
+    def test_valid_header_preserved(self, app):
+        from flask import g
+
+        from logging_service import _before_request
+
+        good_id = "req-abc-123"
+        with app.test_request_context("/", headers={"X-Request-ID": good_id}):
+            _before_request()
+            assert g.request_id == good_id
 
 
 # --- DBLogHandler ------------------------------------------------------------
