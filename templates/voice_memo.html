@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% set active_page = 'voice_memo' %}
+{% block title %}Voice Memo — Task Manager{% endblock %}
+
+{% block content %}
+<div class="voice-memo-container" id="voiceMemoContainer">
+
+    <!-- State 1: Idle / Ready to record -->
+    <section class="voice-state" id="voiceStateIdle">
+        <h2>Voice Memo to Tasks</h2>
+        <p>Record a memo (max 10 min). The audio is transcribed via Whisper, then
+           parsed into task candidates by Claude. Tasks land in your Inbox after
+           you review and confirm.</p>
+
+        <div class="voice-controls">
+            <button class="btn btn-record" id="voiceRecordBtn" type="button" aria-label="Start recording">
+                <span class="voice-record-icon">●</span>
+                <span class="voice-record-label">Start recording</span>
+            </button>
+        </div>
+
+        <div class="voice-help">
+            <p><strong>Tips:</strong></p>
+            <ul>
+                <li>Speak naturally — short pauses are fine</li>
+                <li>Say what you need to do; Claude extracts the tasks</li>
+                <li>Audio is processed in memory only; nothing is saved to disk</li>
+                <li>Unsupported on iOS Safari standalone PWA mode in some versions
+                    (open in browser tab if recording fails)</li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- State 2: Recording in progress -->
+    <section class="voice-state" id="voiceStateRecording" style="display:none">
+        <h2>Recording…</h2>
+        <div class="voice-recording-indicator">
+            <div class="voice-pulse" aria-hidden="true"></div>
+            <div class="voice-timer" id="voiceTimer">0:00</div>
+        </div>
+        <p class="voice-limit-hint" id="voiceLimitHint">Max 10:00</p>
+        <div class="voice-controls">
+            <button class="btn btn-stop" id="voiceStopBtn" type="button">
+                <span>■</span> Stop &amp; Transcribe
+            </button>
+            <button class="btn btn-sm btn-cancel" id="voiceCancelBtn" type="button">
+                Cancel
+            </button>
+        </div>
+    </section>
+
+    <!-- State 3: Uploading + transcribing -->
+    <section class="voice-state" id="voiceStateProcessing" style="display:none">
+        <h2>Processing…</h2>
+        <div class="voice-progress">
+            <div class="voice-progress-step" id="voiceStepUpload">⏳ Uploading audio…</div>
+            <div class="voice-progress-step" id="voiceStepTranscribe">⏳ Transcribing via Whisper…</div>
+            <div class="voice-progress-step" id="voiceStepParse">⏳ Extracting tasks via Claude…</div>
+        </div>
+    </section>
+
+    <!-- State 4: Review candidates -->
+    <section class="voice-state" id="voiceStateReview" style="display:none">
+        <h2>Review Task Candidates</h2>
+        <p class="voice-cost-hint" id="voiceCostHint"></p>
+
+        <div class="voice-candidates" id="voiceCandidates"></div>
+
+        <div class="voice-review-actions">
+            <button class="btn" id="voiceConfirmAll" type="button">Add All to Inbox</button>
+            <button class="btn btn-sm" id="voiceConfirmSelected" type="button">Add Selected to Inbox</button>
+            <button class="btn btn-sm" id="voiceRecordAgain" type="button">Record Another</button>
+        </div>
+
+        <details class="voice-transcript-details">
+            <summary>Show transcript</summary>
+            <pre id="voiceTranscript"></pre>
+        </details>
+    </section>
+
+    <!-- State 5: Done -->
+    <section class="voice-state" id="voiceStateDone" style="display:none">
+        <h2>Tasks Added</h2>
+        <p id="voiceDoneMessage"></p>
+        <div class="voice-done-actions">
+            <a href="{{ url_for('index') }}" class="btn">Go to Tasks</a>
+            <button class="btn btn-sm" id="voiceRecordAnother" type="button">Record Another</button>
+        </div>
+    </section>
+
+    <!-- State 6: Error -->
+    <section class="voice-state voice-state-error" id="voiceStateError" style="display:none">
+        <h2>Something Went Wrong</h2>
+        <p class="voice-error-message" id="voiceErrorMessage"></p>
+        <details id="voiceErrorTranscriptWrap" style="display:none">
+            <summary>Transcript captured (you can copy this manually)</summary>
+            <pre id="voiceErrorTranscript"></pre>
+        </details>
+        <div class="voice-error-actions">
+            <button class="btn" id="voiceRetry" type="button">Try Again</button>
+            <a href="{{ url_for('index') }}" class="btn btn-sm">Go to Tasks</a>
+        </div>
+    </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='voice_memo.js') }}"></script>
+{% endblock %}

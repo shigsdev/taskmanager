@@ -77,6 +77,7 @@ All secrets live in the Railway dashboard — never committed to git.
 | `DIGEST_TIME` | Time of day digest is sent (default `07:00`) |
 | `GOOGLE_VISION_API_KEY` | Google Cloud Vision API key for OCR |
 | `ANTHROPIC_API_KEY` | Anthropic API key for Claude task parsing |
+| `OPENAI_API_KEY` | OpenAI API key for Whisper voice-memo transcription. **Optional** — voice memo feature returns a clear error if unset, rest of app works fine. |
 | `APP_LOG_LEVEL` | Minimum level persisted to `app_logs` table (default `WARNING`). Set `INFO` to capture per-request summary rows. |
 | `APP_LOG_DISABLE` | If set to any truthy value, disables the DB log handler entirely. Useful only for debugging the logger itself. |
 
@@ -111,6 +112,30 @@ Navigate to /import to:
 ### Print
 
 Navigate to /print for a printer-friendly view of Today + This Week + Overdue.
+
+### Voice memo to tasks
+
+Navigate to /voice-memo (or tap the 🎙️ button on the capture bar) to record a
+long-form voice memo. The audio is transcribed via OpenAI Whisper, parsed into
+task candidates by Claude, and surfaced on a review screen. Selected
+candidates land in your Inbox.
+
+Recording is hard-capped at 10 minutes per memo (matches Whisper's 25 MB
+upload limit at typical opus bitrates). Audio is processed in memory only —
+never written to disk or DB. Per-memo cost is logged to AppLog at INFO
+level so you can audit transcription spend via `/api/debug/logs`.
+
+**Cost** at OpenAI Whisper API pricing ($0.006/min as of 2026-04):
+- 5-min memo: ~$0.03
+- 10-min memo (max): ~$0.06
+- Daily commute use (~15 min/day): ~$2.70/month
+
+Requires `OPENAI_API_KEY` env var. If unset, the page loads but the upload
+returns a clear error — the rest of the app is unaffected.
+
+**Browser support**: Chrome (Android, desktop), Firefox, Safari (browser tab).
+Some iOS Safari PWA standalone versions have a known MediaRecorder bug — if
+recording fails in standalone, open in a browser tab instead.
 
 ## Architecture
 

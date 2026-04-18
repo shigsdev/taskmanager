@@ -5,7 +5,7 @@
  * Bump CACHE_VERSION when deploying new static files.
  */
 
-var CACHE_VERSION = "v33";
+var CACHE_VERSION = "v34";
 var CACHE_NAME = "taskmanager-" + CACHE_VERSION;
 
 var APP_SHELL = [
@@ -15,6 +15,7 @@ var APP_SHELL = [
     "/static/parse_capture.js",
     "/static/capture.js",
     "/static/import.js",
+    "/static/voice_memo.js",
     "/static/manifest.json",
 ];
 

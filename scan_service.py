@@ -434,8 +434,9 @@ def _extract_json_object_list(text: str) -> list[dict[str, Any]]:
 
 def create_tasks_from_candidates(
     candidates: list[dict[str, Any]],
+    source_prefix: str = "scan",
 ) -> list[Task]:
-    """Create Task records from confirmed scan candidates.
+    """Create Task records from confirmed candidates.
 
     Each candidate is a dict with:
     - title (str): the task text (required)
@@ -446,11 +447,14 @@ def create_tasks_from_candidates(
     All created tasks land in the Inbox tier.
 
     Stamps a shared ``batch_id`` on every created Task and writes an
-    ``ImportLog`` entry so the scan can be undone as a group via the
+    ``ImportLog`` entry so the batch can be undone as a group via the
     recycle bin flow.
 
     Args:
         candidates: List of candidate dicts from the review screen.
+        source_prefix: Audit-log prefix recorded in ``ImportLog.source``
+            (e.g. "scan", "voice"). Lets the recycle bin distinguish
+            where a batch came from. Suffixed with a timestamp.
 
     Returns:
         List of newly created Task records.
@@ -481,7 +485,7 @@ def create_tasks_from_candidates(
         created.append(task)
 
     if created:
-        source = "scan_" + datetime.now(UTC).strftime("%Y_%m_%d_%H%M%S")
+        source = f"{source_prefix}_" + datetime.now(UTC).strftime("%Y_%m_%d_%H%M%S")
         log = ImportLog(
             source=source, task_count=len(created), batch_id=batch_id
         )

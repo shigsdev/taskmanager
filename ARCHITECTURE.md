@@ -95,6 +95,18 @@ component is added, a data flow changes, or a security boundary shifts.
   tier; goals land with sensible enum fallbacks
   (`PERSONAL_GROWTH` / `NEED_MORE_INFO`) that the user can edit before
   confirming. See "Scan pipeline" diagram below.
+- **Voice memo**: browser records audio via MediaRecorder API → Flask
+  receives multipart upload, holds bytes in memory → OpenAI Whisper API
+  (server-side) returns transcript + duration → Claude API (server-side,
+  reuses `scan_service.parse_tasks_from_text`) extracts task candidates
+  → candidates returned to browser for review → user confirms → records
+  written via the same `create_tasks_from_candidates` helper as the
+  image scan, but with `source_prefix="voice"` so the recycle bin can
+  distinguish voice batches from scan batches → audio bytes discarded.
+  Per-memo cost is computed from the duration Whisper reports and
+  logged at INFO level to `app_logs`. Hard cap of 10 min per memo
+  enforced both client-side (auto-stop) and server-side (25 MB upload
+  limit at typical opus bitrates).
 - **URL save**: user pastes or types a URL in the quick-capture bar → the
   browser `POST`s to `/api/tasks/url-preview` → Flask resolves the hostname,
   validates it is not a private/loopback IP (SSRF protection), fetches the

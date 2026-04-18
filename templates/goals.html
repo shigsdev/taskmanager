@@ -9,7 +9,8 @@
         <option value="work">Work</option>
         <option value="personal">Personal</option>
     </select>
-    <button type="button" id="captureVoice" class="icon-btn" title="Voice input">🎤</button>
+    <button type="button" id="captureVoice" class="icon-btn" title="Voice input (real-time dictation)">🎤</button>
+    <a href="{{ url_for('voice_memo_page') }}" class="icon-btn" id="captureVoiceMemo" title="Voice memo (record long-form, parse to tasks)" role="button">🎙️</a>
 </div>
 {% endblock %}
 

@@ -421,3 +421,23 @@ says otherwise.
 - `README.md` reflects current setup steps and current feature list
 - New environment variables must be documented in README.md the same commit
   they are introduced
+
+### Backlog completion gate (mandatory)
+
+A backlog item is **NOT** marked ✅ complete in `BACKLOG.md` until BOTH:
+
+1. **Pre-deploy gates pass**: ruff, pytest with coverage floor, jest, local
+   Playwright (when applicable). All green on the feature branch before merge.
+2. **Post-deploy validation passes**: `python scripts/validate_deploy.py`
+   returns DEPLOY GREEN with the new SHA, AND any feature-relevant prod
+   smoke (e.g. `npm run test:e2e:prod` for changes that affect HTTP-served
+   behavior) passes against the live URL.
+
+Until both are green, the backlog row uses status `🔄 IN PROGRESS — <what's
+done, what's pending>` not ✅. The reason: a feature that's "code complete"
+but not running on Railway hasn't actually shipped, and marking it complete
+hides that risk from the next session's planner.
+
+If a feature is purely doc-only (no code change to deploy), only the
+pre-deploy gate applies — but this is rare; almost any code change requires
+post-deploy verification.

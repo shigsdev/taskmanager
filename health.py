@@ -111,6 +111,7 @@ EXPECTED_STATIC_FILES = (
     "static/sw.js",
     "static/parse_capture.js",
     "static/capture.js",
+    "static/voice_memo.js",
     "static/manifest.json",
 )
 

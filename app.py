@@ -29,6 +29,7 @@ import review_api
 import scan_api
 import settings_api
 import tasks_api
+import voice_api
 from auth import log_bypass_startup_banner, login_required
 from logging_service import configure_logging
 from models import TaskStatus, Tier, db
@@ -98,6 +99,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(settings_api.bp)
     app.register_blueprint(debug_api.bp)
     app.register_blueprint(auth_api.bp)
+    app.register_blueprint(voice_api.bp)
 
     # --- Persistent application logging (see logging_service.py) ---
     # Installs DBLogHandler on the root logger so WARNING+ events land
@@ -184,6 +186,11 @@ def create_app(config: dict | None = None) -> Flask:
     @login_required
     def scan_page(email: str):  # noqa: ARG001
         return render_template("scan.html")
+
+    @app.route("/voice-memo")
+    @login_required
+    def voice_memo_page(email: str):  # noqa: ARG001
+        return render_template("voice_memo.html")
 
     @app.route("/import")
     @login_required

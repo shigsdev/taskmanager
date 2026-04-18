@@ -1494,3 +1494,117 @@ body {
         font-size: 0.95rem;
     }
 }
+
+/* ---- Voice memo page (mirrors .scan-* patterns) ---- */
+.voice-memo-container {
+    max-width: 640px;
+    margin: 32px auto;
+    padding: 0 16px;
+}
+.voice-state h2 { margin-top: 0; }
+.voice-state p { color: var(--text-muted); margin-bottom: 16px; }
+.voice-controls { margin: 24px 0; text-align: center; }
+.btn-record {
+    background: var(--danger, #c0392b);
+    color: white;
+    padding: 16px 32px;
+    font-size: 1.1rem;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    min-height: 56px;
+    min-width: 200px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+}
+.btn-record:hover { filter: brightness(1.1); }
+.voice-record-icon { font-size: 1.4rem; }
+.btn-stop {
+    background: var(--accent, #2980b9);
+    color: white;
+    padding: 14px 28px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    min-height: 48px;
+    margin-right: 8px;
+}
+.btn-cancel {
+    background: var(--surface-sunk, #eaeaea);
+    color: var(--text, #333);
+    padding: 12px 18px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+}
+.voice-recording-indicator {
+    text-align: center;
+    margin: 24px 0;
+}
+.voice-pulse {
+    display: inline-block;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: var(--danger, #c0392b);
+    animation: voice-pulse-anim 1.2s ease-in-out infinite;
+    margin-bottom: 16px;
+}
+@keyframes voice-pulse-anim {
+    0%, 100% { transform: scale(1); opacity: 0.85; }
+    50% { transform: scale(1.15); opacity: 1; }
+}
+.voice-timer {
+    font-size: 2rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+.voice-limit-hint { text-align: center; font-size: 0.85rem; }
+.voice-progress { padding: 16px; background: var(--surface-sunk, #f5f5f5); border-radius: 8px; }
+.voice-progress-step { padding: 8px 0; font-family: monospace; }
+.voice-cost-hint { font-size: 0.85rem; color: var(--text-muted); }
+.voice-candidate {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+}
+.voice-candidate input[type="checkbox"] { width: 20px; height: 20px; }
+.voice-candidate-title { flex: 1; padding: 6px 8px; }
+.voice-candidate-type { padding: 6px 4px; }
+.voice-review-actions, .voice-done-actions, .voice-error-actions {
+    margin-top: 20px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.voice-transcript-details { margin-top: 16px; }
+.voice-transcript-details pre {
+    white-space: pre-wrap;
+    background: var(--surface-sunk, #f5f5f5);
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+}
+.voice-state-error h2 { color: var(--danger, #c0392b); }
+.voice-error-message {
+    padding: 12px 16px;
+    background: #fff0f0;
+    border-left: 4px solid var(--danger, #c0392b);
+    border-radius: 4px;
+    color: var(--text, #333);
+}
+.voice-empty { font-style: italic; color: var(--text-muted); }
+.voice-help { margin-top: 24px; padding: 12px 16px; background: var(--surface-sunk, #f5f5f5); border-radius: 6px; font-size: 0.9rem; }
+.voice-help ul { margin: 8px 0 0 20px; padding: 0; }
+.voice-help li { margin-bottom: 4px; }
+
+@media (max-width: 600px) {
+    .btn-record { width: 100%; min-height: 64px; font-size: 1.2rem; }
+    .btn-stop, .btn-cancel { min-height: 48px; }
+    .voice-timer { font-size: 2.4rem; }
+    .voice-pulse { width: 100px; height: 100px; }
+}
