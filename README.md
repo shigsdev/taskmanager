@@ -210,8 +210,10 @@ but something broke OAuth" class of bug.
 **Preferred setup — mint a long-lived validator cookie** (once per ~90
 days). The validator cookie is signed with the same `SECRET_KEY` as
 Flask sessions but lives in a dedicated cookie (`validator_token`) that
-authenticates **only** `/api/auth/status` — it cannot access tasks,
-goals, or any user data.
+authenticates `/api/auth/status` AND **GET requests** to any
+protected route (so post-deploy Playwright tests can verify page
+renders). It does NOT authenticate POST/PATCH/DELETE — a leaked
+validator cookie can read but never modify your data.
 
 Two ways to mint, depending on what's installed locally:
 

@@ -125,13 +125,28 @@ def get_current_user_email() -> str | None:
     return resp.json().get("email")
 
 
+# HTTP methods on which the validator cookie is allowed to authenticate.
+# Keeping mutations (POST/PATCH/DELETE/PUT) behind real OAuth means a
+# leaked validator cookie cannot create, modify, or delete user data —
+# only read it. This is the security boundary that lets us widen the
+# cookie's scope from "just /api/auth/status" to "all GET routes".
+_VALIDATOR_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
 def login_required(view):
     """Enforce sign-in AND single-user lockdown on a Flask view.
 
-    If ``_dev_bypass_active()`` returns True, all real auth checks are
-    skipped and the view runs as the configured ``AUTHORIZED_EMAIL``.
-    Every bypass-served request emits a WARNING log row so the developer
-    has a permanent audit trail.
+    Authentication paths (in priority order):
+
+    1. ``_dev_bypass_active()`` — local dev only, short-circuits all
+       checks. See module docstring.
+    2. Validator cookie (``validator_token``) on safe HTTP methods —
+       authenticates GET/HEAD/OPTIONS so post-deploy automation can
+       drive page-rendering smoke tests without an OAuth session.
+       Mutation methods (POST/PATCH/DELETE/PUT) skip this path so a
+       leaked validator cookie cannot modify data.
+    3. Standard Google OAuth via Flask-Dance — the production user
+       path; required for any non-safe method.
     """
 
     @wraps(view)
@@ -151,6 +166,38 @@ def login_required(view):
                 email,
             )
             return view(*args, email=email, **kwargs)
+
+        # --- Validator cookie path (read-only) ---
+        # Imported here to avoid circular imports; validator_cookie
+        # imports nothing from auth so a top-level import is also safe,
+        # but the local import keeps the auth module's import surface
+        # narrow.
+        if request.method in _VALIDATOR_SAFE_METHODS:
+            import validator_cookie
+
+            authorized = (
+                current_app.config.get("AUTHORIZED_EMAIL") or ""
+            ).strip().lower()
+            token = request.cookies.get(validator_cookie.COOKIE_NAME)
+            if token and authorized:
+                secret = current_app.config.get("SECRET_KEY") or ""
+                validator_email = validator_cookie.parse(
+                    secret_key=secret,
+                    token=token,
+                    authorized_email=authorized,
+                )
+                if validator_email:
+                    # Audit: every validator-cookie-served request leaves
+                    # a trace so a leaked cookie's usage is observable in
+                    # /api/debug/logs. INFO level keeps it out of the
+                    # default WARNING+ feed but available on demand.
+                    logger.info(
+                        "validator_cookie served %s %s as %s",
+                        request.method,
+                        request.path,
+                        validator_email,
+                    )
+                    return view(*args, email=validator_email, **kwargs)
 
         email = get_current_user_email()
         if email is None:

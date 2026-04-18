@@ -189,9 +189,11 @@ Properties:
 - Default 90-day lifetime (enforced by re-validating against the
   signed timestamp + the `days` baked into the payload).
 - Carries only the authorized email — no OAuth token, no user data.
-- Authenticates **only** `/api/auth/status` — other protected routes
-  still require OAuth via `login_required`. A leaked validator cookie
-  therefore grants access to nothing except the auth-state reporter.
+- Authenticates `/api/auth/status` directly (its own branch in
+  `auth_api.py`) AND any `login_required`-protected route on safe HTTP
+  methods (`GET`, `HEAD`, `OPTIONS`). Mutation methods (`POST`,
+  `PATCH`, `DELETE`, `PUT`) **always** fall through to OAuth — a
+  leaked validator cookie can read but never modify user data.
 - Rotating `SECRET_KEY` instantly invalidates all previously-minted
   validator cookies — the emergency revocation mechanism.
 

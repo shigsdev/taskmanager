@@ -25,9 +25,21 @@ const { test, expect } = require("@playwright/test");
 
 const COOKIE_VALUE = process.env.TASKMANAGER_SESSION_COOKIE;
 
-// Inject the session cookie into every test's browser context. Runs
-// before each test, so even a test that does its own navigation
-// starts out authenticated.
+// Inject the cookie into every test's browser context. We add it under
+// BOTH names so the same env var works regardless of credential format:
+//
+//   - "validator_token" — a long-lived signed cookie minted via
+//     `flask mint-validator-cookie` or `scripts/mint_validator_cookie.py`.
+//     Authenticates GET routes (page renders, /api/tasks list) thanks
+//     to login_required's read-only branch.
+//
+//   - "session" — a real Flask session cookie copied from a logged-in
+//     browser. Legacy path; works for everything but expires on
+//     Flask-Dance token refresh.
+//
+// Whichever credential the env var actually is, one of the two cookie
+// names will hit the right server-side path. The other is silently
+// ignored.
 test.beforeEach(async ({ context, baseURL }) => {
     if (!COOKIE_VALUE) {
         throw new Error(
@@ -36,16 +48,17 @@ test.beforeEach(async ({ context, baseURL }) => {
         );
     }
     const url = new URL(baseURL);
+    const baseCookie = {
+        value: COOKIE_VALUE,
+        domain: url.hostname,
+        path: "/",
+        httpOnly: true,
+        secure: true,
+        sameSite: "Lax",
+    };
     await context.addCookies([
-        {
-            name: "session",
-            value: COOKIE_VALUE,
-            domain: url.hostname,
-            path: "/",
-            httpOnly: true,
-            secure: true,
-            sameSite: "Lax",
-        },
+        { ...baseCookie, name: "validator_token" },
+        { ...baseCookie, name: "session" },
     ]);
 });
 

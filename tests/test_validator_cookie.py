@@ -148,22 +148,55 @@ def test_auth_status_rejects_tampered_validator_cookie(app, client):
     assert resp.status_code == 401
 
 
-def test_validator_cookie_does_not_authenticate_other_routes(app, client):
-    """Critical security invariant: a valid validator cookie must NOT
-    work on /api/tasks or any other protected route. Only
-    /api/auth/status has the validator-cookie branch."""
+def test_validator_cookie_authenticates_get_routes(app, client):
+    """The validator cookie authenticates safe HTTP methods on
+    login_required routes — that's how the prod Playwright smoke
+    suite drives page-rendering tests without OAuth."""
     token = validator_cookie.mint(
         app.config["SECRET_KEY"], app.config["AUTHORIZED_EMAIL"], days=90
     )
     client.set_cookie(key=validator_cookie.COOKIE_NAME, value=token)
-    # /api/tasks is protected by login_required which checks the Google
-    # OAuth session, not the validator cookie. Without OAuth, it should
-    # redirect to /login/google (302).
+
+    # GET /api/tasks: returns 200 with a JSON list
     resp = client.get("/api/tasks")
-    assert resp.status_code == 302, (
-        "validator cookie must not bypass login_required on other routes"
+    assert resp.status_code == 200, f"got {resp.status_code}: {resp.data!r}"
+    assert isinstance(resp.get_json(), list)
+
+
+def test_validator_cookie_authenticates_get_pages(app, client):
+    """Page renders also work — that's the whole point of broadening
+    the cookie scope (so prod Playwright can verify HTML renders)."""
+    token = validator_cookie.mint(
+        app.config["SECRET_KEY"], app.config["AUTHORIZED_EMAIL"], days=90
     )
-    assert "/login/google" in resp.headers.get("Location", "")
+    client.set_cookie(key=validator_cookie.COOKIE_NAME, value=token)
+    for path in ("/", "/goals", "/settings"):
+        resp = client.get(path)
+        assert resp.status_code == 200, (
+            f"GET {path} returned {resp.status_code}; expected 200"
+        )
+
+
+@pytest.mark.parametrize("method", ["POST", "PATCH", "DELETE", "PUT"])
+def test_validator_cookie_does_not_authenticate_mutations(app, client, method):
+    """CRITICAL SECURITY INVARIANT: validator cookie must NOT
+    authenticate mutation methods. A leaked cookie can only read,
+    never modify. login_required falls through to OAuth on these
+    methods and OAuth fails (no session) → 302 to /login/google.
+    """
+    token = validator_cookie.mint(
+        app.config["SECRET_KEY"], app.config["AUTHORIZED_EMAIL"], days=90
+    )
+    client.set_cookie(key=validator_cookie.COOKIE_NAME, value=token)
+    resp = client.open("/api/tasks", method=method, json={"title": "x"})
+    assert resp.status_code in (302, 405), (
+        f"{method} /api/tasks returned {resp.status_code}; "
+        "validator cookie must not authenticate mutations. "
+        "302 = redirect to login (expected); 405 = method not allowed "
+        "(also fine — auth never even ran)."
+    )
+    if resp.status_code == 302:
+        assert "/login/google" in resp.headers.get("Location", "")
 
 
 # --- CLI command test --------------------------------------------------------
