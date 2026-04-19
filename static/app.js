@@ -1399,6 +1399,9 @@ function clearBulkSelection() {
 }
 
 // Helper: build an absolutely-positioned dropdown anchored under a button.
+// Clamps the horizontal position so the dropdown never overflows the
+// viewport — important on mobile where buttons can be close to the
+// right edge of the screen.
 function showBulkDropdown(anchor, items) {
     document.querySelectorAll(".bulk-dropdown").forEach((d) => d.remove());
     const dd = document.createElement("div");
@@ -1406,7 +1409,8 @@ function showBulkDropdown(anchor, items) {
     const rect = anchor.getBoundingClientRect();
     dd.style.position = "fixed";
     dd.style.bottom = (window.innerHeight - rect.top + 4) + "px";
-    dd.style.left = rect.left + "px";
+    // Append first so we can measure dd.offsetWidth, then clamp.
+    document.body.appendChild(dd);
     items.forEach(({ label, onClick }) => {
         const b = document.createElement("button");
         b.type = "button";
@@ -1417,7 +1421,16 @@ function showBulkDropdown(anchor, items) {
         });
         dd.appendChild(b);
     });
-    document.body.appendChild(dd);
+    // Clamp horizontal position. Default is to anchor under the click
+    // target; if that overflows the viewport on the right, slide left.
+    const ddWidth = dd.offsetWidth;
+    let left = rect.left;
+    const margin = 8;
+    if (left + ddWidth > window.innerWidth - margin) {
+        left = window.innerWidth - ddWidth - margin;
+    }
+    if (left < margin) left = margin;
+    dd.style.left = left + "px";
     // Close on outside click
     setTimeout(() => {
         document.addEventListener("click", function close(ev) {
@@ -1522,16 +1535,98 @@ function initBulkSelect() {
         showBulkDropdown(projBtn, items);
     });
 
-    const completeBtn = document.getElementById("bulkActionComplete");
-    if (completeBtn) completeBtn.addEventListener("click", () => {
-        const ids = getBulkSelectedIds();
-        if (ids.length === 0) return;
-        if (!confirm(`Mark ${ids.length} task(s) complete?`)) return;
-        bulkPatch({ status: "archived" });
+    const statusBtn = document.getElementById("bulkActionStatus");
+    if (statusBtn) statusBtn.addEventListener("click", () => {
+        showBulkDropdown(statusBtn, [
+            {
+                label: "Mark complete",
+                onClick: () => {
+                    const n = getBulkSelectedIds().length;
+                    if (n && confirm(`Mark ${n} task(s) complete?`)) {
+                        bulkPatch({ status: "archived" });
+                    }
+                },
+            },
+            {
+                label: "Mark active",
+                onClick: () => bulkPatch({ status: "active" }),
+            },
+        ]);
+    });
+
+    const dueDateBtn = document.getElementById("bulkActionDueDate");
+    if (dueDateBtn) dueDateBtn.addEventListener("click", () => {
+        // Local-time YYYY-MM-DD so "Today" matches the user's calendar
+        // day, not UTC's. Avoids the off-by-one bug where a 9pm PT user
+        // gets "tomorrow" because UTC has rolled over.
+        const fmt = (d) => {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, "0");
+            const day = String(d.getDate()).padStart(2, "0");
+            return `${y}-${m}-${day}`;
+        };
+        const today = new Date();
+        const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+        const inAWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+        showBulkDropdown(dueDateBtn, [
+            { label: "Today", onClick: () => bulkPatch({ due_date: fmt(today) }) },
+            { label: "Tomorrow", onClick: () => bulkPatch({ due_date: fmt(tomorrow) }) },
+            { label: "In 1 week", onClick: () => bulkPatch({ due_date: fmt(inAWeek) }) },
+            { label: "Pick a date…", onClick: () => promptCustomDate(dueDateBtn) },
+            { label: "Clear (no due date)", onClick: () => bulkPatch({ due_date: null }) },
+        ]);
     });
 
     const deleteBtn = document.getElementById("bulkActionDelete");
     if (deleteBtn) deleteBtn.addEventListener("click", bulkDelete);
+}
+
+// "Pick a date…" — show an inline native date input near the Due-date
+// button. Native pickers are platform-correct (calendar on touch
+// devices, keyboard input on desktop). Confirms via Enter / blur,
+// dismisses on Escape.
+function promptCustomDate(anchor) {
+    document.querySelectorAll(".bulk-date-pick").forEach((d) => d.remove());
+    const wrap = document.createElement("div");
+    wrap.className = "bulk-dropdown bulk-date-pick";
+    const rect = anchor.getBoundingClientRect();
+    wrap.style.position = "fixed";
+    wrap.style.bottom = (window.innerHeight - rect.top + 4) + "px";
+
+    const input = document.createElement("input");
+    input.type = "date";
+    input.className = "bulk-date-input";
+    wrap.appendChild(input);
+
+    const ok = document.createElement("button");
+    ok.type = "button";
+    ok.textContent = "Apply";
+    ok.addEventListener("click", () => {
+        if (!input.value) return;
+        wrap.remove();
+        bulkPatch({ due_date: input.value });
+    });
+    wrap.appendChild(ok);
+
+    document.body.appendChild(wrap);
+    // Clamp horizontal position (same logic as showBulkDropdown)
+    const w = wrap.offsetWidth;
+    let left = rect.left;
+    const margin = 8;
+    if (left + w > window.innerWidth - margin) {
+        left = window.innerWidth - w - margin;
+    }
+    if (left < margin) left = margin;
+    wrap.style.left = left + "px";
+    input.focus();
+    setTimeout(() => {
+        document.addEventListener("click", function close(ev) {
+            if (!wrap.contains(ev.target) && ev.target !== anchor) {
+                wrap.remove();
+                document.removeEventListener("click", close);
+            }
+        });
+    }, 0);
 }
 
 // --- Boot --------------------------------------------------------------------

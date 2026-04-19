@@ -1725,6 +1725,20 @@ body.bulk-select-mode .task-card .bulk-select-check { display: block; }
 }
 .bulk-dropdown button:hover { background: var(--surface-sunk); }
 
+/* Date-picker variant — inline date input + Apply button */
+.bulk-date-pick {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+}
+.bulk-date-input {
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
 @media (max-width: 600px) {
     /* Mobile: toolbar spans full width and stacks actions in a scrollable row */
     .bulk-toolbar {

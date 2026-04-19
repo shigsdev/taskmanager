@@ -1373,3 +1373,91 @@ class TestBulkUpdate:
         )
         assert resp.status_code == 302
         assert "/login/google" in resp.headers.get("Location", "")
+
+    def test_bulk_set_due_date(self, authed_client):
+        """Bulk-set due_date with an ISO string."""
+        ids = _create_n_tasks(authed_client, 3)
+        resp = authed_client.patch(
+            "/api/tasks/bulk",
+            json={"task_ids": ids, "updates": {"due_date": "2026-12-25"}},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["updated"] == 3
+        for tid in ids:
+            assert authed_client.get(f"/api/tasks/{tid}").get_json()["due_date"] == "2026-12-25"
+
+    def test_bulk_clear_due_date(self, authed_client):
+        """Passing due_date: null clears it on every task in the batch."""
+        # First create + set a due date
+        ids = _create_n_tasks(authed_client, 2)
+        authed_client.patch(
+            "/api/tasks/bulk",
+            json={"task_ids": ids, "updates": {"due_date": "2026-06-01"}},
+        )
+        # Now clear
+        resp = authed_client.patch(
+            "/api/tasks/bulk",
+            json={"task_ids": ids, "updates": {"due_date": None}},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["updated"] == 2
+        for tid in ids:
+            assert authed_client.get(f"/api/tasks/{tid}").get_json()["due_date"] is None
+
+    def test_bulk_invalid_due_date_reported_per_task(self, authed_client):
+        """An ISO-malformed date raises ValidationError per task; nothing committed."""
+        ids = _create_n_tasks(authed_client, 2)
+        resp = authed_client.patch(
+            "/api/tasks/bulk",
+            json={"task_ids": ids, "updates": {"due_date": "not-a-real-date"}},
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["updated"] == 0
+        assert len(body["errors"]) == 2
+        assert all(e["field"] == "due_date" for e in body["errors"])
+        # Confirm nothing actually changed
+        for tid in ids:
+            assert authed_client.get(f"/api/tasks/{tid}").get_json()["due_date"] is None
+
+    def test_bulk_set_status_active(self, authed_client):
+        """Mirror 'un-complete' from the UI: status=active."""
+        ids = _create_n_tasks(authed_client, 2)
+        # First archive them
+        authed_client.patch(
+            "/api/tasks/bulk",
+            json={"task_ids": ids, "updates": {"status": "archived"}},
+        )
+        # Now bring them back
+        resp = authed_client.patch(
+            "/api/tasks/bulk",
+            json={"task_ids": ids, "updates": {"status": "active"}},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["updated"] == 2
+        for tid in ids:
+            assert authed_client.get(f"/api/tasks/{tid}").get_json()["status"] == "active"
+
+    def test_bulk_combined_updates(self, authed_client):
+        """Multiple fields in one bulk call — common UX flow: set tier
+        AND due_date together. Verifies the dict is applied atomically
+        per task."""
+        ids = _create_n_tasks(authed_client, 2)
+        resp = authed_client.patch(
+            "/api/tasks/bulk",
+            json={
+                "task_ids": ids,
+                "updates": {
+                    "tier": "today",
+                    "due_date": "2026-08-15",
+                    "type": "personal",
+                },
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["updated"] == 2
+        for tid in ids:
+            t = authed_client.get(f"/api/tasks/{tid}").get_json()
+            assert t["tier"] == "today"
+            assert t["due_date"] == "2026-08-15"
+            assert t["type"] == "personal"
