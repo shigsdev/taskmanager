@@ -29,6 +29,20 @@ skips:
   # B603 = subprocess call. Same justification as B404 — we audit each
   # call site for shell=True and shell-built-from-user-input.
   - B603
+  # B110 = try/except/pass. The four occurrences in the codebase are all
+  # intentional defensive code in logging / heartbeat paths, where an
+  # exception MUST be swallowed so it can't crash the higher-priority
+  # operation (writing the digest scheduler heartbeat, persisting a log
+  # row). Each call site has a comment explaining why. Reviewed in the
+  # bandit MEDIUM/LOW pass on 2026-04-18.
+  - B110
+  # B607 = subprocess started with partial executable path (e.g. "git"
+  # instead of "/usr/bin/git"). Used in scripts/validate_deploy.py to
+  # invoke `git`, `curl`, etc. from PATH. The whole point of the script
+  # is to be portable across Mac/Linux/Windows where binaries live in
+  # different absolute locations; using bare names + PATH is the right
+  # choice. Reviewed in the bandit MEDIUM/LOW pass on 2026-04-18.
+  - B607
 # (Severity / confidence filtering happens at the CLI level via
 # `-ll -ii` flags in run_all_gates.sh — keeps the gate strict but
 # allows ad-hoc `bandit -r .` runs to surface lower-confidence noise.)

@@ -65,11 +65,19 @@ def test_parse_rejects_empty_or_missing_inputs():
 
 
 def test_parse_rejects_tampered_token():
-    """Flipping a character breaks the signature — the whole point of
-    signing the token."""
+    """Flipping a character in the signature breaks verification —
+    the whole point of signing the token. Tamper the signature
+    portion specifically (after the last `.`) so we know we're
+    affecting bytes the signature actually depends on."""
     token = validator_cookie.mint(SECRET, EMAIL, days=90)
-    # Flip the last character to break the signature
-    tampered = token[:-1] + ("A" if token[-1] != "A" else "B")
+    # Flip a char in the middle of the signature segment — guaranteed
+    # to alter the HMAC bytes regardless of mint randomness.
+    head, _, sig = token.rpartition(".")
+    assert sig, "minted token should have a signature segment"
+    mid = len(sig) // 2
+    flipped_char = "X" if sig[mid] != "X" else "Y"
+    tampered = f"{head}.{sig[:mid]}{flipped_char}{sig[mid + 1:]}"
+    assert tampered != token, "tamper should produce a different string"
     assert validator_cookie.parse(SECRET, tampered, EMAIL) is None
 
 

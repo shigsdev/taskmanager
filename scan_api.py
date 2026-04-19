@@ -18,6 +18,7 @@ from scan_service import (
     parse_goals_from_text,
     parse_tasks_from_text,
 )
+from utils import validate_upload
 
 # Scan modes. Clients pass ``parse_as`` in the upload form-data and
 # ``kind`` in the confirm JSON. We accept plural or singular for both
@@ -59,38 +60,26 @@ def upload(email: str):  # noqa: ARG001
     # frontend toggle is the source of truth.
     kind = _normalize_kind(request.form.get("parse_as"))
 
-    if "image" not in request.files:
-        return jsonify({"error": "No image file provided"}), 400
-
-    file = request.files["image"]
-    if not file.filename:
-        return jsonify({"error": "No filename"}), 400
-
-    # Validate content type. Log the rejected type so we can see if iOS is
-    # sending unexpected MIME types (e.g. image/heic, application/octet-stream).
-    if file.content_type not in ALLOWED_TYPES:
-        logger.warning(
-            "scan upload rejected: unsupported content_type=%r filename_ext=%r",
-            file.content_type,
-            (file.filename or "").rsplit(".", 1)[-1].lower(),
-        )
-        return jsonify({
-            "error": f"Unsupported image type: {file.content_type}",
-            "allowed": list(ALLOWED_TYPES),
-        }), 422
-
-    # Read image bytes (in memory only — never written to disk)
-    image_bytes = file.read()
-
-    if len(image_bytes) > MAX_IMAGE_SIZE:
-        return jsonify({"error": "Image too large (max 10MB)"}), 413
-
-    if not image_bytes:
-        return jsonify({"error": "Empty file"}), 400
+    image_bytes, content_type, err = validate_upload(
+        request,
+        field_name="image",
+        allowed_mime=ALLOWED_TYPES,
+        max_bytes=MAX_IMAGE_SIZE,
+    )
+    if err:
+        body, status = err
+        if status == 422:
+            logger.warning(
+                "scan upload rejected: %s (filename ext was %r)",
+                body.get("error"),
+                ((request.files.get("image") and request.files["image"].filename)
+                 or "").rsplit(".", 1)[-1].lower(),
+            )
+        return jsonify(body), status
 
     logger.info(
         "scan upload received: content_type=%s size=%d",
-        file.content_type, len(image_bytes),
+        content_type, len(image_bytes),
     )
 
     # Step 1: OCR via Google Vision

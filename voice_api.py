@@ -13,12 +13,12 @@ Audio is processed entirely in memory — never written to disk or DB.
 from __future__ import annotations
 
 import logging
-import re
 
 from flask import Blueprint, jsonify, request
 
 from auth import login_required
 from scan_service import create_tasks_from_candidates, parse_tasks_from_text
+from utils import validate_upload
 from voice_service import (
     ALLOWED_AUDIO_TYPES,
     WHISPER_MAX_UPLOAD_BYTES,
@@ -52,58 +52,26 @@ def upload(email: str):  # noqa: ARG001
     On 422 the JSON body always includes ``error`` with a user-safe
     message (no API keys, no full stack traces).
     """
-    if "audio" not in request.files:
-        return jsonify({"error": "No audio file provided"}), 400
-
-    file = request.files["audio"]
-    if not file.filename:
-        return jsonify({"error": "No filename"}), 400
-
-    # Validate content type. Browsers (especially iOS Safari) append
-    # codec parameters to the MIME type — e.g.
-    #   "audio/mp4;codecs=mp4a.40.2"   (Safari)
-    #   "audio/webm;codecs=opus"       (Chrome)
-    # RFC 7231 parameter separator is ';', but we normalize on both ';'
-    # and ':' because some iOS versions send the less standard ':' form.
-    # Strip everything from the first parameter separator so the
-    # whitelist stays as a simple set of base MIME types.
-    raw_content_type = file.content_type or ""
-    base_type = re.split(r"[;:]", raw_content_type, maxsplit=1)[0].strip().lower()
-    if base_type not in ALLOWED_AUDIO_TYPES:
-        logger.warning(
-            "voice memo upload rejected: unsupported content_type=%r "
-            "(normalized base=%r)",
-            raw_content_type,
-            base_type,
-        )
-        return jsonify({
-            "error": f"Unsupported audio type: {raw_content_type}",
-            "allowed": sorted(ALLOWED_AUDIO_TYPES),
-        }), 422
-
-    # Read audio bytes (in memory only — never written to disk)
-    audio_bytes = file.read()
-
-    if len(audio_bytes) > WHISPER_MAX_UPLOAD_BYTES:
-        return jsonify({
-            "error": (
-                f"Audio file too large "
-                f"({len(audio_bytes) // 1024 // 1024} MB; max "
-                f"{WHISPER_MAX_UPLOAD_BYTES // 1024 // 1024} MB)"
-            ),
-        }), 413
-
-    if not audio_bytes:
-        return jsonify({"error": "Empty file"}), 400
+    audio_bytes, content_type, err = validate_upload(
+        request,
+        field_name="audio",
+        allowed_mime=ALLOWED_AUDIO_TYPES,
+        max_bytes=WHISPER_MAX_UPLOAD_BYTES,
+    )
+    if err:
+        body, status = err
+        if status == 422:
+            logger.warning("voice memo upload rejected: %s", body.get("error"))
+        return jsonify(body), status
 
     logger.info(
         "voice memo upload received: content_type=%s size=%d",
-        file.content_type, len(audio_bytes),
+        content_type, len(audio_bytes),
     )
 
     # Step 1: transcribe via Whisper
     try:
-        result = transcribe_audio(audio_bytes, file.content_type)
+        result = transcribe_audio(audio_bytes, content_type)
     except RuntimeError as e:
         logger.warning("Whisper transcription failed: %s", e)
         return jsonify({"error": f"Transcription failed: {e}"}), 422

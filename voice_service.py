@@ -110,54 +110,39 @@ def _call_whisper_api(
 ) -> dict[str, Any]:
     """Make the actual OpenAI Whisper API call. Separated for testability.
 
-    Wraps all failure modes (network, HTTP error, bad JSON, per-request
-    API error) in RuntimeError with a useful message that's safe to
-    surface to the user — the API key is never included.
+    Delegates the HTTP mechanics to ``egress.safe_call_api`` for
+    consistent timeout + error handling across all third-party calls
+    (see docs/adr/006). This wrapper keeps Whisper-specific shape
+    (multipart file upload, duration parsing) and remains a stable
+    monkeypatch target for tests.
     """
-    import requests
+    from egress import EgressError, safe_call_api
 
-    url = "https://api.openai.com/v1/audio/transcriptions"
-    headers = {"Authorization": f"Bearer {api_key}"}
-    # response_format=verbose_json gives us the duration field we need
-    # for cost calculation. Alternative would be to compute duration
-    # client-side via Web Audio API, but server-authoritative is safer.
     files = {
         "file": (_filename_for_mime(mime_type), io.BytesIO(audio_bytes), mime_type),
     }
     data = {
         "model": "whisper-1",
+        # response_format=verbose_json gives us the duration field we
+        # need for cost calculation. Alternative would be to compute
+        # duration client-side via Web Audio API, but server-
+        # authoritative is safer.
         "response_format": "verbose_json",
     }
 
     try:
-        resp = requests.post(
-            url,
-            headers=headers,
+        data = safe_call_api(
+            url="https://api.openai.com/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {api_key}"},
             files=files,
             data=data,
-            timeout=120,
+            timeout_sec=120,
+            vendor="Whisper",
         )
-    except requests.RequestException as e:
-        raise RuntimeError(
-            f"Whisper API network error: {type(e).__name__}"
-        ) from e
-
-    if not resp.ok:
-        detail = ""
-        try:
-            body = resp.json()
-            detail = body.get("error", {}).get("message") or ""
-        except ValueError:
-            detail = resp.text[:200]
-        raise RuntimeError(
-            f"Whisper API returned HTTP {resp.status_code}"
-            + (f": {detail}" if detail else "")
-        )
-
-    try:
-        data = resp.json()
-    except ValueError as e:
-        raise RuntimeError("Whisper API returned invalid JSON") from e
+    except EgressError as e:
+        # Re-raise as RuntimeError to keep the existing public contract
+        # of voice_service. Callers in voice_api.py catch RuntimeError.
+        raise RuntimeError(str(e)) from e
 
     transcript = (data.get("text") or "").strip()
     # Whisper rounds duration to a few decimals; treat missing as 0

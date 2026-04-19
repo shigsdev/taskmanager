@@ -49,3 +49,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Local-only binaries (gitleaks, etc. — installed via
+# scripts/install_dev_tools.sh, not checked in)
+tools/

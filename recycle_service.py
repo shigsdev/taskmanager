@@ -56,7 +56,7 @@ class ConfirmationError(Exception):
     """Raised when a destructive operation is missing the typed confirmation."""
 
 
-_CONFIRMATION_TOKEN = "DELETE"  # noqa: S105 typed-confirmation token, not a password
+_CONFIRMATION_TOKEN = "DELETE"  # noqa: S105  # nosec B105 - typed-confirmation token (user must type "DELETE" to proceed), not a password
 
 
 # --- Helpers -----------------------------------------------------------------

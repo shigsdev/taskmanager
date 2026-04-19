@@ -68,16 +68,11 @@ def _call_vision_api(api_key: str, image_bytes: bytes) -> str:
     API error) in RuntimeError with a useful message that's safe to
     surface to the user — the API key is never included.
     """
-    import requests
+    from egress import EgressError, safe_call_api
 
-    # API key in header (X-Goog-Api-Key) instead of URL query param.
-    # URL query params show up in proxy/CDN/Railway egress logs;
-    # headers don't. See docs/adr/007-api-key-in-header.md.
-    url = "https://vision.googleapis.com/v1/images:annotate"
-    headers = {
-        "X-Goog-Api-Key": api_key,
-        "Content-Type": "application/json",
-    }
+    # API key in header (X-Goog-Api-Key) instead of URL query param —
+    # see docs/adr/007. HTTP mechanics (timeout, error wrapping) live
+    # in egress.safe_call_api — see docs/adr/006.
     payload = {
         "requests": [
             {
@@ -88,32 +83,18 @@ def _call_vision_api(api_key: str, image_bytes: bytes) -> str:
     }
 
     try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=30)
-    except requests.RequestException as e:
-        # Network error, DNS, timeout, etc.
-        raise RuntimeError(f"Vision API network error: {type(e).__name__}") from e
-
-    if not resp.ok:
-        # Try to pull Google's own error message out of the body.
-        detail = ""
-        try:
-            body = resp.json()
-            detail = (
-                body.get("error", {}).get("message")
-                or body.get("error", {}).get("status")
-                or ""
-            )
-        except ValueError:
-            detail = resp.text[:200]
-        raise RuntimeError(
-            f"Vision API returned HTTP {resp.status_code}"
-            + (f": {detail}" if detail else "")
+        data = safe_call_api(
+            url="https://vision.googleapis.com/v1/images:annotate",
+            headers={
+                "X-Goog-Api-Key": api_key,
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout_sec=30,
+            vendor="Vision",
         )
-
-    try:
-        data = resp.json()
-    except ValueError as e:
-        raise RuntimeError("Vision API returned invalid JSON") from e
+    except EgressError as e:
+        raise RuntimeError(str(e)) from e
 
     # Per-request error (Vision wraps errors inside responses[0].error)
     responses = data.get("responses") or [{}]
@@ -182,52 +163,39 @@ def parse_tasks_from_text(ocr_text: str) -> list[str]:
 def _call_claude_api(api_key: str, ocr_text: str) -> list[str]:
     """Make the actual Claude API call. Separated for testability.
 
-    Wraps failure modes in RuntimeError with a safe, descriptive
-    message — the API key is never included.
+    Delegates HTTP mechanics to ``egress.safe_call_api``.
     """
-    import requests
-
-    url = "https://api.anthropic.com/v1/messages"
-    headers = {
-        "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
-    payload = {
-        "model": "claude-sonnet-4-6",
-        "max_tokens": 1024,
-        "messages": [
-            {
-                "role": "user",
-                "content": _PARSE_PROMPT.format(ocr_text=ocr_text),
-            }
-        ],
-    }
-
-    try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=60)
-    except requests.RequestException as e:
-        raise RuntimeError(f"Claude API network error: {type(e).__name__}") from e
-
-    if not resp.ok:
-        detail = ""
-        try:
-            body = resp.json()
-            detail = body.get("error", {}).get("message") or ""
-        except ValueError:
-            detail = resp.text[:200]
-        raise RuntimeError(
-            f"Claude API returned HTTP {resp.status_code}"
-            + (f": {detail}" if detail else "")
-        )
-
-    try:
-        data = resp.json()
-    except ValueError as e:
-        raise RuntimeError("Claude API returned invalid JSON") from e
-
+    data = _post_to_claude(
+        api_key=api_key,
+        prompt=_PARSE_PROMPT.format(ocr_text=ocr_text),
+        max_tokens=1024,
+    )
     content = data.get("content", [{}])[0].get("text", "")
     return _extract_json_array(content)
+
+
+def _post_to_claude(*, api_key: str, prompt: str, max_tokens: int) -> dict[str, Any]:
+    """Shared Claude API caller — used by both task and goal extraction."""
+    from egress import EgressError, safe_call_api
+
+    try:
+        return safe_call_api(
+            url="https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-sonnet-4-6",
+                "max_tokens": max_tokens,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout_sec=60,
+            vendor="Claude",
+        )
+    except EgressError as e:
+        raise RuntimeError(str(e)) from e
 
 
 def _extract_json_array(text: str) -> list[str]:
@@ -334,50 +302,16 @@ def parse_goals_from_text(ocr_text: str) -> list[dict[str, Any]]:
 def _call_claude_api_goals(
     api_key: str, ocr_text: str
 ) -> list[dict[str, Any]]:
-    """Make the Claude API call for goal extraction. Separated for testability."""
-    import requests
+    """Make the Claude API call for goal extraction. Separated for testability.
 
-    url = "https://api.anthropic.com/v1/messages"
-    headers = {
-        "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
-    payload = {
-        "model": "claude-sonnet-4-6",
-        "max_tokens": 2048,
-        "messages": [
-            {
-                "role": "user",
-                "content": _GOAL_PARSE_PROMPT.format(ocr_text=ocr_text),
-            }
-        ],
-    }
-
-    try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=60)
-    except requests.RequestException as e:
-        raise RuntimeError(
-            f"Claude API network error: {type(e).__name__}"
-        ) from e
-
-    if not resp.ok:
-        detail = ""
-        try:
-            body = resp.json()
-            detail = body.get("error", {}).get("message") or ""
-        except ValueError:
-            detail = resp.text[:200]
-        raise RuntimeError(
-            f"Claude API returned HTTP {resp.status_code}"
-            + (f": {detail}" if detail else "")
-        )
-
-    try:
-        data = resp.json()
-    except ValueError as e:
-        raise RuntimeError("Claude API returned invalid JSON") from e
-
+    Reuses ``_post_to_claude`` so the only difference between task and
+    goal extraction is the prompt + max_tokens + JSON parser.
+    """
+    data = _post_to_claude(
+        api_key=api_key,
+        prompt=_GOAL_PARSE_PROMPT.format(ocr_text=ocr_text),
+        max_tokens=2048,
+    )
     content = data.get("content", [{}])[0].get("text", "")
     return _extract_json_object_list(content)
 

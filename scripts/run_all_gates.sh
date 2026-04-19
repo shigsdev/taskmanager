@@ -203,29 +203,77 @@ else
     exit 1
 fi
 
-# --- 9. Semgrep (security pattern scanner) — DEFERRED ----------------------
-#
-# Semgrep was intended here but was deferred because the pip-installed
-# semgrep CLI binary doesn't reliably end up on PATH for Python 3.14 on
-# Windows. Bandit (gate 5) already covers ~70% of the same ground for
-# Python security antipatterns — semgrep adds extra Flask-specific
-# rules and OWASP coverage but isn't a replacement.
-#
-# To re-enable on a machine where `semgrep` is on PATH (mac/linux,
-# or Windows after fixing PATH):
-#
-#   banner "9. Semgrep (security patterns)"
-#   if semgrep scan --config=p/python --config=p/security-audit \
-#           --error --quiet --exclude=.venv --exclude=.venv-mac \
-#           --exclude=node_modules --exclude=.claude --exclude=tests \
-#           --exclude=migrations --metrics=off; then
-#       pass "semgrep"
-#   else
-#       fail "semgrep found a security issue — review the report above"
-#       exit 1
-#   fi
-#
-# Tracked as backlog item: "Semgrep gate (cross-platform fix)".
+# --- 9. Semgrep (security pattern scanner) ----------------------------------
+
+banner "9. Semgrep (security patterns)"
+# Find the semgrep executable. pip install puts semgrep on PATH on
+# mac/linux but on Windows + Python 3.14 it lands in
+# %LOCALAPPDATA%\Python\pythoncore-3.14-64\Scripts\semgrep.exe which
+# isn't on PATH unless the user added it. Fall back to known locations
+# before giving up.
+SEMGREP_BIN=""
+if command -v semgrep >/dev/null 2>&1; then
+    SEMGREP_BIN="semgrep"
+elif [ -x "/c/Users/${USERNAME}/AppData/Local/Python/pythoncore-3.14-64/Scripts/semgrep.exe" ]; then
+    SEMGREP_BIN="/c/Users/${USERNAME}/AppData/Local/Python/pythoncore-3.14-64/Scripts/semgrep.exe"
+elif [ -x "/c/Users/${USER}/AppData/Local/Python/pythoncore-3.14-64/Scripts/semgrep.exe" ]; then
+    SEMGREP_BIN="/c/Users/${USER}/AppData/Local/Python/pythoncore-3.14-64/Scripts/semgrep.exe"
+fi
+
+if [ -z "$SEMGREP_BIN" ]; then
+    fail "semgrep not found. Install with: pip install semgrep"
+    fail "  On Windows, add %LOCALAPPDATA%\\Python\\pythoncore-3.14-64\\Scripts to PATH"
+    fail "  On mac/linux, semgrep should be on PATH after pip install"
+    exit 1
+fi
+
+# --error makes findings exit non-zero. p/python = standard Python rule
+# pack; p/security-audit = OWASP-aligned cross-language audit pack.
+# --metrics=off opts out of telemetry.
+if "$SEMGREP_BIN" scan --config=p/python --config=p/security-audit \
+        --error --quiet --metrics=off \
+        --exclude=.venv --exclude=.venv-mac \
+        --exclude=node_modules --exclude=.claude --exclude=tests \
+        --exclude=migrations --exclude=docs; then
+    pass "semgrep"
+else
+    fail "semgrep found a security issue — review the report above"
+    exit 1
+fi
+
+# --- 10. gitleaks (secrets scanner) -----------------------------------------
+
+banner "10. gitleaks (secrets scanner)"
+# gitleaks is a single-binary tool (not pip-installable). On first run,
+# auto-download into ./tools/ if missing — single ~22 MB binary, signed
+# by the official GitHub release.
+GITLEAKS_BIN=""
+if command -v gitleaks >/dev/null 2>&1; then
+    GITLEAKS_BIN="gitleaks"
+elif [ -x "./tools/gitleaks.exe" ]; then
+    GITLEAKS_BIN="./tools/gitleaks.exe"
+elif [ -x "./tools/gitleaks" ]; then
+    GITLEAKS_BIN="./tools/gitleaks"
+fi
+
+if [ -z "$GITLEAKS_BIN" ]; then
+    fail "gitleaks not installed. Auto-install with:"
+    fail "  bash scripts/install_dev_tools.sh"
+    fail "Or download manually from https://github.com/gitleaks/gitleaks/releases"
+    fail "and place the binary at ./tools/gitleaks (or ./tools/gitleaks.exe on Windows)"
+    exit 1
+fi
+
+# --no-git scans the working tree (vs. git history); --redact ensures
+# any incidental match is shown without the actual secret.
+if "$GITLEAKS_BIN" detect --source . --no-banner --redact --no-git \
+        --config .gitleaks.toml --exit-code 1; then
+    pass "gitleaks"
+else
+    fail "gitleaks found a potential secret — review the report above"
+    fail "  If it's a false positive, add a path/regex allowlist entry to .gitleaks.toml"
+    exit 1
+fi
 
 # --- Summary ----------------------------------------------------------------
 

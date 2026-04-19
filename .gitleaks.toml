@@ -1,0 +1,57 @@
+# gitleaks config for the taskmanager repo.
+# https://github.com/gitleaks/gitleaks#configuration
+#
+# Inherits the default rule pack (so all of gitleaks' built-in
+# detectors fire — generic-api-key, AWS, GitHub, etc.) and adds
+# allowlist entries for paths that contain known-safe matches:
+#
+#   - .venv/, .venv-mac/  : dependency code (oauthlib, etc. ship
+#                           example tokens in their docstrings)
+#   - .claude/             : Claude Code scratch worktrees
+#   - node_modules/        : npm dependencies
+#   - tools/               : local-only binaries (gitleaks itself)
+#   - migrations/          : alembic-generated, no secrets
+#   - .env, .flaskenv      : real local config files; both are
+#                            .gitignored so committing is impossible.
+#                            We include them in the allowlist so
+#                            run_all_gates.sh doesn't blow up when
+#                            scanning a working tree that contains them.
+
+title = "taskmanager gitleaks config"
+
+[extend]
+# Inherit gitleaks' default ruleset (~50 detectors).
+useDefault = true
+
+[allowlist]
+description = "Paths and patterns that are not real secret leaks for this repo"
+
+paths = [
+    '''^\.venv/''',
+    '''^\.venv-mac/''',
+    '''^\.claude/''',
+    '''^node_modules/''',
+    '''^tools/''',
+    '''^migrations/''',
+    '''^\.env$''',
+    '''^\.env\.example$''',
+    '''^\.env\.dev-bypass\.example$''',
+    '''^\.flaskenv$''',
+    # Test fixtures use clearly-fake keys (sk-xxxxxxxx, AIzaXXXX) that
+    # match the generic-api-key rule.
+    '''^tests/''',
+    # The validator-cookie file path — gitignored but a fresh checkout
+    # might have it lying around if user followed the README.
+    '''^\.taskmanager-session-cookie$''',
+    # Sample/example secrets quoted in our own docs (e.g.
+    # "sk-proj-xxx" in CLAUDE.md anti-pattern examples)
+    '''^CLAUDE\.md$''',
+    '''^docs/adr/''',
+]
+
+# Specific values we know are safe — usually documentation examples.
+regexes = [
+    # validator_token cookie shape mentioned in error messages — not
+    # an actual signed token, just an example of what one looks like.
+    '''eyJfZnJlc2giOnRydWVs''',
+]

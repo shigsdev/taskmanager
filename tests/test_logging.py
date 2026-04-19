@@ -500,7 +500,11 @@ class TestDebugTokenAuth:
             with app.app_context():
                 rows = list(db.session.scalars(select(AppLog)))
             # At least one row should describe the token-auth access.
-            access_logs = [r for r in rows if "X-Debug-Token" in r.message]
+            # Match on the substring that's actually in the log message —
+            # debug_api.py was rephrased on 2026-04-18 to avoid the
+            # words "token" / "secret" in the format string (semgrep
+            # logger-credential-leak rule was firing on it).
+            access_logs = [r for r in rows if "header-auth path" in r.message]
             assert len(access_logs) >= 1
             assert access_logs[0].level == "WARNING"
         finally:
