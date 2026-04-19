@@ -66,9 +66,10 @@ async function init() {
     setupNavTabs();
     setupCollapse();
     setupDetailPanel();
-    // Populate the Completed section immediately so its header count is
-    // correct even before the user expands it for the first time.
+    // Populate the Completed + Cancelled sections immediately so their
+    // header counts are correct even before the user expands either.
     loadCompletedTasks();
+    loadCancelledTasks();
 }
 
 // --- Rendering ---------------------------------------------------------------
@@ -827,6 +828,19 @@ async function taskDelete(id) {
     taskDetailClose();
 }
 
+// Backlog #25: mark a task cancelled with an optional reason.
+async function taskCancel(id, reason) {
+    await apiFetch(`${API}/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+            status: "cancelled",
+            cancellation_reason: reason || null,
+        }),
+    });
+    await loadTasks();
+    loadCancelledTasks();
+}
+
 // --- Nav tabs ----------------------------------------------------------------
 
 function setupNavTabs() {
@@ -842,6 +856,7 @@ function setupNavTabs() {
             projectFilter = null;
             renderBoard();
             renderCompletedList();
+            renderCancelledList();
             // Show/hide project filter bar (visible in work + personal views)
             const bar = document.getElementById("projectFilterBar");
             if (bar) {
@@ -869,6 +884,9 @@ function setupCollapse() {
                 // Load completed tasks on first expand
                 if (section.id === "tierCompleted" && !section.dataset.loaded) {
                     loadCompletedTasks();
+                }
+                if (section.id === "tierCancelled" && !section.dataset.loaded) {
+                    loadCancelledTasks();
                 }
             }
         });
@@ -1039,6 +1057,71 @@ async function taskRestore(id, tier) {
     // Always reload — keeps #completedCount in sync even if the
     // Completed section hasn't been expanded yet.
     loadCompletedTasks();
+    loadCancelledTasks();
+}
+
+// --- Cancelled tasks (#25) ---------------------------------------------------
+// Stripped-down twin of the Completed section: load on demand, render
+// title + reason, click-to-open in the detail panel for un-cancellation.
+// No drag/drop here — cancellation is a deliberate end-state, not a
+// throw-away gesture, so requiring a panel-open to restore is the right
+// friction.
+
+let allCancelled = [];
+
+async function loadCancelledTasks() {
+    const section = document.getElementById("tierCancelled");
+    if (!section) return;  // not on the board page
+    const list = document.getElementById("cancelledList");
+    list.innerHTML = "<div class='loading-msg'>Loading...</div>";
+    section.dataset.loaded = "true";
+    allCancelled = await apiFetch(API + "?status=cancelled");
+    renderCancelledList();
+}
+
+function filteredCancelled() {
+    let tasks = allCancelled;
+    if (currentView === "work") tasks = tasks.filter((t) => t.type === "work");
+    if (currentView === "personal") tasks = tasks.filter((t) => t.type === "personal");
+    if (projectFilter) tasks = tasks.filter((t) => t.project_id === projectFilter);
+    return tasks;
+}
+
+function renderCancelledList() {
+    const list = document.getElementById("cancelledList");
+    const count = document.getElementById("cancelledCount");
+    if (!list || !count) return;
+    const tasks = filteredCancelled();
+    list.innerHTML = "";
+    count.textContent = tasks.length;
+
+    if (tasks.length === 0) {
+        list.classList.add("empty-state");
+        list.setAttribute("data-empty-msg", "No cancelled tasks");
+        return;
+    }
+    list.classList.remove("empty-state");
+    for (const task of tasks) {
+        const card = document.createElement("div");
+        card.className = "task-card cancelled-card";
+        card.dataset.id = task.id;
+        card.dataset.sourceTier = "cancelled";
+
+        const title = document.createElement("div");
+        title.className = "task-title";
+        title.textContent = task.title;
+        card.appendChild(title);
+
+        if (task.cancellation_reason) {
+            const reason = document.createElement("div");
+            reason.className = "task-cancellation-reason";
+            reason.textContent = "Reason: " + task.cancellation_reason;
+            card.appendChild(reason);
+        }
+
+        card.addEventListener("click", () => taskDetailOpen(task));
+        list.appendChild(card);
+    }
 }
 
 // --- Detail panel ------------------------------------------------------------
@@ -1058,6 +1141,16 @@ function setupDetailPanel() {
         if (id) {
             taskDetailClose();
             taskComplete(id);
+        }
+    });
+    // Backlog #25: Cancel button — sets status=cancelled and saves the
+    // optional reason from the inline input. Different from Complete.
+    document.getElementById("detailCancel").addEventListener("click", () => {
+        const id = document.getElementById("detailId").value;
+        if (id) {
+            const reason = document.getElementById("detailCancellationReason").value.trim();
+            taskDetailClose();
+            taskCancel(id, reason);
         }
     });
     document.getElementById("addChecklistItem").addEventListener("click", () => {
@@ -1094,6 +1187,16 @@ function taskDetailOpen(task) {
     });
 
     document.getElementById("detailNotes").value = task.notes || "";
+
+    // Cancellation reason field — visible only when this task is cancelled
+    // OR when the user clicks the Cancel button below. Both modes write
+    // into the same input, so we always sync its value here.
+    const cancelBlock = document.getElementById("detailCancellation");
+    const reasonInput = document.getElementById("detailCancellationReason");
+    if (cancelBlock && reasonInput) {
+        reasonInput.value = task.cancellation_reason || "";
+        cancelBlock.style.display = task.status === "cancelled" ? "" : "none";
+    }
 
     // Show/hide project selector based on type
     taskDetailToggleProject(task.type);
@@ -1587,6 +1690,25 @@ function initBulkSelect() {
                     if (n && confirm(`Mark ${n} task(s) complete?`)) {
                         bulkPatch({ status: "archived" });
                     }
+                },
+            },
+            {
+                label: "Mark cancelled",
+                onClick: () => {
+                    const n = getBulkSelectedIds().length;
+                    if (!n) return;
+                    // Single shared reason for the whole batch — keeps the
+                    // bulk flow simple. Per-task reasons can still be set
+                    // by opening individual cards in the detail panel.
+                    const reason = prompt(
+                        `Mark ${n} task(s) cancelled. Optional reason (Cancel to abort):`,
+                        "",
+                    );
+                    if (reason === null) return;
+                    bulkPatch({
+                        status: "cancelled",
+                        cancellation_reason: reason.trim() || null,
+                    });
                 },
             },
             {

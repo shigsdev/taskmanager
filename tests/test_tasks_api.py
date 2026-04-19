@@ -281,6 +281,63 @@ def test_patch_archive_via_status(authed_client, app):
     assert resp.get_json()["status"] == "archived"
 
 
+def test_patch_cancel_with_reason(authed_client, app):
+    """Backlog #25: status=cancelled persists with optional reason."""
+    with app.app_context():
+        task = _make_task(title="x")
+        task_id = task.id
+    resp = authed_client.patch(
+        f"/api/tasks/{task_id}",
+        json={"status": "cancelled", "cancellation_reason": "Out of scope"},
+    )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["status"] == "cancelled"
+    assert body["cancellation_reason"] == "Out of scope"
+
+
+def test_patch_cancel_without_reason(authed_client, app):
+    """Reason is optional — cancelling without one stores null."""
+    with app.app_context():
+        task = _make_task(title="x")
+        task_id = task.id
+    resp = authed_client.patch(f"/api/tasks/{task_id}", json={"status": "cancelled"})
+    assert resp.status_code == 200
+    assert resp.get_json()["cancellation_reason"] is None
+
+
+def test_patch_uncancel_clears_reason(authed_client, app):
+    """Transitioning out of cancelled clears the reason so it doesn't
+    outlive the cancellation (#25)."""
+    with app.app_context():
+        task = _make_task(title="x")
+        task_id = task.id
+    authed_client.patch(
+        f"/api/tasks/{task_id}",
+        json={"status": "cancelled", "cancellation_reason": "give up"},
+    )
+    resp = authed_client.patch(f"/api/tasks/{task_id}", json={"status": "active"})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["status"] == "active"
+    assert body["cancellation_reason"] is None
+
+
+def test_list_filter_status_cancelled(authed_client, app):
+    """GET /api/tasks?status=cancelled returns only cancelled tasks."""
+    with app.app_context():
+        active = _make_task(title="active task")
+        cancel = _make_task(title="dropped task")
+        cancel_id = cancel.id
+        active_id = active.id
+    authed_client.patch(f"/api/tasks/{cancel_id}", json={"status": "cancelled"})
+    resp = authed_client.get("/api/tasks?status=cancelled")
+    assert resp.status_code == 200
+    ids = [t["id"] for t in resp.get_json()]
+    assert str(cancel_id) in ids
+    assert str(active_id) not in ids
+
+
 def test_patch_update_checklist_and_notes(authed_client, app):
     with app.app_context():
         task = _make_task(title="x")

@@ -643,6 +643,42 @@ body {
     font-weight: 600;
 }
 .btn-complete:hover { background: #15803d; }
+/* Backlog #25: cancel-task button. Greyer than danger because cancellation
+   is intentional record-keeping, not a destructive trash action. */
+.btn-cancel {
+    background: #6b7280;
+    color: #fff;
+    border: none;
+    font-weight: 600;
+}
+.btn-cancel:hover { background: #4b5563; }
+.detail-cancellation {
+    margin: 12px 0;
+    padding: 10px;
+    background: var(--bg-subtle, #f6f8fa);
+    border-radius: 6px;
+}
+.detail-cancellation label { display: block; font-weight: 600; margin-bottom: 4px; font-size: 0.85rem; }
+.detail-cancellation input { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; }
+.tier-cancelled { border-top: 1px dashed var(--border); margin-top: 8px; padding-top: 8px; }
+.tier-cancelled .tier-header h2 { color: #6b7280; }
+.cancelled-card {
+    opacity: 0.75;
+    cursor: pointer;
+    padding: 8px;
+    border-left: 3px solid #6b7280;
+}
+.cancelled-card:hover { opacity: 1; }
+.cancelled-card .task-title {
+    text-decoration: line-through;
+    color: #6b7280;
+}
+.task-cancellation-reason {
+    font-size: 0.8rem;
+    font-style: italic;
+    color: #6b7280;
+    margin-top: 4px;
+}
 
 .detail-actions {
     display: flex;

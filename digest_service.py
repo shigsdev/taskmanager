@@ -20,9 +20,9 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import date
+from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
 
 from models import Goal, GoalStatus, Task, TaskStatus, Tier, db
@@ -133,6 +133,28 @@ def build_digest(*, target_date: date | None = None) -> str:
 
     # This Week count
     lines.append(f"THIS WEEK REMAINING: {len(week_tasks)} tasks")
+    lines.append("")
+
+    # Past-7-day completed/cancelled summary (#25). Surfaces honesty:
+    # how many tasks did the user finish vs consciously drop in the
+    # past week. Counted separately because they're not the same thing.
+    week_ago = today - timedelta(days=7)
+    completed_recent = db.session.scalar(
+        select(func.count()).select_from(Task).where(
+            Task.status == TaskStatus.ARCHIVED,
+            Task.updated_at >= week_ago,
+        )
+    ) or 0
+    cancelled_recent = db.session.scalar(
+        select(func.count()).select_from(Task).where(
+            Task.status == TaskStatus.CANCELLED,
+            Task.updated_at >= week_ago,
+        )
+    ) or 0
+    lines.append(
+        f"PAST 7 DAYS: {completed_recent} completed, "
+        f"{cancelled_recent} cancelled"
+    )
     lines.append("")
     lines.append("---")
 

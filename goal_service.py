@@ -161,11 +161,18 @@ def delete_goal(goal_id: uuid.UUID) -> bool:
 
 
 def goal_progress(goal_id: uuid.UUID) -> dict:
-    """Return {total, completed, percent} for tasks linked to a goal."""
+    """Return {total, completed, cancelled, percent} for tasks linked to a goal.
+
+    Cancelled tasks (#25) are excluded from BOTH the numerator and the
+    denominator: they shouldn't pad the completion ratio in either
+    direction. The user explicitly chose to drop them, so they don't
+    count as success OR as a missed opportunity. They're still surfaced
+    via the `cancelled` field so the UI can show them separately.
+    """
     total = db.session.scalar(
         select(func.count()).select_from(Task).where(
             Task.goal_id == goal_id,
-            Task.status != TaskStatus.DELETED,
+            Task.status.notin_([TaskStatus.DELETED, TaskStatus.CANCELLED]),
         )
     )
     completed = db.session.scalar(
@@ -174,7 +181,19 @@ def goal_progress(goal_id: uuid.UUID) -> dict:
             Task.status == TaskStatus.ARCHIVED,
         )
     )
+    cancelled = db.session.scalar(
+        select(func.count()).select_from(Task).where(
+            Task.goal_id == goal_id,
+            Task.status == TaskStatus.CANCELLED,
+        )
+    )
     total = total or 0
     completed = completed or 0
+    cancelled = cancelled or 0
     pct = round(completed / total * 100) if total > 0 else None
-    return {"total": total, "completed": completed, "percent": pct}
+    return {
+        "total": total,
+        "completed": completed,
+        "cancelled": cancelled,
+        "percent": pct,
+    }

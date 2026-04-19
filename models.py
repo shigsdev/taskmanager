@@ -53,8 +53,9 @@ class TaskType(enum.StrEnum):
 
 class TaskStatus(enum.StrEnum):
     ACTIVE = "active"
-    ARCHIVED = "archived"
-    DELETED = "deleted"
+    ARCHIVED = "archived"  # completed
+    CANCELLED = "cancelled"  # consciously dropped, NOT completed (#25)
+    DELETED = "deleted"  # soft-deleted / recycled
 
 
 class ProjectType(enum.StrEnum):
@@ -175,6 +176,10 @@ class Task(db.Model):
     status: Mapped[TaskStatus] = mapped_column(
         Enum(TaskStatus), nullable=False, default=TaskStatus.ACTIVE
     )
+    # Optional free-text reason set when the task is moved to status=cancelled (#25).
+    # Kept separate from `notes` so cancellation metadata stays distinct from
+    # the user's regular task notes.
+    cancellation_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_reviewed: Mapped[date | None] = mapped_column(Date, nullable=True)
     # batch_id links this task to a bulk-import operation (ImportLog.batch_id).

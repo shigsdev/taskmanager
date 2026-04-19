@@ -59,7 +59,7 @@ def test_create_goal_201(authed_client):
     assert body["priority_rank"] == 1
     assert body["status"] == "not_started"
     assert body["is_active"] is True
-    assert body["progress"] == {"total": 0, "completed": 0, "percent": None}
+    assert body["progress"] == {"total": 0, "completed": 0, "cancelled": 0, "percent": None}
     assert uuid.UUID(body["id"])
 
 
@@ -404,6 +404,41 @@ def test_progress_endpoint(authed_client, app):
     body = resp.get_json()
     assert body["total"] == 2  # active + archived (not deleted)
     assert body["completed"] == 1
+    assert body["cancelled"] == 0
+    assert body["percent"] == 50
+
+
+def test_progress_excludes_cancelled_from_both_numerator_and_denominator(authed_client, app):
+    """Backlog #25: cancelled tasks shouldn't pad completion ratios."""
+    with app.app_context():
+        goal = _make_goal(title="Honesty test")
+        goal_id = goal.id
+        # 1 done, 1 active, 2 cancelled
+        db.session.add(
+            Task(title="done", type=TaskType.WORK, goal_id=goal_id, status=TaskStatus.ARCHIVED)
+        )
+        db.session.add(
+            Task(title="wip", type=TaskType.WORK, goal_id=goal_id, status=TaskStatus.ACTIVE)
+        )
+        db.session.add(
+            Task(
+                title="dropped a", type=TaskType.WORK,
+                goal_id=goal_id, status=TaskStatus.CANCELLED,
+            )
+        )
+        db.session.add(
+            Task(
+                title="dropped b", type=TaskType.WORK,
+                goal_id=goal_id, status=TaskStatus.CANCELLED,
+            )
+        )
+        db.session.commit()
+    resp = authed_client.get(f"/api/goals/{goal_id}/progress")
+    body = resp.get_json()
+    # Cancelled excluded from BOTH numerator and denominator
+    assert body["total"] == 2
+    assert body["completed"] == 1
+    assert body["cancelled"] == 2  # surfaced separately
     assert body["percent"] == 50
 
 
@@ -413,7 +448,7 @@ def test_progress_no_tasks(authed_client, app):
         goal_id = goal.id
     resp = authed_client.get(f"/api/goals/{goal_id}/progress")
     assert resp.status_code == 200
-    assert resp.get_json() == {"total": 0, "completed": 0, "percent": None}
+    assert resp.get_json() == {"total": 0, "completed": 0, "cancelled": 0, "percent": None}
 
 
 def test_progress_404(authed_client):

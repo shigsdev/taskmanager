@@ -56,6 +56,7 @@ def _serialize(task: Task) -> dict:
         "due_date": task.due_date.isoformat() if task.due_date else None,
         "url": task.url,
         "notes": task.notes,
+        "cancellation_reason": task.cancellation_reason,
         "checklist": task.checklist or [],
         "sort_order": task.sort_order,
         "last_reviewed": task.last_reviewed.isoformat() if task.last_reviewed else None,

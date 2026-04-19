@@ -206,6 +206,7 @@ _UPDATABLE_FIELDS = {
     "sort_order",
     "last_reviewed",
     "repeat",
+    "cancellation_reason",
 }
 
 
@@ -232,7 +233,17 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
         task.tier = _parse_enum(Tier, data["tier"], "tier") or task.tier
 
     if "status" in data:
-        task.status = _parse_enum(TaskStatus, data["status"], "status") or task.status
+        new_status = _parse_enum(TaskStatus, data["status"], "status") or task.status
+        # When transitioning out of CANCELLED, clear the reason so a stale
+        # explanation doesn't outlive the cancellation. Caller can still
+        # set it explicitly in the same PATCH if they want to preserve it.
+        if (
+            task.status == TaskStatus.CANCELLED
+            and new_status != TaskStatus.CANCELLED
+            and "cancellation_reason" not in data
+        ):
+            task.cancellation_reason = None
+        task.status = new_status
 
     if "parent_id" in data:
         new_parent_id = _parse_uuid(data["parent_id"], "parent_id")
@@ -263,6 +274,14 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
 
     if "notes" in data:
         task.notes = data["notes"] or None
+
+    if "cancellation_reason" in data:
+        # Empty string normalizes to None so the field clears cleanly when
+        # the user un-cancels a task (status → active) and re-cancels later.
+        reason = data["cancellation_reason"]
+        if reason is not None:
+            reason = str(reason).strip()
+        task.cancellation_reason = reason or None
 
     if "checklist" in data:
         task.checklist = _parse_checklist(data["checklist"])

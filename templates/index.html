@@ -79,6 +79,14 @@
         </div>
         <div class="tier-body task-list" id="completedList" style="display:none"></div>
     </section>
+    {# Backlog #25: consciously-dropped tasks. Distinct from Completed
+       so honest completion stats aren't inflated by give-ups. #}
+    <section class="tier tier-cancelled" id="tierCancelled">
+        <div class="tier-header">
+            <h2><button class="collapse-toggle" aria-expanded="false">▸</button> Cancelled <span class="tier-count" id="cancelledCount">0</span></h2>
+        </div>
+        <div class="tier-body task-list" id="cancelledList" style="display:none"></div>
+    </section>
 </div>
 
 <!-- Bulk-action toolbar — appears at the bottom of the viewport when

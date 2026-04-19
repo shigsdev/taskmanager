@@ -143,9 +143,18 @@
 
             <div class="detail-meta" id="detailMeta"></div>
 
+            {# Backlog #25: cancellation reason. Visible only when the task
+               is currently cancelled or the user clicks Cancel below. #}
+            <div class="detail-cancellation" id="detailCancellation" style="display:none">
+                <label for="detailCancellationReason">Cancellation reason (optional)</label>
+                <input type="text" id="detailCancellationReason" maxlength="500"
+                       placeholder="Why are you dropping this?">
+            </div>
+
             <div class="detail-actions">
                 <button type="submit" class="btn">Save</button>
                 <button type="button" class="btn btn-complete" id="detailComplete">✓ Complete</button>
+                <button type="button" class="btn btn-cancel" id="detailCancel" title="Mark as consciously dropped (separate from completed)">✕ Cancel task</button>
                 <button type="button" class="btn btn-danger" id="detailDelete">Delete</button>
             </div>
         </form>

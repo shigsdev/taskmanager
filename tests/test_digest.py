@@ -87,6 +87,24 @@ class TestDigestContent:
             body = build_digest()
         assert "THIS WEEK REMAINING: 2 tasks" in body
 
+    def test_past_7_days_summary_shows_completed_and_cancelled(self, app):
+        """Backlog #25: digest surfaces both completed and cancelled
+        counts from the past week, separately."""
+        from digest_service import build_digest
+        from models import TaskStatus, db
+
+        with app.app_context():
+            # Mix of statuses; only completed + cancelled should be counted
+            d1 = _make_task(title="d1")
+            d2 = _make_task(title="d2")
+            c1 = _make_task(title="c1")
+            d1.status = TaskStatus.ARCHIVED
+            d2.status = TaskStatus.ARCHIVED
+            c1.status = TaskStatus.CANCELLED
+            db.session.commit()
+            body = build_digest()
+        assert "PAST 7 DAYS: 2 completed, 1 cancelled" in body
+
     def test_overdue_task_appears(self, app):
         from digest_service import build_digest
 
