@@ -199,6 +199,69 @@ class TestGoalsPage:
         assert resp.status_code == 403
 
 
+class TestProjectsPage:
+    """Integration tests for the projects CRUD view at /projects (backlog #24)."""
+
+    def test_renders_200(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        resp = client.get("/projects")
+        assert resp.status_code == 200
+
+    def test_contains_filter_dropdowns(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/projects").data.decode()
+        assert 'id="projectFilterType"' in html
+        assert 'id="projectFilterActive"' in html
+
+    def test_contains_add_button(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/projects").data.decode()
+        assert 'id="addProjectBtn"' in html
+
+    def test_contains_detail_panel(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/projects").data.decode()
+        assert 'id="projectDetailOverlay"' in html
+        assert 'id="projectDetailForm"' in html
+        assert 'id="projectName"' in html
+        assert 'id="projectType"' in html
+        assert 'id="projectColor"' in html
+        assert 'id="projectGoalId"' in html
+        assert 'id="projectArchiveToggle"' in html
+        # Delete button intentionally absent — DELETE endpoint is a soft
+        # delete (same as archive), so we expose only Archive/Unarchive.
+        assert 'id="projectDelete"' not in html
+
+    def test_contains_board(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/projects").data.decode()
+        assert 'id="projectsBoard"' in html
+
+    def test_loads_scripts(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/projects").data.decode()
+        assert "app.js" in html
+        assert "projects.js" in html
+        assert "capture.js" in html
+
+    def test_nav_includes_projects_link(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        # Projects link must appear on every authenticated page, not just /projects.
+        for path in ("/", "/goals", "/projects"):
+            html = client.get(path).data.decode()
+            assert "/projects" in html, f"/projects nav link missing from {path}"
+
+    def test_requires_auth(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
+        resp = client.get("/projects")
+        assert resp.status_code == 302
+
+    def test_rejects_wrong_email(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "bad@example.com")
+        resp = client.get("/projects")
+        assert resp.status_code == 403
+
+
 # --- Login page ---------------------------------------------------------------
 
 

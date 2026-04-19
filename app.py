@@ -213,6 +213,11 @@ def create_app(config: dict | None = None) -> Flask:
     def goals_page(email: str):  # noqa: ARG001
         return render_template("goals.html")
 
+    @app.route("/projects")
+    @login_required
+    def projects_page(email: str):  # noqa: ARG001
+        return render_template("projects.html")
+
     @app.route("/review")
     @login_required
     def review_page(email: str):  # noqa: ARG001

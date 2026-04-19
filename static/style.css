@@ -1855,3 +1855,52 @@ body.bulk-select-mode .task-card .bulk-select-check { display: block; }
     }
     body.bulk-select-mode .task-card .bulk-select-check { display: block; }
 }
+
+/* === Projects page (backlog #24) ===
+ * Reuses .goal-card / .goals-category-section chrome from the Goals
+ * page for visual consistency. These rules add just the project-
+ * specific bits (color swatch, wider toolbar, archived badge spacing). */
+.projects-page { max-width: 1100px; margin: 0 auto; padding: 16px; }
+.projects-toolbar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+.projects-toolbar h1 { flex: 0 0 auto; margin-right: auto; }
+.projects-filters { display: flex; gap: 8px; flex-wrap: wrap; }
+.projects-filters select {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    font-size: 0.9rem;
+}
+.project-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+.project-color-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+.project-title { flex: 1 1 auto; min-width: 0; word-break: break-word; }
+.project-task-summary {
+    margin: 8px 0;
+    padding: 8px 10px;
+    background: var(--bg-subtle, #f6f8fa);
+    border-radius: 6px;
+    font-size: 0.85rem;
+}
+@media (max-width: 480px) {
+    .projects-toolbar { gap: 8px; }
+    .projects-toolbar h1 { font-size: 1.25rem; }
+    .projects-filters select { font-size: 0.85rem; padding: 5px 8px; }
+}

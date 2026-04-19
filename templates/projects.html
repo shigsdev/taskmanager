@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% set active_page = 'projects' %}
+{% block title %}Projects — Task Manager{% endblock %}
+
+{% block capture %}
+{# Same capture bar as the board so quick-add works on this page too. #}
+<div class="capture-bar" id="captureBar">
+    <input type="text" id="captureInput" placeholder="Add a task… (#today #week @project)" autocomplete="off">
+    <select id="captureType" title="Task type">
+        <option value="work">Work</option>
+        <option value="personal">Personal</option>
+    </select>
+    <button type="button" id="captureVoice" class="icon-btn" title="Voice input (real-time dictation)">🎤</button>
+    <a href="{{ url_for('voice_memo_page') }}" class="icon-btn" id="captureVoiceMemo" title="Voice memo (record long-form, parse to tasks)" role="button">🎙️</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="projects-page">
+    <div class="projects-toolbar">
+        <h1>Projects</h1>
+        <div class="projects-filters">
+            <select id="projectFilterType" title="Filter by type">
+                <option value="">All types</option>
+                <option value="work">Work</option>
+                <option value="personal">Personal</option>
+            </select>
+            <select id="projectFilterActive" title="Filter by active state">
+                <option value="active">Active only</option>
+                <option value="archived">Archived only</option>
+                <option value="all">All (active + archived)</option>
+            </select>
+        </div>
+        <button class="btn" id="addProjectBtn">+ New Project</button>
+    </div>
+
+    <div id="projectsBoard"></div>
+</div>
+
+<!-- Project detail / edit panel -->
+<div class="detail-overlay" id="projectDetailOverlay" style="display:none">
+    <div class="detail-panel" id="projectDetailPanel">
+        <div class="detail-header">
+            <h3 id="projectDetailHeading">Project Detail</h3>
+            <button class="icon-btn" id="projectDetailClose" title="Close">✕</button>
+        </div>
+        <form id="projectDetailForm">
+            <input type="hidden" id="projectId">
+
+            <label for="projectName">Name</label>
+            <input type="text" id="projectName" required maxlength="200">
+
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="projectType">Type</label>
+                    <select id="projectType" required>
+                        <option value="work">Work</option>
+                        <option value="personal">Personal</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="projectColor">Color</label>
+                    <input type="color" id="projectColor" value="#2563eb">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="projectGoalId">Linked goal</label>
+                    <select id="projectGoalId">
+                        <option value="">(no goal)</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="projectSortOrder">Sort order</label>
+                    <input type="number" id="projectSortOrder" min="0" placeholder="0">
+                </div>
+            </div>
+
+            <div class="project-task-summary" id="projectTaskSummary" style="display:none">
+                <span id="projectTaskCount">0</span> task<span id="projectTaskPlural">s</span>
+                linked to this project.
+            </div>
+
+            <div class="detail-actions">
+                <button type="submit" class="btn">Save</button>
+                {# Archive ⇄ Unarchive toggle. The DELETE endpoint in
+                   projects_api is a soft-delete (sets is_active=false)
+                   identical to Archive, so we don't expose a separate
+                   Delete button — it would be confusing/redundant. #}
+                <button type="button" class="btn btn-sm" id="projectArchiveToggle">Archive</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='projects.js') }}"></script>
+<script src="{{ url_for('static', filename='parse_capture.js') }}"></script>
+<script src="{{ url_for('static', filename='capture.js') }}"></script>
+{% endblock %}
