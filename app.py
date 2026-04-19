@@ -178,6 +178,35 @@ def create_app(config: dict | None = None) -> Flask:
     def index(email: str):
         return render_template("index.html", email=email)
 
+    @app.route("/tier/<name>")
+    @login_required
+    def tier_detail_page(email: str, name: str):  # noqa: ARG001
+        """Dedicated full-page view of a single tier — see ADR-009.
+
+        Click-through from the board's tier headings. Validates the
+        slug against the Tier enum so unknown tiers 404 cleanly.
+        """
+        from flask import abort
+        try:
+            tier = Tier(name)
+        except ValueError:
+            abort(404)
+        # Map enum value to the human-readable label used in the page
+        # title and back-link. Avoids a separate helper since this is
+        # the only place the mapping is needed.
+        labels = {
+            Tier.INBOX: "Inbox",
+            Tier.TODAY: "Today",
+            Tier.THIS_WEEK: "This Week",
+            Tier.BACKLOG: "Backlog",
+            Tier.FREEZER: "Freezer",
+        }
+        return render_template(
+            "tier.html",
+            tier_value=tier.value,
+            tier_label=labels.get(tier, tier.value),
+        )
+
     @app.route("/goals")
     @login_required
     def goals_page(email: str):  # noqa: ARG001

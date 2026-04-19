@@ -1,6 +1,8 @@
 """Tests for Google OAuth single-user lockdown."""
 from __future__ import annotations
 
+import pytest
+
 import auth
 
 
@@ -23,6 +25,55 @@ def test_index_authorized_email_ok(client, monkeypatch):
     resp = client.get("/")
     assert resp.status_code == 200
     assert b"Task Manager" in resp.data
+
+
+# --- /tier/<name> route (backlog #22) ----------------------------------------
+
+
+@pytest.mark.parametrize("tier", ["inbox", "today", "this_week", "backlog", "freezer"])
+def test_tier_detail_page_renders_for_each_valid_tier(client, monkeypatch, tier):
+    monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+    resp = client.get(f"/tier/{tier}")
+    assert resp.status_code == 200
+    labels = {
+        "inbox": b"Inbox",
+        "today": b"Today",
+        "this_week": b"This Week",
+        "backlog": b"Backlog",
+        "freezer": b"Freezer",
+    }
+    assert labels[tier] in resp.data
+
+
+def test_tier_detail_page_404_for_invalid_tier(client, monkeypatch):
+    """Unknown tier slug must 404 — prevents crafted URLs from reaching
+    the template with an unsafe value."""
+    monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+    resp = client.get("/tier/nonsense")
+    assert resp.status_code == 404
+
+
+def test_tier_detail_page_requires_login(client, monkeypatch):
+    """Must go through login_required like every other data route."""
+    monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
+    resp = client.get("/tier/today")
+    assert resp.status_code == 302
+    assert "/login/google" in resp.headers.get("Location", "")
+
+
+def test_tier_detail_page_validator_cookie_authenticates_get(app, client, monkeypatch):
+    """Validator cookie (GET-only branch in login_required) should
+    authenticate this page — it's a read-only render, no mutations."""
+    import validator_cookie
+    monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
+    token = validator_cookie.mint(
+        secret_key=app.config["SECRET_KEY"],
+        email=app.config["AUTHORIZED_EMAIL"],
+        days=30,
+    )
+    client.set_cookie(key=validator_cookie.COOKIE_NAME, value=token)
+    resp = client.get("/tier/today")
+    assert resp.status_code == 200
 
 
 def test_index_email_casing_is_normalized(client, monkeypatch):

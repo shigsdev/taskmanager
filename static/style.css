@@ -1725,6 +1725,64 @@ body.bulk-select-mode .task-card .bulk-select-check { display: block; }
 }
 .bulk-dropdown button:hover { background: var(--surface-sunk); }
 
+/* === Tier detail page (backlog #22) === */
+
+.tier-detail {
+    max-width: 900px;
+    margin: 16px auto;
+    padding: 0 16px;
+}
+.tier-detail-header h1 {
+    margin: 0 0 4px 0;
+    font-size: 1.6rem;
+}
+.tier-detail-header h1 .tier-count {
+    color: var(--text-muted);
+    font-size: 1rem;
+    margin-left: 8px;
+    font-weight: normal;
+}
+.tier-detail-hint {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin: 0 0 16px 0;
+}
+.tier-detail-list {
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.tier-detail-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+}
+.tier-detail-empty p { margin-bottom: 12px; }
+
+/* Board tier headings become clickable links to /tier/<name>.
+   Inherit color so they don't stand out as blue-underlined links —
+   the title attribute carries the "open full page" affordance. */
+.tier-heading-link {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px dashed transparent;
+}
+.tier-heading-link:hover {
+    border-bottom-color: var(--accent, #2980b9);
+}
+
+.tier-back-link {
+    font-size: 0.95rem;
+    opacity: 0.8;
+}
+.tier-back-link:hover { opacity: 1; }
+
+@media (max-width: 600px) {
+    .tier-detail { margin: 8px 0; padding: 0 12px; }
+    .tier-detail-header h1 { font-size: 1.3rem; }
+}
+
 /* Date-picker variant — inline date input + Apply button */
 .bulk-date-pick {
     display: flex;

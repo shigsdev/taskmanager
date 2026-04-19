@@ -18,6 +18,17 @@
         const parsed = parseCapture(raw);
         parsed.type = parsed.type || typeSelect.value;
 
+        // On a tier-detail page the capture bar carries
+        // data-default-tier="<tier>". Default the new task to that
+        // tier — UNLESS the user wrote an explicit #tier tag in the
+        // input, in which case parseCapture already set parsed.tier
+        // and we leave it alone.
+        const bar = document.getElementById("captureBar");
+        const defaultTier = bar && bar.dataset.defaultTier;
+        if (defaultTier && !parsed.tier) {
+            parsed.tier = defaultTier;
+        }
+
         // If a URL was detected, try to auto-fetch its title
         if (parsed.url && !parsed._titleProvided) {
             try {

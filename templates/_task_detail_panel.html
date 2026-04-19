@@ -1,0 +1,153 @@
+<div class="detail-overlay" id="detailOverlay" style="display:none">
+    <div class="detail-panel" id="detailPanel">
+        <div class="detail-header">
+            <h3>Task Detail</h3>
+            <button class="icon-btn" id="detailClose" title="Close">✕</button>
+        </div>
+        <form id="detailForm">
+            <input type="hidden" id="detailId">
+
+            <label for="detailTitle">Title</label>
+            <input type="text" id="detailTitle" required>
+
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="detailTier">Tier</label>
+                    <select id="detailTier">
+                        <option value="inbox">Inbox</option>
+                        <option value="today">Today</option>
+                        <option value="this_week">This Week</option>
+                        <option value="backlog">Backlog</option>
+                        <option value="freezer">Freezer</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="detailType">Type</label>
+                    <select id="detailType" onchange="taskDetailToggleProject(this.value)">
+                        <option value="work">Work</option>
+                        <option value="personal">Personal</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row" id="detailProjectField">
+                <div class="form-field">
+                    <label for="detailProject">Project</label>
+                    <select id="detailProject">
+                        <option value="">— None —</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="detailDueDate">Due date</label>
+                    <input type="date" id="detailDueDate">
+                </div>
+                <div class="form-field">
+                    <label for="detailGoal">Goal</label>
+                    <select id="detailGoal">
+                        <option value="">— None —</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-field" style="flex:1">
+                    <label for="detailUrl">Article / Link URL</label>
+                    <div style="display:flex;gap:4px">
+                        <input type="url" id="detailUrl" placeholder="https://…" style="flex:1">
+                        <a id="detailUrlOpen" href="#" target="_blank" rel="noopener noreferrer" class="btn-sm" style="display:none;white-space:nowrap">Open ↗</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="detailRepeat">Repeat</label>
+                    <select id="detailRepeat" onchange="taskDetailRepeatChanged()">
+                        <option value="">None</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekdays">Weekdays (Mon-Fri)</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly_date">Monthly (same date)</option>
+                        <option value="monthly_nth_weekday">Monthly (nth weekday)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row" id="repeatWeeklyField" style="display:none">
+                <div class="form-field">
+                    <label for="detailRepeatDay">Day of week</label>
+                    <select id="detailRepeatDay">
+                        <option value="0">Monday</option>
+                        <option value="1">Tuesday</option>
+                        <option value="2">Wednesday</option>
+                        <option value="3">Thursday</option>
+                        <option value="4">Friday</option>
+                        <option value="5">Saturday</option>
+                        <option value="6">Sunday</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row" id="repeatMonthlyDateField" style="display:none">
+                <div class="form-field">
+                    <label for="detailRepeatDayOfMonth">Day of month</label>
+                    <select id="detailRepeatDayOfMonth">
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row" id="repeatMonthlyNthField" style="display:none">
+                <div class="form-field">
+                    <label for="detailRepeatWeekOfMonth">Which week</label>
+                    <select id="detailRepeatWeekOfMonth">
+                        <option value="1">First</option>
+                        <option value="2">Second</option>
+                        <option value="3">Third</option>
+                        <option value="4">Fourth</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="detailRepeatNthDay">Day of week</label>
+                    <select id="detailRepeatNthDay">
+                        <option value="0">Monday</option>
+                        <option value="1">Tuesday</option>
+                        <option value="2">Wednesday</option>
+                        <option value="3">Thursday</option>
+                        <option value="4">Friday</option>
+                        <option value="5">Saturday</option>
+                        <option value="6">Sunday</option>
+                    </select>
+                </div>
+            </div>
+
+            <label for="detailNotes">Notes</label>
+            <textarea id="detailNotes" rows="3"></textarea>
+
+            <div class="checklist-section">
+                <label>Checklist</label>
+                <div id="checklistItems"></div>
+                <button type="button" class="btn-sm" id="addChecklistItem">+ Add item</button>
+            </div>
+
+            <div class="subtask-section" id="subtaskSection">
+                <label>Subtasks</label>
+                <div id="subtaskItems"></div>
+                <div style="display:flex;gap:4px;margin-top:4px">
+                    <input type="text" id="subtaskInput" placeholder="Add subtask…" style="flex:1">
+                    <button type="button" class="btn-sm" id="addSubtaskBtn">+ Add</button>
+                </div>
+            </div>
+
+            <div class="detail-meta" id="detailMeta"></div>
+
+            <div class="detail-actions">
+                <button type="submit" class="btn">Save</button>
+                <button type="button" class="btn btn-complete" id="detailComplete">✓ Complete</button>
+                <button type="button" class="btn btn-danger" id="detailDelete">Delete</button>
+            </div>
+        </form>
+    </div>
+</div>

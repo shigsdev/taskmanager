@@ -95,7 +95,9 @@ function renderBoard() {
             list.classList.remove("empty-state");
             list.removeAttribute("data-empty-msg");
 
-            // In work/personal view with no project filter, group by project
+            // In work/personal view with no project filter, group by project.
+            // This applies on BOTH the multi-tier board and the single-tier
+            // detail page — the function only needs a list element + tasks.
             if ((currentView === "work" || currentView === "personal") && !projectFilter) {
                 renderTierGroupedByProject(list, tasks);
             } else {
@@ -104,10 +106,21 @@ function renderBoard() {
                 }
             }
         }
-        // Update count
+        // Update count — board-layout lookup first, tier-detail fallback.
         const section = list.closest(".tier");
-        const count = section.querySelector(".tier-count");
-        if (count) count.textContent = tasks.length;
+        if (section) {
+            const count = section.querySelector(".tier-count");
+            if (count) count.textContent = tasks.length;
+        } else {
+            // Tier detail page: count lives in .tier-detail-header, empty
+            // state lives in #tierDetailEmpty (shown when no tasks).
+            const detailCount = document.getElementById("tierDetailCount");
+            if (detailCount) detailCount.textContent = tasks.length;
+            const detailEmpty = document.getElementById("tierDetailEmpty");
+            if (detailEmpty) {
+                detailEmpty.style.display = tasks.length === 0 ? "" : "none";
+            }
+        }
     }
     updateInboxBadge();
     updateTodayWarning();
