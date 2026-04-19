@@ -344,3 +344,58 @@ def delete_task(task_id: uuid.UUID) -> bool:
     task.batch_id = None
     db.session.commit()
     return True
+
+
+# --- Bulk operations --------------------------------------------------------
+
+
+def bulk_update_tasks(
+    task_ids: list[uuid.UUID],
+    updates: dict,
+) -> dict:
+    """Apply the same `updates` dict to every task in `task_ids`.
+
+    Reuses the per-task ``update_task`` for each id so cascade rules
+    (subtask goal/project inheritance, etc.) and field-level
+    validation behave identically to single-task updates.
+
+    Args:
+        task_ids: List of task UUIDs to update.
+        updates: Dict of fields to apply to each. Same shape as the
+            JSON body of ``PATCH /api/tasks/<id>``.
+
+    Returns:
+        ``{"updated": int, "not_found": [ids], "errors": [{"id", "field", "message"}]}``
+
+        - ``updated`` = number of tasks successfully updated
+        - ``not_found`` = task_ids that didn't resolve to an existing task
+        - ``errors`` = per-task validation failures (e.g. unknown field on
+          one task but valid on another). The successful tasks are
+          committed; failed tasks are skipped, not rolled back. Bulk
+          ops are best-effort by design — a partial failure shouldn't
+          undo the successes.
+
+    Why not run inside a single transaction with rollback-on-any-error:
+    a typo in `updates` would invalidate the entire batch with no UI
+    way to know which task triggered it. Per-task try/except gives
+    the user a precise error report and keeps the partial progress.
+    """
+    updated = 0
+    not_found: list[str] = []
+    errors: list[dict] = []
+    for tid in task_ids:
+        try:
+            task = update_task(tid, dict(updates))
+        except ValidationError as e:
+            errors.append({"id": str(tid), "field": e.field, "message": str(e)})
+            db.session.rollback()
+            continue
+        if task is None:
+            not_found.append(str(tid))
+            continue
+        updated += 1
+    return {
+        "updated": updated,
+        "not_found": not_found,
+        "errors": errors,
+    }

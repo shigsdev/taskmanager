@@ -1242,3 +1242,134 @@ class TestRepeatOnUpdate:
         assert resp.status_code == 200
         assert resp.get_json()["repeat"]["frequency"] == "weekly"
         assert resp.get_json()["repeat"]["day_of_week"] == 2
+
+
+# --- Bulk endpoint (PATCH /api/tasks/bulk) ----------------------------------
+
+
+def _create_n_tasks(authed_client, n: int, **defaults) -> list[str]:
+    """Helper: create N tasks and return their ids."""
+    base = {"title": "T", "type": "work"}
+    base.update(defaults)
+    ids = []
+    for i in range(n):
+        body = dict(base)
+        body["title"] = f"{base['title']}-{i}"
+        resp = authed_client.post("/api/tasks", json=body)
+        assert resp.status_code == 201, resp.get_json()
+        ids.append(resp.get_json()["id"])
+    return ids
+
+
+class TestBulkUpdate:
+    """PATCH /api/tasks/bulk applies one update dict to many tasks."""
+
+    def test_bulk_set_tier(self, authed_client):
+        ids = _create_n_tasks(authed_client, 3)
+        resp = authed_client.patch(
+            "/api/tasks/bulk",
+            json={"task_ids": ids, "updates": {"tier": "today"}},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json() == {"updated": 3, "not_found": [], "errors": []}
+        # Verify the change actually persisted
+        for tid in ids:
+            assert authed_client.get(f"/api/tasks/{tid}").get_json()["tier"] == "today"
+
+    def test_bulk_set_type(self, authed_client):
+        ids = _create_n_tasks(authed_client, 2, type="work")
+        resp = authed_client.patch(
+            "/api/tasks/bulk",
+            json={"task_ids": ids, "updates": {"type": "personal"}},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["updated"] == 2
+        for tid in ids:
+            assert authed_client.get(f"/api/tasks/{tid}").get_json()["type"] == "personal"
+
+    def test_bulk_archive_via_status(self, authed_client):
+        """Bulk-complete is implemented as bulk status=archived."""
+        ids = _create_n_tasks(authed_client, 2)
+        resp = authed_client.patch(
+            "/api/tasks/bulk",
+            json={"task_ids": ids, "updates": {"status": "archived"}},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["updated"] == 2
+
+    def test_bulk_unknown_id_reported_in_not_found(self, authed_client):
+        """One real id + one fake id → updated:1, not_found:[fake]."""
+        ids = _create_n_tasks(authed_client, 1)
+        fake_id = str(uuid.uuid4())
+        resp = authed_client.patch(
+            "/api/tasks/bulk",
+            json={"task_ids": ids + [fake_id], "updates": {"tier": "today"}},
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["updated"] == 1
+        assert body["not_found"] == [fake_id]
+        assert body["errors"] == []
+
+    def test_bulk_invalid_field_reported_per_task(self, authed_client):
+        """Invalid field → ValidationError per-task in errors[]; other tasks unaffected."""
+        ids = _create_n_tasks(authed_client, 2)
+        resp = authed_client.patch(
+            "/api/tasks/bulk",
+            json={"task_ids": ids, "updates": {"tier": "not_a_real_tier"}},
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["updated"] == 0
+        assert len(body["errors"]) == 2
+
+    def test_bulk_rejects_empty_task_ids(self, authed_client):
+        resp = authed_client.patch(
+            "/api/tasks/bulk",
+            json={"task_ids": [], "updates": {"tier": "today"}},
+        )
+        assert resp.status_code == 422
+
+    def test_bulk_rejects_empty_updates(self, authed_client):
+        ids = _create_n_tasks(authed_client, 1)
+        resp = authed_client.patch(
+            "/api/tasks/bulk",
+            json={"task_ids": ids, "updates": {}},
+        )
+        assert resp.status_code == 422
+
+    def test_bulk_rejects_invalid_uuid(self, authed_client):
+        resp = authed_client.patch(
+            "/api/tasks/bulk",
+            json={"task_ids": ["not-a-uuid"], "updates": {"tier": "today"}},
+        )
+        assert resp.status_code == 422
+        assert "invalid task_id" in resp.get_json()["error"]
+
+    def test_bulk_caps_at_200_ids(self, authed_client):
+        """Sanity guard against accidental 'select all 5000'."""
+        too_many = [str(uuid.uuid4()) for _ in range(201)]
+        resp = authed_client.patch(
+            "/api/tasks/bulk",
+            json={"task_ids": too_many, "updates": {"tier": "today"}},
+        )
+        assert resp.status_code == 422
+        assert "max 200" in resp.get_json()["error"]
+
+    def test_bulk_requires_json_body(self, authed_client):
+        resp = authed_client.patch(
+            "/api/tasks/bulk", data="not json", content_type="text/plain",
+        )
+        assert resp.status_code == 400
+
+    def test_bulk_requires_login(self, client, monkeypatch):
+        """Bulk endpoint must require real OAuth — validator cookie is
+        GET-only and PATCH must NEVER authenticate via it."""
+        import auth
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
+        resp = client.patch(
+            "/api/tasks/bulk",
+            json={"task_ids": [str(uuid.uuid4())], "updates": {"tier": "today"}},
+        )
+        assert resp.status_code == 302
+        assert "/login/google" in resp.headers.get("Location", "")

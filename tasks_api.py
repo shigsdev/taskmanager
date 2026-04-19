@@ -12,6 +12,7 @@ from auth import login_required
 from models import Task, TaskStatus, TaskType, Tier
 from task_service import (
     ValidationError,
+    bulk_update_tasks,
     complete_parent_task,
     create_task,
     delete_task,
@@ -182,6 +183,61 @@ def destroy(email: str, task_id: uuid.UUID):  # noqa: ARG001
     if not delete_task(task_id):
         return jsonify({"error": "not found"}), 404
     return "", 204
+
+
+@bp.patch("/bulk")
+@login_required
+def bulk_update(email: str):  # noqa: ARG001
+    """Apply the same ``updates`` to multiple tasks in one call.
+
+    Expects JSON::
+
+        {
+          "task_ids": ["<uuid>", "<uuid>", ...],
+          "updates": {  // any subset of the per-task PATCH fields
+            "type": "work",
+            "tier": "today",
+            "goal_id": "...",
+            "project_id": null,
+            "status": "archived"  // for bulk-complete
+          }
+        }
+
+    Returns ``{"updated": N, "not_found": [ids], "errors": [...]}``.
+
+    Per-task semantics: each task is processed via ``update_task``,
+    so cascade rules (subtask goal/project inheritance) apply.
+    Errors on one task don't roll back others — bulk ops are
+    best-effort. See :func:`task_service.bulk_update_tasks`.
+    """
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON body required"}), 400
+
+    task_ids_raw = data.get("task_ids")
+    updates = data.get("updates")
+    if not isinstance(task_ids_raw, list) or not task_ids_raw:
+        return jsonify({"error": "task_ids must be a non-empty list"}), 422
+    if not isinstance(updates, dict) or not updates:
+        return jsonify({"error": "updates must be a non-empty dict"}), 422
+
+    # Cap at a sane batch size — protects the DB / Whisper-style
+    # accidental "select all 5000 tasks." 200 is generous for any
+    # realistic single-user board.
+    if len(task_ids_raw) > 200:
+        return jsonify({
+            "error": f"too many task_ids ({len(task_ids_raw)}); max 200 per call",
+        }), 422
+
+    parsed_ids: list[uuid.UUID] = []
+    for raw in task_ids_raw:
+        try:
+            parsed_ids.append(uuid.UUID(str(raw)))
+        except (ValueError, AttributeError):
+            return jsonify({"error": f"invalid task_id: {raw!r}"}), 422
+
+    result = bulk_update_tasks(parsed_ids, updates)
+    return jsonify(result)
 
 
 @bp.post("/reorder")

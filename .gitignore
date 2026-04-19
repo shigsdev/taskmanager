@@ -43,6 +43,9 @@ instance/
 .idea/
 .claude/settings.local.json
 .claude/launch.local.json
+# Claude Code creates ephemeral worktrees here when running spawn_task /
+# isolated subagents. Never tracked in the parent repo.
+.claude/worktrees/
 *.swp
 .DS_Store
 Thumbs.db

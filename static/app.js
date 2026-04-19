@@ -454,13 +454,27 @@ function taskCardEl(task) {
 
     const today = new Date().toISOString().slice(0, 10);
 
-    // Triage checkbox (inbox only)
+    // Triage checkbox (inbox only) — kept for the existing inbox-triage flow.
     const triageCheck = document.createElement("input");
     triageCheck.type = "checkbox";
     triageCheck.className = "triage-check";
     triageCheck.addEventListener("click", (e) => e.stopPropagation());
     triageCheck.addEventListener("change", updateBulkTriageBtn);
     card.appendChild(triageCheck);
+
+    // Bulk-select checkbox — appears on EVERY task card when bulk-select
+    // mode is on (body has class .bulk-select-mode). Independent of the
+    // triage-check above. See backlog #21.
+    const bulkCheck = document.createElement("input");
+    bulkCheck.type = "checkbox";
+    bulkCheck.className = "bulk-select-check";
+    bulkCheck.title = "Select for bulk action";
+    bulkCheck.addEventListener("click", (e) => e.stopPropagation());
+    bulkCheck.addEventListener("change", () => {
+        card.classList.toggle("bulk-selected", bulkCheck.checked);
+        updateBulkToolbar();
+    });
+    card.appendChild(bulkCheck);
 
     // Complete checkbox
     const cb = document.createElement("input");
@@ -1335,6 +1349,194 @@ async function addSubtask() {
     }
 }
 
+// --- Bulk select & batch operations (backlog #21) ----------------------------
+//
+// State machine:
+//   - Off (default): no body class, no checkboxes visible, no toolbar
+//   - On + 0 selected: body has .bulk-select-mode, checkboxes visible
+//                       on every card, toolbar HIDDEN (nothing to act on)
+//   - On + ≥1 selected: same as above + toolbar visible at bottom
+//
+// Selection lives in the DOM (one checkbox per card). We don't keep a
+// JS array of ids — a simple querySelectorAll is the source of truth.
+// Re-renders (loadTasks) clear selection naturally.
+
+function getBulkSelectedIds() {
+    return Array.from(
+        document.querySelectorAll(".bulk-select-check:checked")
+    ).map((cb) => cb.closest(".task-card").dataset.id);
+}
+
+function updateBulkToolbar() {
+    const tb = document.getElementById("bulkToolbar");
+    if (!tb) return;
+    const ids = getBulkSelectedIds();
+    const countEl = document.getElementById("bulkSelectedCount");
+    if (countEl) countEl.textContent = String(ids.length);
+    tb.style.display = ids.length > 0 ? "" : "none";
+}
+
+function setBulkSelectMode(on) {
+    document.body.classList.toggle("bulk-select-mode", on);
+    const toggle = document.getElementById("bulkSelectToggle");
+    if (toggle) toggle.classList.toggle("active", on);
+    if (!on) {
+        // Turning off — clear selection, hide toolbar
+        document.querySelectorAll(".bulk-select-check:checked").forEach((cb) => {
+            cb.checked = false;
+            cb.closest(".task-card").classList.remove("bulk-selected");
+        });
+    }
+    updateBulkToolbar();
+}
+
+function clearBulkSelection() {
+    document.querySelectorAll(".bulk-select-check:checked").forEach((cb) => {
+        cb.checked = false;
+        cb.closest(".task-card").classList.remove("bulk-selected");
+    });
+    updateBulkToolbar();
+}
+
+// Helper: build an absolutely-positioned dropdown anchored under a button.
+function showBulkDropdown(anchor, items) {
+    document.querySelectorAll(".bulk-dropdown").forEach((d) => d.remove());
+    const dd = document.createElement("div");
+    dd.className = "bulk-dropdown";
+    const rect = anchor.getBoundingClientRect();
+    dd.style.position = "fixed";
+    dd.style.bottom = (window.innerHeight - rect.top + 4) + "px";
+    dd.style.left = rect.left + "px";
+    items.forEach(({ label, onClick }) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = label;
+        b.addEventListener("click", () => {
+            dd.remove();
+            onClick();
+        });
+        dd.appendChild(b);
+    });
+    document.body.appendChild(dd);
+    // Close on outside click
+    setTimeout(() => {
+        document.addEventListener("click", function close(ev) {
+            if (!dd.contains(ev.target) && ev.target !== anchor) {
+                dd.remove();
+                document.removeEventListener("click", close);
+            }
+        });
+    }, 0);
+}
+
+async function bulkPatch(updates, successMessage) {
+    const ids = getBulkSelectedIds();
+    if (ids.length === 0) return;
+    try {
+        const resp = await apiFetch("/api/tasks/bulk", {
+            method: "PATCH",
+            body: JSON.stringify({ task_ids: ids, updates }),
+        });
+        const errCount = (resp.errors || []).length;
+        const notFound = (resp.not_found || []).length;
+        if (errCount || notFound) {
+            const parts = [`${resp.updated} updated`];
+            if (notFound) parts.push(`${notFound} not found`);
+            if (errCount) parts.push(`${errCount} validation error(s)`);
+            alert(parts.join(" — "));
+        } else if (successMessage) {
+            // Quiet success — no popup
+        }
+    } catch (err) {
+        alert("Bulk update failed: " + (err.message || err));
+        return;
+    }
+    clearBulkSelection();
+    await loadTasks();
+}
+
+async function bulkDelete() {
+    const ids = getBulkSelectedIds();
+    if (ids.length === 0) return;
+    if (!confirm(`Delete ${ids.length} task(s)? They will land in the recycle bin.`)) return;
+    // Delete iterates per-task — keeps recycle-bin batch_id semantics
+    // identical to single deletes (no special bulk-delete endpoint).
+    let failed = 0;
+    await Promise.all(
+        ids.map((id) =>
+            apiFetch(`${API}/${id}`, { method: "DELETE" }).catch(() => { failed += 1; })
+        )
+    );
+    if (failed) alert(`${failed} delete(s) failed`);
+    clearBulkSelection();
+    await loadTasks();
+}
+
+// Wire up the toggle + toolbar buttons (deferred to DOMContentLoaded
+// because the static HTML elements need to exist when listeners attach)
+function initBulkSelect() {
+    const toggle = document.getElementById("bulkSelectToggle");
+    if (!toggle) return;  // not on this page
+    toggle.addEventListener("click", () => {
+        const on = !document.body.classList.contains("bulk-select-mode");
+        setBulkSelectMode(on);
+    });
+
+    const clearBtn = document.getElementById("bulkClearSelection");
+    if (clearBtn) clearBtn.addEventListener("click", clearBulkSelection);
+
+    const typeBtn = document.getElementById("bulkActionType");
+    if (typeBtn) typeBtn.addEventListener("click", () => {
+        showBulkDropdown(typeBtn, [
+            { label: "Work", onClick: () => bulkPatch({ type: "work" }) },
+            { label: "Personal", onClick: () => bulkPatch({ type: "personal" }) },
+        ]);
+    });
+
+    const tierBtn = document.getElementById("bulkActionTier");
+    if (tierBtn) tierBtn.addEventListener("click", () => {
+        showBulkDropdown(tierBtn, [
+            { label: "Today", onClick: () => bulkPatch({ tier: "today" }) },
+            { label: "This Week", onClick: () => bulkPatch({ tier: "this_week" }) },
+            { label: "Backlog", onClick: () => bulkPatch({ tier: "backlog" }) },
+            { label: "Freezer", onClick: () => bulkPatch({ tier: "freezer" }) },
+            { label: "Inbox", onClick: () => bulkPatch({ tier: "inbox" }) },
+        ]);
+    });
+
+    const goalBtn = document.getElementById("bulkActionGoal");
+    if (goalBtn) goalBtn.addEventListener("click", () => {
+        const items = [{ label: "(no goal)", onClick: () => bulkPatch({ goal_id: null }) }];
+        for (const g of allGoals) {
+            items.push({ label: g.title, onClick: () => bulkPatch({ goal_id: g.id }) });
+        }
+        showBulkDropdown(goalBtn, items);
+    });
+
+    const projBtn = document.getElementById("bulkActionProject");
+    if (projBtn) projBtn.addEventListener("click", () => {
+        const items = [{ label: "(no project)", onClick: () => bulkPatch({ project_id: null }) }];
+        for (const p of allProjects) {
+            items.push({ label: p.name, onClick: () => bulkPatch({ project_id: p.id }) });
+        }
+        showBulkDropdown(projBtn, items);
+    });
+
+    const completeBtn = document.getElementById("bulkActionComplete");
+    if (completeBtn) completeBtn.addEventListener("click", () => {
+        const ids = getBulkSelectedIds();
+        if (ids.length === 0) return;
+        if (!confirm(`Mark ${ids.length} task(s) complete?`)) return;
+        bulkPatch({ status: "archived" });
+    });
+
+    const deleteBtn = document.getElementById("bulkActionDelete");
+    if (deleteBtn) deleteBtn.addEventListener("click", bulkDelete);
+}
+
 // --- Boot --------------------------------------------------------------------
 
-document.addEventListener("DOMContentLoaded", init);
+document.addEventListener("DOMContentLoaded", () => {
+    init();
+    initBulkSelect();
+});

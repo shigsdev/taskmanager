@@ -23,6 +23,7 @@
     <a href="#" class="nav-tab view-filter-btn active" data-view="all">All</a>
     <a href="#" class="nav-tab view-filter-btn" data-view="work">Work</a>
     <a href="#" class="nav-tab view-filter-btn" data-view="personal">Personal</a>
+    <button type="button" id="bulkSelectToggle" class="nav-tab bulk-select-toggle" title="Select multiple tasks for batch operations">Select</button>
 </div>
 <div class="project-filter-bar" id="projectFilterBar" style="display:none"></div>
 <div class="tier-board" id="tierBoard">
@@ -71,6 +72,23 @@
         </div>
         <div class="tier-body task-list" id="completedList" style="display:none"></div>
     </section>
+</div>
+
+<!-- Bulk-action toolbar — appears at the bottom of the viewport when
+     bulk-select mode is on AND ≥1 task is checked. See backlog #21. -->
+<div class="bulk-toolbar" id="bulkToolbar" style="display:none" role="toolbar" aria-label="Bulk actions">
+    <div class="bulk-toolbar-summary">
+        <span id="bulkSelectedCount">0</span> selected
+    </div>
+    <div class="bulk-toolbar-actions">
+        <button type="button" id="bulkActionType" class="btn-sm">Type ▾</button>
+        <button type="button" id="bulkActionTier" class="btn-sm">Tier ▾</button>
+        <button type="button" id="bulkActionGoal" class="btn-sm">Goal ▾</button>
+        <button type="button" id="bulkActionProject" class="btn-sm">Project ▾</button>
+        <button type="button" id="bulkActionComplete" class="btn-sm">Complete</button>
+        <button type="button" id="bulkActionDelete" class="btn-sm btn-danger">Delete</button>
+    </div>
+    <button type="button" id="bulkClearSelection" class="btn-sm" title="Clear selection">✕</button>
 </div>
 
 <!-- Task detail panel (slide-in) -->
