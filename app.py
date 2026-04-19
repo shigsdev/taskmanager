@@ -198,6 +198,7 @@ def create_app(config: dict | None = None) -> Flask:
             Tier.INBOX: "Inbox",
             Tier.TODAY: "Today",
             Tier.THIS_WEEK: "This Week",
+            Tier.NEXT_WEEK: "Next Week",
             Tier.BACKLOG: "Backlog",
             Tier.FREEZER: "Freezer",
         }

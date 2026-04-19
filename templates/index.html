@@ -52,6 +52,13 @@
         <div class="tier-body task-list" data-tier="this_week"></div>
     </section>
 
+    <section class="tier" data-tier="next_week" id="tierNextWeek">
+        <div class="tier-header">
+            <h2><button class="collapse-toggle" aria-expanded="true">▾</button> <a href="{{ url_for('tier_detail_page', name='next_week') }}" class="tier-heading-link" title="Open Next Week as full page">Next Week</a> <span class="tier-count">0</span></h2>
+        </div>
+        <div class="tier-body task-list" data-tier="next_week"></div>
+    </section>
+
     <section class="tier" data-tier="backlog" id="tierBacklog">
         <div class="tier-header">
             <h2><button class="collapse-toggle" aria-expanded="true">▾</button> <a href="{{ url_for('tier_detail_page', name='backlog') }}" class="tier-heading-link" title="Open Backlog as full page">Backlog</a> <span class="tier-count">0</span></h2>
@@ -97,6 +104,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='day_group.js') }}"></script>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 <script src="{{ url_for('static', filename='parse_capture.js') }}"></script>
 <script src="{{ url_for('static', filename='capture.js') }}"></script>

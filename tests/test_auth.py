@@ -30,7 +30,10 @@ def test_index_authorized_email_ok(client, monkeypatch):
 # --- /tier/<name> route (backlog #22) ----------------------------------------
 
 
-@pytest.mark.parametrize("tier", ["inbox", "today", "this_week", "backlog", "freezer"])
+@pytest.mark.parametrize(
+    "tier",
+    ["inbox", "today", "this_week", "next_week", "backlog", "freezer"],
+)
 def test_tier_detail_page_renders_for_each_valid_tier(client, monkeypatch, tier):
     monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
     resp = client.get(f"/tier/{tier}")
@@ -39,6 +42,7 @@ def test_tier_detail_page_renders_for_each_valid_tier(client, monkeypatch, tier)
         "inbox": b"Inbox",
         "today": b"Today",
         "this_week": b"This Week",
+        "next_week": b"Next Week",
         "backlog": b"Backlog",
         "freezer": b"Freezer",
     }

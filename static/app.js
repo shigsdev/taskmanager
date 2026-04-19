@@ -73,14 +73,39 @@ async function init() {
 
 // --- Rendering ---------------------------------------------------------------
 
-const TIER_ORDER = ["inbox", "today", "this_week", "backlog", "freezer"];
+const TIER_ORDER = ["inbox", "today", "this_week", "next_week", "backlog", "freezer"];
 const TIER_EMPTY = {
     inbox: "All caught up — inbox is empty",
     today: "No tasks for today",
     this_week: "No tasks this week",
+    next_week: "Nothing planned for next week",
     backlog: "Backlog is empty",
     freezer: "Nothing in the freezer",
 };
+
+// Tiers where tasks get visually sub-grouped by their due_date's
+// day-of-week. See ADR-010. Today is already a single-day surface
+// and Inbox/Backlog/Freezer don't carry a meaningful weekday
+// semantics, so only This Week + Next Week get grouped.
+// The pure grouping logic lives in static/day_group.js so Jest can
+// unit-test it without a DOM.
+const DAY_GROUPED_TIERS = new Set(["this_week", "next_week"]);
+
+function renderTierGroupedByDay(list, tasks) {
+    const groups = window.groupTasksByWeekday(tasks);
+    for (const { label, tasks: groupTasks } of groups) {
+        const heading = document.createElement("h3");
+        heading.className = "day-group-heading";
+        heading.textContent = `${label} (${groupTasks.length})`;
+        list.appendChild(heading);
+        const groupWrap = document.createElement("div");
+        groupWrap.className = "day-group";
+        for (const task of groupTasks) {
+            groupWrap.appendChild(taskCardEl(task));
+        }
+        list.appendChild(groupWrap);
+    }
+}
 
 function renderBoard() {
     for (const tier of TIER_ORDER) {
@@ -100,6 +125,10 @@ function renderBoard() {
             // detail page — the function only needs a list element + tasks.
             if ((currentView === "work" || currentView === "personal") && !projectFilter) {
                 renderTierGroupedByProject(list, tasks);
+            } else if (DAY_GROUPED_TIERS.has(tier)) {
+                // This Week + Next Week: group by day-of-week of due_date.
+                // See ADR-010.
+                renderTierGroupedByDay(list, tasks);
             } else {
                 for (const task of tasks) {
                     list.appendChild(taskCardEl(task));

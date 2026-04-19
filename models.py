@@ -36,6 +36,11 @@ db = SQLAlchemy()
 class Tier(enum.StrEnum):
     TODAY = "today"
     THIS_WEEK = "this_week"
+    # NEXT_WEEK added 2026-04-19 (backlog #23). The display order on
+    # the board is INBOX → TODAY → THIS_WEEK → NEXT_WEEK → BACKLOG →
+    # FREEZER; that ordering lives in static/app.js TIER_ORDER, not
+    # here (the enum is unordered by convention).
+    NEXT_WEEK = "next_week"
     BACKLOG = "backlog"
     FREEZER = "freezer"
     INBOX = "inbox"

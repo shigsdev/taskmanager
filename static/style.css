@@ -1725,6 +1725,36 @@ body.bulk-select-mode .task-card .bulk-select-check { display: block; }
 }
 .bulk-dropdown button:hover { background: var(--surface-sunk); }
 
+/* === Day-of-week grouping (backlog #23) ===
+   Applied inside This Week + Next Week panels on the board, and on
+   the matching tier-detail pages. Empty days are omitted by the JS. */
+
+.day-group-heading {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted, #666);
+    margin: 8px 0 4px 0;
+    padding-bottom: 2px;
+    border-bottom: 1px solid var(--border, #eee);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+.day-group-heading:first-child { margin-top: 0; }
+.day-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 4px;
+}
+/* Spacious variant inside the tier-detail page — more breathing room
+   since we have the full page width. */
+.tier-detail .day-group-heading {
+    font-size: 1rem;
+    margin-top: 16px;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
 /* === Tier detail page (backlog #22) === */
 
 .tier-detail {
