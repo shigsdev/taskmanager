@@ -26,6 +26,7 @@ from auth import login_required
 from models import RecurringTask
 from recurring_service import (
     ValidationError,
+    compute_previews_in_range,
     create_recurring,
     delete_recurring,
     get_recurring,
@@ -133,3 +134,42 @@ def spawn(email: str):  # noqa: ARG001
             for t in tasks
         ],
     }), 201
+
+
+@bp.get("/previews")
+@login_required
+def previews(email: str):  # noqa: ARG001
+    """Return per-day preview instances for active templates firing in
+    a date range (backlog #32).
+
+    Query params (both required, ISO YYYY-MM-DD):
+      - ``start``: inclusive first day of the range
+      - ``end``:   inclusive last day of the range
+
+    The client uses this to render "upcoming" cards inside the This
+    Week / Next Week panels alongside real Tasks. Preview cards do
+    NOT have a Task row yet — they're computed on the fly here and
+    materialised only when ``spawn_today_tasks`` runs on the fire day.
+
+    Response shape: ``[{template_id, title, type, frequency,
+    project_id, goal_id, fire_date, notes, url}, ...]`` —
+    newest-fire-date first within each day is stable-sorted because
+    the service iterates days in order.
+    """
+    from datetime import date as _date
+
+    start_raw = request.args.get("start")
+    end_raw = request.args.get("end")
+    if not start_raw or not end_raw:
+        return jsonify({"error": "start and end query params required"}), 400
+    try:
+        start_d = _date.fromisoformat(start_raw)
+        end_d = _date.fromisoformat(end_raw)
+    except ValueError:
+        return jsonify({"error": "start/end must be YYYY-MM-DD"}), 400
+
+    # Cap range to 31 days so nobody requests a year-long sweep.
+    if (end_d - start_d).days > 31:
+        return jsonify({"error": "range cannot exceed 31 days"}), 400
+
+    return jsonify(compute_previews_in_range(start=start_d, end=end_d))

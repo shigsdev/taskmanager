@@ -31,7 +31,10 @@ def _serialize_repeat(task: Task) -> dict | None:
     rt = task.recurring_task if task.recurring_task_id else None
     if rt is None or not rt.is_active:
         return None
-    result = {"frequency": rt.frequency.value}
+    result = {
+        "template_id": str(rt.id),  # added for #32 preview-click lookup
+        "frequency": rt.frequency.value,
+    }
     if rt.day_of_week is not None:
         result["day_of_week"] = rt.day_of_week
     if rt.day_of_month is not None:

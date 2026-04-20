@@ -285,6 +285,73 @@ def tasks_due_today(*, target_date: date | None = None) -> list[RecurringTask]:
     return [rt for rt in all_active if _template_fires_on(rt, today)]
 
 
+def compute_previews_in_range(
+    *, start: date, end: date,
+) -> list[dict]:
+    """Return preview instances for active recurring templates firing in
+    the inclusive date range ``[start, end]`` (backlog #32).
+
+    Each preview is a dict with the template's metadata + the ``fire_date``
+    it's scheduled for. Used by the This Week / Next Week panels to show
+    "what's coming this week" without materialising Task rows ahead of
+    time (that was rejected in Option B of the 2026-04-20 discussion).
+
+    Same-day collision filtering: if a real Task already exists with
+    ``recurring_task_id == template.id`` AND a ``created_at`` date within
+    the range, the preview for that fire_date is dropped. Otherwise the
+    user would see a phantom preview next to the real Task it spawned.
+
+    Inactive templates (is_active=False) are never previewed.
+    """
+    if end < start:
+        return []
+
+    stmt = select(RecurringTask).where(RecurringTask.is_active.is_(True))
+    all_active = list(db.session.scalars(stmt))
+
+    # Pre-fetch Task rows that already spawned from any of these templates
+    # within the range, so we can filter same-day collisions in one pass.
+    # We check ``created_at`` (when the Task was spawned) rather than some
+    # "spawn_date" field because we don't have one — the spawn IS the
+    # create, so created_at's date is authoritative.
+    template_ids = [rt.id for rt in all_active]
+    spawned_by_template_and_day: set[tuple] = set()
+    if template_ids:
+        spawned = db.session.scalars(
+            select(Task).where(
+                Task.recurring_task_id.in_(template_ids),
+            )
+        )
+        for task in spawned:
+            key = (task.recurring_task_id, task.created_at.date())
+            spawned_by_template_and_day.add(key)
+
+    previews: list[dict] = []
+    # Iterate day-by-day across the range. 14 days max is our real
+    # upper bound (this_week + next_week), so this loop is trivially cheap.
+    current = start
+    while current <= end:
+        for rt in all_active:
+            if not _template_fires_on(rt, current):
+                continue
+            if (rt.id, current) in spawned_by_template_and_day:
+                continue  # collision — real task already exists for this day
+            previews.append({
+                "template_id": str(rt.id),
+                "title": rt.title,
+                "type": rt.type.value,
+                "frequency": rt.frequency.value,
+                "project_id": str(rt.project_id) if rt.project_id else None,
+                "goal_id": str(rt.goal_id) if rt.goal_id else None,
+                "fire_date": current.isoformat(),
+                "notes": rt.notes,
+                "url": rt.url,
+            })
+        current = date.fromordinal(current.toordinal() + 1)
+
+    return previews
+
+
 def spawn_today_tasks(*, target_date: date | None = None) -> list[Task]:
     """Create actual Task records from today's recurring templates.
 

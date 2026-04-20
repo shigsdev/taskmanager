@@ -10,6 +10,9 @@ const PROJECTS_API = "/api/projects";
 let allTasks = [];
 let allGoals = [];
 let allProjects = [];
+let allPreviews = [];  // recurring-template previews (#32). Each item:
+// {template_id, title, type, frequency, project_id, goal_id,
+//  fire_date: "YYYY-MM-DD", notes, url}
 let currentView = "all"; // "all" | "work" | "personal"
 let projectFilter = null; // UUID string or null
 
@@ -55,6 +58,31 @@ async function loadProjects() {
     renderProjectFilter();
 }
 
+// Backlog #32: load recurring-template previews for the 14-day window
+// covering This Week + Next Week. The backend filters already-spawned
+// same-day collisions and inactive templates. Failure is non-fatal —
+// the board still renders real tasks.
+async function loadRecurringPreviews() {
+    // 14-day window from today; adjust if we later support wider preview
+    // ranges (e.g. the 4-week planning view).
+    const today = new Date();
+    const end = new Date(today.getTime() + 13 * 24 * 60 * 60 * 1000);
+    const fmt = (d) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;
+    };
+    try {
+        allPreviews = await apiFetch(
+            `/api/recurring/previews?start=${fmt(today)}&end=${fmt(end)}`
+        );
+    } catch (err) {
+        console.warn("Could not load recurring previews:", err);
+        allPreviews = [];
+    }
+}
+
 async function init() {
     // Only run task-board setup on the tasks page (index.html).
     // Other pages (goals, review, etc.) load app.js for shared utilities
@@ -62,7 +90,12 @@ async function init() {
     const isTasksPage = !!document.getElementById("detailOverlay");
     if (!isTasksPage) return;
 
-    await Promise.all([loadTasks(), loadGoals(), loadProjects()]);
+    await Promise.all([
+        loadTasks(), loadGoals(), loadProjects(), loadRecurringPreviews(),
+    ]);
+    // loadTasks already called renderBoard before previews loaded; re-render
+    // to pick up the previews now that they're available.
+    renderBoard();
     setupNavTabs();
     setupCollapse();
     setupDetailPanel();
@@ -93,19 +126,199 @@ const TIER_EMPTY = {
 // unit-test it without a DOM.
 const DAY_GROUPED_TIERS = new Set(["this_week", "next_week"]);
 
-function renderTierGroupedByDay(list, tasks) {
+// Day-of-week labels. Mirrors the list in static/day_group.js but used
+// here to bucket preview fire_dates into the Mon/Tue/... groups produced
+// by groupTasksByWeekday so previews merge naturally with real tasks.
+const _DAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday",
+                     "Friday", "Saturday", "Sunday"];
+
+// Backlog #32: given a tier name, return the [start, end] inclusive
+// date range that tier covers, for filtering previews. Returns null if
+// the tier isn't a preview-eligible one.
+function _tierDateRange(tier) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    // JS weekday: Sun=0, Mon=1, ..., Sat=6. Our day_group is Mon-first.
+    const jsDay = today.getDay();
+    const daysSinceMonday = (jsDay + 6) % 7;  // Mon=0, Sun=6
+    const thisMonday = new Date(today.getTime() - daysSinceMonday * 86400000);
+    const thisSunday = new Date(thisMonday.getTime() + 6 * 86400000);
+    const nextMonday = new Date(thisMonday.getTime() + 7 * 86400000);
+    const nextSunday = new Date(thisMonday.getTime() + 13 * 86400000);
+    if (tier === "this_week") return [thisMonday, thisSunday];
+    if (tier === "next_week") return [nextMonday, nextSunday];
+    return null;
+}
+
+function _previewsForTier(tier) {
+    const range = _tierDateRange(tier);
+    if (!range) return [];
+    const [start, end] = range;
+    const toMs = (iso) => {
+        const parts = iso.split("-");
+        return new Date(+parts[0], +parts[1] - 1, +parts[2]).getTime();
+    };
+    const startMs = start.getTime();
+    const endMs = end.getTime();
+    // View / project filters: apply the same ones the real tasks obey.
+    return allPreviews.filter((p) => {
+        const ms = toMs(p.fire_date);
+        if (ms < startMs || ms > endMs) return false;
+        if (currentView === "work" && p.type !== "work") return false;
+        if (currentView === "personal" && p.type !== "personal") return false;
+        if (projectFilter && p.project_id !== projectFilter) return false;
+        return true;
+    });
+}
+
+function renderTierGroupedByDay(list, tasks, tier) {
+    // Bucket real tasks by day (existing logic).
     const groups = window.groupTasksByWeekday(tasks);
-    for (const { label, tasks: groupTasks } of groups) {
+
+    // Merge preview instances (#32). Build a lookup so we can append to
+    // existing day buckets in place rather than appending extra groups
+    // at the bottom that would visually split Tuesday's real tasks from
+    // Tuesday's previews.
+    const previews = _previewsForTier(tier);
+    if (previews.length > 0) {
+        const groupByLabel = new Map();
+        for (const g of groups) groupByLabel.set(g.label, g);
+        for (const p of previews) {
+            // fire_date → Python-safe weekday label
+            const parts = p.fire_date.split("-");
+            const d = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+            const label = _DAY_LABELS[(d.getDay() + 6) % 7];
+            let g = groupByLabel.get(label);
+            if (!g) {
+                g = { label, tasks: [], previews: [] };
+                groupByLabel.set(label, g);
+                groups.push(g);
+            }
+            if (!g.previews) g.previews = [];
+            g.previews.push(p);
+        }
+        // Re-sort groups so new preview-only groups slot into
+        // Monday-first order + "No date" last.
+        const order = ["Monday", "Tuesday", "Wednesday", "Thursday",
+                       "Friday", "Saturday", "Sunday", "No date"];
+        groups.sort(
+            (a, b) => order.indexOf(a.label) - order.indexOf(b.label),
+        );
+    }
+
+    for (const group of groups) {
+        const realCount = group.tasks.length;
+        // Count shown in the heading reflects REAL tasks only — the
+        // preview cards are "coming up, not on your plate." Matches the
+        // Option-1 decision from 2026-04-20 on the mockup.
         const heading = document.createElement("h3");
         heading.className = "day-group-heading";
-        heading.textContent = `${label} (${groupTasks.length})`;
+        heading.textContent = `${group.label} (${realCount})`;
         list.appendChild(heading);
+
         const groupWrap = document.createElement("div");
         groupWrap.className = "day-group";
-        for (const task of groupTasks) {
+        for (const task of group.tasks) {
             groupWrap.appendChild(taskCardEl(task));
         }
+        if (group.previews) {
+            for (const preview of group.previews) {
+                groupWrap.appendChild(_previewCardEl(preview));
+            }
+        }
         list.appendChild(groupWrap);
+    }
+}
+
+// Build a preview card for a recurring template. Backlog #32 treatment
+// A (dashed border). Click opens the most-recent spawned Task detail
+// panel so the user can edit the Repeat settings there; if no spawn
+// exists yet we show a friendly first-preview alert.
+function _previewCardEl(preview) {
+    const card = document.createElement("div");
+    card.className = "task-card preview-card";
+    card.dataset.preview = "true";
+    card.dataset.templateId = preview.template_id;
+    card.title = (
+        `Preview of recurring template.\n` +
+        `Fires: ${preview.fire_date} (${_frequencyLabel(preview.frequency)})\n` +
+        `Click to edit template via its most-recent spawn.`
+    );
+    // Explicit draggable=false so browsers don't treat .task-card's
+    // default draggable behaviour as applying here.
+    card.draggable = false;
+
+    const body = document.createElement("div");
+    body.className = "task-body";
+    const title = document.createElement("div");
+    title.className = "task-title";
+    title.textContent = preview.title;
+    body.appendChild(title);
+    const meta = document.createElement("div");
+    meta.className = "task-meta";
+    meta.textContent = `🔁 ${_frequencyLabel(preview.frequency)} · ${preview.type}`;
+    body.appendChild(meta);
+    card.appendChild(body);
+
+    card.addEventListener("click", async (e) => {
+        // Previews must not interact with task-click behaviours (tier
+        // buttons, checkbox, bulk-select) even if those bubble here.
+        e.stopPropagation();
+        await _openPreviewTemplate(preview);
+    });
+
+    return card;
+}
+
+function _frequencyLabel(freq) {
+    switch (freq) {
+        case "daily": return "daily";
+        case "weekdays": return "weekdays";
+        case "weekly": return "weekly";
+        case "day_of_week": return "weekly";
+        case "monthly_date": return "monthly (date)";
+        case "monthly_nth_weekday": return "monthly (nth weekday)";
+        default: return freq;
+    }
+}
+
+// Clicking a preview opens the detail panel of the most-recent Task
+// spawned from this template. That's where the Repeat dropdown can be
+// used to edit the template itself. If no spawn exists yet (brand new
+// template), we show an informational alert explaining it'll first
+// spawn on fire_date.
+async function _openPreviewTemplate(preview) {
+    let recentTask = null;
+    try {
+        // Ask the API for any task tied to this template, newest first.
+        // We reuse the existing list endpoint + filter client-side
+        // because adding a ?recurring_task_id= filter is a separate
+        // small backend change not worth coupling to #32.
+        const allStatuses = await apiFetch(API + "?status=all");
+        const matches = allStatuses.filter(
+            (t) => t.repeat && t.repeat.template_id === preview.template_id,
+        );
+        // Fallback: match by title if repeat wasn't serialized with id.
+        if (matches.length === 0) {
+            recentTask = allStatuses.find((t) => t.title === preview.title) || null;
+        } else {
+            matches.sort(
+                (a, b) => new Date(b.updated_at) - new Date(a.updated_at),
+            );
+            recentTask = matches[0];
+        }
+    } catch (err) {
+        console.warn("Could not look up recent spawn:", err);
+    }
+    if (recentTask) {
+        taskDetailOpen(recentTask);
+    } else {
+        alert(
+            `"${preview.title}" hasn't spawned a task yet.\n\n` +
+            `It will first appear on ${preview.fire_date}. ` +
+            `Create a task manually and set Repeat on it if you want ` +
+            `to edit this template before then.`
+        );
     }
 }
 
@@ -114,8 +327,14 @@ function renderBoard() {
         const list = document.querySelector(`.task-list[data-tier="${tier}"]`);
         if (!list) continue;
         const tasks = filteredTasks().filter((t) => t.tier === tier);
+        // For day-grouped tiers (#32), check whether we have previews to
+        // render even if there are zero real tasks — otherwise a week
+        // with only recurring previews falls through to the empty-state
+        // and the previews never render.
+        const previewsForThisTier = DAY_GROUPED_TIERS.has(tier)
+            ? _previewsForTier(tier) : [];
         list.innerHTML = "";
-        if (tasks.length === 0) {
+        if (tasks.length === 0 && previewsForThisTier.length === 0) {
             list.classList.add("empty-state");
             list.setAttribute("data-empty-msg", TIER_EMPTY[tier]);
         } else {
@@ -129,8 +348,9 @@ function renderBoard() {
                 renderTierGroupedByProject(list, tasks);
             } else if (DAY_GROUPED_TIERS.has(tier)) {
                 // This Week + Next Week: group by day-of-week of due_date.
-                // See ADR-010.
-                renderTierGroupedByDay(list, tasks);
+                // See ADR-010. Pass tier so previews can be filtered to
+                // this tier's date range (#32).
+                renderTierGroupedByDay(list, tasks, tier);
             } else {
                 for (const task of tasks) {
                     list.appendChild(taskCardEl(task));

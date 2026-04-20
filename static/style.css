@@ -1782,6 +1782,26 @@ body.bulk-select-mode .task-card .bulk-select-check { display: block; }
     gap: 4px;
     margin-bottom: 4px;
 }
+
+/* Backlog #32: recurring-template preview cards rendered in This Week
+   and Next Week day-groups. Treatment A (dashed border, minimal weight)
+   chosen from the mockup at docs/mockups/32-recurring-preview.html.
+   Key visual signal: "this is a preview, not a real task." */
+.preview-card {
+    border: 2px dashed #9ca3af;
+    background: #fafafa;
+    cursor: pointer;
+}
+.preview-card:hover {
+    background: #f4f4f5;
+    border-color: #6b7280;
+}
+.preview-card .task-title {
+    color: #4b5563;  /* slightly muted vs real tasks */
+}
+.preview-card .task-meta {
+    color: #6b7280;
+}
 /* Spacious variant inside the tier-detail page — more breathing room
    since we have the full page width. */
 .tier-detail .day-group-heading {

@@ -739,3 +739,100 @@ class TestSpawnWithSubtasks:
         subs = [t for t in resp if t.get("parent_id") == parent["id"]]
         titles = sorted(s["title"] for s in subs)
         assert titles == ["Also good", "Good"]
+
+
+class TestPreviewsEndpoint:
+    """Backlog #32: /api/recurring/previews expands active templates
+    across a date range into per-day preview instances."""
+
+    def test_missing_params_returns_400(self, authed_client):
+        resp = authed_client.get("/api/recurring/previews")
+        assert resp.status_code == 400
+
+    def test_invalid_date_returns_400(self, authed_client):
+        resp = authed_client.get(
+            "/api/recurring/previews?start=nope&end=2026-04-20"
+        )
+        assert resp.status_code == 400
+
+    def test_range_too_large_rejected(self, authed_client):
+        resp = authed_client.get(
+            "/api/recurring/previews?start=2026-01-01&end=2027-01-01"
+        )
+        assert resp.status_code == 400
+
+    def test_daily_template_fires_every_day(self, authed_client, app):
+        with app.app_context():
+            _make_recurring(
+                title="Daily stuff", frequency=RecurringFrequency.DAILY,
+            )
+        resp = authed_client.get(
+            "/api/recurring/previews?start=2026-04-20&end=2026-04-22"
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        daily = [p for p in body if p["title"] == "Daily stuff"]
+        assert len(daily) == 3
+        assert [p["fire_date"] for p in daily] == [
+            "2026-04-20", "2026-04-21", "2026-04-22",
+        ]
+
+    def test_weekly_template_fires_once_in_range(self, authed_client, app):
+        # 2026-04-20 is Monday (weekday=0)
+        with app.app_context():
+            _make_recurring(
+                title="Monday review",
+                frequency=RecurringFrequency.WEEKLY,
+                day_of_week=0,
+            )
+        resp = authed_client.get(
+            "/api/recurring/previews?start=2026-04-20&end=2026-04-26"
+        )
+        fires = [
+            p for p in resp.get_json() if p["title"] == "Monday review"
+        ]
+        assert len(fires) == 1
+        assert fires[0]["fire_date"] == "2026-04-20"
+
+    def test_inactive_template_not_previewed(self, authed_client, app):
+        with app.app_context():
+            _make_recurring(
+                title="Quiet one",
+                frequency=RecurringFrequency.DAILY,
+                is_active=False,
+            )
+        resp = authed_client.get(
+            "/api/recurring/previews?start=2026-04-20&end=2026-04-21"
+        )
+        titles = [p["title"] for p in resp.get_json()]
+        assert "Quiet one" not in titles
+
+    def test_spawned_task_suppresses_same_day_preview(self, authed_client, app):
+        """Key invariant: if the template already spawned a Task today,
+        don't also render a preview for today — that'd be a phantom."""
+        from datetime import date, timedelta
+
+        from models import Task, TaskType, Tier, db
+        with app.app_context():
+            rt = _make_recurring(
+                title="Dup", frequency=RecurringFrequency.DAILY,
+            )
+            rt_id = rt.id
+            task = Task(
+                title="Dup",
+                type=TaskType.WORK,
+                tier=Tier.TODAY,
+                recurring_task_id=rt_id,
+            )
+            db.session.add(task)
+            db.session.commit()
+        start = (date.today() - timedelta(days=1)).isoformat()
+        end = (date.today() + timedelta(days=1)).isoformat()
+        resp = authed_client.get(
+            f"/api/recurring/previews?start={start}&end={end}"
+        )
+        dup_dates = [
+            p["fire_date"] for p in resp.get_json() if p["title"] == "Dup"
+        ]
+        assert date.today().isoformat() not in dup_dates
+        assert len(dup_dates) == 2
