@@ -26,13 +26,16 @@ depends_on = None
 def upgrade():
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
-        # The tier enum type is named by SQLAlchemy's ENUM() default
-        # (lowercase class name) = "tier". ADD VALUE IF NOT EXISTS makes
-        # re-running safe. Cannot be inside a transaction block on
-        # older Postgres (<12), but Alembic handles that via isolation.
-        op.execute(
-            "ALTER TYPE tier ADD VALUE IF NOT EXISTS 'next_week'",
-        )
+        # ALTER TYPE ... ADD VALUE cannot run inside a transaction block
+        # on Postgres (any version), so we use alembic's autocommit_block
+        # to detach it from the migration transaction. ADD VALUE
+        # IF NOT EXISTS makes the migration idempotent on re-run.
+        # See migration a3b4c5d6e7f8 for the post-mortem of the original
+        # version of this migration which silently dropped the ALTER.
+        with op.get_context().autocommit_block():
+            op.execute(
+                "ALTER TYPE tier ADD VALUE IF NOT EXISTS 'next_week'",
+            )
 
 
 def downgrade():

@@ -29,10 +29,12 @@ depends_on = None
 def upgrade():
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
-        # SQLAlchemy names the enum after the class: "taskstatus".
-        op.execute(
-            "ALTER TYPE taskstatus ADD VALUE IF NOT EXISTS 'cancelled'",
-        )
+        # ALTER TYPE ADD VALUE must run outside the alembic transaction —
+        # see hotfix migration a3b4c5d6e7f8 for the post-mortem.
+        with op.get_context().autocommit_block():
+            op.execute(
+                "ALTER TYPE taskstatus ADD VALUE IF NOT EXISTS 'cancelled'",
+            )
 
     # Add the cancellation_reason column on every dialect. Nullable so
     # the migration is non-blocking on a populated table.
