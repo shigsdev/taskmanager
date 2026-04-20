@@ -112,6 +112,17 @@ def create_app(config: dict | None = None) -> Flask:
             os.environ.get("DATABASE_URL", "sqlite:///dev.db")
         ),
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
+        # Backlog #31: Railway's managed Postgres occasionally drops
+        # connection-pool SSL handshakes ("SSL SYSCALL error: EOF
+        # detected", "decryption failed or bad record mac"). pool_pre_ping
+        # issues a cheap SELECT 1 on every checkout and transparently
+        # reconnects on failure — the user never sees the 500. The cost
+        # is one round-trip per checkout, negligible for a single-user
+        # app. Observed recurring in prod and caused intermittent
+        # Playwright failures until fixed.
+        SQLALCHEMY_ENGINE_OPTIONS={
+            "pool_pre_ping": True,
+        },
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=os.environ.get("FLASK_ENV") != "development",
