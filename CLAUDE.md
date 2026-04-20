@@ -131,7 +131,24 @@ Report.
   ```
   It auto-detects the expected SHA from `git rev-parse HEAD`, polls
   `/healthz` every 15s for up to 10 minutes, and prints the Deploy
-  Validation Report. Exit code 0 = GREEN, 1 = RED.
+  Validation Report. Exit code 0 = GREEN, 1 = RED, 2 = cookie expired.
+
+  When `~/.taskmanager-session-cookie` is present (the mint-validator
+  token), the script auto-enables TWO additional checks:
+
+  - **Auth preflight**: hits `/api/auth/status` to confirm the validator
+    cookie still authenticates. 401 means rotate the cookie before
+    continuing any API calls.
+  - **Error log scan**: queries `/api/debug/logs?level=ERROR&since_minutes=N`
+    where N is the time since the new container's `started_at`. Any
+    server-side ERROR row = DEPLOY RED. This is what catches 500s on
+    routes that Playwright smoke doesn't exercise — the gap that let
+    the 2026-04-19 enum outage slip past validate_deploy into "green".
+    Client-side errors (`source=client`) are ignored by default to
+    avoid browser-extension noise.
+
+  To force-skip the log scan, pass `--no-check-logs`. To skip everything
+  except `/healthz` SHA + checks, delete/rename the cookie file.
 
   **Manual method** (if the script is unavailable):
 
@@ -177,6 +194,8 @@ Report.
      HTTP status:    200 | 503
      Overall status: ok | fail
      Started at:     <started_at timestamp>
+     Auth preflight: PASS | FAIL | (omitted if no cookie)
+     Error log scan: PASS | FAIL (N server ERROR rows) | SKIP: <reason>
 
      Checks:
        database       ok
@@ -191,7 +210,9 @@ Report.
      Status: DEPLOY GREEN | DEPLOY RED
      ```
      Each check shows its exact status string. Warnings are allowed.
-     Any `fail:` status, SHA mismatch, or non-200 HTTP means DEPLOY RED
+     Any `fail:` status, SHA mismatch, non-200 HTTP, failed auth
+     preflight, OR any server-side ERROR rows in the log scan means
+     DEPLOY RED
      and you must stop and investigate.
 - **Post-deploy smoke tests** (after health check passes):
   1. Use Claude Preview (headless browser) to verify affected pages render
@@ -353,6 +374,7 @@ Report.
     [⏭️] CLAUDE.md                              N/A — no SOP change
   Phase 8  Deploy
     [✅] Deploy validation                      GREEN — <SHA>, all checks ok
+    [✅] Error log scan                         PASS (0 server ERROR rows since deploy start)
     [✅] Post-deploy smoke test                 <what was verified>
   Summary: <N> done, <N> skipped (N/A), <N> not done
   Commits: <SHA list>

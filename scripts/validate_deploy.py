@@ -3,22 +3,31 @@
 Usage:
     python scripts/validate_deploy.py [--sha <expected>] [--url <base_url>]
                                       [--auth-check] [--cookie-file <path>]
+                                      [--check-logs | --no-check-logs]
 
 Default behavior (no flags):
-    Polls the /healthz endpoint until the deployed SHA matches the expected
-    SHA (default: HEAD of the local repo), then prints a Deploy Validation
-    Report.
+    Polls /healthz until the deployed SHA matches the expected SHA (default:
+    HEAD of the local repo), then prints a Deploy Validation Report.
+
+    If the cookie file exists (default: ``~/.taskmanager-session-cookie``),
+    ``--auth-check`` and ``--check-logs`` are auto-enabled. Pass
+    ``--no-check-logs`` to force-skip the log sweep.
 
 With --auth-check:
-    Also reads a Flask session cookie from ~/.taskmanager-session-cookie
-    (or --cookie-file) and hits /api/auth/status to verify the cookie is
-    still valid. On 401 (cookie expired), prints copy-pasteable refresh
-    instructions and exits 2, distinguishing "cookie stale" from "deploy
-    broken".
+    Hits /api/auth/status with the stored validator cookie. On 401, prints
+    copy-pasteable refresh instructions and exits 2.
+
+With --check-logs:
+    After the SHA match, queries /api/debug/logs?level=ERROR since the
+    deploy's started_at. Any ERROR row means DEPLOY RED. Catches 500s on
+    routes that Playwright smoke doesn't cover — the gap that let
+    yesterday's enum outage slip past validate_deploy into "green".
 
 Exit codes:
-    0  DEPLOY GREEN       — SHA matches, all checks pass, auth ok (if checked)
-    1  DEPLOY RED         — SHA mismatch, failed checks, or timeout
+    0  DEPLOY GREEN       — SHA matches, all checks pass, auth ok (if checked),
+                            no new ERROR-level server logs (if checked)
+    1  DEPLOY RED         — SHA mismatch, failed checks, timeout, OR new
+                            ERROR logs since deploy start
     2  COOKIE EXPIRED     — auth preflight returned 401; refresh and re-run
     3  Usage error        — bad args, can't determine SHA, cookie file missing
 """
@@ -28,6 +37,7 @@ import json
 import subprocess
 import sys
 import time
+from datetime import UTC
 from pathlib import Path
 
 DEFAULT_BASE_URL = "https://web-production-3e3ae.up.railway.app"
@@ -106,6 +116,59 @@ def fetch_auth_status(url: str, cookie_value: str) -> tuple[int, dict | None]:
         )
         output = result.stdout
         # Split off the trailing status code.
+        newline = output.rfind("\n")
+        if newline == -1:
+            return 0, None
+        body = output[:newline]
+        status_str = output[newline + 1:].strip()
+        try:
+            status = int(status_str)
+        except ValueError:
+            return 0, None
+        try:
+            data = json.loads(body) if body else None
+        except json.JSONDecodeError:
+            data = None
+        return status, data
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return 0, None
+
+
+def fetch_debug_logs(
+    url: str,
+    cookie_value: str,
+    *,
+    level: str = "ERROR",
+    since_minutes: int | None = None,
+    limit: int = 50,
+) -> tuple[int, dict | None]:
+    """Fetch /api/debug/logs filtered by level (and optional since_minutes).
+
+    Uses the validator cookie (same dual-name strategy as auth-status).
+    Returns ``(http_status, json_body)``; 0 on network error.
+    """
+    qs = [f"level={level}", f"limit={limit}"]
+    if since_minutes is not None and since_minutes > 0:
+        qs.append(f"since_minutes={since_minutes}")
+    full_url = f"{url}?{'&'.join(qs)}"
+    try:
+        result = subprocess.run(
+            [
+                "curl",
+                "-s",
+                "--max-time",
+                "15",
+                "-w",
+                "\n%{http_code}",
+                "-b",
+                f"validator_token={cookie_value}; session={cookie_value}",
+                full_url,
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        output = result.stdout
         newline = output.rfind("\n")
         if newline == -1:
             return 0, None
@@ -214,6 +277,8 @@ def print_report(
     data: dict | None,
     green: bool,
     auth_status: str | None = None,
+    log_status: str | None = None,
+    log_error_rows: list[dict] | None = None,
 ) -> None:
     """Print the Deploy Validation Report in the SOP format."""
     if data is None:
@@ -241,11 +306,30 @@ def print_report(
     print(f"Started at:     {started}")
     if auth_status is not None:
         print(f"Auth preflight: {auth_status}")
+    if log_status is not None:
+        count = len(log_error_rows or [])
+        suffix = ""
+        if log_status == "FAIL":
+            plural = "s" if count != 1 else ""
+            suffix = f" ({count} server ERROR row{plural})"
+        print(f"Error log scan: {log_status}{suffix}")
     print()
     print("Checks:")
     for name, value in sorted(checks.items()):
         print(f"  {name:<16}{value}")
     print()
+    # If the log check tripped, show the first few errors inline so the
+    # operator can see what's wrong without a second curl.
+    if log_error_rows:
+        print("Recent server ERRORs (first 5):")
+        for row in log_error_rows[:5]:
+            route = row.get("route") or "-"
+            msg = (row.get("message") or "")[:160].replace("\n", " ")
+            ts = (row.get("timestamp") or "")[:19]
+            print(f"  {ts}  {route}  {msg}")
+        if len(log_error_rows) > 5:
+            print(f"  ... and {len(log_error_rows) - 5} more")
+        print()
     label = "DEPLOY GREEN" if green else "DEPLOY RED"
     print(f"Status: {label}")
     print()
@@ -289,6 +373,75 @@ def do_auth_preflight(base_url: str, cookie_path: Path) -> int:
     return EXIT_RED
 
 
+def _minutes_since(started_iso: str) -> int | None:
+    """Return minutes elapsed since an ISO-8601 timestamp, or None if unparseable.
+
+    Used to scope the /api/debug/logs query to only what's landed since the
+    new container came up — so the check reports ONLY errors that this
+    deploy is responsible for, not stale failures from the previous SHA.
+    """
+    if not started_iso:
+        return None
+    try:
+        from datetime import datetime
+        # Python 3.11+ tolerates the trailing 'Z'; for older we strip.
+        text = started_iso.replace("Z", "+00:00")
+        started = datetime.fromisoformat(text)
+        now = datetime.now(UTC)
+        delta = (now - started).total_seconds()
+        # Add 1min buffer so we don't narrowly miss the bootstrapping
+        # window where the process is writing its "starting up" logs.
+        minutes = int(delta // 60) + 1
+        return max(minutes, 1)
+    except (ValueError, TypeError, ImportError):
+        return None
+
+
+def do_log_check(
+    base_url: str,
+    cookie_value: str,
+    started_at: str,
+) -> tuple[str, list[dict]]:
+    """Query /api/debug/logs for server-side ERRORs since deploy start.
+
+    Returns ``(status_label, rows)`` where ``status_label`` is one of:
+        "PASS"       — no ERROR rows since deploy start
+        "FAIL"       — one or more ERRORs (caller should flip to RED)
+        "SKIP: ..."  — couldn't perform the check (network, stale cookie,
+                       unparseable timestamp); caller should WARN, not RED
+
+    We only count server-side rows (``source != 'client'``) by default.
+    Client-side errors come from the browser error reporter and include
+    random noise from extensions / user network blips; they shouldn't
+    block a deploy.
+    """
+    since = _minutes_since(started_at)
+    if since is None:
+        return "SKIP: couldn't parse started_at from healthz", []
+
+    url = f"{base_url}/api/debug/logs"
+    status, data = fetch_debug_logs(
+        url, cookie_value, level="ERROR", since_minutes=since, limit=50,
+    )
+    if status == 0:
+        return "SKIP: log endpoint unreachable", []
+    if status == 401:
+        # Auth-check would have caught this first; belt-and-braces.
+        return "SKIP: validator cookie rejected on /api/debug/logs", []
+    if status != 200 or not isinstance(data, dict):
+        return f"SKIP: /api/debug/logs returned {status}", []
+
+    rows = data.get("logs", []) or []
+    # Filter out client-side noise. Keep server rows of level ERROR.
+    server_errors = [
+        r for r in rows
+        if isinstance(r, dict) and r.get("source") != "client"
+    ]
+    if not server_errors:
+        return "PASS", []
+    return "FAIL", server_errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate a Railway deploy.")
     parser.add_argument(
@@ -305,12 +458,32 @@ def main() -> int:
         "--auth-check",
         action="store_true",
         help="After SHA match, verify the stored session cookie is still valid. "
-             "On 401, prints refresh instructions and exits 2.",
+             "On 401, prints refresh instructions and exits 2. "
+             "Auto-enabled when the cookie file exists.",
     )
     parser.add_argument(
         "--cookie-file",
         default=str(DEFAULT_COOKIE_FILE),
         help=f"Path to the session cookie file (default: {DEFAULT_COOKIE_FILE})",
+    )
+    # Log check: tri-state because we want "auto-on when cookie exists"
+    # semantics but also need an explicit opt-out. store_const lets the
+    # default stay None so we can distinguish "user set it" from "default".
+    parser.add_argument(
+        "--check-logs",
+        dest="check_logs",
+        action="store_const",
+        const=True,
+        help="After SHA match, query /api/debug/logs for server-side ERRORs "
+             "since deploy start. Any ERROR means DEPLOY RED. "
+             "Auto-enabled when the cookie file exists.",
+    )
+    parser.add_argument(
+        "--no-check-logs",
+        dest="check_logs",
+        action="store_const",
+        const=False,
+        help="Skip the log check even if the cookie file is present.",
     )
     args = parser.parse_args()
 
@@ -362,25 +535,68 @@ def main() -> int:
     overall_ok = last_data.get("status") == "ok"
     green = overall_ok and not any_fail
 
-    # Optional auth preflight (opt-in via --auth-check)
+    cookie_path = Path(args.cookie_file).expanduser()
+    cookie_present = cookie_path.exists()
+    # Auto-enable auth + log checks when the cookie is present — matches
+    # the pattern from ADR-type discussion in the post-deploy hotfix saga:
+    # if we have credentials, use them. Explicit flags override (e.g.
+    # --no-check-logs).
+    run_auth_check = args.auth_check or cookie_present
+    run_log_check = (
+        args.check_logs if args.check_logs is not None else cookie_present
+    )
+
+    # Optional auth preflight
     auth_status_label = None
-    if args.auth_check:
+    cookie_value: str | None = None
+    if run_auth_check:
         print()
-        cookie_path = Path(args.cookie_file).expanduser()
         auth_result = do_auth_preflight(base_url, cookie_path)
         if auth_result == EXIT_GREEN:
             auth_status_label = "PASS"
+            # Load cookie for the log check below; preflight already
+            # validated existence + non-emptiness.
+            cookie_value = read_cookie_file(cookie_path)
         elif auth_result == EXIT_COOKIE_EXPIRED:
-            # Already printed refresh instructions; just return.
             return EXIT_COOKIE_EXPIRED
         elif auth_result == EXIT_USAGE:
-            # Already printed cookie-missing instructions; just return.
             return EXIT_USAGE
         else:
             auth_status_label = "FAIL"
             green = False
 
-    print_report(expected, last_data, green=green, auth_status=auth_status_label)
+    # Optional error-log scan
+    log_status_label: str | None = None
+    log_error_rows: list[dict] = []
+    if run_log_check:
+        if not cookie_value:
+            # Read independently in case auth check was skipped but user
+            # still wants the log scan.
+            raw = read_cookie_file(cookie_path) if cookie_present else None
+            cookie_value = raw if raw else None
+        if cookie_value:
+            print()
+            print("  Error log scan: querying /api/debug/logs?level=ERROR "
+                  "(since deploy started_at)")
+            log_status_label, log_error_rows = do_log_check(
+                base_url,
+                cookie_value,
+                last_data.get("started_at") or "",
+            )
+            print(f"    -> {log_status_label}"
+                  + (f" ({len(log_error_rows)} rows)" if log_error_rows else ""))
+            if log_status_label == "FAIL":
+                green = False
+        else:
+            log_status_label = "SKIP: no cookie"
+
+    print_report(
+        expected, last_data,
+        green=green,
+        auth_status=auth_status_label,
+        log_status=log_status_label,
+        log_error_rows=log_error_rows,
+    )
     return EXIT_GREEN if green else EXIT_RED
 
 
