@@ -46,10 +46,13 @@ def upgrade():
     # Each ALTER TYPE ADD VALUE must be in its own autocommit block.
     # Postgres does not allow these inside a transaction (raises
     # "ALTER TYPE ... ADD cannot run inside a transaction block").
+    # SQLAlchemy stores Python enum NAMES (uppercase), not the
+    # lowercase `.value` strings — see app._ensure_postgres_enum_values
+    # for the two-part post-mortem.
     with op.get_context().autocommit_block():
-        op.execute("ALTER TYPE tier ADD VALUE IF NOT EXISTS 'next_week'")
+        op.execute("ALTER TYPE tier ADD VALUE IF NOT EXISTS 'NEXT_WEEK'")
     with op.get_context().autocommit_block():
-        op.execute("ALTER TYPE taskstatus ADD VALUE IF NOT EXISTS 'cancelled'")
+        op.execute("ALTER TYPE taskstatus ADD VALUE IF NOT EXISTS 'CANCELLED'")
 
 
 def downgrade():

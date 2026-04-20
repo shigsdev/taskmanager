@@ -55,11 +55,22 @@ def _normalize_db_url(url: str) -> str:
 def _ensure_postgres_enum_values() -> None:
     """Idempotently add late-introduced enum values on Postgres.
 
-    Workaround for the alembic-transactional-ALTER-TYPE bug — see
-    migration a3b4c5d6e7f8 for the post-mortem. We use a fresh
-    psycopg connection set to AUTOCOMMIT so the ALTER TYPE is
-    guaranteed to run outside any transaction, regardless of how
-    SQLAlchemy's pool behaves.
+    Two bugs combined to break this in production:
+
+    1. Alembic wraps each migration in a transaction; Postgres does not
+       allow ``ALTER TYPE … ADD VALUE`` inside a transaction block and
+       silently rolled it back without re-raising — so alembic_version
+       still bumped but the value was never added.
+    2. SQLAlchemy's ``Enum(PythonEnum)`` defaults to using the Python
+       enum **member names** (UPPERCASE: ``TODAY``, ``THIS_WEEK``) for
+       PG storage, not the ``.value`` string. Our first repair attempt
+       added the lowercase ``.value`` strings (``next_week``,
+       ``cancelled``) which SQLAlchemy never queries with — so the
+       endpoints stayed broken even after the ALTER appeared to succeed.
+
+    Belt-and-braces: open a raw connection in AUTOCOMMIT mode and
+    add the **UPPERCASE** member names. ``IF NOT EXISTS`` keeps this
+    safe to run on every startup forever.
     """
     import logging
     log = logging.getLogger(__name__)
@@ -68,23 +79,23 @@ def _ensure_postgres_enum_values() -> None:
         engine = db.engine
         if engine.dialect.name != "postgresql":
             return
-        # Open a raw connection in AUTOCOMMIT mode. Each ALTER runs as
-        # its own implicit transaction.
         with engine.connect() as conn:
             conn = conn.execution_options(isolation_level="AUTOCOMMIT")
             for sql in (
-                "ALTER TYPE tier ADD VALUE IF NOT EXISTS 'next_week'",
-                "ALTER TYPE taskstatus ADD VALUE IF NOT EXISTS 'cancelled'",
+                "ALTER TYPE tier ADD VALUE IF NOT EXISTS 'NEXT_WEEK'",
+                "ALTER TYPE taskstatus ADD VALUE IF NOT EXISTS 'CANCELLED'",
             ):
                 try:
                     conn.execute(text(sql))
                 except Exception as e:  # noqa: BLE001
-                    # IF NOT EXISTS should make it a no-op, but log if not.
-                    log.warning("enum repair skipped (%s): %s", sql, type(e).__name__)
+                    log.warning(
+                        "enum repair skipped (%s): %s: %s",
+                        sql, type(e).__name__, e,
+                    )
     except Exception as e:  # noqa: BLE001
-        # Don't crash startup if DB isn't reachable yet — health check
-        # will catch genuine DB issues. This is a repair, not a critical path.
-        log.warning("enum repair gate failed: %s", type(e).__name__)
+        # Don't crash startup if DB isn't reachable; health check covers
+        # genuine connectivity issues. This is a repair gate, not critical.
+        log.warning("enum repair gate failed: %s: %s", type(e).__name__, e)
 
 
 def create_app(config: dict | None = None) -> Flask:

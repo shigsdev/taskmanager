@@ -34,7 +34,10 @@ def upgrade():
         # version of this migration which silently dropped the ALTER.
         with op.get_context().autocommit_block():
             op.execute(
-                "ALTER TYPE tier ADD VALUE IF NOT EXISTS 'next_week'",
+                # SQLAlchemy stores Python enum NAMES (uppercase) in PG,
+                # not the .value strings. Adding lowercase 'next_week'
+                # would be a no-op as far as the ORM is concerned.
+                "ALTER TYPE tier ADD VALUE IF NOT EXISTS 'NEXT_WEEK'",
             )
 
 

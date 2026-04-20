@@ -33,7 +33,8 @@ def upgrade():
         # see hotfix migration a3b4c5d6e7f8 for the post-mortem.
         with op.get_context().autocommit_block():
             op.execute(
-                "ALTER TYPE taskstatus ADD VALUE IF NOT EXISTS 'cancelled'",
+                # Python enum NAMES (uppercase) — see e1f2a3b4c5d6 for rationale.
+                "ALTER TYPE taskstatus ADD VALUE IF NOT EXISTS 'CANCELLED'",
             )
 
     # Add the cancellation_reason column on every dialect. Nullable so
