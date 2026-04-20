@@ -52,6 +52,7 @@ def _serialize(rt: RecurringTask) -> dict:
         "notes": rt.notes,
         "checklist": rt.checklist or [],
         "url": rt.url,
+        "subtasks_snapshot": rt.subtasks_snapshot or [],
         "is_active": rt.is_active,
         "created_at": rt.created_at.isoformat(),
     }

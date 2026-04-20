@@ -53,6 +53,22 @@ def _parse_checklist(value: Any) -> list:
 # --- Repeat helpers ----------------------------------------------------------
 
 
+def _snapshot_subtasks(task: Task) -> list[dict]:
+    """Capture parent's currently-active subtask titles for #26 cloning.
+
+    Only ACTIVE subtasks are snapshotted — completed/cancelled/deleted
+    subtasks from the previous cycle don't make sense to clone forward.
+    Each snapshot entry is `{"title": str}`; we deliberately keep this
+    minimal so adding fields later (project_id override, due offset)
+    doesn't break old rows.
+    """
+    return [
+        {"title": s.title}
+        for s in task.subtasks
+        if s.status == TaskStatus.ACTIVE
+    ]
+
+
 def _apply_repeat(task: Task, repeat: dict) -> None:
     """Create or update a RecurringTask template linked to the given task."""
     from recurring_service import create_recurring
@@ -69,6 +85,7 @@ def _apply_repeat(task: Task, repeat: dict) -> None:
         "notes": task.notes,
         "checklist": task.checklist,
         "url": task.url,
+        "subtasks_snapshot": _snapshot_subtasks(task),
     }
     rt = create_recurring(rt_data)
     task.recurring_task_id = rt.id
@@ -101,6 +118,7 @@ def _update_repeat(task: Task, repeat: dict | None) -> None:
             "notes": task.notes,
             "checklist": task.checklist,
             "url": task.url,
+            "subtasks_snapshot": _snapshot_subtasks(task),
             "is_active": True,
         }
         update_recurring(task.recurring_task_id, update_data)

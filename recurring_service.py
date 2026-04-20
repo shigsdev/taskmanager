@@ -40,6 +40,30 @@ from utils import parse_uuid as _parse_uuid
 # --- Field parsers -----------------------------------------------------------
 
 
+def _clean_subtasks_snapshot(value: object) -> list[dict]:
+    """Normalise a subtasks_snapshot payload to a list of {"title": str}.
+
+    Accepts a list of dicts (each with a "title" key), strips empty/
+    non-string titles, and ignores any other keys for forward-compat.
+    Returns [] for None / non-list inputs so the column always holds
+    a JSON array (never null) — easier to query and iterate over.
+    """
+    if not isinstance(value, list):
+        return []
+    out: list[dict] = []
+    for entry in value:
+        if not isinstance(entry, dict):
+            continue
+        title = entry.get("title")
+        if not isinstance(title, str):
+            continue
+        title = title.strip()
+        if not title:
+            continue
+        out.append({"title": title})
+    return out
+
+
 def _parse_day_of_week(value: object) -> int | None:
     if value is None:
         return None
@@ -140,6 +164,7 @@ def create_recurring(data: dict) -> RecurringTask:
         notes=data.get("notes") or None,
         checklist=data.get("checklist") if isinstance(data.get("checklist"), list) else None,
         url=data.get("url") or None,
+        subtasks_snapshot=_clean_subtasks_snapshot(data.get("subtasks_snapshot")),
     )
     db.session.add(rt)
     db.session.commit()
@@ -201,6 +226,9 @@ def update_recurring(rt_id: uuid.UUID, data: dict) -> RecurringTask | None:
 
     if "url" in data:
         rt.url = data["url"] or None
+
+    if "subtasks_snapshot" in data:
+        rt.subtasks_snapshot = _clean_subtasks_snapshot(data["subtasks_snapshot"])
 
     if "is_active" in data:
         rt.is_active = bool(data["is_active"])
@@ -299,8 +327,48 @@ def spawn_today_tasks(*, target_date: date | None = None) -> list[Task]:
         )
         db.session.add(task)
         spawned.append(task)
+
+    # Commit parents first so they get IDs we can reference as parent_id
+    # for the subtask clone pass below (#26).
     if spawned:
         db.session.commit()
+
+    # Subtask clone (#26): for each spawned parent that came from a
+    # template with a non-empty subtasks_snapshot, create one Task per
+    # snapshot entry with parent_id set. Subtasks land in Today with
+    # status active; they inherit goal_id/project_id from the parent
+    # via the existing subtask cascade on update_task — but since we're
+    # creating them fresh here we set those fields explicitly.
+    subtasks_created: list[Task] = []
+    for parent in spawned:
+        rt = next((t for t in templates if t.id == parent.recurring_task_id), None)
+        if rt is None or not rt.subtasks_snapshot:
+            continue
+        for entry in rt.subtasks_snapshot:
+            # Defensive: older rows or direct DB writes may contain
+            # anything. Only accept dicts with a non-empty string title.
+            if not isinstance(entry, dict):
+                continue
+            title = entry.get("title")
+            if not isinstance(title, str) or not title.strip():
+                continue
+            title = title.strip()
+            sub = Task(
+                title=title,
+                type=parent.type,
+                tier=Tier.TODAY,
+                parent_id=parent.id,
+                project_id=parent.project_id,
+                goal_id=parent.goal_id,
+                # Subtasks don't inherit notes/checklist/url — those are
+                # parent-level metadata and would clutter every subtask.
+            )
+            db.session.add(sub)
+            subtasks_created.append(sub)
+
+    if subtasks_created:
+        db.session.commit()
+
     return spawned
 
 

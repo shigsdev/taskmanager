@@ -1246,6 +1246,38 @@ class TestRepeatOnCreate:
         assert templates[0]["notes"] == "Important notes"
         assert templates[0]["url"] == "https://example.com"
 
+    def test_repeat_snapshots_active_subtasks(self, authed_client):
+        """Backlog #26: making a parent task recurring captures its
+        currently-active subtasks onto the template."""
+        parent = authed_client.post(
+            "/api/tasks", json={"title": "Weekly review", "type": "work"}
+        ).get_json()
+        authed_client.post(
+            "/api/tasks",
+            json={
+                "title": "Review Today", "type": "work", "parent_id": parent["id"],
+            },
+        )
+        authed_client.post(
+            "/api/tasks",
+            json={
+                "title": "Review Goals", "type": "work", "parent_id": parent["id"],
+            },
+        )
+        # Now flip the parent to recurring
+        authed_client.patch(
+            f"/api/tasks/{parent['id']}",
+            json={"repeat": {"frequency": "daily"}},
+        )
+        templates = [
+            r for r in authed_client.get("/api/recurring").get_json()
+            if r["title"] == "Weekly review"
+        ]
+        assert len(templates) == 1
+        snap = templates[0]["subtasks_snapshot"]
+        titles = sorted(s["title"] for s in snap)
+        assert titles == ["Review Goals", "Review Today"]
+
 
 class TestRepeatOnUpdate:
     """Updating a task's repeat field should create/update/remove the template."""

@@ -627,3 +627,115 @@ class TestSpawnFullDetails:
         assert len(tasks) == 1
         assert tasks[0]["repeat"] is not None
         assert tasks[0]["repeat"]["frequency"] == "daily"
+
+
+class TestSpawnWithSubtasks:
+    """Backlog #26: recurring templates clone their subtasks on every spawn."""
+
+    def test_spawn_clones_subtasks_from_snapshot(self, authed_client, app):
+        with app.app_context():
+            _make_recurring(
+                title="Weekly review",
+                frequency=RecurringFrequency.DAILY,
+                subtasks_snapshot=[
+                    {"title": "Review Today"},
+                    {"title": "Review Goals"},
+                    {"title": "Plan next week"},
+                ],
+            )
+        authed_client.post("/api/recurring/spawn")
+        resp = authed_client.get("/api/tasks?tier=today").get_json()
+        parents = [t for t in resp if t["title"] == "Weekly review"]
+        assert len(parents) == 1
+        parent = parents[0]
+        # Subtasks should exist as their own Tasks with parent_id = parent.id
+        subs = [t for t in resp if t.get("parent_id") == parent["id"]]
+        titles = sorted(s["title"] for s in subs)
+        assert titles == ["Plan next week", "Review Goals", "Review Today"]
+
+    def test_spawn_clones_subtasks_on_every_cycle(self, authed_client, app):
+        """Archiving the parent + re-spawning produces a fresh set of subtasks."""
+        with app.app_context():
+            _make_recurring(
+                title="Cycle",
+                frequency=RecurringFrequency.DAILY,
+                subtasks_snapshot=[{"title": "Step A"}, {"title": "Step B"}],
+            )
+        # First cycle
+        authed_client.post("/api/recurring/spawn")
+        first = authed_client.get("/api/tasks?tier=today").get_json()
+        parent1 = next(t for t in first if t["title"] == "Cycle")
+        sub_ids_1 = {
+            t["id"] for t in first if t.get("parent_id") == parent1["id"]
+        }
+        assert len(sub_ids_1) == 2
+
+        # Archive everything (simulating completion), then re-spawn
+        for t in first:
+            authed_client.patch(
+                f"/api/tasks/{t['id']}", json={"status": "archived"}
+            )
+        authed_client.post("/api/recurring/spawn")
+
+        second_resp = authed_client.get("/api/tasks?tier=today").get_json()
+        parent2 = next(t for t in second_resp if t["title"] == "Cycle")
+        sub_ids_2 = {
+            t["id"] for t in second_resp if t.get("parent_id") == parent2["id"]
+        }
+        # New cycle → new subtask IDs, but same two titles
+        assert len(sub_ids_2) == 2
+        assert sub_ids_1.isdisjoint(sub_ids_2)
+
+    def test_spawn_empty_snapshot_creates_parent_only(self, authed_client, app):
+        with app.app_context():
+            _make_recurring(
+                title="No subs",
+                frequency=RecurringFrequency.DAILY,
+                subtasks_snapshot=[],
+            )
+        authed_client.post("/api/recurring/spawn")
+        resp = authed_client.get("/api/tasks?tier=today").get_json()
+        parents = [t for t in resp if t["title"] == "No subs"]
+        subs = [t for t in resp if t.get("parent_id") == parents[0]["id"]]
+        assert len(parents) == 1 and subs == []
+
+    def test_spawn_null_snapshot_creates_parent_only(self, authed_client, app):
+        """Legacy rows (before #26) have NULL; spawn must not crash."""
+        with app.app_context():
+            _make_recurring(
+                title="Legacy",
+                frequency=RecurringFrequency.DAILY,
+            )
+            # Force NULL via direct SQL since the helper defaults to []
+            from models import RecurringTask, db
+            rt = db.session.scalars(
+                db.select(RecurringTask).where(RecurringTask.title == "Legacy")
+            ).first()
+            rt.subtasks_snapshot = None
+            db.session.commit()
+        authed_client.post("/api/recurring/spawn")
+        resp = authed_client.get("/api/tasks?tier=today").get_json()
+        assert any(t["title"] == "Legacy" for t in resp)
+
+    def test_spawn_skips_malformed_snapshot_entries(self, authed_client, app):
+        """Non-dict entries, missing title, blank title — all silently skipped."""
+        with app.app_context():
+            _make_recurring(
+                title="Malformed",
+                frequency=RecurringFrequency.DAILY,
+                subtasks_snapshot=[
+                    {"title": "Good"},
+                    {"title": ""},
+                    {"title": "  "},
+                    {},
+                    "not a dict",
+                    None,
+                    {"title": "Also good"},
+                ],
+            )
+        authed_client.post("/api/recurring/spawn")
+        resp = authed_client.get("/api/tasks?tier=today").get_json()
+        parent = next(t for t in resp if t["title"] == "Malformed")
+        subs = [t for t in resp if t.get("parent_id") == parent["id"]]
+        titles = sorted(s["title"] for s in subs)
+        assert titles == ["Also good", "Good"]

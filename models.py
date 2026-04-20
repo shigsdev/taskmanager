@@ -239,6 +239,14 @@ class RecurringTask(db.Model):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     checklist: Mapped[list | None] = mapped_column(JSONType, nullable=True, default=list)
     url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    # Subtask titles snapshotted from the parent task at the time the
+    # recurring template was created/updated (#26). Each entry is
+    # `{"title": str}`; spawn-time creates one Task with parent_id=parent.id
+    # per entry. Snapshot semantics (not live lookup) match the rest of
+    # this model — re-saving "Repeat" on the parent re-captures subtasks.
+    subtasks_snapshot: Mapped[list | None] = mapped_column(
+        JSONType, nullable=True, default=list
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
