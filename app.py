@@ -83,6 +83,7 @@ def _ensure_postgres_enum_values() -> None:
             conn = conn.execution_options(isolation_level="AUTOCOMMIT")
             for sql in (
                 "ALTER TYPE tier ADD VALUE IF NOT EXISTS 'NEXT_WEEK'",
+                "ALTER TYPE tier ADD VALUE IF NOT EXISTS 'TOMORROW'",
                 "ALTER TYPE taskstatus ADD VALUE IF NOT EXISTS 'CANCELLED'",
             ):
                 try:
@@ -266,6 +267,7 @@ def create_app(config: dict | None = None) -> Flask:
         labels = {
             Tier.INBOX: "Inbox",
             Tier.TODAY: "Today",
+            Tier.TOMORROW: "Tomorrow",
             Tier.THIS_WEEK: "This Week",
             Tier.NEXT_WEEK: "Next Week",
             Tier.BACKLOG: "Backlog",
@@ -520,6 +522,26 @@ def _start_digest_scheduler(app: Flask) -> None:
         hour=hour,
         minute=minute,
         id="daily_digest",
+        replace_existing=True,
+    )
+
+    # Backlog #27: auto-roll Tomorrow → Today at the user's local
+    # midnight. The user put the task in Tomorrow with the intent of
+    # working on it tomorrow-now-today; rolling at 00:00 makes the
+    # Today panel reflect that intent without a manual move. Uses the
+    # same timezone as the digest so behaviour is predictable from
+    # the user's POV.
+    def _roll_tomorrow_to_today():
+        with app.app_context():
+            from task_service import roll_tomorrow_to_today
+            roll_tomorrow_to_today()
+
+    scheduler.add_job(
+        _roll_tomorrow_to_today,
+        "cron",
+        hour=0,
+        minute=1,  # 1 past midnight so we're clearly past the boundary
+        id="tomorrow_roll",
         replace_existing=True,
     )
 

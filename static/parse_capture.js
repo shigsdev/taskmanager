@@ -53,19 +53,35 @@ function parseCapture(text) {
         result.title = result.title.replace(/#work/gi, "").trim();
     }
 
-    // 4. Tier shortcuts: #today #week #backlog #freezer
+    // 4. Tier shortcuts: #today #tomorrow #week #next_week #backlog #freezer
+    // Longest-first matters because #includes() would match #week inside
+    // #next_week if we checked #week first — so we sort tags by length
+    // descending before scanning. Same reason we process repeat shortcuts
+    // before tier shortcuts (#weekly vs #week).
     var tierMap = {
         "#today": "today",
+        "#tomorrow": "tomorrow",     // backlog #27
+        "#next_week": "next_week",   // backlog #23 (was missing — fixed here)
+        "#nextweek": "next_week",    // common user typo without underscore
         "#week": "this_week",
         "#backlog": "backlog",
         "#freezer": "freezer",
     };
-    var tierTags = Object.keys(tierMap);
+    var tierTags = Object.keys(tierMap).sort(function (a, b) {
+        return b.length - a.length;
+    });
+    // Longest-first scan + first-hit-wins. Can't use `if (result.tier)`
+    // as the stop condition because the default tier is "inbox" from
+    // line ~18 — that would break before scanning any tag. Track an
+    // explicit `tierMatched` flag instead.
+    var tierMatched = false;
     for (var j = 0; j < tierTags.length; j++) {
+        if (tierMatched) break;
         var tierTag = tierTags[j];
         if (result.title.toLowerCase().includes(tierTag)) {
             result.tier = tierMap[tierTag];
             result.title = result.title.replace(new RegExp(tierTag, "gi"), "").trim();
+            tierMatched = true;
         }
     }
 

@@ -436,3 +436,37 @@ def bulk_update_tasks(
         "not_found": not_found,
         "errors": errors,
     }
+
+
+# --- Scheduled background operations ----------------------------------------
+
+
+def roll_tomorrow_to_today() -> int:
+    """Move every active ``TOMORROW`` task to ``TODAY``.
+
+    Called by APScheduler at the user's local midnight (#27). Uses an
+    isolated SQLAlchemy session rather than Flask-SQLAlchemy's
+    ``db.session`` because this runs from a scheduler thread outside
+    any request context — same pattern as ``DBLogHandler`` and
+    ``_ensure_postgres_enum_values``. Returns the number of rows
+    rolled (useful for tests and future scheduler-heartbeat logs).
+
+    Only ACTIVE tasks move. Archived / cancelled / deleted Tomorrow
+    tasks stay put — rolling them would resurrect end-states, which
+    is surprising.
+    """
+    from sqlalchemy import update
+    from sqlalchemy.orm import Session
+
+    with Session(db.engine) as session:
+        result = session.execute(
+            update(Task)
+            .where(
+                Task.tier == Tier.TOMORROW,
+                Task.status == TaskStatus.ACTIVE,
+            )
+            .values(tier=Tier.TODAY)
+        )
+        session.commit()
+        return result.rowcount or 0
+

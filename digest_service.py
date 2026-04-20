@@ -62,6 +62,7 @@ def build_digest(*, target_date: date | None = None) -> str:
     ))
 
     today_tasks = [t for t in all_active if t.tier == Tier.TODAY]
+    tomorrow_tasks = [t for t in all_active if t.tier == Tier.TOMORROW]
     week_tasks = [t for t in all_active if t.tier == Tier.THIS_WEEK]
 
     # Tasks due today from ANY tier (excluding Today — already shown)
@@ -131,7 +132,8 @@ def build_digest(*, target_date: date | None = None) -> str:
             )
         lines.append("")
 
-    # This Week count
+    # Tomorrow count (backlog #27) + This Week count
+    lines.append(f"TOMORROW: {len(tomorrow_tasks)} tasks")
     lines.append(f"THIS WEEK REMAINING: {len(week_tasks)} tasks")
     lines.append("")
 

@@ -74,10 +74,11 @@ async function init() {
 
 // --- Rendering ---------------------------------------------------------------
 
-const TIER_ORDER = ["inbox", "today", "this_week", "next_week", "backlog", "freezer"];
+const TIER_ORDER = ["inbox", "today", "tomorrow", "this_week", "next_week", "backlog", "freezer"];
 const TIER_EMPTY = {
     inbox: "All caught up — inbox is empty",
     today: "No tasks for today",
+    tomorrow: "Nothing planned for tomorrow",
     this_week: "No tasks this week",
     next_week: "Nothing planned for next week",
     backlog: "Backlog is empty",

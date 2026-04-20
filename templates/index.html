@@ -45,6 +45,15 @@
         <div class="tier-body task-list" data-tier="today"></div>
     </section>
 
+    {# Backlog #27: Tomorrow tier. Auto-rolls into Today at the user's
+       local midnight (see _start_tomorrow_roll_scheduler in app.py). #}
+    <section class="tier" data-tier="tomorrow" id="tierTomorrow">
+        <div class="tier-header">
+            <h2><button class="collapse-toggle" aria-expanded="true">▾</button> <a href="{{ url_for('tier_detail_page', name='tomorrow') }}" class="tier-heading-link" title="Open Tomorrow as full page">Tomorrow</a> <span class="tier-count">0</span></h2>
+        </div>
+        <div class="tier-body task-list" data-tier="tomorrow"></div>
+    </section>
+
     <section class="tier" data-tier="this_week" id="tierThisWeek">
         <div class="tier-header">
             <h2><button class="collapse-toggle" aria-expanded="true">▾</button> <a href="{{ url_for('tier_detail_page', name='this_week') }}" class="tier-heading-link" title="Open This Week as full page">This Week</a> <span class="tier-count">0</span></h2>

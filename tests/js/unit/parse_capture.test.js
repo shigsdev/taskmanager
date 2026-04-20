@@ -56,6 +56,39 @@ describe("parseCapture — tier shortcuts", () => {
         expect(r.tier).toBe("today");
         expect(r.title).toBe("Do  the thing"); // double space is expected
     });
+
+    // Backlog #27
+    test("#tomorrow sets tier to tomorrow", () => {
+        const r = parseCapture("Prep slides #tomorrow");
+        expect(r.tier).toBe("tomorrow");
+        expect(r.title).toBe("Prep slides");
+    });
+
+    test("#tomorrow does NOT match #today's prefix", () => {
+        const r = parseCapture("Thing #tomorrow");
+        expect(r.tier).toBe("tomorrow");
+    });
+
+    // Backlog #23 follow-up (the row claimed this worked, but the
+    // shortcut was never added — fixed alongside #27)
+    test("#next_week sets tier to next_week", () => {
+        const r = parseCapture("Plan quarterly #next_week");
+        expect(r.tier).toBe("next_week");
+        expect(r.title).toBe("Plan quarterly");
+    });
+
+    test("#nextweek alias also works", () => {
+        const r = parseCapture("Plan quarterly #nextweek");
+        expect(r.tier).toBe("next_week");
+    });
+
+    test("#next_week is preferred over #week when both could match", () => {
+        // `#week` is a substring of `#next_week` — longest-first scan
+        // order should prevent #week from matching first.
+        const r = parseCapture("Something #next_week");
+        expect(r.tier).toBe("next_week");
+        expect(r.title).toBe("Something");
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -241,10 +274,14 @@ describe("parseCapture — edge cases", () => {
         expect(r.tier).toBe("inbox");
     });
 
-    test("multiple tier tags — last one wins", () => {
-        // The tier loop doesn't break, so both match; last write wins
+    test("multiple tier tags — longest tag wins (first-hit in longest-first scan)", () => {
+        // Semantics change from the old "last write wins": we now scan
+        // tier tags longest-first to avoid #week matching inside
+        // #next_week (backlog #27). When a user types multiple tier
+        // tags, the LONGER one wins regardless of order. If they're
+        // equal length, first-in-declaration wins.
         const r = parseCapture("Task #today #backlog");
-        expect(r.tier).toBe("backlog");
+        expect(r.tier).toBe("backlog");  // #backlog (8 chars) > #today (6 chars)
     });
 
     test("tag embedded in word is still matched", () => {

@@ -21,7 +21,7 @@ class TestIndexPage:
     def test_contains_tier_sections(self, client, monkeypatch):
         monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
         html = client.get("/").data.decode()
-        for tier in ["inbox", "today", "this_week", "backlog", "freezer"]:
+        for tier in ["inbox", "today", "tomorrow", "this_week", "next_week", "backlog", "freezer"]:
             assert f'data-tier="{tier}"' in html
 
     def test_inbox_is_first_tier_section(self, client, monkeypatch):

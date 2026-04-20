@@ -1550,3 +1550,58 @@ class TestBulkUpdate:
             assert t["tier"] == "today"
             assert t["due_date"] == "2026-08-15"
             assert t["type"] == "personal"
+
+
+class TestRollTomorrowToToday:
+    """Backlog #27: APScheduler job that moves TOMORROW → TODAY at midnight."""
+
+    def test_rolls_active_tomorrow_tasks(self, app):
+        from task_service import roll_tomorrow_to_today
+        with app.app_context():
+            _make_task(title="a", tier=Tier.TOMORROW)
+            _make_task(title="b", tier=Tier.TOMORROW)
+            _make_task(title="not-tomorrow", tier=Tier.THIS_WEEK)
+            count = roll_tomorrow_to_today()
+        assert count == 2
+        with app.app_context():
+            from sqlalchemy import select
+            titles_today = [
+                t.title for t in db.session.scalars(
+                    select(Task).where(Task.tier == Tier.TODAY)
+                )
+            ]
+            titles_tomorrow = [
+                t.title for t in db.session.scalars(
+                    select(Task).where(Task.tier == Tier.TOMORROW)
+                )
+            ]
+        assert sorted(titles_today) == ["a", "b"]
+        assert titles_tomorrow == []
+
+    def test_does_not_roll_archived_tomorrow_tasks(self, app):
+        from task_service import roll_tomorrow_to_today
+        with app.app_context():
+            _make_task(title="active", tier=Tier.TOMORROW)
+            _make_task(
+                title="old",
+                tier=Tier.TOMORROW,
+                status=TaskStatus.ARCHIVED,
+            )
+            count = roll_tomorrow_to_today()
+        assert count == 1
+        with app.app_context():
+            from sqlalchemy import select
+            archived_tomorrow = list(db.session.scalars(
+                select(Task).where(
+                    Task.tier == Tier.TOMORROW,
+                    Task.status == TaskStatus.ARCHIVED,
+                )
+            ))
+        assert len(archived_tomorrow) == 1
+
+    def test_noop_when_nothing_in_tomorrow(self, app):
+        from task_service import roll_tomorrow_to_today
+        with app.app_context():
+            _make_task(title="x", tier=Tier.TODAY)
+            count = roll_tomorrow_to_today()
+        assert count == 0
