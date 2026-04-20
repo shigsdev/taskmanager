@@ -52,6 +52,41 @@ def _normalize_db_url(url: str) -> str:
     return url
 
 
+def _ensure_postgres_enum_values() -> None:
+    """Idempotently add late-introduced enum values on Postgres.
+
+    Workaround for the alembic-transactional-ALTER-TYPE bug — see
+    migration a3b4c5d6e7f8 for the post-mortem. We use a fresh
+    psycopg connection set to AUTOCOMMIT so the ALTER TYPE is
+    guaranteed to run outside any transaction, regardless of how
+    SQLAlchemy's pool behaves.
+    """
+    import logging
+    log = logging.getLogger(__name__)
+    try:
+        from sqlalchemy import text
+        engine = db.engine
+        if engine.dialect.name != "postgresql":
+            return
+        # Open a raw connection in AUTOCOMMIT mode. Each ALTER runs as
+        # its own implicit transaction.
+        with engine.connect() as conn:
+            conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+            for sql in (
+                "ALTER TYPE tier ADD VALUE IF NOT EXISTS 'next_week'",
+                "ALTER TYPE taskstatus ADD VALUE IF NOT EXISTS 'cancelled'",
+            ):
+                try:
+                    conn.execute(text(sql))
+                except Exception as e:  # noqa: BLE001
+                    # IF NOT EXISTS should make it a no-op, but log if not.
+                    log.warning("enum repair skipped (%s): %s", sql, type(e).__name__)
+    except Exception as e:  # noqa: BLE001
+        # Don't crash startup if DB isn't reachable yet — health check
+        # will catch genuine DB issues. This is a repair, not a critical path.
+        log.warning("enum repair gate failed: %s", type(e).__name__)
+
+
 def create_app(config: dict | None = None) -> Flask:
     app = Flask(__name__)
 
@@ -82,6 +117,18 @@ def create_app(config: dict | None = None) -> Flask:
 
     db.init_app(app)
     Migrate(app, db)
+
+    # Repair gate: alembic's `ALTER TYPE ... ADD VALUE` migrations for the
+    # tier and taskstatus enums silently failed in prod (PG rejects the
+    # statement inside any transaction block; alembic still bumped
+    # alembic_version because nothing re-raised). Both `next_week` (#23)
+    # and `cancelled` (#25) were missing in production despite migrations
+    # reporting success. We belt-and-braces the recovery here by running
+    # both ALTERs idempotently on every Postgres startup, OUTSIDE any
+    # transaction. SQLite is skipped entirely (enums stored as strings).
+    # Safe to re-run forever — IF NOT EXISTS makes it a no-op once added.
+    with app.app_context():
+        _ensure_postgres_enum_values()
 
     google_bp = make_google_blueprint(
         client_id=os.environ.get("GOOGLE_CLIENT_ID"),
