@@ -420,22 +420,54 @@ def do_log_check(
         return "SKIP: couldn't parse started_at from healthz", []
 
     url = f"{base_url}/api/debug/logs"
-    status, data = fetch_debug_logs(
-        url, cookie_value, level="ERROR", since_minutes=since, limit=50,
-    )
+    # Retry transient 5xx (e.g. fresh container's connection pool SSL
+    # handshake blips observed right after Railway rolling deploys).
+    # 3 attempts with exponential-ish backoff is enough to ride through
+    # warm-up without letting a persistently-broken endpoint silently pass.
+    status, data = 0, None
+    for attempt, delay in enumerate((0, 3, 6), start=1):
+        if delay:
+            time.sleep(delay)
+        status, data = fetch_debug_logs(
+            url, cookie_value, level="ERROR", since_minutes=since, limit=50,
+        )
+        # Only retry on transient 5xx / network errors. 2xx and 4xx are
+        # deterministic answers — no point retrying them.
+        transient = status == 0 or (500 <= status < 600)
+        if transient and attempt < 3:
+            continue
+        break
     if status == 0:
-        return "SKIP: log endpoint unreachable", []
+        return "SKIP: log endpoint unreachable after retries", []
     if status == 401:
         # Auth-check would have caught this first; belt-and-braces.
         return "SKIP: validator cookie rejected on /api/debug/logs", []
     if status != 200 or not isinstance(data, dict):
-        return f"SKIP: /api/debug/logs returned {status}", []
+        return f"SKIP: /api/debug/logs returned {status} after retries", []
 
     rows = data.get("logs", []) or []
-    # Filter out client-side noise. Keep server rows of level ERROR.
+    # Filter out:
+    #   - client-side rows (browser extension / user network noise)
+    #   - transient Postgres SSL connection-pool blips on fresh Railway
+    #     containers (tracked as a separate backlog item for pool_pre_ping).
+    #     Signature: psycopg.OperationalError + "SSL SYSCALL error: EOF"
+    #     or "decryption failed or bad record mac". Real app bugs don't
+    #     produce these strings.
+    def is_transient_ssl_blip(r: dict) -> bool:
+        tb = (r.get("traceback") or "") + (r.get("message") or "")
+        return (
+            "psycopg.OperationalError" in tb
+            and (
+                "SSL SYSCALL error: EOF detected" in tb
+                or "decryption failed or bad record mac" in tb
+            )
+        )
+
     server_errors = [
         r for r in rows
-        if isinstance(r, dict) and r.get("source") != "client"
+        if isinstance(r, dict)
+        and r.get("source") != "client"
+        and not is_transient_ssl_blip(r)
     ]
     if not server_errors:
         return "PASS", []

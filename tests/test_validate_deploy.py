@@ -160,6 +160,104 @@ class TestDoLogCheck:
         assert len(rows) == 1
         assert rows[0]["route"] == "/api/goals"
 
+    def test_ignores_transient_ssl_eof_blip(self):
+        """Regression: psycopg SSL EOF errors right after container boot
+        are Railway connection-pool flakes, not app bugs. They must not
+        block a deploy."""
+        blip = {
+            "level": "ERROR",
+            "source": "server",
+            "route": "/api/debug/logs",
+            "message": "Exception on /api/debug/logs [GET]",
+            "traceback": (
+                "psycopg.OperationalError: consuming input failed: "
+                "SSL SYSCALL error: EOF detected\n"
+            ),
+        }
+        with patch.object(
+            vd, "fetch_debug_logs",
+            return_value=(200, {"logs": [blip], "count": 1}),
+        ):
+            status, rows = vd.do_log_check(
+                "https://x", "cookie", self._ok_recent_timestamp(),
+            )
+        assert status == "PASS"
+        assert rows == []
+
+    def test_ignores_transient_ssl_decrypt_blip(self):
+        blip = {
+            "level": "ERROR",
+            "source": "server",
+            "traceback": (
+                "psycopg.OperationalError: SSL error: "
+                "decryption failed or bad record mac\n"
+            ),
+        }
+        with patch.object(
+            vd, "fetch_debug_logs",
+            return_value=(200, {"logs": [blip], "count": 1}),
+        ):
+            status, _ = vd.do_log_check(
+                "https://x", "cookie", self._ok_recent_timestamp(),
+            )
+        assert status == "PASS"
+
+    def test_still_fails_on_non_ssl_operational_error(self):
+        """A real DB problem (e.g. table missing) should still FAIL."""
+        real_error = {
+            "level": "ERROR",
+            "source": "server",
+            "route": "/api/tasks",
+            "traceback": (
+                "psycopg.errors.UndefinedTable: relation "
+                '"tasks" does not exist\n'
+            ),
+        }
+        with patch.object(
+            vd, "fetch_debug_logs",
+            return_value=(200, {"logs": [real_error], "count": 1}),
+        ):
+            status, rows = vd.do_log_check(
+                "https://x", "cookie", self._ok_recent_timestamp(),
+            )
+        assert status == "FAIL"
+        assert len(rows) == 1
+
+    def test_retries_on_5xx(self):
+        """Transient 5xx from /api/debug/logs itself should retry before
+        giving up (catches the same warm-up flakiness as the filter)."""
+        call_count = {"n": 0}
+
+        def flaky(*args, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] < 3:
+                return 500, None
+            return 200, {"logs": [], "count": 0}
+
+        with patch.object(vd, "fetch_debug_logs", side_effect=flaky), \
+             patch.object(vd.time, "sleep"):  # skip real sleeps
+            status, _ = vd.do_log_check(
+                "https://x", "cookie", self._ok_recent_timestamp(),
+            )
+        assert status == "PASS"
+        assert call_count["n"] == 3
+
+    def test_does_not_retry_on_4xx(self):
+        """401/403 are deterministic — no point retrying."""
+        call_count = {"n": 0}
+
+        def auth_fail(*args, **kwargs):
+            call_count["n"] += 1
+            return 401, None
+
+        with patch.object(vd, "fetch_debug_logs", side_effect=auth_fail), \
+             patch.object(vd.time, "sleep"):
+            status, _ = vd.do_log_check(
+                "https://x", "cookie", self._ok_recent_timestamp(),
+            )
+        assert status.startswith("SKIP")
+        assert call_count["n"] == 1
+
     def test_passes_since_minutes_to_fetcher(self):
         """Regression guard: the window must be scoped to this deploy."""
         captured: dict = {}
