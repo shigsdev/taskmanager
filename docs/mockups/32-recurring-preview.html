@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Mockup — #32 Recurring preview cards in This Week</title>
+    <!-- Pulls the REAL app stylesheet so spacing / colors / typography match.
+         Relative path resolves whether opened via file:// or http:// . -->
+    <link rel="stylesheet" href="../../static/style.css">
+    <style>
+        /* --- Mockup chrome (not part of the real app) ------------------ */
+        body {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+            background: #f0f2f5;
+        }
+        .mockup-note {
+            background: #fff8dc;
+            border-left: 4px solid #d4b000;
+            padding: 12px 16px;
+            margin: 24px 0;
+            font-size: 0.92rem;
+            line-height: 1.5;
+        }
+        .mockup-note strong { color: #8a7a00; }
+        .treatment-label {
+            display: inline-block;
+            background: #2563eb;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            margin-right: 8px;
+        }
+        .mockup-h2 { margin-top: 48px; font-size: 1.25rem; }
+        .mockup-col-wrap {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 24px;
+            margin-top: 16px;
+        }
+        .board-wrap {
+            background: var(--surface, #fff);
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        /* --- Treatment A: dashed border ------------------------------- */
+        .preview-card-a {
+            border: 2px dashed #9ca3af;
+            background: #fafafa;
+        }
+        .preview-card-a:hover { background: #f4f4f5; }
+
+        /* --- Treatment B: ghost tint + emoji badge -------------------- */
+        .preview-card-b {
+            background: #eff6ff;  /* very light blue */
+            border: 1px solid #bfdbfe;
+        }
+        .preview-card-b .preview-badge {
+            display: inline-block;
+            margin-left: 6px;
+            padding: 1px 6px;
+            background: #2563eb;
+            color: #fff;
+            font-size: 0.7rem;
+            font-weight: 700;
+            border-radius: 3px;
+            vertical-align: middle;
+        }
+
+        /* --- Treatment C: muted opacity + right-edge badge ------------ */
+        .preview-card-c {
+            opacity: 0.55;
+            position: relative;
+            padding-right: 36px;
+        }
+        .preview-card-c:hover { opacity: 0.85; }
+        .preview-card-c::after {
+            content: "🔁";
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.1rem;
+            opacity: 1;
+        }
+
+        /* Subtle cursor hint: preview cards feel different to click */
+        .task-card[data-preview="true"] { cursor: help; }
+    </style>
+</head>
+<body>
+    <h1 style="margin-bottom: 8px;">Mockup — Backlog #32</h1>
+    <p style="color: #555; margin: 0 0 4px 0;">
+        Preview recurring templates in This Week, grouped by fire day.
+    </p>
+    <p style="color: #888; font-size: 0.85rem; margin: 0;">
+        <strong>Scenario baseline:</strong> today is Monday. You have
+        two real tasks in This Week (a Tuesday dentist + a Thursday
+        report). You also have three recurring templates that will fire
+        later this week: Weekly review (Friday), Team retro (Friday),
+        and a daily Exercise task (every day including today, but the
+        today instance has already spawned so only Tue–Sun are previewed).
+    </p>
+
+    <div class="mockup-note">
+        <strong>What to look for:</strong>
+        Scroll through the three treatments below. Each shows the <em>same</em>
+        This Week panel with the <em>same</em> preview cards — only the visual
+        treatment differs. The real tasks (dentist / report draft) should stay
+        visually dominant; the preview cards should read as "coming up, not
+        actionable yet" at a glance.
+    </div>
+
+    <!-- Shared panel contents for all three treatments -->
+    <!-- Day groups: Tue (1 real), Wed (1 preview daily), Thu (1 real + 1 preview daily),
+         Fri (2 previews weekly + 1 preview daily), Sat/Sun (1 preview daily each) -->
+
+
+    <!-- ==================================================================
+         TREATMENT A — Dashed border (lightweight, placeholder idiom)
+         ================================================================== -->
+    <h2 class="mockup-h2">
+        <span class="treatment-label">A</span>
+        Dashed border
+    </h2>
+    <p style="color: #666; font-size: 0.9rem; margin: 4px 0 8px 0;">
+        Minimal visual weight. "Unfilled outline" reads intuitively as
+        "placeholder / not yet a real thing." Uses color only sparingly
+        (grey). Scales to 5+ previews per week without getting noisy.
+    </p>
+    <div class="board-wrap">
+        <section class="tier">
+            <div class="tier-header">
+                <h2>
+                    <button class="collapse-toggle" aria-expanded="true">▾</button>
+                    This Week <span class="tier-count">7</span>
+                </h2>
+            </div>
+            <div class="tier-body task-list">
+                <div class="day-group">
+                    <h3 class="day-group-heading">Tuesday (1)</h3>
+                    <div class="task-card">
+                        <div class="task-body">
+                            <div class="task-title">Dentist appointment</div>
+                            <div class="task-meta">🗓 Tomorrow · personal</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="day-group">
+                    <h3 class="day-group-heading">Wednesday (1)</h3>
+                    <div class="task-card preview-card-a" data-preview="true"
+                         title="Recurring: Exercise — daily. Click to edit the template.">
+                        <div class="task-body">
+                            <div class="task-title">Exercise — run or gym</div>
+                            <div class="task-meta">🔁 recurs daily · work</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="day-group">
+                    <h3 class="day-group-heading">Thursday (2)</h3>
+                    <div class="task-card">
+                        <div class="task-body">
+                            <div class="task-title">Draft Q2 report</div>
+                            <div class="task-meta">🗓 Thursday · work</div>
+                        </div>
+                    </div>
+                    <div class="task-card preview-card-a" data-preview="true"
+                         title="Recurring: Exercise — daily.">
+                        <div class="task-body">
+                            <div class="task-title">Exercise — run or gym</div>
+                            <div class="task-meta">🔁 recurs daily · work</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="day-group">
+                    <h3 class="day-group-heading">Friday (3)</h3>
+                    <div class="task-card preview-card-a" data-preview="true"
+                         title="Recurring: Weekly review — Fridays.">
+                        <div class="task-body">
+                            <div class="task-title">Weekly review</div>
+                            <div class="task-meta">🔁 recurs weekly (Friday) · personal</div>
+                        </div>
+                    </div>
+                    <div class="task-card preview-card-a" data-preview="true"
+                         title="Recurring: Team retro — first Friday of month.">
+                        <div class="task-body">
+                            <div class="task-title">Team retro</div>
+                            <div class="task-meta">🔁 recurs monthly (1st Friday) · work</div>
+                        </div>
+                    </div>
+                    <div class="task-card preview-card-a" data-preview="true"
+                         title="Recurring: Exercise — daily.">
+                        <div class="task-body">
+                            <div class="task-title">Exercise — run or gym</div>
+                            <div class="task-meta">🔁 recurs daily · work</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ==================================================================
+         TREATMENT B — Ghost blue tint + text badge
+         ================================================================== -->
+    <h2 class="mockup-h2">
+        <span class="treatment-label">B</span>
+        Ghost blue tint + "UPCOMING" badge
+    </h2>
+    <p style="color: #666; font-size: 0.9rem; margin: 4px 0 8px 0;">
+        Colored fill + textual badge. Reads clearly as a "special" card
+        type without being subtle. Risk: if the user adds many recurring
+        templates, 60%+ of This Week could be blue, which might feel
+        busier than A.
+    </p>
+    <div class="board-wrap">
+        <section class="tier">
+            <div class="tier-header">
+                <h2>
+                    <button class="collapse-toggle" aria-expanded="true">▾</button>
+                    This Week <span class="tier-count">7</span>
+                </h2>
+            </div>
+            <div class="tier-body task-list">
+                <div class="day-group">
+                    <h3 class="day-group-heading">Tuesday (1)</h3>
+                    <div class="task-card">
+                        <div class="task-body">
+                            <div class="task-title">Dentist appointment</div>
+                            <div class="task-meta">🗓 Tomorrow · personal</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="day-group">
+                    <h3 class="day-group-heading">Wednesday (1)</h3>
+                    <div class="task-card preview-card-b" data-preview="true">
+                        <div class="task-body">
+                            <div class="task-title">
+                                Exercise — run or gym
+                                <span class="preview-badge">UPCOMING</span>
+                            </div>
+                            <div class="task-meta">recurs daily · work</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="day-group">
+                    <h3 class="day-group-heading">Thursday (2)</h3>
+                    <div class="task-card">
+                        <div class="task-body">
+                            <div class="task-title">Draft Q2 report</div>
+                            <div class="task-meta">🗓 Thursday · work</div>
+                        </div>
+                    </div>
+                    <div class="task-card preview-card-b" data-preview="true">
+                        <div class="task-body">
+                            <div class="task-title">
+                                Exercise — run or gym
+                                <span class="preview-badge">UPCOMING</span>
+                            </div>
+                            <div class="task-meta">recurs daily · work</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="day-group">
+                    <h3 class="day-group-heading">Friday (3)</h3>
+                    <div class="task-card preview-card-b" data-preview="true">
+                        <div class="task-body">
+                            <div class="task-title">
+                                Weekly review
+                                <span class="preview-badge">UPCOMING</span>
+                            </div>
+                            <div class="task-meta">recurs weekly (Friday) · personal</div>
+                        </div>
+                    </div>
+                    <div class="task-card preview-card-b" data-preview="true">
+                        <div class="task-body">
+                            <div class="task-title">
+                                Team retro
+                                <span class="preview-badge">UPCOMING</span>
+                            </div>
+                            <div class="task-meta">recurs monthly (1st Friday) · work</div>
+                        </div>
+                    </div>
+                    <div class="task-card preview-card-b" data-preview="true">
+                        <div class="task-body">
+                            <div class="task-title">
+                                Exercise — run or gym
+                                <span class="preview-badge">UPCOMING</span>
+                            </div>
+                            <div class="task-meta">recurs daily · work</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ==================================================================
+         TREATMENT C — Muted opacity + right-edge 🔁 icon
+         ================================================================== -->
+    <h2 class="mockup-h2">
+        <span class="treatment-label">C</span>
+        Muted opacity (~55%) + right-edge 🔁 icon
+    </h2>
+    <p style="color: #666; font-size: 0.9rem; margin: 4px 0 8px 0;">
+        "Faded" idiom. Cards look visibly less alive than real tasks —
+        closest to a classic "placeholder / preview" pattern. The 🔁
+        icon gives a quick visual scanner. Risk: accessibility / color
+        contrast — faded grey text on white may fail WCAG contrast for
+        low-vision users.
+    </p>
+    <div class="board-wrap">
+        <section class="tier">
+            <div class="tier-header">
+                <h2>
+                    <button class="collapse-toggle" aria-expanded="true">▾</button>
+                    This Week <span class="tier-count">7</span>
+                </h2>
+            </div>
+            <div class="tier-body task-list">
+                <div class="day-group">
+                    <h3 class="day-group-heading">Tuesday (1)</h3>
+                    <div class="task-card">
+                        <div class="task-body">
+                            <div class="task-title">Dentist appointment</div>
+                            <div class="task-meta">🗓 Tomorrow · personal</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="day-group">
+                    <h3 class="day-group-heading">Wednesday (1)</h3>
+                    <div class="task-card preview-card-c" data-preview="true">
+                        <div class="task-body">
+                            <div class="task-title">Exercise — run or gym</div>
+                            <div class="task-meta">recurs daily · work</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="day-group">
+                    <h3 class="day-group-heading">Thursday (2)</h3>
+                    <div class="task-card">
+                        <div class="task-body">
+                            <div class="task-title">Draft Q2 report</div>
+                            <div class="task-meta">🗓 Thursday · work</div>
+                        </div>
+                    </div>
+                    <div class="task-card preview-card-c" data-preview="true">
+                        <div class="task-body">
+                            <div class="task-title">Exercise — run or gym</div>
+                            <div class="task-meta">recurs daily · work</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="day-group">
+                    <h3 class="day-group-heading">Friday (3)</h3>
+                    <div class="task-card preview-card-c" data-preview="true">
+                        <div class="task-body">
+                            <div class="task-title">Weekly review</div>
+                            <div class="task-meta">recurs weekly (Friday) · personal</div>
+                        </div>
+                    </div>
+                    <div class="task-card preview-card-c" data-preview="true">
+                        <div class="task-body">
+                            <div class="task-title">Team retro</div>
+                            <div class="task-meta">recurs monthly (1st Friday) · work</div>
+                        </div>
+                    </div>
+                    <div class="task-card preview-card-c" data-preview="true">
+                        <div class="task-body">
+                            <div class="task-title">Exercise — run or gym</div>
+                            <div class="task-meta">recurs daily · work</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ==================================================================
+         Open design questions
+         ================================================================== -->
+    <h2 class="mockup-h2" style="margin-top: 64px;">Open design questions (for the ADR)</h2>
+    <ol style="line-height: 1.7;">
+        <li>
+            <strong>Click behavior</strong>: clicking a preview card should
+            open the <em>RecurringTask editor</em> (not a task detail panel),
+            because there's no Task row yet. Confirm? The tooltip shown
+            on hover (treatments A and C use the <code>title</code> attr)
+            explains "recurring — click to edit the template."
+        </li>
+        <li>
+            <strong>Drag / done / tier moves</strong>: preview cards must
+            reject drag, check-off, and tier-button clicks (no Task ID to
+            target). Visually, treatments A and C already read as "not
+            draggable"; treatment B might fool the user into trying. Need
+            explicit no-op with a subtle toast / inline hint.
+        </li>
+        <li>
+            <strong>Same-day collision</strong>: if today is Friday and the
+            Weekly review template has ALREADY spawned (a real Task with
+            <code>recurring_task_id</code> set exists for today), we must
+            NOT also render a preview for Friday — one or the other. The
+            logic: <code>if any spawned Task this week has
+            recurring_task_id == template.id, drop the preview for that
+            fire day.</code>
+        </li>
+        <li>
+            <strong>Completed templates</strong>: if the user disabled a
+            RecurringTask (<code>is_active = false</code>), no preview.
+            Straightforward.
+        </li>
+        <li>
+            <strong>Cross-tier visibility</strong>: should Next Week show
+            previews too? My instinct YES — the same code renders in both
+            panels, keyed on the fire day relative to the tier's range.
+            Gated behind the same render path so implementation cost is
+            near zero.
+        </li>
+        <li>
+            <strong>Count badge</strong>: should <code>.tier-count</code>
+            include previews or just real Tasks? If it includes previews,
+            the user sees "This Week 7" and expects 7 clickable-doable
+            things, which is wrong. Recommend: exclude previews from the
+            count (the Friday "3" in the mockups is real tasks only in the
+            current drafts — I need to fix that in the preview). Or show
+            as <code>4 (+3 upcoming)</code>.
+        </li>
+        <li>
+            <strong>Mobile (375px)</strong>: all three treatments fit the
+            card width (no additional width cost vs real cards). Worth
+            verifying with a real render on mobile — not done in this
+            static mockup.
+        </li>
+    </ol>
+
+    <div class="mockup-note" style="margin-top: 32px;">
+        <strong>Next step:</strong> pick a treatment and answer questions
+        1–6. I'll then write ADR-015 (or fold into a rev of ADR on #32)
+        and scope the implementation. Anticipated effort: medium — the
+        compute side is straightforward (expand templates 7 days ahead,
+        filter already-spawned, merge into <code>renderBoard</code>);
+        the UX is where the decisions live.
+    </div>
+</body>
+</html>
