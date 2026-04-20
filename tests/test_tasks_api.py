@@ -1605,3 +1605,151 @@ class TestRollTomorrowToToday:
             _make_task(title="x", tier=Tier.TODAY)
             count = roll_tomorrow_to_today()
         assert count == 0
+
+
+class TestTierDueDateAutoFill:
+    """Backlog #28: TODAY/TOMORROW tier changes auto-fill due_date when
+    the task doesn't already have one. Respects explicit user intent
+    (fill-if-null only; never overwrite)."""
+
+    def _expected_today_iso(self):
+        """Mirror _local_today_date() for assertion parity."""
+        from task_service import _local_today_date
+        return _local_today_date().isoformat()
+
+    def _expected_tomorrow_iso(self):
+        from datetime import timedelta
+
+        from task_service import _local_today_date
+        return (_local_today_date() + timedelta(days=1)).isoformat()
+
+    # --- create -------------------------------------------------------
+
+    def test_create_today_with_no_due_date_fills_today(self, authed_client):
+        resp = authed_client.post(
+            "/api/tasks",
+            json={"title": "x", "type": "work", "tier": "today"},
+        )
+        assert resp.status_code == 201
+        assert resp.get_json()["due_date"] == self._expected_today_iso()
+
+    def test_create_tomorrow_with_no_due_date_fills_tomorrow(
+        self, authed_client,
+    ):
+        resp = authed_client.post(
+            "/api/tasks",
+            json={"title": "x", "type": "work", "tier": "tomorrow"},
+        )
+        assert resp.status_code == 201
+        assert resp.get_json()["due_date"] == self._expected_tomorrow_iso()
+
+    def test_create_today_with_explicit_due_date_respects_user_value(
+        self, authed_client,
+    ):
+        resp = authed_client.post(
+            "/api/tasks",
+            json={
+                "title": "x", "type": "work",
+                "tier": "today", "due_date": "2026-12-31",
+            },
+        )
+        assert resp.status_code == 201
+        assert resp.get_json()["due_date"] == "2026-12-31"
+
+    def test_create_inbox_does_not_auto_fill(self, authed_client):
+        resp = authed_client.post(
+            "/api/tasks",
+            json={"title": "x", "type": "work"},
+        )
+        assert resp.status_code == 201
+        assert resp.get_json()["due_date"] is None
+
+    def test_create_backlog_does_not_auto_fill(self, authed_client):
+        resp = authed_client.post(
+            "/api/tasks",
+            json={"title": "x", "type": "work", "tier": "backlog"},
+        )
+        assert resp.get_json()["due_date"] is None
+
+    # --- update -------------------------------------------------------
+
+    def test_move_to_today_fills_if_null(self, authed_client, app):
+        with app.app_context():
+            t = _make_task(title="x", tier=Tier.BACKLOG)
+            task_id = t.id
+        resp = authed_client.patch(
+            f"/api/tasks/{task_id}", json={"tier": "today"},
+        )
+        assert resp.get_json()["due_date"] == self._expected_today_iso()
+
+    def test_move_to_tomorrow_fills_if_null(self, authed_client, app):
+        with app.app_context():
+            t = _make_task(title="x", tier=Tier.BACKLOG)
+            task_id = t.id
+        resp = authed_client.patch(
+            f"/api/tasks/{task_id}", json={"tier": "tomorrow"},
+        )
+        assert resp.get_json()["due_date"] == self._expected_tomorrow_iso()
+
+    def test_move_to_today_does_not_overwrite_explicit_date(
+        self, authed_client, app,
+    ):
+        from datetime import date as _date
+        with app.app_context():
+            t = _make_task(
+                title="x", tier=Tier.BACKLOG,
+                due_date=_date(2026, 12, 31),
+            )
+            task_id = t.id
+        resp = authed_client.patch(
+            f"/api/tasks/{task_id}", json={"tier": "today"},
+        )
+        assert resp.get_json()["due_date"] == "2026-12-31"
+
+    def test_explicit_null_due_date_in_same_patch_is_respected(
+        self, authed_client, app,
+    ):
+        """If the user PATCHes {tier: today, due_date: null} they want
+        both — don't auto-fill back on top of their explicit null."""
+        with app.app_context():
+            t = _make_task(title="x", tier=Tier.BACKLOG)
+            task_id = t.id
+        resp = authed_client.patch(
+            f"/api/tasks/{task_id}",
+            json={"tier": "today", "due_date": None},
+        )
+        assert resp.get_json()["due_date"] is None
+
+    def test_move_out_of_today_leaves_due_date_intact(
+        self, authed_client, app,
+    ):
+        """#28 design note: moving OUT of TODAY doesn't clear due_date."""
+        from datetime import date as _date
+        with app.app_context():
+            t = _make_task(
+                title="x", tier=Tier.TODAY, due_date=_date(2026, 4, 20),
+            )
+            task_id = t.id
+        resp = authed_client.patch(
+            f"/api/tasks/{task_id}", json={"tier": "backlog"},
+        )
+        body = resp.get_json()
+        assert body["tier"] == "backlog"
+        assert body["due_date"] == "2026-04-20"
+
+    # --- bulk PATCH ---------------------------------------------------
+
+    def test_bulk_move_to_today_fills_each_null(self, authed_client, app):
+        with app.app_context():
+            ids = [
+                str(_make_task(title="a", tier=Tier.BACKLOG).id),
+                str(_make_task(title="b", tier=Tier.BACKLOG).id),
+            ]
+        authed_client.patch(
+            "/api/tasks/bulk",
+            json={"task_ids": ids, "updates": {"tier": "today"}},
+        )
+        expected = self._expected_today_iso()
+        for tid in ids:
+            body = authed_client.get(f"/api/tasks/{tid}").get_json()
+            assert body["due_date"] == expected

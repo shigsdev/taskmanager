@@ -5,8 +5,9 @@ All mutations commit on success. All validation failures raise
 """
 from __future__ import annotations
 
+import os
 import uuid
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -48,6 +49,54 @@ def _parse_checklist(value: Any) -> list:
     if not isinstance(value, list):
         raise ValidationError("checklist must be a list", "checklist")
     return value
+
+
+# --- Tier auto-fill helpers (#28) --------------------------------------------
+
+
+def _local_today_date() -> date:
+    """Return "today" in the user's configured timezone.
+
+    The server runs in UTC on Railway, but "today" from the user's POV
+    follows ``DIGEST_TZ`` (default America/New_York). Using server UTC
+    would make a 10pm-ET task land in tomorrow's Today-tier. Same TZ
+    convention as the Tomorrow auto-roll cron (#27), so behaviour is
+    self-consistent.
+    """
+    try:
+        from zoneinfo import ZoneInfo
+        tz_name = os.environ.get("DIGEST_TZ", "America/New_York")
+        return datetime.now(ZoneInfo(tz_name)).date()
+    except Exception:  # noqa: BLE001
+        # ZoneInfo / tzdata unavailable → fall back to server local date.
+        # Not ideal on Railway-UTC, but better than crashing.
+        return date.today()
+
+
+def _auto_fill_tier_due_date(task: Task, data: dict) -> None:
+    """Backlog #28: when a task lands in TODAY / TOMORROW with no
+    ``due_date`` set, fill ``due_date`` from the tier.
+
+    Rules:
+    - Fill-if-null only — an explicit user-provided ``due_date`` is
+      never clobbered.
+    - Skipped if the caller mentioned ``due_date`` in this request at
+      all (even setting it to ``None`` is user intent; don't second-
+      guess). Means: only auto-fills when the field wasn't in the
+      payload.
+    - Only fires for TODAY and TOMORROW. Moving back out to Backlog /
+      Freezer / etc. does NOT clear an auto-filled due_date — the
+      date is still meaningful as a reminder (per the backlog's
+      design note).
+    """
+    if "due_date" in data:
+        return
+    if task.due_date is not None:
+        return
+    if task.tier == Tier.TODAY:
+        task.due_date = _local_today_date()
+    elif task.tier == Tier.TOMORROW:
+        task.due_date = _local_today_date() + timedelta(days=1)
 
 
 # --- Repeat helpers ----------------------------------------------------------
@@ -171,6 +220,8 @@ def create_task(data: dict) -> Task:
         checklist=_parse_checklist(data.get("checklist")),
         sort_order=_parse_int(data.get("sort_order", 0), "sort_order"),
     )
+    # #28: fill due_date from tier when TODAY/TOMORROW and no explicit value.
+    _auto_fill_tier_due_date(task, data)
     db.session.add(task)
     db.session.flush()  # assign task.id before linking recurring template
 
@@ -309,6 +360,13 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
 
     if "repeat" in data:
         _update_repeat(task, data["repeat"])
+
+    # #28: after all explicit updates, if the tier is TODAY/TOMORROW
+    # and due_date ended up null (and wasn't explicitly set in this
+    # payload), fill it from the tier. Runs on every update — catches
+    # drag-to-today, bulk tier change, capture-bar #today with no
+    # explicit date, etc.
+    _auto_fill_tier_due_date(task, data)
 
     unknown = set(data) - _UPDATABLE_FIELDS
     if unknown:
