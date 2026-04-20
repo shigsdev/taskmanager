@@ -1479,11 +1479,17 @@ function taskDetailOpen(task) {
     const subtaskSection = document.getElementById("subtaskSection");
     const subtaskList = document.getElementById("subtaskItems");
     subtaskList.innerHTML = "";
+    // Backlog #30: parent-link section — inverse toggle of subtasks
+    const parentLinkSection = document.getElementById("parentLinkSection");
     if (task.parent_id) {
-        // This IS a subtask — hide the subtask section and show parent link
         subtaskSection.style.display = "none";
+        if (parentLinkSection) {
+            parentLinkSection.style.display = "";
+            taskDetailPopulateParentLink(task.parent_id);
+        }
     } else {
         subtaskSection.style.display = "";
+        if (parentLinkSection) parentLinkSection.style.display = "none";
         taskDetailLoadSubtasks(task.id);
     }
 
@@ -1663,6 +1669,56 @@ async function taskDetailSave(e) {
 }
 
 // --- Subtasks in detail panel ------------------------------------------------
+
+// Backlog #30: render a clickable link to the parent task inside the
+// detail panel of a subtask. Looks up the parent in the client-side
+// ``allTasks`` cache first (covers 99% of cases — parent is usually
+// active), falls back to a single-task API fetch so archived /
+// cancelled / deleted parents still render.
+async function taskDetailPopulateParentLink(parentId) {
+    const body = document.getElementById("parentLinkBody");
+    if (!body) return;
+    body.innerHTML = "";  // clear before populate
+
+    let parent = allTasks.find((t) => t.id === parentId);
+    if (!parent) {
+        // Fallback for non-active parents not in the board cache.
+        try {
+            parent = await apiFetch(`${API}/${parentId}`);
+        } catch {
+            body.textContent = "Parent task not found.";
+            return;
+        }
+    }
+
+    const link = document.createElement("a");
+    link.href = "#";
+    link.className = "parent-link";
+    link.textContent = parent.title;
+    link.addEventListener("click", (e) => {
+        e.preventDefault();
+        taskDetailOpen(parent);
+    });
+    body.appendChild(link);
+
+    // Status badge if the parent is NOT active — visual signal that
+    // clicking opens something the user has since marked done /
+    // dropped / recycled. Avoids surprise when the detail panel
+    // shows a "dead" task.
+    if (parent.status && parent.status !== "active") {
+        const badge = document.createElement("span");
+        badge.className = "badge parent-link-status parent-link-status-" + parent.status;
+        const labels = {
+            archived: "completed",
+            cancelled: "cancelled",
+            deleted: "deleted",
+        };
+        badge.textContent = labels[parent.status] || parent.status;
+        body.appendChild(document.createTextNode(" "));
+        body.appendChild(badge);
+    }
+}
+
 
 async function taskDetailLoadSubtasks(parentId) {
     const list = document.getElementById("subtaskItems");

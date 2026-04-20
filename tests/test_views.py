@@ -66,6 +66,16 @@ class TestIndexPage:
         assert 'id="detailNotes"' in html
         assert 'id="checklistItems"' in html
 
+    def test_contains_parent_link_section(self, client, monkeypatch):
+        """Backlog #30: detail panel has a parent-link section that
+        app.js toggles on for subtasks."""
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/").data.decode()
+        assert 'id="parentLinkSection"' in html
+        assert 'id="parentLinkBody"' in html
+        # Starts hidden; app.js shows it when task.parent_id is set.
+        assert 'parentLinkSection' in html and 'style="display:none"' in html
+
     def test_contains_project_filter_bar(self, client, monkeypatch):
         monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
         html = client.get("/").data.decode()

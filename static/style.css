@@ -475,6 +475,30 @@ body {
 .badge-url:hover { text-decoration: underline; }
 .badge-subtask-tier { font-size: 0.7rem; color: var(--text-muted); }
 
+/* Backlog #30: parent-link section in detail panel (shown only on
+   subtasks). Mirrors the subtask-section spacing so the two sections
+   swap cleanly depending on task.parent_id. */
+.parent-link-section { margin-top: 12px; }
+.parent-link-section label { font-weight: 600; margin-bottom: 4px; display: block; }
+.parent-link-section #parentLinkBody { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.parent-link {
+    color: var(--accent, #2563eb);
+    text-decoration: none;
+    font-weight: 500;
+}
+.parent-link:hover { text-decoration: underline; }
+.parent-link-status {
+    font-size: 0.75rem;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 600;
+    background: var(--bg-subtle, #f6f8fa);
+    color: #6b7280;
+}
+.parent-link-status-archived { color: #166534; background: #dcfce7; }
+.parent-link-status-cancelled { color: #9a3412; background: #fed7aa; }
+.parent-link-status-deleted { color: #991b1b; background: #fecaca; }
+
 /* Subtask section in detail panel */
 .subtask-section { margin-top: 12px; }
 .subtask-section label { font-weight: 600; margin-bottom: 4px; display: block; }

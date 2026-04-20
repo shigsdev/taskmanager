@@ -132,6 +132,14 @@
                 <button type="button" class="btn-sm" id="addChecklistItem">+ Add item</button>
             </div>
 
+            {# Backlog #30: when viewing a subtask (task.parent_id is
+               set), show a clickable link to its parent. Populated by
+               app.js taskDetailOpen(). Hidden on non-subtask tasks. #}
+            <div class="parent-link-section" id="parentLinkSection" style="display:none">
+                <label>Parent task</label>
+                <div id="parentLinkBody"></div>
+            </div>
+
             <div class="subtask-section" id="subtaskSection">
                 <label>Subtasks</label>
                 <div id="subtaskItems"></div>
