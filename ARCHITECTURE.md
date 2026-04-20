@@ -19,21 +19,33 @@ component is added, a data flow changes, or a security boundary shifts.
         │                      Railway                             │
         │  ┌────────────────────────────────────────────────────┐  │
         │  │                 Flask App                          │  │
-        │  │  Routes: auth · tasks · goals · digest ·           │  │
-        │  │          scan · import · settings                  │  │
-        │  │  Services: task · goal · digest · scan             │  │
+        │  │  Routes: auth · tasks · goals · projects · digest  │  │
+        │  │          scan · import · settings · review         │  │
+        │  │          (+ /tier/<name>, /completed planned #29)  │  │
+        │  │  Services: task · goal · digest · scan · project   │  │
         │  │  Crypto: Fernet (encrypt sensitive fields)         │  │
+        │  │  Startup gate: _ensure_postgres_enum_values()      │  │
+        │  │    re-applies ALTER TYPE ADD VALUE IF NOT EXISTS   │  │
+        │  │    in AUTOCOMMIT for late-introduced enum members  │  │
+        │  │    (workaround for alembic-transactional + SQLA    │  │
+        │  │    enum-name quirks; see commit 4cf7692)           │  │
         │  └────────┬─────────────────┬────────────────┬────────┘  │
         │           │                 │                │           │
         │           ▼                 ▼                ▼           │
         │   ┌───────────────┐  ┌────────────┐  ┌──────────────┐   │
         │   │  PostgreSQL   │  │ APScheduler│  │  In-memory   │   │
         │   │ tasks (url,   │  │ daily      │  │  image buffer│   │
-        │   │  parent_id)·  │  │ digest @   │  │ (never       │   │
-        │   │ goals·projects│  │ DIGEST_TIME│  │  persisted)  │   │
+        │   │  parent_id,   │  │ digest @   │  │ (never       │   │
+        │   │  cancellation_│  │ DIGEST_TIME│  │  persisted)  │   │
+        │   │  reason)·     │  │            │  │              │   │
+        │   │ goals·projects│  │            │  │              │   │
         │   │ recurring·    │  │            │  │              │   │
         │   │ import_log·   │  │            │  │              │   │
         │   │ app_logs      │  │            │  │              │   │
+        │   │ Tier enum:    │  │            │  │              │   │
+        │   │  +NEXT_WEEK   │  │            │  │              │   │
+        │   │ Status enum:  │  │            │  │              │   │
+        │   │  +CANCELLED   │  │            │  │              │   │
         │   └───────────────┘  └─────┬──────┘  └──────┬───────┘   │
         └──────────────────────────┬─┴─────────────────┬──────────┘
                                    │                   │
@@ -56,11 +68,27 @@ component is added, a data flow changes, or a security boundary shifts.
   browser over HTTPS.
 - **Flask app** — the single web service. Hosts routes, auth, services, and
   scheduler. One process, gunicorn-served.
-- **PostgreSQL** — Railway-managed. Stores tasks (with optional `url` and
-  self-referential `parent_id` for one-level subtasks), projects, goals,
-  recurring tasks, import log, and app_logs.
+- **PostgreSQL** — Railway-managed. Stores tasks (with optional `url`,
+  self-referential `parent_id` for one-level subtasks, and optional
+  `cancellation_reason` for status=CANCELLED tasks), projects, goals,
+  recurring tasks, import log, and app_logs. The `Tier` enum includes
+  `INBOX, TODAY, THIS_WEEK, NEXT_WEEK, BACKLOG, FREEZER` (NEXT_WEEK added
+  in #23). The `TaskStatus` enum includes `ACTIVE, ARCHIVED, CANCELLED,
+  DELETED` (CANCELLED added in #25, distinct from completed for honest
+  stats — see ADR-012).
 - **APScheduler** — in-process scheduler that fires the daily digest at
-  `DIGEST_TIME` in the user's configured timezone.
+  `DIGEST_TIME` in the user's configured timezone. Daily digest now also
+  surfaces a "PAST 7 DAYS: N completed, M cancelled" summary line (#25).
+- **Postgres enum repair gate** (`app._ensure_postgres_enum_values`) —
+  runs once on every `create_app()` boot. Opens a raw SQLAlchemy
+  connection in AUTOCOMMIT isolation and idempotently
+  `ALTER TYPE … ADD VALUE IF NOT EXISTS` for the late-introduced
+  `NEXT_WEEK` and `CANCELLED` enum members. Belt-and-braces backstop
+  for two latent bugs: alembic wraps each migration in a transaction and
+  Postgres silently rolls back `ALTER TYPE ADD VALUE` inside one; AND
+  SQLAlchemy stores Python enum member NAMES (UPPERCASE), not the
+  lowercase `.value` strings — adding the wrong casing leaves the ORM
+  unable to query the new value. SQLite skipped (string-stored enums).
 - **Fernet crypto module** — symmetric encryption for sensitive fields
   (work email, API keys if ever stored in DB).
 - **Google OAuth 2.0** — only login path. Validates the authenticated email
@@ -119,6 +147,43 @@ component is added, a data flow changes, or a security boundary shifts.
   Subtasks inherit `goal_id` and `project_id` from their parent unless
   explicitly overridden. Updating a parent's goal/project cascades to
   subtasks that still match the old value.
+- **Bulk task operations** (#21, ADR-008): `PATCH /api/tasks/bulk` accepts
+  `{ids: [...], updates: {...}}` (cap 200 ids). Each task is processed via
+  `update_task` so cascade rules apply; per-task errors don't roll back
+  others — best-effort with a `{updated, not_found, errors}` response shape.
+  Browser-side: a "Select" toggle in the view-filter bar reveals checkboxes
+  on every card and a sticky bottom toolbar with type / tier / due date /
+  goal / project / status / delete dropdowns. Status dropdown supports
+  Mark complete · Mark cancelled (with shared-reason prompt) · Mark active.
+- **Tier detail pages** (#22, ADR-009): `/tier/<name>` route renders one
+  tier in full-page layout (404 on invalid slug). Reuses the board's
+  `renderBoard()` dispatch via a shared else-branch, with the
+  `_task_detail_panel.html` Jinja partial included in both `index.html`
+  and `tier.html`. Tier headings on the board are clickable links into
+  these pages. Capture bar on a tier page defaults new tasks to the
+  current tier via `data-default-tier`.
+- **Day-of-week grouping** (#23, ADR-010): `static/day_group.js` is a
+  pure UMD module exporting `groupTasksByWeekday(tasks)` →
+  `[{label, tasks}, ...]` Monday-first, "No date" last. Used by the
+  This Week + Next Week panels on both the board and `/tier/<name>`
+  pages. Date strings parsed local-time (`new Date(y, m-1, d)`) to avoid
+  the UTC-rollback trap for west-coast users. 9 Jest tests run in <1s
+  with no DOM.
+- **Projects CRUD page** (#24, ADR-011): `/projects` mirrors the
+  `goals.html` chrome — cards grouped by Work/Personal type, color
+  picker (`<input type="color">`), goal dropdown, archive toggle.
+  Backed by the existing `projects_api.py` (no new endpoints). Single
+  soft-delete action exposed as Archive ⇄ Unarchive (DELETE endpoint
+  is identical to PATCH `is_active=false`).
+- **Task cancellation** (#25, ADR-012): `TaskStatus.CANCELLED` is
+  distinct from ARCHIVED (completed) so users can drop tasks honestly
+  without inflating completion stats. Optional `cancellation_reason`
+  (≤500 chars, nullable) auto-clears when transitioning out of
+  CANCELLED unless the same PATCH explicitly preserves it. Goal
+  progress excludes CANCELLED from BOTH numerator and denominator —
+  surfaced separately as a `cancelled` field. New "Cancelled" board
+  section parallels "Completed" (collapsed, lazy-loaded, no drag/drop:
+  restoration requires opening the detail panel).
 - **Import**: user pastes OneNote text or uploads Excel goals file → parser
   produces preview → user confirms → records written to DB, entry written
   to `import_log`.
