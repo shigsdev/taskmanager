@@ -218,10 +218,23 @@ class DBLogHandler(logging.Handler):
     def _insert_record(self, record: logging.LogRecord) -> None:
         """Insert one LogRecord into the app_logs table.
 
-        Runs inside an app context — required for Flask-SQLAlchemy's
-        ``db.session`` to function outside a request (startup logs,
-        scheduled jobs).
+        Uses a brand-new SQLAlchemy ``Session`` bound directly to the
+        engine rather than Flask-SQLAlchemy's shared ``db.session``.
+        Rationale: the request-scoped ``db.session`` can be in a
+        poisoned state (e.g. "current transaction is aborted" after a
+        PG enum rejection). Writing to it would then fail and cascade
+        through the circuit breaker, disabling observability exactly
+        when we need it most. A dedicated session checks out its own
+        connection from the pool, opens its own transaction, and is
+        unaffected by whatever the caller was doing.
+
+        Still requires an app context so Flask-SQLAlchemy can resolve
+        ``db.engine`` (bind-per-context lookup). Reuses the active
+        context when one exists (request, scheduler job, test); only
+        pushes a new one from truly contextless call sites.
         """
+        from sqlalchemy.orm import Session
+
         from models import AppLog, db
 
         # Format the message now while the record is fresh.
@@ -269,56 +282,68 @@ class DBLogHandler(logging.Handler):
                 status_code=getattr(record, "status_code", None),
                 source=getattr(record, "source", "server"),
             )
-            db.session.add(row)
-            db.session.commit()
+            # ISOLATED session — not db.session. A poisoned request
+            # transaction on db.session does not affect this one.
+            with Session(db.engine) as session:
+                session.add(row)
+                session.commit()
 
     # --- Pruning --------------------------------------------------------
 
     def _prune_rows(self) -> None:
-        """Cap total rows at MAX_ROWS by deleting the oldest."""
-        from sqlalchemy import delete, select
+        """Cap total rows at MAX_ROWS by deleting the oldest.
+
+        Uses an isolated Session for the same reason as ``_insert_record``
+        — pruning must survive a poisoned request transaction.
+        """
+        from sqlalchemy import delete, func, select
+        from sqlalchemy.orm import Session
 
         from models import AppLog, db
 
         try:
             ctx = nullcontext() if has_app_context() else self.app.app_context()
-            with ctx:
-                total = db.session.scalar(
-                    select(db.func.count()).select_from(AppLog)
+            with ctx, Session(db.engine) as session:
+                total = session.scalar(
+                    select(func.count()).select_from(AppLog)
                 )
                 if total is None or total <= MAX_ROWS:
                     return
                 excess = total - MAX_ROWS
-                # Find the timestamps of the N oldest rows and delete them.
                 oldest_stmt = (
                     select(AppLog.id)
                     .order_by(AppLog.timestamp.asc())
                     .limit(excess)
                 )
-                ids_to_delete = list(db.session.scalars(oldest_stmt))
+                ids_to_delete = list(session.scalars(oldest_stmt))
                 if ids_to_delete:
-                    db.session.execute(
+                    session.execute(
                         delete(AppLog).where(AppLog.id.in_(ids_to_delete))
                     )
-                    db.session.commit()
+                    session.commit()
         except Exception:  # noqa: S110 pruning must never raise
             # Pruning must never cause a logging failure.
             pass
 
     def _prune_age(self) -> None:
-        """Delete rows older than MAX_AGE_DAYS."""
+        """Delete rows older than MAX_AGE_DAYS.
+
+        Isolated Session, same rationale as ``_insert_record`` /
+        ``_prune_rows``.
+        """
         from sqlalchemy import delete
+        from sqlalchemy.orm import Session
 
         from models import AppLog, db
 
         try:
             cutoff = datetime.now(UTC) - timedelta(days=MAX_AGE_DAYS)
             ctx = nullcontext() if has_app_context() else self.app.app_context()
-            with ctx:
-                db.session.execute(
+            with ctx, Session(db.engine) as session:
+                session.execute(
                     delete(AppLog).where(AppLog.timestamp < cutoff)
                 )
-                db.session.commit()
+                session.commit()
         except Exception:  # noqa: S110 pruning must never raise
             pass
 

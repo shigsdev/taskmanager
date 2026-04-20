@@ -253,6 +253,52 @@ class TestDBLogHandler:
             rows = list(db.session.scalars(select(AppLog)))
         assert len(rows) == 0
 
+    def test_emit_uses_isolated_session_not_db_session(self, app, handler):
+        """Regression for the 2026-04-19 enum outage.
+
+        In prod, a Postgres enum rejection left ``db.session``'s
+        transaction in the "current transaction is aborted, commands
+        ignored" state; every subsequent ``db.session.commit()`` in
+        the error handler also failed, which tripped the circuit
+        breaker and lost server-side error visibility.
+
+        SQLite in the test env doesn't exhibit that exact poisoned
+        state, so we can't reproduce it faithfully. Instead we assert
+        the structural property that *makes the fix work*: the
+        handler's insert must NOT go through ``db.session``. If any
+        future change regresses back to ``db.session.commit()``, this
+        test fails.
+        """
+        # Track attempts to touch db.session. If the handler ever calls
+        # .add/.commit/.execute on it during insert, that's a regression:
+        # a poisoned caller transaction on db.session would then sink the
+        # logger. Count calls (don't raise) so the failure message is
+        # clearer than a late AttributeError inside SQLAlchemy internals.
+        calls: list[str] = []
+        from unittest.mock import patch as _patch
+        with app.app_context():
+            with _patch.object(
+                db.session, "add",
+                side_effect=lambda *a, **k: calls.append("add"),
+            ), _patch.object(
+                db.session, "commit",
+                side_effect=lambda *a, **k: calls.append("commit"),
+            ):
+                handler.emit(_make_record(msg="routed via isolated session"))
+
+            db.session.rollback()
+            rows = list(db.session.scalars(select(AppLog)))
+
+        assert calls == [], (
+            f"DBLogHandler used db.session (calls: {calls}). "
+            "Regression: it must use Session(db.engine) so a poisoned "
+            "caller transaction can't cascade into the logger."
+        )
+        assert len(rows) == 1
+        assert rows[0].message == "routed via isolated session"
+        assert handler._consecutive_failures == 0
+        assert handler.is_disabled is False
+
     def test_row_cap_pruning(self, app, handler, monkeypatch):
         """After exceeding MAX_ROWS the oldest rows get deleted."""
         monkeypatch.setattr(logging_service, "MAX_ROWS", 5)
