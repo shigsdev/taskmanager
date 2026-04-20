@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% set active_page = 'tasks' %}
+{% block title %}Completed — Task Manager{% endblock %}
+
+{% block capture %}
+{# Capture bar deliberately does NOT set data-default-tier — new
+   tasks typed here belong in Inbox, not Completed. #}
+<div class="capture-bar" id="captureBar">
+    <input type="text" id="captureInput" placeholder="Add a task…" autocomplete="off">
+    <select id="captureType" title="Task type">
+        <option value="work">Work</option>
+        <option value="personal">Personal</option>
+    </select>
+    <button type="button" id="captureVoice" class="icon-btn" title="Voice input (real-time dictation)">🎤</button>
+    <a href="{{ url_for('voice_memo_page') }}" class="icon-btn" id="captureVoiceMemo" title="Voice memo (record long-form, parse to tasks)" role="button">🎙️</a>
+    <button type="button" id="captureSubmit" class="icon-btn" title="Add task">✓</button>
+</div>
+{% endblock %}
+
+{% block content %}
+{# Same view-filter sub-nav pattern as tier.html (back link, view
+   filters, Select toggle). Bulk toolbar supports "Mark active" as
+   the un-complete path. #}
+<div class="view-filter-bar">
+    <a href="{{ url_for('index') }}" class="nav-tab tier-back-link" title="Back to board">← Board</a>
+    <a href="#" class="nav-tab view-filter-btn active" data-view="all">All</a>
+    <a href="#" class="nav-tab view-filter-btn" data-view="work">Work</a>
+    <a href="#" class="nav-tab view-filter-btn" data-view="personal">Personal</a>
+    <button type="button" id="bulkSelectToggle" class="nav-tab bulk-select-toggle" title="Select multiple tasks for batch operations">Select</button>
+</div>
+<div class="project-filter-bar" id="projectFilterBar" style="display:none"></div>
+
+{# Marker #completedPage tells app.js to run the completed-page init
+   branch (fetch ?status=archived into tierDetailList). Using
+   data-archived-list to differentiate from tier.html's data-tier
+   so renderBoard() doesn't try to render Task.tier="completed"
+   (which isn't a valid Tier enum value). #}
+<div class="tier-detail" id="tierDetail" data-archived-list="true">
+    <header class="tier-detail-header">
+        <h1>Completed <span class="tier-count" id="tierDetailCount">0</span></h1>
+        <p class="tier-detail-hint">All completed tasks. Click a card to open details, or use Select to bulk-restore (Status → Mark active).</p>
+    </header>
+
+    <div class="tier-detail-list task-list" id="tierDetailList" data-archived-list="true">
+        {# completed task cards rendered by app.js via taskCardEl() #}
+    </div>
+
+    <div class="tier-detail-empty" id="tierDetailEmpty" style="display:none">
+        <p>No completed tasks yet.</p>
+        <a href="{{ url_for('index') }}" class="btn btn-sm">Back to board</a>
+    </div>
+</div>
+
+{# Reuse the SAME bulk-action toolbar. "Mark active" in the Status
+   dropdown restores a completed task to active. #}
+<div class="bulk-toolbar" id="bulkToolbar" style="display:none" role="toolbar" aria-label="Bulk actions">
+    <div class="bulk-toolbar-summary">
+        <span id="bulkSelectedCount">0</span> selected
+    </div>
+    <div class="bulk-toolbar-actions">
+        <button type="button" id="bulkActionType" class="btn-sm">Type ▾</button>
+        <button type="button" id="bulkActionTier" class="btn-sm">Tier ▾</button>
+        <button type="button" id="bulkActionDueDate" class="btn-sm">Due date ▾</button>
+        <button type="button" id="bulkActionGoal" class="btn-sm">Goal ▾</button>
+        <button type="button" id="bulkActionProject" class="btn-sm">Project ▾</button>
+        <button type="button" id="bulkActionStatus" class="btn-sm">Status ▾</button>
+        <button type="button" id="bulkActionDelete" class="btn-sm btn-danger">Delete</button>
+    </div>
+    <button type="button" id="bulkClearSelection" class="btn-sm" title="Clear selection">✕</button>
+</div>
+
+{# Detail panel — same markup as index.html so app.js can drive it. #}
+{% include "_task_detail_panel.html" ignore missing %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='day_group.js') }}"></script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='parse_capture.js') }}"></script>
+<script src="{{ url_for('static', filename='capture.js') }}"></script>
+{% endblock %}

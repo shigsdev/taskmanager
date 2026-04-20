@@ -279,6 +279,18 @@ def create_app(config: dict | None = None) -> Flask:
             tier_label=labels.get(tier, tier.value),
         )
 
+    @app.route("/completed")
+    @login_required
+    def completed_page(email: str):  # noqa: ARG001
+        """Dedicated full-page view of completed tasks (#29).
+
+        Parallel to ``/tier/<name>`` (#22) but filters by
+        ``status=archived`` rather than ``tier=X``. "Completed" isn't
+        a Tier enum value, so it gets its own route + template rather
+        than overloading /tier/completed with an enum special-case.
+        """
+        return render_template("completed.html")
+
     @app.route("/goals")
     @login_required
     def goals_page(email: str):  # noqa: ARG001

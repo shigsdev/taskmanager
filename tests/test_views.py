@@ -262,6 +262,59 @@ class TestProjectsPage:
         assert resp.status_code == 403
 
 
+class TestCompletedPage:
+    """Integration tests for the dedicated /completed page (backlog #29)."""
+
+    def test_renders_200(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        resp = client.get("/completed")
+        assert resp.status_code == 200
+
+    def test_requires_auth(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
+        resp = client.get("/completed")
+        assert resp.status_code == 302
+
+    def test_rejects_wrong_email(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "bad@example.com")
+        resp = client.get("/completed")
+        assert resp.status_code == 403
+
+    def test_has_heading_and_completed_label(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/completed").data.decode()
+        assert "Completed" in html
+        # Marker for the JS init branch
+        assert 'data-archived-list="true"' in html
+        # Back link to board + bulk toolbar present
+        assert 'tier-back-link' in html
+        assert 'id="bulkToolbar"' in html
+
+    def test_loads_scripts(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/completed").data.decode()
+        assert "app.js" in html
+        assert "capture.js" in html
+
+    def test_capture_bar_has_no_default_tier(self, client, monkeypatch):
+        """Tasks typed in the capture bar on /completed should land in
+        Inbox (the server's default), NOT in archived state. Absence of
+        ``data-default-tier`` on the capture bar enforces this."""
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/completed").data.decode()
+        # The capture bar div must exist but without data-default-tier
+        assert 'id="captureBar"' in html
+        assert 'data-default-tier' not in html
+
+    def test_board_completed_heading_links_to_dedicated_page(
+        self, client, monkeypatch,
+    ):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/").data.decode()
+        # The board's Completed heading should now link to /completed
+        assert 'href="/completed"' in html
+
+
 # --- Login page ---------------------------------------------------------------
 
 

@@ -925,6 +925,7 @@ function updateInboxBadge() {
 
 function updateTodayWarning() {
     const warn = document.getElementById("todayWarning");
+    if (!warn) return;  // not on this page (e.g. /completed, /tier/<name>)
     const count = filteredTasks().filter((t) => t.tier === "today").length;
     warn.style.display = count > 7 ? "" : "none";
 }
@@ -1122,11 +1123,46 @@ let allCompleted = [];  // raw cache so view/project filter changes don't re-hit
 async function loadCompletedTasks() {
     const section = document.getElementById("tierCompleted");
     const list = document.getElementById("completedList");
-    list.innerHTML = "<div class='loading-msg'>Loading...</div>";
-    section.dataset.loaded = "true";
+    // Also supports the dedicated /completed page (#29) which has a
+    // different DOM shape (#tierDetailList instead of #completedList).
+    const dedicatedList = document.querySelector(
+        '#tierDetailList[data-archived-list="true"]'
+    );
+
+    if (list) {
+        list.innerHTML = "<div class='loading-msg'>Loading...</div>";
+        if (section) section.dataset.loaded = "true";
+    }
+    if (dedicatedList) {
+        dedicatedList.innerHTML = "<div class='loading-msg'>Loading...</div>";
+    }
+    if (!list && !dedicatedList) return;  // no completed container on this page
 
     allCompleted = await apiFetch(API + "?status=archived");
-    renderCompletedList();
+    if (list) renderCompletedList();
+    if (dedicatedList) renderCompletedPage();
+}
+
+// Backlog #29: renders archived tasks onto the dedicated /completed
+// full-page view using the standard taskCardEl (full interaction
+// affordances — tier buttons work, bulk-select works, click opens
+// the detail panel). The board's inline Completed section keeps its
+// compact completed-card treatment via renderCompletedList.
+function renderCompletedPage() {
+    const list = document.querySelector(
+        '#tierDetailList[data-archived-list="true"]'
+    );
+    const count = document.getElementById("tierDetailCount");
+    const empty = document.getElementById("tierDetailEmpty");
+    if (!list) return;
+    const tasks = filteredCompleted();
+    list.innerHTML = "";
+    if (count) count.textContent = tasks.length;
+    if (empty) empty.style.display = tasks.length === 0 ? "" : "none";
+    if (tasks.length === 0) return;
+    for (const task of tasks) {
+        list.appendChild(taskCardEl(task));
+    }
 }
 
 function filteredCompleted() {
@@ -1138,11 +1174,16 @@ function filteredCompleted() {
 }
 
 function renderCompletedList() {
+    // Also refresh the dedicated /completed page (#29) if we're on it.
+    // querySelector returns null on the board, so this is a no-op there.
+    renderCompletedPage();
+
     const list = document.getElementById("completedList");
     const count = document.getElementById("completedCount");
+    if (!list) return;  // on the dedicated page there's no inline section
     const tasks = filteredCompleted();
     list.innerHTML = "";
-    count.textContent = tasks.length;
+    if (count) count.textContent = tasks.length;
 
     if (tasks.length === 0) {
         list.classList.add("empty-state");

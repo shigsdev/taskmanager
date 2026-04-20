@@ -84,7 +84,7 @@
 
     <section class="tier tier-completed" id="tierCompleted">
         <div class="tier-header">
-            <h2><button class="collapse-toggle" aria-expanded="false">▸</button> Completed <span class="tier-count" id="completedCount">0</span></h2>
+            <h2><button class="collapse-toggle" aria-expanded="false">▸</button> <a href="{{ url_for('completed_page') }}" class="tier-heading-link" title="Open Completed as full page">Completed</a> <span class="tier-count" id="completedCount">0</span></h2>
         </div>
         <div class="tier-body task-list" id="completedList" style="display:none"></div>
     </section>
