@@ -322,3 +322,14 @@ manages the bypass server and exits non-zero on any failure. Skipping
 individual gates is an SOP violation; if a gate genuinely cannot run
 in this environment, document why in a `Gates-skipped: <gate> (<reason>)`
 trailer in the commit message.
+
+**First-time setup (once per clone):**
+```bash
+bash scripts/install_dev_tools.sh    # downloads gitleaks binary into tools/
+bash scripts/install_git_hooks.sh    # wires .githooks/pre-commit via core.hooksPath
+```
+
+The native pre-commit hook runs gitleaks against staged content before
+every commit (~200ms) and blocks any potential secret before it hits
+git history. Belt-and-braces on top of gate 10 in `run_all_gates.sh`.
+See ADR-022 for the rationale. Emergency bypass: `git commit --no-verify`.

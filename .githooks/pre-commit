@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# .githooks/pre-commit
+#
+# Runs gitleaks against STAGED content before every commit. Fast
+# (~200ms on this repo) because it only scans the diff, not history.
+#
+# Install:
+#   bash scripts/install_git_hooks.sh
+#
+# Uninstall:
+#   git config --unset core.hooksPath
+#
+# Bypass (emergencies only — the full gate still catches it before push):
+#   git commit --no-verify
+#
+# This is a BELT-AND-BRACES layer on top of gate 10 in run_all_gates.sh.
+# The full gate runs against the working tree; this hook runs against
+# exactly what's about to land in the commit. Both exist because:
+#   - The hook catches a leak BEFORE the commit is written (no history
+#     to rewrite later).
+#   - The gate catches a leak even if the contributor skipped the hook.
+# See ADR-022 for the full rationale.
+
+set -euo pipefail
+
+# Locate gitleaks the same way run_all_gates.sh does — PATH first,
+# then the ./tools/ fallback populated by scripts/install_dev_tools.sh.
+GITLEAKS_BIN=""
+if command -v gitleaks >/dev/null 2>&1; then
+    GITLEAKS_BIN="gitleaks"
+elif [ -x "./tools/gitleaks.exe" ]; then
+    GITLEAKS_BIN="./tools/gitleaks.exe"
+elif [ -x "./tools/gitleaks" ]; then
+    GITLEAKS_BIN="./tools/gitleaks"
+fi
+
+if [ -z "$GITLEAKS_BIN" ]; then
+    # Missing binary = skip, don't block. The pre-push full gate will
+    # still catch anything this would have caught.
+    echo "pre-commit: gitleaks not installed, skipping (run bash scripts/install_dev_tools.sh to enable)" >&2
+    exit 0
+fi
+
+# `git --staged` scans only the staged diff. --redact hides any hit
+# value in the output so the secret doesn't also end up in your
+# terminal scrollback. (gitleaks 8.x: the legacy `protect` subcommand
+# is deprecated in favor of `git --staged`.)
+if ! "$GITLEAKS_BIN" git --staged --no-banner --redact \
+        --config .gitleaks.toml --exit-code 1; then
+    echo >&2
+    echo "pre-commit: gitleaks detected a potential secret in staged content." >&2
+    echo "  • If it's a real secret, UNSTAGE it and rotate the credential." >&2
+    echo "  • If it's a false positive, add an allowlist entry to .gitleaks.toml." >&2
+    echo "  • To bypass (emergency only): git commit --no-verify" >&2
+    exit 1
+fi
+
+exit 0
