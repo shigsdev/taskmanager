@@ -569,6 +569,35 @@ def _start_digest_scheduler(app: Flask) -> None:
         replace_existing=True,
     )
 
+    # Backlog #35: auto-spawn recurring task instances on their fire
+    # day. Paired with #32's preview cards — previews show "this is
+    # coming Friday," and this cron materialises them on Friday
+    # morning so the user sees a real, checkable card in Today
+    # instead of still-a-preview in This Week.
+    #
+    # Runs at 00:05 local so it's well past the 00:01 tomorrow_roll
+    # and any DST-edge jitter. spawn_today_tasks() is idempotent
+    # (title-match suppression), so re-running manually via
+    # /api/recurring/spawn later the same day is a safe no-op.
+    #
+    # Paired collision safety: the spawned Task's created_at.date()
+    # == today (DIGEST_TZ via the #33 TZ fix in compute_previews_in_range),
+    # so the This Week preview for the same fire_date gets suppressed
+    # via the #34 filter — no double-render.
+    def _spawn_recurring_for_today():
+        with app.app_context():
+            from recurring_service import spawn_today_tasks
+            spawn_today_tasks()
+
+    scheduler.add_job(
+        _spawn_recurring_for_today,
+        "cron",
+        hour=0,
+        minute=5,
+        id="recurring_spawn",
+        replace_existing=True,
+    )
+
     # Heartbeat job. Gunicorn runs multiple workers but post_worker_init
     # only starts the scheduler in worker 1 (to avoid duplicate emails),
     # so health._scheduler is None in the other workers and /healthz

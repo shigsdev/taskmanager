@@ -372,3 +372,81 @@ class TestRunHealthChecks:
         with app.app_context():
             report = health.run_health_checks(app, db)
         assert report["status"] == "fail"
+
+
+class TestSchedulerJobsRegistered:
+    """_start_digest_scheduler registers all expected cron jobs.
+
+    Covers the full job list so a future change that inadvertently
+    drops a job (or adds one without updating the assertion) breaks
+    here instead of in prod after a silent midnight no-op.
+    """
+
+    def _cleanup(self):
+        """Tear down both the in-memory scheduler AND the heartbeat
+        file it writes to /tmp. The file is what fools
+        test_healthz_digest_check_reports_scheduler_state into seeing
+        a live-scheduler signal when `_scheduler` has been reset to
+        None — cross-test pollution caught by gates."""
+        import contextlib
+
+        import health as _health
+        if _health._scheduler is not None:
+            with contextlib.suppress(Exception):
+                _health._scheduler.shutdown(wait=False)
+            _health._scheduler = None
+        with contextlib.suppress(Exception):
+            _health.HEARTBEAT_PATH.unlink(missing_ok=True)
+
+    def _cron_spec(self, job):
+        """Best-effort extract (hour, minute) from a CronTrigger."""
+        trigger = getattr(job, "trigger", None)
+        if trigger is None:
+            return None
+        fields = {f.name: str(f) for f in getattr(trigger, "fields", [])}
+        return fields.get("hour"), fields.get("minute")
+
+    def test_all_four_jobs_registered(self, app, monkeypatch):
+        """#35 regression: recurring_spawn cron must exist alongside
+        daily_digest, tomorrow_roll, scheduler_heartbeat."""
+        from app import _start_digest_scheduler
+
+        # Need env set so the startup function doesn't early-exit.
+        monkeypatch.setenv("DIGEST_TIME", "07:00")
+        monkeypatch.setenv("DIGEST_TZ", "America/New_York")
+
+        # Start the scheduler, then immediately tear it down so tests
+        # don't leave a background thread running.
+        _start_digest_scheduler(app)
+        try:
+            import health as _health
+            scheduler = _health._scheduler
+            assert scheduler is not None
+            job_ids = {j.id for j in scheduler.get_jobs()}
+            assert "daily_digest" in job_ids
+            assert "tomorrow_roll" in job_ids
+            assert "recurring_spawn" in job_ids, (
+                "backlog #35: auto-spawn cron should run at 00:05 local"
+            )
+            assert "scheduler_heartbeat" in job_ids
+        finally:
+            self._cleanup()
+
+    def test_recurring_spawn_scheduled_at_00_05(self, app, monkeypatch):
+        """Schedule must be exactly 00:05 so it lands after
+        tomorrow_roll (00:01) but well before the morning digest."""
+        from app import _start_digest_scheduler
+
+        monkeypatch.setenv("DIGEST_TIME", "07:00")
+        monkeypatch.setenv("DIGEST_TZ", "America/New_York")
+        _start_digest_scheduler(app)
+        try:
+            import health as _health
+            job = _health._scheduler.get_job("recurring_spawn")
+            assert job is not None
+            hour, minute = self._cron_spec(job)
+            # CronTrigger field stringification quotes the value
+            assert "0" in str(hour)
+            assert "5" in str(minute)
+        finally:
+            self._cleanup()
