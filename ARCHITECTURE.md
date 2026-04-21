@@ -51,12 +51,12 @@ component is added, a data flow changes, or a security boundary shifts.
         │   │ (+ subtasks_  │  │ 00:01 local│  │              │   │
         │   │   snapshot)·  │  │ (DIGEST_TZ)│  │              │   │
         │   │ import_log·   │  │            │  │              │   │
-        │   │ app_logs      │  │ heartbeat  │  │              │   │
-        │   │ Tier enum:    │  │ every 45s  │  │              │   │
-        │   │  +NEXT_WEEK,  │  │            │  │              │   │
+        │   │ app_logs      │  │ recurring- │  │              │   │
+        │   │ Tier enum:    │  │ spawn @    │  │              │   │
+        │   │  +NEXT_WEEK,  │  │ 00:05 (#35)│  │              │   │
         │   │  +TOMORROW    │  │            │  │              │   │
-        │   │ Status enum:  │  │            │  │              │   │
-        │   │  +CANCELLED   │  │            │  │              │   │
+        │   │ Status enum:  │  │ heartbeat  │  │              │   │
+        │   │  +CANCELLED   │  │ every 45s  │  │              │   │
         │   └───────────────┘  └─────┬──────┘  └──────┬───────┘   │
         └──────────────────────────┬─┴─────────────────┬──────────┘
                                    │                   │
@@ -91,7 +91,7 @@ component is added, a data flow changes, or a security boundary shifts.
   connection pool transparently reconnects when Railway's pooled SSL
   handshake goes stale — fixes user-visible 500s that were intermittent
   before the fix.
-- **APScheduler** — in-process scheduler that runs three cron jobs in
+- **APScheduler** — in-process scheduler that runs four cron jobs in
   the `DIGEST_TZ` timezone (default `America/New_York`):
   - **daily digest** at `DIGEST_TIME` (default 07:00) — builds the
     plain-text digest including "TOMORROW: N tasks",
@@ -100,6 +100,13 @@ component is added, a data flow changes, or a security boundary shifts.
   - **tomorrow-roll** at 00:01 (#27) — moves every active
     `Tier.TOMORROW` task to `Tier.TODAY` using an isolated
     `Session(db.engine)` so it survives without a request context
+  - **recurring-spawn** at 00:05 (#35) — calls the idempotent
+    `spawn_today_tasks()` so any RecurringTask firing today
+    materialises into `Tier.TODAY` without the user hitting
+    `/api/recurring/spawn` manually. Title-match suppression
+    inside `spawn_today_tasks` makes it safe to re-run. The
+    spawned Task's `created_at.date()` triggers the #34
+    collision filter so the same-day preview card stops rendering.
   - **scheduler heartbeat** every 45s — writes a small JSON file the
     other gunicorn workers can read to prove the scheduler is alive
 - **Postgres enum repair gate** (`app._ensure_postgres_enum_values`) —
@@ -146,18 +153,31 @@ component is added, a data flow changes, or a security boundary shifts.
   tier; goals land with sensible enum fallbacks
   (`PERSONAL_GROWTH` / `NEED_MORE_INFO`) that the user can edit before
   confirming. See "Scan pipeline" diagram below.
-- **Voice memo**: browser records audio via MediaRecorder API → Flask
-  receives multipart upload, holds bytes in memory → OpenAI Whisper API
-  (server-side) returns transcript + duration → Claude API (server-side,
-  reuses `scan_service.parse_tasks_from_text`) extracts task candidates
-  → candidates returned to browser for review → user confirms → records
-  written via the same `create_tasks_from_candidates` helper as the
-  image scan, but with `source_prefix="voice"` so the recycle bin can
-  distinguish voice batches from scan batches → audio bytes discarded.
-  Per-memo cost is computed from the duration Whisper reports and
-  logged at INFO level to `app_logs`. Hard cap of 10 min per memo
-  enforced both client-side (auto-stop) and server-side (25 MB upload
-  limit at typical opus bitrates).
+- **Voice memo** (#36, ADR-020): browser records audio via
+  MediaRecorder API → Flask receives multipart upload, holds bytes
+  in memory → OpenAI Whisper API (server-side) returns transcript +
+  duration → Claude API (server-side,
+  `scan_service.parse_voice_memo_to_tasks`) extracts **structured**
+  task candidates — each with `{title, type, tier, due_date}`
+  inferred from the speaker's context. Today's date is injected
+  into the prompt so relative refs ("tomorrow", "Friday", "next
+  Tuesday") resolve to ISO dates. `_normalise_voice_candidates`
+  defensively coerces unknown tier/type values to safe defaults
+  and validates due_date as ISO; one bad candidate doesn't fail
+  the batch. Image OCR still uses the simpler
+  `parse_tasks_from_text` (title-list output) — the two parsers
+  are kept separate so voice's stricter prompt surface doesn't
+  regress image parsing. Candidates flow to the review UI (new
+  tier + date controls per row), user edits/accepts, confirm
+  payload flows to `create_tasks_from_candidates` which now
+  honours tier + due_date from the candidate dict. Fallback
+  chain if Claude fails: structured → title-only → 422 with
+  transcript preserved. Records land with `source_prefix="voice"`
+  in ImportLog so the recycle bin can undo the whole memo as a
+  batch. Per-memo cost is logged at INFO level to `app_logs`.
+  Hard cap of 10 min per memo enforced both client-side
+  (auto-stop) and server-side (25 MB upload limit at typical opus
+  bitrates).
 - **URL save**: user pastes or types a URL in the quick-capture bar → the
   browser `POST`s to `/api/tasks/url-preview` → Flask resolves the hostname,
   validates it is not a private/loopback IP (SSRF protection), fetches the
@@ -364,6 +384,117 @@ The validator script (`scripts/validate_deploy.py`) sends the stored
 cookie under both names (`validator_token=X; session=X`) so a single
 file works for both the preferred long-lived path and the legacy
 browser-copied session path.
+
+---
+
+## Route + scheduler catalog
+
+Mechanical enumeration of every URL and scheduled job in the code.
+Narrative descriptions are elsewhere in this doc; this section exists
+so `scripts/arch_sync_check.py` can grep-verify nothing has drifted
+since the last ARCHITECTURE update. If you add a route / endpoint /
+job anywhere in `app.py` or `*_api.py`, add it here in the same
+commit — the check will fail otherwise.
+
+### Scheduler cron jobs (app.py `_start_digest_scheduler`)
+- `daily_digest` — DIGEST_TIME, builds plain-text digest
+- `tomorrow_roll` — 00:01 local, TOMORROW → TODAY (#27)
+- `recurring_spawn` — 00:05 local, materialises today's
+  RecurringTask templates into TODAY (#35)
+- `scheduler_heartbeat` — every 45s, proves scheduler is alive
+  so non-scheduler gunicorn workers can read the heartbeat JSON
+
+### Top-level Flask routes (app.py `@app.route`)
+- `/` — board
+- `/login` — Google OAuth entry
+- `/logout` — end session
+- `/tier/<name>` — full-page tier view (#22)
+- `/completed` — full-page completed view (#29)
+- `/goals` — goals page
+- `/projects` — projects CRUD page (#24)
+- `/review` — weekly review swipe
+- `/scan` — image → tasks
+- `/voice-memo` — audio → tasks
+- `/import` — OneNote + Excel imports
+- `/settings` — settings page
+- `/print` — print-friendly view
+- `/recycle-bin` — batch undo
+- `/docs` — in-app documentation hub (#33)
+- `/api/export` — download user data
+
+### API endpoints
+
+Literal paths so `scripts/arch_sync_check.py` can grep-verify. Add
+any new `@bp.get/post/…` to its block in the same commit you ship
+the code.
+
+```
+# tasks_api.py
+/api/tasks
+/api/tasks/<uuid:task_id>
+/api/tasks/<uuid:task_id>/complete
+/api/tasks/<uuid:task_id>/subtasks
+/api/tasks/bulk                        # #21
+/api/tasks/reorder
+/api/tasks/url-preview
+
+# goals_api.py
+/api/goals
+/api/goals/<uuid:goal_id>
+/api/goals/<uuid:goal_id>/progress
+
+# projects_api.py
+/api/projects
+/api/projects/<uuid:project_id>
+/api/projects/seed                     # #24
+
+# recurring_api.py
+/api/recurring
+/api/recurring/<uuid:rt_id>
+/api/recurring/seed
+/api/recurring/spawn
+/api/recurring/previews                # #32
+
+# review_api.py
+/api/review
+/api/review/<uuid:task_id>
+
+# scan_api.py
+/api/scan/upload
+/api/scan/confirm
+
+# voice_api.py
+/api/voice-memo
+/api/voice-memo/confirm                # #36
+
+# import_api.py
+/api/import/tasks/parse
+/api/import/tasks/upload
+/api/import/tasks/confirm
+/api/import/goals/parse
+/api/import/goals/confirm
+
+# digest_api.py
+/api/digest/preview
+/api/digest/send
+
+# recycle_api.py
+/api/recycle-bin
+/api/recycle-bin/summary
+/api/recycle-bin/undo/<batch_id>
+/api/recycle-bin/restore/<batch_id>
+/api/recycle-bin/purge/<batch_id>
+/api/recycle-bin/empty
+
+# settings_api.py
+/api/settings/status
+/api/settings/stats
+/api/settings/imports
+
+# debug_api.py — used by scripts/validate_deploy.py --check-logs
+/api/debug/logs
+/api/debug/client-error
+```
 
 ---
 

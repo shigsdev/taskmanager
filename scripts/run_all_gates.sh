@@ -203,6 +203,19 @@ else
     exit 1
 fi
 
+# --- 8b. ARCHITECTURE sync check (scheduler jobs + routes + API endpoints) --
+# Added 2026-04-21 after the third ARCHITECTURE.md drift of the session.
+# Mechanical greppable check; if you add a new route / endpoint / cron
+# job, add its literal name to ARCHITECTURE.md in the same commit.
+
+banner "8b. ARCHITECTURE sync check"
+if python scripts/arch_sync_check.py; then
+    pass "arch sync"
+else
+    fail "ARCHITECTURE.md drift — see output above"
+    exit 1
+fi
+
 # --- 9. Semgrep (security pattern scanner) ----------------------------------
 
 banner "9. Semgrep (security patterns)"
