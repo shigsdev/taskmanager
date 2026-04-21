@@ -366,6 +366,157 @@ def _extract_json_object_list(text: str) -> list[dict[str, Any]]:
     return [item for item in candidates if isinstance(item, dict)]
 
 
+# --- Voice-memo structured task parsing (#36) --------------------------------
+
+_VOICE_PARSE_PROMPT = """\
+You are a task extraction assistant. Given a transcript of a spoken \
+voice memo, extract discrete actionable task items AND infer \
+metadata for each (type, tier, due_date) from the speaker's context.
+
+Today's date is {today}.
+
+Each task must be a JSON object with these keys:
+- title: short clear action item (under 100 characters, required)
+- type: "work" or "personal". Infer from context: work keywords
+  (meeting, project, deadline, standup, PR, report, client) → "work";
+  personal keywords (family, groceries, dentist, workout, bills,
+  chores) → "personal". Default to "personal" if unclear.
+- tier: one of "inbox", "today", "tomorrow", "this_week".
+  * "today" if the speaker says today / now / ASAP / urgent
+  * "tomorrow" if they say tomorrow / next day
+  * "this_week" if they mention a specific weekday within the next
+    6 days (e.g. "by Friday", "on Thursday") OR say "this week"
+  * "inbox" (default) for everything else — no urgency specified
+- due_date: ISO date string "YYYY-MM-DD" if the speaker mentioned a
+  specific calendar date, OR null. Resolve relative references
+  ("tomorrow", "Friday", "next Tuesday", "the 15th") against today's
+  date {today}. Return null if no date was mentioned.
+
+Rules:
+- Ignore pure reflection ("I felt tired today"), fillers ("um", "like"),
+  and non-actionable statements.
+- Consolidate related fragments into a single task.
+- If a sentence mentions multiple independent tasks, split them.
+- Return ONLY a JSON array of objects, no other text.
+
+Example (if today is 2026-04-20, a Monday):
+Input: "Okay so tomorrow I need to pick up prescriptions, and by \
+Friday I have to finish the Q2 OKR deck. Also email Sarah about \
+the meeting. And I'm feeling scattered today."
+Output:
+[
+  {{"title": "Pick up prescriptions", "type": "personal",
+    "tier": "tomorrow", "due_date": "2026-04-21"}},
+  {{"title": "Finish Q2 OKR deck", "type": "work",
+    "tier": "this_week", "due_date": "2026-04-24"}},
+  {{"title": "Email Sarah about the meeting", "type": "work",
+    "tier": "inbox", "due_date": null}}
+]
+
+Transcript:
+{transcript}
+"""
+
+
+def parse_voice_memo_to_tasks(transcript: str) -> list[dict[str, Any]]:
+    """Send a voice-memo transcript to Claude for structured task extraction.
+
+    Returns a list of candidate dicts:
+        {title: str, type: str, tier: str, due_date: str | None}
+
+    Invalid type/tier values coerce to defaults (personal/inbox) via
+    the normalisation pass below; malformed JSON falls back to an
+    empty list (caller can still use the transcript manually).
+
+    Raises:
+        RuntimeError: If ANTHROPIC_API_KEY is missing.
+    """
+    if not transcript.strip():
+        return []
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY not configured")
+
+    return _call_claude_api_voice(api_key, transcript)
+
+
+def _call_claude_api_voice(
+    api_key: str, transcript: str,
+) -> list[dict[str, Any]]:
+    """Make the Claude API call for voice-memo parsing. Separated for
+    testability — tests can patch this instead of the HTTP layer."""
+    from datetime import date as _date
+    today_iso = _date.today().isoformat()
+    data = _post_to_claude(
+        api_key=api_key,
+        prompt=_VOICE_PARSE_PROMPT.format(
+            today=today_iso, transcript=transcript,
+        ),
+        max_tokens=2048,
+    )
+    content = data.get("content", [{}])[0].get("text", "")
+    return _normalise_voice_candidates(
+        _extract_json_object_list(content)
+    )
+
+
+# Allowed values for structured voice output. Anything outside these
+# lists gets coerced to the default — guards against hallucinated
+# tier/type values without crashing the UI downstream.
+_VOICE_VALID_TYPES = {"work", "personal"}
+_VOICE_VALID_TIERS = {"inbox", "today", "tomorrow", "this_week"}
+
+
+def _normalise_voice_candidates(
+    raw: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Clean + coerce Claude's voice output to a predictable shape.
+
+    - Drops items with no title (or non-string title).
+    - Truncates over-long titles to 100 chars.
+    - Coerces unknown type values to "personal".
+    - Coerces unknown tier values to "inbox".
+    - Validates due_date as ISO YYYY-MM-DD; drops (→ None) otherwise.
+    """
+    from datetime import date as _date
+    out: list[dict[str, Any]] = []
+    for item in raw:
+        title = item.get("title")
+        if not isinstance(title, str):
+            continue
+        title = title.strip()
+        if not title:
+            continue
+        if len(title) > 100:
+            title = title[:100]
+
+        type_val = item.get("type")
+        if type_val not in _VOICE_VALID_TYPES:
+            type_val = "personal"
+
+        tier_val = item.get("tier")
+        if tier_val not in _VOICE_VALID_TIERS:
+            tier_val = "inbox"
+
+        due_date: str | None = None
+        raw_due = item.get("due_date")
+        if isinstance(raw_due, str):
+            try:
+                _date.fromisoformat(raw_due)
+                due_date = raw_due
+            except ValueError:
+                due_date = None
+
+        out.append({
+            "title": title,
+            "type": type_val,
+            "tier": tier_val,
+            "due_date": due_date,
+        })
+    return out
+
+
 # --- Create tasks from confirmed candidates ----------------------------------
 
 
@@ -378,10 +529,13 @@ def create_tasks_from_candidates(
     Each candidate is a dict with:
     - title (str): the task text (required)
     - type (str): "work" or "personal" (default: "work")
+    - tier (str, optional): Tier enum value. Default: Inbox. Used by
+      the voice-memo NLP path (#36) to preserve inferred tier.
+    - due_date (str, optional): ISO YYYY-MM-DD. Default: None. Used by
+      the voice-memo NLP path (#36).
     - included (bool): whether the user confirmed this candidate
 
     Only candidates with included=True are created.
-    All created tasks land in the Inbox tier.
 
     Stamps a shared ``batch_id`` on every created Task and writes an
     ``ImportLog`` entry so the batch can be undone as a group via the
@@ -396,6 +550,7 @@ def create_tasks_from_candidates(
     Returns:
         List of newly created Task records.
     """
+    from datetime import date as _date
     batch_id = uuid.uuid4()
     created = []
     for candidate in candidates:
@@ -412,10 +567,31 @@ def create_tasks_from_candidates(
         except ValueError:
             task_type = TaskType.WORK
 
+        # #36: honor inferred tier (defaults to Inbox if missing or
+        # invalid — same as the pre-NLP behavior).
+        import contextlib
+        tier_str = candidate.get("tier")
+        tier = Tier.INBOX
+        if tier_str:
+            with contextlib.suppress(ValueError):
+                tier = Tier(tier_str)
+
+        # #36: honor inferred due_date. Validates ISO format; silently
+        # drops bad values so one malformed candidate doesn't fail
+        # the whole batch.
+        due_date = None
+        due_raw = candidate.get("due_date")
+        if isinstance(due_raw, str) and due_raw:
+            try:
+                due_date = _date.fromisoformat(due_raw)
+            except ValueError:
+                due_date = None
+
         task = Task(
             title=title,
             type=task_type,
-            tier=Tier.INBOX,
+            tier=tier,
+            due_date=due_date,
             batch_id=batch_id,
         )
         db.session.add(task)

@@ -66,6 +66,14 @@ class TestTranscribeAudio:
 # --- voice_api POST /api/voice-memo (upload + transcribe + parse) ------------
 
 
+# Shared minimal candidate shape — used by the content-type regression
+# tests that don't care about inference details, only that parsing ran.
+_TEST_CAND = {
+    "title": "test", "type": "personal",
+    "tier": "inbox", "due_date": None,
+}
+
+
 def _bypass_auth(monkeypatch):
     """Make every request authenticated as the configured AUTHORIZED_EMAIL,
     matching the pattern used elsewhere in tests."""
@@ -111,7 +119,10 @@ class TestVoiceUpload:
                 "voice_api.transcribe_audio",
                 return_value={"transcript": "test", "duration_seconds": 1.0, "cost_usd": 0.0001},
             ),
-            patch("voice_api.parse_tasks_from_text", return_value=["test"]),
+            patch(
+                "voice_api.parse_voice_memo_to_tasks",
+                return_value=[_TEST_CAND],
+            ),
         ):
             resp = client.post(
                 "/api/voice-memo",
@@ -144,7 +155,10 @@ class TestVoiceUpload:
                 "voice_api.transcribe_audio",
                 return_value={"transcript": "test", "duration_seconds": 1.0, "cost_usd": 0.0001},
             ),
-            patch("voice_api.parse_tasks_from_text", return_value=["test"]),
+            patch(
+                "voice_api.parse_voice_memo_to_tasks",
+                return_value=[_TEST_CAND],
+            ),
         ):
             resp = client.post(
                 "/api/voice-memo",
@@ -173,7 +187,10 @@ class TestVoiceUpload:
                 "voice_api.transcribe_audio",
                 return_value={"transcript": "test", "duration_seconds": 1.0, "cost_usd": 0.0001},
             ),
-            patch("voice_api.parse_tasks_from_text", return_value=["test"]),
+            patch(
+                "voice_api.parse_voice_memo_to_tasks",
+                return_value=[_TEST_CAND],
+            ),
         ):
             resp = client.post(
                 "/api/voice-memo",
@@ -212,6 +229,8 @@ class TestVoiceUpload:
         assert "Empty" in resp.get_json()["error"]
 
     def test_happy_path_returns_candidates(self, client, monkeypatch):
+        """Backlog #36: voice-memo response now returns structured
+        candidates with type/tier/due_date inferred by Claude."""
         _bypass_auth(monkeypatch)
         monkeypatch.setenv("OPENAI_API_KEY", "fake-key")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
@@ -220,14 +239,19 @@ class TestVoiceUpload:
             patch(
                 "voice_api.transcribe_audio",
                 return_value={
-                    "transcript": "Buy milk. Call the dentist.",
+                    "transcript": "Buy milk tomorrow. Email the Q2 report.",
                     "duration_seconds": 12.5,
                     "cost_usd": 0.00125,
                 },
             ),
             patch(
-                "voice_api.parse_tasks_from_text",
-                return_value=["Buy milk", "Call the dentist"],
+                "voice_api.parse_voice_memo_to_tasks",
+                return_value=[
+                    {"title": "Buy milk", "type": "personal",
+                     "tier": "tomorrow", "due_date": "2026-04-22"},
+                    {"title": "Email the Q2 report", "type": "work",
+                     "tier": "inbox", "due_date": None},
+                ],
             ),
         ):
             resp = client.post(
@@ -238,14 +262,21 @@ class TestVoiceUpload:
 
         assert resp.status_code == 200
         body = resp.get_json()
-        assert body["transcript"] == "Buy milk. Call the dentist."
+        assert body["transcript"] == "Buy milk tomorrow. Email the Q2 report."
         assert body["duration_seconds"] == 12.5
         assert body["cost_usd"] == pytest.approx(0.00125)
-        titles = [c["title"] for c in body["candidates"]]
-        assert titles == ["Buy milk", "Call the dentist"]
-        # All candidates default to "work" type and included=True
-        assert all(c["type"] == "work" for c in body["candidates"])
-        assert all(c["included"] is True for c in body["candidates"])
+        cands = body["candidates"]
+        assert [c["title"] for c in cands] == [
+            "Buy milk", "Email the Q2 report",
+        ]
+        # Type / tier / due_date flow through from the NLP output
+        assert cands[0]["type"] == "personal"
+        assert cands[0]["tier"] == "tomorrow"
+        assert cands[0]["due_date"] == "2026-04-22"
+        assert cands[1]["type"] == "work"
+        assert cands[1]["tier"] == "inbox"
+        assert cands[1]["due_date"] is None
+        assert all(c["included"] is True for c in cands)
 
     def test_empty_transcript_returns_empty_candidates_with_message(self, client, monkeypatch):
         """No speech detected → empty transcript, no Claude call,
@@ -297,7 +328,7 @@ class TestVoiceUpload:
                 },
             ),
             patch(
-                "voice_api.parse_tasks_from_text",
+                "voice_api.parse_voice_memo_to_tasks",
                 side_effect=RuntimeError("Claude rate-limited"),
             ),
         ):
@@ -404,3 +435,120 @@ class TestScanServiceSourcePrefixRegression:
             ).first()
             assert log is not None
             assert log.source.startswith("voice_")
+
+
+class TestVoiceNormaliser:
+    """Backlog #36: _normalise_voice_candidates cleans Claude output."""
+
+    def test_drops_items_without_title(self):
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates([
+            {"type": "work", "tier": "today"},          # no title
+            {"title": "", "type": "work"},              # blank title
+            {"title": "   ", "type": "work"},           # whitespace title
+            {"title": "Keep me", "type": "work"},       # valid
+        ])
+        assert len(result) == 1
+        assert result[0]["title"] == "Keep me"
+
+    def test_coerces_unknown_type_to_personal(self):
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates([
+            {"title": "x", "type": "nonsense"}
+        ])
+        assert result[0]["type"] == "personal"
+
+    def test_coerces_unknown_tier_to_inbox(self):
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates([
+            {"title": "x", "tier": "next_week"},  # valid enum but not in _VOICE_VALID_TIERS
+            {"title": "y", "tier": "bogus"},
+        ])
+        assert result[0]["tier"] == "inbox"
+        assert result[1]["tier"] == "inbox"
+
+    def test_validates_due_date_format(self):
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates([
+            {"title": "a", "due_date": "2026-04-22"},    # valid
+            {"title": "b", "due_date": "tomorrow"},      # string but bad ISO
+            {"title": "c", "due_date": 12345},           # not a string
+            {"title": "d"},                              # missing
+        ])
+        assert result[0]["due_date"] == "2026-04-22"
+        assert result[1]["due_date"] is None
+        assert result[2]["due_date"] is None
+        assert result[3]["due_date"] is None
+
+    def test_truncates_long_titles(self):
+        from scan_service import _normalise_voice_candidates
+        long = "x" * 150
+        result = _normalise_voice_candidates([
+            {"title": long, "type": "work"}
+        ])
+        assert len(result[0]["title"]) == 100
+
+    def test_preserves_valid_inference_end_to_end(self):
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates([
+            {"title": "Pick up meds", "type": "personal",
+             "tier": "tomorrow", "due_date": "2026-04-22"},
+        ])
+        assert result[0] == {
+            "title": "Pick up meds",
+            "type": "personal",
+            "tier": "tomorrow",
+            "due_date": "2026-04-22",
+        }
+
+
+class TestVoiceCreateTasksFromCandidates:
+    """Backlog #36: create_tasks_from_candidates honours inferred
+    tier + due_date from the voice review screen."""
+
+    def test_inferred_tier_and_due_date_land_in_task(self, app):
+        from datetime import date
+
+        from models import TaskType, Tier
+        from scan_service import create_tasks_from_candidates
+        with app.app_context():
+            tasks = create_tasks_from_candidates(
+                [
+                    {
+                        "title": "Pick up meds",
+                        "type": "personal",
+                        "tier": "tomorrow",
+                        "due_date": "2026-04-22",
+                        "included": True,
+                    }
+                ],
+                source_prefix="voice",
+            )
+            assert len(tasks) == 1
+            t = tasks[0]
+            assert t.title == "Pick up meds"
+            assert t.type == TaskType.PERSONAL
+            assert t.tier == Tier.TOMORROW
+            assert t.due_date == date(2026, 4, 22)
+
+    def test_missing_tier_defaults_to_inbox(self, app):
+        """Existing image-OCR candidates don't set `tier` — must not
+        regress when mixed through the same code path."""
+        from models import Tier
+        from scan_service import create_tasks_from_candidates
+        with app.app_context():
+            tasks = create_tasks_from_candidates(
+                [{"title": "No tier", "type": "work", "included": True}]
+            )
+            assert tasks[0].tier == Tier.INBOX
+            assert tasks[0].due_date is None
+
+    def test_bad_due_date_silently_dropped(self, app):
+        from scan_service import create_tasks_from_candidates
+        with app.app_context():
+            tasks = create_tasks_from_candidates(
+                [{"title": "Bad date", "type": "work",
+                  "due_date": "not-a-date", "included": True}]
+            )
+            assert len(tasks) == 1
+            assert tasks[0].due_date is None

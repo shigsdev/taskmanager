@@ -17,7 +17,11 @@ import logging
 from flask import Blueprint, jsonify, request
 
 from auth import login_required
-from scan_service import create_tasks_from_candidates, parse_tasks_from_text
+from scan_service import (
+    create_tasks_from_candidates,
+    parse_tasks_from_text,
+    parse_voice_memo_to_tasks,
+)
 from utils import validate_upload
 from voice_service import (
     ALLOWED_AUDIO_TYPES,
@@ -91,15 +95,16 @@ def upload(email: str):  # noqa: ARG001
             "message": "No speech detected in audio",
         })
 
-    # Step 2: parse into task candidates via Claude (reuses scan_service)
+    # Step 2: parse into structured task candidates via Claude (#36).
+    # The new parser returns dicts with inferred type/tier/due_date;
+    # falls back to an empty list on malformed Claude output (which
+    # the normalisation pass in scan_service handles). If the Claude
+    # call itself raises, we fall through to the old title-only path
+    # as a best-effort recovery.
     try:
-        task_titles = parse_tasks_from_text(transcript)
+        structured = parse_voice_memo_to_tasks(transcript)
     except RuntimeError as e:
-        # Transcription succeeded but parsing failed — return the
-        # transcript anyway so the user can recover (manual paste from
-        # transcript into capture bar). Return 422 so the frontend
-        # knows to show the transcript-with-error UI.
-        logger.warning("Voice memo parsing failed: %s", e)
+        logger.warning("Voice memo structured parsing failed: %s", e)
         return jsonify({
             "transcript": transcript,
             "duration_seconds": result["duration_seconds"],
@@ -108,18 +113,36 @@ def upload(email: str):  # noqa: ARG001
             "error": f"Parsing failed: {e}",
         }), 422
     except Exception:
-        logger.exception("Voice memo parsing crashed unexpectedly")
-        return jsonify({
-            "transcript": transcript,
-            "duration_seconds": result["duration_seconds"],
-            "cost_usd": result["cost_usd"],
-            "candidates": [],
-            "error": "Parsing failed (unexpected)",
-        }), 500
+        logger.exception("Voice memo structured parsing crashed; "
+                         "falling back to title-only extraction")
+        try:
+            titles = parse_tasks_from_text(transcript)
+            structured = [
+                {"title": t, "type": "personal", "tier": "inbox",
+                 "due_date": None}
+                for t in titles
+            ]
+        except Exception:
+            logger.exception("Title-only fallback also crashed")
+            return jsonify({
+                "transcript": transcript,
+                "duration_seconds": result["duration_seconds"],
+                "cost_usd": result["cost_usd"],
+                "candidates": [],
+                "error": "Parsing failed (unexpected)",
+            }), 500
 
+    # Wire the inferred fields into the candidate shape the UI renders.
+    # `included` starts true for every candidate (user unchecks to drop).
     candidates_out = [
-        {"title": title, "type": "work", "included": True}
-        for title in task_titles
+        {
+            "title": c["title"],
+            "type": c["type"],
+            "tier": c["tier"],
+            "due_date": c["due_date"],
+            "included": True,
+        }
+        for c in structured
     ]
 
     return jsonify({

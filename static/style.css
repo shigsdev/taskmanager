@@ -1646,9 +1646,24 @@ body {
     padding: 8px 0;
     border-bottom: 1px solid var(--border);
 }
-.voice-candidate input[type="checkbox"] { width: 20px; height: 20px; }
-.voice-candidate-title { flex: 1; padding: 6px 8px; }
-.voice-candidate-type { padding: 6px 4px; }
+.voice-candidate input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; }
+.voice-candidate-title { flex: 1; min-width: 120px; padding: 6px 8px; }
+.voice-candidate-type { padding: 6px 4px; flex-shrink: 0; }
+/* Backlog #36: tier + due_date controls from the NLP inference. */
+.voice-candidate-tier { padding: 6px 4px; flex-shrink: 0; }
+.voice-candidate-date { padding: 5px 6px; flex-shrink: 0; min-width: 135px; }
+.voice-review-hint {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin: 8px 0;
+    line-height: 1.4;
+}
+/* Mobile: the 5-column row gets tight on 375px — wrap naturally
+   instead of forcing horizontal scroll. */
+@media (max-width: 600px) {
+    .voice-candidate { flex-wrap: wrap; }
+    .voice-candidate-title { flex: 1 1 100%; }
+}
 .voice-review-actions, .voice-done-actions, .voice-error-actions {
     margin-top: 20px;
     display: flex;

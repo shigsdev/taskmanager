@@ -368,16 +368,54 @@
         });
         row.appendChild(typeSel);
 
+        // #36: tier dropdown. Options mirror _VOICE_VALID_TIERS on the
+        // backend (inbox / today / tomorrow / this_week). Anything else
+        // would have been coerced to "inbox" server-side.
+        const tierSel = document.createElement("select");
+        tierSel.className = "voice-candidate-tier";
+        [
+            ["inbox", "Inbox"],
+            ["today", "Today"],
+            ["tomorrow", "Tomorrow"],
+            ["this_week", "This Week"],
+        ].forEach(([v, label]) => {
+            const opt = document.createElement("option");
+            opt.value = v;
+            opt.textContent = label;
+            if (candidate.tier === v) opt.selected = true;
+            tierSel.appendChild(opt);
+        });
+        tierSel.addEventListener("change", function () {
+            currentCandidates[idx].tier = tierSel.value;
+        });
+        row.appendChild(tierSel);
+
+        // #36: due-date input. Empty string means "no date set."
+        // Native <input type="date"> on mobile gives the iOS wheel
+        // picker for free.
+        const dateInput = document.createElement("input");
+        dateInput.type = "date";
+        dateInput.className = "voice-candidate-date";
+        dateInput.value = candidate.due_date || "";
+        dateInput.addEventListener("input", function () {
+            currentCandidates[idx].due_date = dateInput.value || null;
+        });
+        row.appendChild(dateInput);
+
         return row;
     }
 
     async function confirmCandidates(onlySelected) {
         const toSubmit = currentCandidates
             .filter((c) => onlySelected ? c.included !== false : true)
-            // Sync UI-edited titles before sending.
+            // Sync UI-edited fields before sending. Include the #36
+            // NLP-inferred tier + due_date so the server honours them
+            // via create_tasks_from_candidates.
             .map((c) => ({
                 title: (c.title || "").trim(),
-                type: c.type || "work",
+                type: c.type || "personal",
+                tier: c.tier || "inbox",
+                due_date: c.due_date || null,
                 included: true,
             }))
             .filter((c) => c.title);
