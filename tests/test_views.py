@@ -272,6 +272,51 @@ class TestProjectsPage:
         assert resp.status_code == 403
 
 
+class TestDocsPage:
+    """Integration tests for the in-app /docs page (backlog #33)."""
+
+    def test_renders_200(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        resp = client.get("/docs")
+        assert resp.status_code == 200
+
+    def test_requires_auth(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
+        resp = client.get("/docs")
+        assert resp.status_code == 302
+
+    def test_rejects_wrong_email(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "bad@example.com")
+        resp = client.get("/docs")
+        assert resp.status_code == 403
+
+    def test_contains_toc_and_import_section(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/docs").data.decode()
+        # TOC present with the two first sections
+        assert 'class="docs-toc"' in html
+        assert '#import-onenote' in html
+        assert '#import-excel-goals' in html
+        # The OneNote section itself
+        assert 'id="import-onenote"' in html
+        # Key rules mentioned verbatim so a doc-update regression is catchable
+        assert "One non-empty line = one task" in html
+        assert "Indentation is NOT significant" in html
+
+    def test_nav_includes_docs_link(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        # Docs link should appear on every authenticated page, not just /docs
+        for path in ("/", "/goals", "/projects", "/docs"):
+            html = client.get(path).data.decode()
+            assert "/docs" in html, f"/docs nav link missing from {path}"
+
+    def test_import_page_links_to_docs(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/import").data.decode()
+        # "Format guide" link with anchor into the docs page
+        assert '/docs#import-onenote' in html
+
+
 class TestCompletedPage:
     """Integration tests for the dedicated /completed page (backlog #29)."""
 

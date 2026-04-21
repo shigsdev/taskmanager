@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% set active_page = 'docs' %}
+{% block title %}Docs — Task Manager{% endblock %}
+
+{% block capture %}
+{# No capture bar on the docs page — this is reading material. #}
+{% endblock %}
+
+{% block content %}
+<div class="docs-page">
+    <nav class="docs-toc" aria-label="Table of contents">
+        <h2>Docs</h2>
+        <ul>
+            <li><a href="#import-onenote">Pasting tasks from OneNote</a></li>
+            <li><a href="#import-excel-goals">Importing goals from Excel</a></li>
+        </ul>
+        <p class="docs-toc-hint">
+            More sections coming — this page holds user-facing
+            formatting rules, shortcuts, and behavior notes. If
+            something surprised you, it probably belongs here.
+        </p>
+    </nav>
+
+    <main class="docs-content">
+        <h1>Task Manager — Documentation</h1>
+
+        {# =============================================================
+           Section: Pasting tasks from OneNote  (backlog #33)
+           ============================================================= #}
+        <section id="import-onenote" class="docs-section">
+            <h2>Pasting tasks from OneNote</h2>
+            <p>
+                The <a href="{{ url_for('import_page') }}">/import</a>
+                page accepts raw text pasted from OneNote (or any
+                source that gives you one line per task). This section
+                describes exactly how that text gets parsed so you can
+                clean your source before pasting.
+            </p>
+
+            <h3>The one-line rule</h3>
+            <p>
+                <strong>One non-empty line = one task.</strong> The
+                parser walks the text line by line. Every line that
+                survives the skip rules (below) becomes one task, with
+                the line content as the task title. There's no
+                multi-line title, no notes field populated from
+                adjacent lines, no nested subtasks from indentation.
+            </p>
+
+            <h3>What the parser strips from each line</h3>
+            <p>
+                Before using a line as a task title, these prefixes
+                are removed:
+            </p>
+            <ul>
+                <li>Dashes: <code>-</code></li>
+                <li>Asterisks: <code>*</code></li>
+                <li>Unicode bullets: <code>•</code>, <code>‣</code>, <code>▪</code></li>
+                <li>Numbered lists: <code>1.</code>, <code>2)</code>, <code>14.</code>, etc.</li>
+                <li>Checkboxes: <code>☐</code>, <code>☑</code>, <code>✓</code>, <code>[x]</code>, <code>[ ]</code>, <code>[]</code></li>
+                <li>Leading / trailing whitespace (including tabs). <strong>Indentation is NOT significant</strong> — a four-space-indented line is treated identically to an unindented line.</li>
+            </ul>
+
+            <h3>What gets silently skipped</h3>
+            <ul>
+                <li>Empty lines.</li>
+                <li>Lines shorter than 2 characters after cleanup.</li>
+                <li>Lines that match "section header" patterns: ALLCAPS (≤40 chars), a bare date (e.g. <code>2026-04-20</code>), or a "Month Day, Year" line. These usually exist as headings in your source and would be noise.</li>
+                <li>Exact duplicate titles within the same paste — only the first occurrence is imported (case-insensitive match).</li>
+            </ul>
+
+            <h3>What the parser does NOT do (yet)</h3>
+            <p>Understanding what's missing is as important as what's present:</p>
+            <ul>
+                <li>No inline metadata shortcuts. <code>#today</code>, <code>#work</code>, <code>due:2026-01-15</code>, <code>@project</code> and similar tags are <strong>kept in the title</strong>, not parsed. All imported tasks land in <strong>Inbox</strong> with type=<strong>work</strong>.</li>
+                <li>No project or goal linkage during import — assign those after review via the task detail panel.</li>
+                <li>No URL extraction. A line containing <code>https://example.com/page</code> keeps that URL in the title; the dedicated <em>URL</em> field stays empty.</li>
+                <li>No subtasks from indentation. Flat list, always.</li>
+            </ul>
+
+            <h3>Practical "clean up before pasting" checklist</h3>
+            <ol>
+                <li>Remove date-range headings and section dividers — or trust the ALLCAPS / date-pattern skip rules to drop them. Works for most.</li>
+                <li>Strip anything like "TO DO" / "IN PROGRESS" column labels if OneNote keeps them as their own lines.</li>
+                <li>De-duplicate deliberately — the parser drops dupes within the same paste, but it can't dedupe against existing tasks in your DB automatically. Duplicates across imports are flagged for you to toggle off on the review screen.</li>
+                <li>If you need metadata (tier, type, due date, project, goal): easiest to import first, then use the bulk-select toolbar on the resulting Inbox to apply those in one pass.</li>
+            </ol>
+
+            <h3>Size & undo</h3>
+            <ul>
+                <li>Text paste has no explicit size cap in the app, but the server request body is capped at 30 MB (you'll hit browser limits well before that matters).</li>
+                <li>File uploads (.docx, .xlsx) are capped at <strong>5 MB</strong>.</li>
+                <li>Every import is tagged with a <code>batch_id</code>. If you change your mind, use the <a href="{{ url_for('recycle_bin_page') }}">Recycle Bin</a> to undo the whole batch in one action.</li>
+            </ul>
+
+            <h3>Worked example</h3>
+            <p>Pasted text:</p>
+            <pre class="docs-example">APRIL 20
+
+- [ ] Email vendors about Q3
+- [x] Finalize sprint retro notes
+  - Follow-up: schedule 1:1 with Dana
+* Prep slides for Tuesday demo
+1. Review draft PR #42
+2) Read https://docs.example.com/auth
+Review draft PR #42
+
+2026-05-01
+
+Skip this line (too short)</pre>
+            <p>What gets imported (7 → 5 tasks):</p>
+            <ul>
+                <li>✅ <code>Email vendors about Q3</code></li>
+                <li>✅ <code>Finalize sprint retro notes</code></li>
+                <li>✅ <code>Follow-up: schedule 1:1 with Dana</code> (indentation is ignored — treated as its own task, not a subtask)</li>
+                <li>✅ <code>Prep slides for Tuesday demo</code></li>
+                <li>✅ <code>Review draft PR #42</code></li>
+                <li>✅ <code>Read https://docs.example.com/auth</code> (URL stays in the title)</li>
+                <li>❌ <code>APRIL 20</code> — skipped (ALLCAPS header)</li>
+                <li>❌ <code>2026-05-01</code> — skipped (date-only)</li>
+                <li>❌ Second <code>Review draft PR #42</code> — skipped (dupe within paste)</li>
+                <li>❌ <code>Skip this line (too short)</code> — not skipped by length; imported normally. The name is misleading for this example.</li>
+            </ul>
+            <p>
+                All 6 successful tasks land in Inbox with type=work.
+                You then bulk-select them, assign tier/project/due_date
+                in one pass, and move on.
+            </p>
+        </section>
+
+        {# =============================================================
+           Section: Importing goals from Excel
+           ============================================================= #}
+        <section id="import-excel-goals" class="docs-section">
+            <h2>Importing goals from Excel</h2>
+            <p>
+                The Excel goals importer accepts <code>.xlsx</code>
+                files (5 MB max) from the /import page.
+            </p>
+
+            <h3>Required column</h3>
+            <ul>
+                <li><code>title</code> (case-insensitive header match). Rows with empty title are skipped.</li>
+            </ul>
+
+            <h3>Optional columns</h3>
+            <p>
+                Each accepts a predefined value; anything else falls
+                back to the default. Matches are case-insensitive.
+            </p>
+            <ul>
+                <li><code>category</code>: <code>health</code>, <code>personal_growth</code>, <code>relationships</code>, <code>work</code>. Default: <code>work</code>.</li>
+                <li><code>priority</code>: <code>must</code>, <code>should</code>, <code>could</code>, <code>need_more_info</code>. Default: <code>should</code>.</li>
+                <li><code>status</code>: <code>not_started</code>, <code>in_progress</code>, <code>done</code>, <code>on_hold</code>. Default: <code>not_started</code>.</li>
+                <li><code>actions</code>: free-text.</li>
+                <li><code>target_quarter</code>: free-text (e.g. <code>Q2</code>, <code>Q1,Q2</code>).</li>
+                <li><code>notes</code>: free-text.</li>
+            </ul>
+
+            <h3>De-duplication</h3>
+            <p>
+                Within the same file, exact title matches
+                (case-insensitive, whitespace-trimmed) are consolidated
+                to the first row. Duplicates against existing goals
+                are flagged on the review screen — you choose whether
+                to skip them.
+            </p>
+
+            <h3>Undo</h3>
+            <p>
+                Same <code>batch_id</code> mechanic as the text
+                import. Undo the whole batch from the
+                <a href="{{ url_for('recycle_bin_page') }}">Recycle Bin</a>.
+            </p>
+        </section>
+    </main>
+</div>
+{% endblock %}

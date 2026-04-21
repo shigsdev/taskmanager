@@ -291,6 +291,18 @@ def create_app(config: dict | None = None) -> Flask:
         """
         return render_template("completed.html")
 
+    @app.route("/docs")
+    @login_required
+    def docs_page(email: str):  # noqa: ARG001
+        """In-app documentation hub (#33).
+
+        Houses user-facing formatting rules, shortcuts, and behavior
+        notes. First content: the OneNote text import format so the
+        user can clean source data before pasting. Structured with a
+        sidebar TOC so future topics slot in cleanly.
+        """
+        return render_template("docs.html")
+
     @app.route("/goals")
     @login_required
     def goals_page(email: str):  # noqa: ARG001

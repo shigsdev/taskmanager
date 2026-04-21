@@ -317,13 +317,37 @@ def compute_previews_in_range(
     template_ids = [rt.id for rt in all_active]
     spawned_by_template_and_day: set[tuple] = set()
     if template_ids:
+        # Bucket each spawned Task's created_at by the user's LOCAL
+        # date (DIGEST_TZ), not UTC. Matches the "today" semantics from
+        # #28 / `_local_today_date()`. Without this, a Task spawned at
+        # 8pm ET lives in UTC-tomorrow and the collision filter misses
+        # the user-facing today cycle — making previews double-render
+        # around the UTC-midnight boundary. Bug was latent until the
+        # #32 test ran across the UTC boundary.
+        try:
+            import os as _os
+            from zoneinfo import ZoneInfo
+            _tz = ZoneInfo(_os.environ.get("DIGEST_TZ", "America/New_York"))
+        except Exception:  # noqa: BLE001
+            _tz = None
         spawned = db.session.scalars(
             select(Task).where(
                 Task.recurring_task_id.in_(template_ids),
             )
         )
         for task in spawned:
-            key = (task.recurring_task_id, task.created_at.date())
+            created = task.created_at
+            # If created_at has no tzinfo (SQLite), treat it as UTC.
+            if _tz is not None and created is not None:
+                if created.tzinfo is None:
+                    from datetime import UTC
+                    created = created.replace(tzinfo=UTC)
+                bucket_date = created.astimezone(_tz).date()
+            else:
+                bucket_date = created.date() if created else None
+            if bucket_date is None:
+                continue
+            key = (task.recurring_task_id, bucket_date)
             spawned_by_template_and_day.add(key)
 
     previews: list[dict] = []
