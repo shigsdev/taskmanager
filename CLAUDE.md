@@ -329,6 +329,17 @@ Report.
   quietly skip a step (e.g. forgetting to update ARCHITECTURE.md when the
   topology changed).
 
+  **This rule failed 7× in the 2026-04-20 sprint** (#28–#34 shipped
+  without rendered SOP reports; status instead got inlined into commit
+  messages — which is NOT equivalent, because the checklist discipline
+  is the entire point of the ceremony). If a change is worth a commit,
+  it is worth 30 seconds to render the report. No exceptions for
+  "small changes" — small changes are exactly the ones where a skipped
+  ARCHITECTURE update or a forgotten Phase 6 slips through.
+
+  **Treat a missing SOP report as a `[❌]` — the change is not done.**
+  Not a `[⏭️]`. Go back, write it, then consider the change complete.
+
   **Status indicators:**
   - `[✅]` — done and passed
   - `[⏭️]` — skipped (N/A) with reason
@@ -565,7 +576,10 @@ as ✅ done / ⏭️ N/A:
 | A new HTTP route that mutates state | `@login_required` (real OAuth — validator cookie won't authenticate POST/PATCH/DELETE/PUT); rate-limited if user-controlled; input validated; CSRF not strictly needed (single-user) but think about it |
 | A new HTTP route that reads state | `@login_required`; validator cookie WILL authenticate it on GET — that's intentional but document if the route exposes anything sensitive |
 | A new static asset (CSS/JS/icon) | `static/sw.js` `APP_SHELL` includes it; `health.py` `EXPECTED_STATIC_FILES` includes it; bump `CACHE_VERSION` |
-| A new HTML template / route renderer | Add to nav in `base.html` if user-visible (or capture-bar button if quick-action); set `active_page`; **Phase 6 manual regression** at desktop + mobile — bandit/Playwright don't substitute |
+| A new HTML template / route renderer | Add to nav in `base.html` if user-visible (or capture-bar button if quick-action); set `active_page`; **Phase 6 manual regression** at desktop + mobile — bandit/Playwright don't substitute; **also update `ARCHITECTURE.md`** — new routes change topology and must appear in the Components + Data Flows sections (do NOT mark `[⏭️] N/A`) |
+| A new background job (APScheduler cron, at-startup gate, etc.) | Update `ARCHITECTURE.md` Components section — the diagram's scheduler box and the Components list should reference the job by id + what it does; add to the Data Flows section if the job triggers user-observable changes |
+| A new API endpoint (`@bp.get/post/…`) under `/api/…` | Update `ARCHITECTURE.md` Data Flows section with the request→response flow; confirm the endpoint appears in the Flask routes line of the diagram if it's a user-facing surface |
+| A new database column / enum member | Update `ARCHITECTURE.md` PostgreSQL box in the diagram to list the new column / enum member; update the matching Components bullet |
 | A new function called from `static/app.js init()` (or any helper it calls transitively like `renderBoard` → `updateTodayWarning`) | **Null-guard every `document.getElementById` / `querySelector`** that targets a board-specific DOM element. Subpages (`/tier/<name>`, `/completed`, `/goals`, `/projects`, etc.) load `app.js` too, so any unguarded access to an element that only exists on the board will throw and stop init — downstream loaders (loadCompletedTasks, loadCancelledTasks, etc.) won't run. Pattern: `const el = document.getElementById("X"); if (!el) return;` **before** reading any property. Two occurrences so far — updateTodayWarning (2026-04-19 client error + 2026-04-20 /completed Phase 6); don't let it be three. |
 | Refactored a security-sensitive function (e.g. broadened a scope, changed an auth check) | Write a new ADR superseding the old one in `docs/adr/`; grep all docstrings/comments for the OLD claim and update them; add a regression test that asserts the new scope |
 | Bumped a dependency in requirements.txt or package.json | `pip-audit` / `npm audit` clean; pytest still passes (some bumps break APIs) |

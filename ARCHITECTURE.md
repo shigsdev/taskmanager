@@ -21,14 +21,22 @@ component is added, a data flow changes, or a security boundary shifts.
         │  │                 Flask App                          │  │
         │  │  Routes: auth · tasks · goals · projects · digest  │  │
         │  │          scan · import · settings · review         │  │
-        │  │          (+ /tier/<name>, /completed planned #29)  │  │
+        │  │          + /tier/<name> · /completed · /docs       │  │
+        │  │  API: /api/tasks · /api/tasks/bulk · /api/goals    │  │
+        │  │       /api/projects · /api/recurring · .../spawn   │  │
+        │  │       /api/recurring/previews · /api/debug/logs    │  │
         │  │  Services: task · goal · digest · scan · project   │  │
+        │  │            recurring · logging · validator-cookie  │  │
         │  │  Crypto: Fernet (encrypt sensitive fields)         │  │
         │  │  Startup gate: _ensure_postgres_enum_values()      │  │
         │  │    re-applies ALTER TYPE ADD VALUE IF NOT EXISTS   │  │
         │  │    in AUTOCOMMIT for late-introduced enum members  │  │
-        │  │    (workaround for alembic-transactional + SQLA    │  │
-        │  │    enum-name quirks; see commit 4cf7692)           │  │
+        │  │  Engine options: pool_pre_ping=True (#31) —        │  │
+        │  │    SELECT 1 on checkout; transparently reconnects  │  │
+        │  │    when Railway's pooled SSL handshake goes stale  │  │
+        │  │  DBLogHandler: uses isolated Session(db.engine),   │  │
+        │  │    survives poisoned request transactions (saga    │  │
+        │  │    a0a05a1)                                        │  │
         │  └────────┬─────────────────┬────────────────┬────────┘  │
         │           │                 │                │           │
         │           ▼                 ▼                ▼           │
@@ -38,12 +46,15 @@ component is added, a data flow changes, or a security boundary shifts.
         │   │  parent_id,   │  │ digest @   │  │ (never       │   │
         │   │  cancellation_│  │ DIGEST_TIME│  │  persisted)  │   │
         │   │  reason)·     │  │            │  │              │   │
-        │   │ goals·projects│  │            │  │              │   │
-        │   │ recurring·    │  │            │  │              │   │
+        │   │ goals·projects│  │ tomorrow-  │  │              │   │
+        │   │ recurring     │  │ roll @     │  │              │   │
+        │   │ (+ subtasks_  │  │ 00:01 local│  │              │   │
+        │   │   snapshot)·  │  │ (DIGEST_TZ)│  │              │   │
         │   │ import_log·   │  │            │  │              │   │
-        │   │ app_logs      │  │            │  │              │   │
-        │   │ Tier enum:    │  │            │  │              │   │
-        │   │  +NEXT_WEEK   │  │            │  │              │   │
+        │   │ app_logs      │  │ heartbeat  │  │              │   │
+        │   │ Tier enum:    │  │ every 45s  │  │              │   │
+        │   │  +NEXT_WEEK,  │  │            │  │              │   │
+        │   │  +TOMORROW    │  │            │  │              │   │
         │   │ Status enum:  │  │            │  │              │   │
         │   │  +CANCELLED   │  │            │  │              │   │
         │   └───────────────┘  └─────┬──────┘  └──────┬───────┘   │
@@ -71,14 +82,26 @@ component is added, a data flow changes, or a security boundary shifts.
 - **PostgreSQL** — Railway-managed. Stores tasks (with optional `url`,
   self-referential `parent_id` for one-level subtasks, and optional
   `cancellation_reason` for status=CANCELLED tasks), projects, goals,
-  recurring tasks, import log, and app_logs. The `Tier` enum includes
-  `INBOX, TODAY, THIS_WEEK, NEXT_WEEK, BACKLOG, FREEZER` (NEXT_WEEK added
-  in #23). The `TaskStatus` enum includes `ACTIVE, ARCHIVED, CANCELLED,
-  DELETED` (CANCELLED added in #25, distinct from completed for honest
-  stats — see ADR-012).
-- **APScheduler** — in-process scheduler that fires the daily digest at
-  `DIGEST_TIME` in the user's configured timezone. Daily digest now also
-  surfaces a "PAST 7 DAYS: N completed, M cancelled" summary line (#25).
+  recurring tasks (with `subtasks_snapshot` JSON for #26's clone-on-
+  spawn pattern), import log, and app_logs. The `Tier` enum includes
+  `INBOX, TODAY, TOMORROW, THIS_WEEK, NEXT_WEEK, BACKLOG, FREEZER`
+  (NEXT_WEEK from #23, TOMORROW from #27). The `TaskStatus` enum
+  includes `ACTIVE, ARCHIVED, CANCELLED, DELETED` (CANCELLED from #25).
+  SQLAlchemy engine configured with `pool_pre_ping=True` (#31) so the
+  connection pool transparently reconnects when Railway's pooled SSL
+  handshake goes stale — fixes user-visible 500s that were intermittent
+  before the fix.
+- **APScheduler** — in-process scheduler that runs three cron jobs in
+  the `DIGEST_TZ` timezone (default `America/New_York`):
+  - **daily digest** at `DIGEST_TIME` (default 07:00) — builds the
+    plain-text digest including "TOMORROW: N tasks",
+    "THIS WEEK REMAINING: N tasks", and "PAST 7 DAYS: N completed,
+    M cancelled"
+  - **tomorrow-roll** at 00:01 (#27) — moves every active
+    `Tier.TOMORROW` task to `Tier.TODAY` using an isolated
+    `Session(db.engine)` so it survives without a request context
+  - **scheduler heartbeat** every 45s — writes a small JSON file the
+    other gunicorn workers can read to prove the scheduler is alive
 - **Postgres enum repair gate** (`app._ensure_postgres_enum_values`) —
   runs once on every `create_app()` boot. Opens a raw SQLAlchemy
   connection in AUTOCOMMIT isolation and idempotently
@@ -184,9 +207,72 @@ component is added, a data flow changes, or a security boundary shifts.
   surfaced separately as a `cancelled` field. New "Cancelled" board
   section parallels "Completed" (collapsed, lazy-loaded, no drag/drop:
   restoration requires opening the detail panel).
+- **Recurring subtask cloning** (#26, ADR-013): when a parent task is
+  set to repeat, its currently-ACTIVE subtasks are snapshotted to a
+  new `subtasks_snapshot` JSON column on `RecurringTask`. At spawn
+  time (`spawn_today_tasks`), the parent Task's `recurring_task_id`
+  is set and each snapshot entry is materialised as its own Task with
+  `parent_id` set. Every cycle gets a fresh set of subtask IDs with
+  the same titles. Refresh point is explicit — re-save Repeat to
+  re-capture the current subtask set.
+- **Tomorrow tier + auto-roll** (#27, ADR-014): `Tier.TOMORROW`
+  between TODAY and THIS_WEEK on the board. Capture-bar shortcut
+  `#tomorrow`; parser scans tier tags longest-first so `#week` no
+  longer matches inside `#next_week`. Midnight auto-roll moves
+  Tomorrow → Today at 00:01 in `DIGEST_TZ` via APScheduler;
+  `task_service.roll_tomorrow_to_today()` uses an isolated
+  `Session(db.engine)` because it runs outside any request context.
+- **Tier → due_date auto-fill** (#28, ADR-016): `_auto_fill_tier_due_date`
+  is called from both `create_task` and `update_task`. When a task
+  lands in TODAY or TOMORROW without an explicit `due_date`, the
+  field is auto-filled from the tier (today / today+1). Fill-if-null
+  only; never overwrites. Uses `_local_today_date()` (DIGEST_TZ) so
+  evening ET tasks don't get UTC-tomorrow's date. Moving OUT of
+  TODAY/TOMORROW does NOT clear the auto-filled date.
+- **Completed dedicated page** (#29, ADR-017): `/completed` route
+  parallel to `/tier/<name>` but filters by `status=archived` instead
+  of `tier=X`. "Completed" is a TaskStatus not a Tier; has its own
+  template. Reuses `loadCompletedTasks` which now serves both the
+  inline board section and the dedicated page via a marker selector
+  (`#tierDetailList[data-archived-list="true"]`).
+- **Parent-task link on subtask detail** (#30, ADR-018): when a task
+  with `parent_id` is opened, the detail panel hides the Subtasks
+  section (existing behaviour) AND shows a new Parent link section
+  populated by `taskDetailPopulateParentLink`. Cache-first lookup in
+  `allTasks`; falls back to `GET /api/tasks/<id>` for archived or
+  cancelled parents (with a status badge). Click re-enters
+  `taskDetailOpen(parent)` — fully re-entrant navigation.
+- **Recurring preview cards** (#32, ADR-015, #34): `GET
+  /api/recurring/previews?start=&end=` returns per-day preview
+  instances for active templates firing in a date range.
+  `renderTierGroupedByDay` merges them into the This Week / Next Week
+  panels as dashed-border "preview" cards. Same-day collision filter
+  suppresses a preview when an active Task exists whose
+  `recurring_task_id` matches AND whose `created_at.date()` OR
+  `due_date` matches the fire_date (#34's two-key approach avoids the
+  user-visible "Friday duplicate" bug). Click a preview → opens the
+  most-recent spawned Task detail (where the Repeat dropdown edits
+  the template); no-spawn-yet → informational alert.
+- **In-app documentation** (#33, ADR-019): `/docs` route hosts a
+  two-column (sidebar TOC + prose content) in-app documentation
+  page. First sections cover the OneNote text import format and the
+  Excel goals import format. Linked from `/import` page as a Format
+  Guide affordance.
+- **Observability: error log scan** (session 2026-04-20): after
+  SHA-match, `scripts/validate_deploy.py` queries
+  `/api/debug/logs?level=ERROR&since_minutes=N` (with N = minutes
+  since `started_at`) and fails DEPLOY RED on any server-side ERROR
+  row. Transient SSL pool blips (pre-#31) are filtered by traceback
+  signature; retries on 5xx with 0/3/6 s back-off. `DBLogHandler`
+  was fixed in the same sprint to use an isolated
+  `Session(db.engine)` — without it, a request that poisoned the
+  request-scoped `db.session` (e.g. a PG enum rejection) would
+  silently disable the handler for the rest of the worker's life
+  (see the 2026-04-19 76-failure cascade documented in commit
+  `a0a05a1`).
 - **Import**: user pastes OneNote text or uploads Excel goals file → parser
   produces preview → user confirms → records written to DB, entry written
-  to `import_log`.
+  to `import_log`. User-facing format rules documented in `/docs#import-onenote`.
 - **GitHub → Railway**: push to `main` triggers rebuild + deploy via Nixpacks;
   `release` phase runs `flask db upgrade`.
 
