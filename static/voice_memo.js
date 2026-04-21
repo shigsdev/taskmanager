@@ -67,6 +67,31 @@
     let recordTimerId = null;
     let recordCapTimeoutId = null;
     let currentCandidates = [];
+    // Backlog #37: projects + goals loaded once per page so the voice
+    // review dropdowns can show the user's actual options instead of
+    // just the hint text. Fetched during init; empty list is fine if
+    // the API call fails — dropdowns just show "(no project)".
+    let availableProjects = [];
+    let availableGoals = [];
+
+    async function loadProjectsAndGoalsForReview() {
+        try {
+            const [projects, goals] = await Promise.all([
+                fetch("/api/projects").then((r) => r.json()),
+                fetch("/api/goals").then((r) => r.json()),
+            ]);
+            availableProjects = Array.isArray(projects) ? projects : [];
+            availableGoals = Array.isArray(goals) ? goals : [];
+        } catch (err) {
+            // Non-fatal — the review screen still works without
+            // project/goal dropdowns.
+            console.warn("Could not load projects/goals:", err);
+        }
+    }
+
+    // Kick off the fetch immediately so projects/goals are ready by
+    // the time the user finishes their voice memo.
+    loadProjectsAndGoalsForReview();
 
     // --- State management ---------------------------------------------------
 
@@ -307,7 +332,51 @@
 
     function renderReview(data) {
         candidatesEl.innerHTML = "";
-        currentCandidates.forEach((c, idx) => candidatesEl.appendChild(renderCandidate(c, idx)));
+
+        // #37: split candidates into actionable tasks vs reflections
+        // (is_task === false). Tasks render inline as before;
+        // reflections go into a collapsed section below — unchecked
+        // by default so they don't accidentally become tasks, and
+        // the user can toggle them back to "is_task" by promoting.
+        const tasks = [];
+        const reflections = [];
+        currentCandidates.forEach((c, idx) => {
+            if (c.is_task === false) {
+                // Start reflections unchecked so they're dropped by
+                // default; user explicitly checks to promote.
+                if (c.included === undefined) c.included = false;
+                reflections.push(idx);
+            } else {
+                tasks.push(idx);
+            }
+        });
+
+        tasks.forEach((idx) => {
+            candidatesEl.appendChild(renderCandidate(
+                currentCandidates[idx], idx,
+            ));
+        });
+
+        if (reflections.length > 0) {
+            const details = document.createElement("details");
+            details.className = "voice-reflections";
+            const summary = document.createElement("summary");
+            summary.textContent = "Reflections / non-tasks (" +
+                reflections.length + ") — usually kept OUT of your task list";
+            details.appendChild(summary);
+            const hint = document.createElement("p");
+            hint.className = "voice-reflections-hint";
+            hint.textContent = "These were flagged as observations, not " +
+                "actions. Check any you actually want as tasks, then use " +
+                "'Add Selected'. Leave unchecked to drop them.";
+            details.appendChild(hint);
+            reflections.forEach((idx) => {
+                details.appendChild(renderCandidate(
+                    currentCandidates[idx], idx,
+                ));
+            });
+            candidatesEl.appendChild(details);
+        }
 
         const cents = (data.cost_usd || 0) * 100;
         const dur = data.duration_seconds || 0;
@@ -402,6 +471,66 @@
         });
         row.appendChild(dateInput);
 
+        // #37: project dropdown. Options = "(no project)" + every
+        // active project. Pre-selected to the inferred project_id
+        // (resolved server-side from project_hint).
+        const projSel = document.createElement("select");
+        projSel.className = "voice-candidate-project";
+        projSel.title = "Link to project";
+        const noneOpt = document.createElement("option");
+        noneOpt.value = "";
+        noneOpt.textContent = "(no project)";
+        projSel.appendChild(noneOpt);
+        availableProjects.forEach((p) => {
+            const opt = document.createElement("option");
+            opt.value = p.id;
+            opt.textContent = p.name;
+            if (candidate.project_id === p.id) opt.selected = true;
+            projSel.appendChild(opt);
+        });
+        projSel.addEventListener("change", function () {
+            currentCandidates[idx].project_id = projSel.value || null;
+        });
+        row.appendChild(projSel);
+
+        // #37: goal dropdown. Same pattern.
+        const goalSel = document.createElement("select");
+        goalSel.className = "voice-candidate-goal";
+        goalSel.title = "Link to goal";
+        const noGoalOpt = document.createElement("option");
+        noGoalOpt.value = "";
+        noGoalOpt.textContent = "(no goal)";
+        goalSel.appendChild(noGoalOpt);
+        availableGoals.forEach((g) => {
+            const opt = document.createElement("option");
+            opt.value = g.id;
+            opt.textContent = g.title;
+            if (candidate.goal_id === g.id) opt.selected = true;
+            goalSel.appendChild(opt);
+        });
+        goalSel.addEventListener("change", function () {
+            currentCandidates[idx].goal_id = goalSel.value || null;
+        });
+        row.appendChild(goalSel);
+
+        // #37: unresolved-hint indicator. If Claude cited a project
+        // or goal that doesn't match any of the user's actual
+        // records, show the hint text as a small muted note so the
+        // user can either (a) create that project/goal manually, or
+        // (b) ignore and pick one from the dropdown.
+        if (candidate.project_hint && !candidate.project_id) {
+            const hint = document.createElement("div");
+            hint.className = "voice-candidate-hint";
+            hint.textContent = 'Heard project: "' + candidate.project_hint + '" (no match)';
+            row.appendChild(hint);
+        }
+        if (candidate.goal_hint && !candidate.goal_id) {
+            const hint = document.createElement("div");
+            hint.className = "voice-candidate-hint";
+            hint.textContent = 'Heard goal: "' + candidate.goal_hint + '" (no match)';
+            row.appendChild(hint);
+        }
+
         return row;
     }
 
@@ -409,13 +538,16 @@
         const toSubmit = currentCandidates
             .filter((c) => onlySelected ? c.included !== false : true)
             // Sync UI-edited fields before sending. Include the #36
-            // NLP-inferred tier + due_date so the server honours them
-            // via create_tasks_from_candidates.
+            // NLP-inferred tier + due_date AND the #37 project/goal
+            // IDs so the server honours them via
+            // create_tasks_from_candidates.
             .map((c) => ({
                 title: (c.title || "").trim(),
                 type: c.type || "personal",
                 tier: c.tier || "inbox",
                 due_date: c.due_date || null,
+                project_id: c.project_id || null,
+                goal_id: c.goal_id || null,
                 included: true,
             }))
             .filter((c) => c.title);

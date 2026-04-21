@@ -489,6 +489,9 @@ class TestVoiceNormaliser:
         assert len(result[0]["title"]) == 100
 
     def test_preserves_valid_inference_end_to_end(self):
+        """Baseline #36 shape still passes through unchanged, with #37
+        additions (project_id, goal_id, is_task) set to safe defaults
+        when no hints are supplied."""
         from scan_service import _normalise_voice_candidates
         result = _normalise_voice_candidates([
             {"title": "Pick up meds", "type": "personal",
@@ -499,7 +502,76 @@ class TestVoiceNormaliser:
             "type": "personal",
             "tier": "tomorrow",
             "due_date": "2026-04-22",
+            "project_hint": None,
+            "project_id": None,
+            "goal_hint": None,
+            "goal_id": None,
+            "is_task": True,
         }
+
+    # --- #37 hint resolution --------------------------------------------
+
+    def test_project_hint_resolves_to_id_case_insensitive(self):
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "Ship feature", "project_hint": "Q2 OKRs"}],
+            projects=[("proj-uuid-1", "Q2 OKRs")],
+            goals=[],
+        )
+        assert result[0]["project_id"] == "proj-uuid-1"
+        assert result[0]["project_hint"] == "Q2 OKRs"
+
+    def test_project_hint_case_insensitive_match(self):
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "x", "project_hint": "q2 okrs"}],
+            projects=[("proj-1", "Q2 OKRs")],
+            goals=[],
+        )
+        assert result[0]["project_id"] == "proj-1"
+
+    def test_unknown_project_hint_stays_as_free_text(self):
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "x", "project_hint": "Hallucinated Project"}],
+            projects=[("proj-1", "Real Project")],
+            goals=[],
+        )
+        assert result[0]["project_id"] is None
+        assert result[0]["project_hint"] == "Hallucinated Project"
+
+    def test_goal_hint_resolves_to_id(self):
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "Run 5K", "goal_hint": "Run a half marathon"}],
+            projects=[],
+            goals=[("goal-1", "Run a half marathon")],
+        )
+        assert result[0]["goal_id"] == "goal-1"
+
+    def test_is_task_false_preserved(self):
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "Felt scattered today", "is_task": False}]
+        )
+        assert result[0]["is_task"] is False
+
+    def test_is_task_defaults_true_when_missing(self):
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates([{"title": "x"}])
+        assert result[0]["is_task"] is True
+
+    def test_is_task_truthy_non_false_stays_true(self):
+        """Only exact boolean False counts as 'not a task' — a Claude
+        miss that returns 'is_task': None must not silently drop the
+        task."""
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates([
+            {"title": "a", "is_task": None},
+            {"title": "b", "is_task": "yes"},
+        ])
+        assert result[0]["is_task"] is True
+        assert result[1]["is_task"] is True
 
 
 class TestVoiceCreateTasksFromCandidates:
@@ -552,3 +624,49 @@ class TestVoiceCreateTasksFromCandidates:
             )
             assert len(tasks) == 1
             assert tasks[0].due_date is None
+
+    # --- #37 project/goal ID flow -----------------------------------
+
+    def test_project_and_goal_ids_land_on_task(self, app):
+        """Voice NLP phase 2: when the candidate dict carries a valid
+        project_id / goal_id (resolved from hints), the created Task
+        is linked to those records."""
+        import uuid as _uuid
+
+        from models import Goal, GoalCategory, GoalPriority, Project, ProjectType, db
+        from scan_service import create_tasks_from_candidates
+        with app.app_context():
+            proj = Project(name="P1", type=ProjectType.WORK)
+            goal = Goal(
+                title="G1",
+                category=GoalCategory.WORK,
+                priority=GoalPriority.SHOULD,
+            )
+            db.session.add_all([proj, goal])
+            db.session.commit()
+            tasks = create_tasks_from_candidates(
+                [{
+                    "title": "Linked task", "type": "work",
+                    "project_id": str(proj.id),
+                    "goal_id": str(goal.id),
+                    "included": True,
+                }]
+            )
+            assert len(tasks) == 1
+            assert tasks[0].project_id == proj.id
+            assert tasks[0].goal_id == goal.id
+            # Sanity — isinstance, not equality with string
+            assert isinstance(tasks[0].project_id, _uuid.UUID)
+
+    def test_malformed_project_id_silently_dropped(self, app):
+        """A non-UUID project_id must not crash the batch — one bad
+        candidate should only cost itself its link, not the whole
+        import."""
+        from scan_service import create_tasks_from_candidates
+        with app.app_context():
+            tasks = create_tasks_from_candidates(
+                [{"title": "x", "type": "work",
+                  "project_id": "not-a-uuid", "included": True}]
+            )
+            assert len(tasks) == 1
+            assert tasks[0].project_id is None

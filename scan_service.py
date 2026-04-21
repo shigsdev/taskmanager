@@ -370,13 +370,20 @@ def _extract_json_object_list(text: str) -> list[dict[str, Any]]:
 
 _VOICE_PARSE_PROMPT = """\
 You are a task extraction assistant. Given a transcript of a spoken \
-voice memo, extract discrete actionable task items AND infer \
-metadata for each (type, tier, due_date) from the speaker's context.
+voice memo, extract items AND infer metadata (type, tier, due_date, \
+project_hint, goal_hint, is_task) from the speaker's context.
 
 Today's date is {today}.
 
-Each task must be a JSON object with these keys:
-- title: short clear action item (under 100 characters, required)
+The user's existing projects (exact titles — cite these verbatim if
+a task clearly relates to one; do NOT invent new project names):
+{project_titles}
+
+The user's existing goals (exact titles — same rule):
+{goal_titles}
+
+Each item must be a JSON object with these keys:
+- title: short clear phrasing (under 100 characters, required)
 - type: "work" or "personal". Infer from context: work keywords
   (meeting, project, deadline, standup, PR, report, client) → "work";
   personal keywords (family, groceries, dentist, workout, bills,
@@ -391,26 +398,47 @@ Each task must be a JSON object with these keys:
   specific calendar date, OR null. Resolve relative references
   ("tomorrow", "Friday", "next Tuesday", "the 15th") against today's
   date {today}. Return null if no date was mentioned.
+- project_hint: exact title (verbatim) of a user project this task
+  clearly belongs to, OR null. Only cite a project from the list
+  above — do not invent. If nothing on the list fits, null.
+- goal_hint: exact title (verbatim) of a user goal this task
+  clearly supports, OR null. Same rule — only cite from the list.
+- is_task: true if this is an actionable task, false if it is pure
+  reflection / journaling / venting / status observation without a
+  next action. Reflective non-tasks still need a title (summarise
+  the thought) so the user can review and decide.
 
 Rules:
-- Ignore pure reflection ("I felt tired today"), fillers ("um", "like"),
-  and non-actionable statements.
-- Consolidate related fragments into a single task.
-- If a sentence mentions multiple independent tasks, split them.
+- Split independent tasks into separate items; consolidate fragments
+  that describe the same task.
+- Keep filler words / "um" / "like" out of titles.
 - Return ONLY a JSON array of objects, no other text.
 
-Example (if today is 2026-04-20, a Monday):
+Example (if today is 2026-04-20, a Monday; projects = ["Q2 OKRs"];
+goals = ["Run a half marathon"]):
 Input: "Okay so tomorrow I need to pick up prescriptions, and by \
 Friday I have to finish the Q2 OKR deck. Also email Sarah about \
-the meeting. And I'm feeling scattered today."
+the meeting. And I should do a 5K run this weekend. I'm feeling \
+scattered today."
 Output:
 [
   {{"title": "Pick up prescriptions", "type": "personal",
-    "tier": "tomorrow", "due_date": "2026-04-21"}},
+    "tier": "tomorrow", "due_date": "2026-04-21",
+    "project_hint": null, "goal_hint": null, "is_task": true}},
   {{"title": "Finish Q2 OKR deck", "type": "work",
-    "tier": "this_week", "due_date": "2026-04-24"}},
+    "tier": "this_week", "due_date": "2026-04-24",
+    "project_hint": "Q2 OKRs", "goal_hint": null,
+    "is_task": true}},
   {{"title": "Email Sarah about the meeting", "type": "work",
-    "tier": "inbox", "due_date": null}}
+    "tier": "inbox", "due_date": null,
+    "project_hint": null, "goal_hint": null, "is_task": true}},
+  {{"title": "5K run this weekend", "type": "personal",
+    "tier": "this_week", "due_date": null,
+    "project_hint": null, "goal_hint": "Run a half marathon",
+    "is_task": true}},
+  {{"title": "Feeling scattered today", "type": "personal",
+    "tier": "inbox", "due_date": null,
+    "project_hint": null, "goal_hint": null, "is_task": false}}
 ]
 
 Transcript:
@@ -419,14 +447,24 @@ Transcript:
 
 
 def parse_voice_memo_to_tasks(transcript: str) -> list[dict[str, Any]]:
-    """Send a voice-memo transcript to Claude for structured task extraction.
+    """Send a voice-memo transcript to Claude for structured extraction.
 
-    Returns a list of candidate dicts:
-        {title: str, type: str, tier: str, due_date: str | None}
+    Phase 2 (#37) response shape — one dict per item:
+        {
+            title: str,
+            type: "work" | "personal",
+            tier: "inbox" | "today" | "tomorrow" | "this_week",
+            due_date: str | None,       # ISO YYYY-MM-DD
+            project_id: str | None,     # resolved from project_hint
+            goal_id: str | None,        # resolved from goal_hint
+            is_task: bool,
+        }
 
-    Invalid type/tier values coerce to defaults (personal/inbox) via
-    the normalisation pass below; malformed JSON falls back to an
-    empty list (caller can still use the transcript manually).
+    Hints returned by Claude are resolved to real `project_id` /
+    `goal_id` UUIDs here (case-insensitive exact title match against
+    the user's ACTIVE projects/goals). No match → ID stays None;
+    callers can still show the hint on the review screen for manual
+    linking.
 
     Raises:
         RuntimeError: If ANTHROPIC_API_KEY is missing.
@@ -438,26 +476,81 @@ def parse_voice_memo_to_tasks(transcript: str) -> list[dict[str, Any]]:
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY not configured")
 
-    return _call_claude_api_voice(api_key, transcript)
+    # Fetch the user's active projects + goals so the prompt can cite
+    # exact titles AND the normaliser can resolve hints → UUIDs.
+    # Kept inside the parsing function (rather than passed in) so
+    # callers don't have to know about this coupling.
+    projects, goals = _fetch_projects_and_goals_for_hints()
+
+    return _call_claude_api_voice(api_key, transcript, projects, goals)
+
+
+def _fetch_projects_and_goals_for_hints() -> tuple[
+    list[tuple[str, str]], list[tuple[str, str]]
+]:
+    """Return `([(project_id, title), ...], [(goal_id, title), ...])`
+    of ACTIVE entries for voice-NLP hint resolution.
+
+    Returns empty lists on any error (DB unavailable, etc.) — the
+    rest of the voice flow still works without hints.
+    """
+    try:
+        from sqlalchemy import select
+
+        from models import Goal, Project, db
+        projects = [
+            (str(p.id), p.name)
+            for p in db.session.scalars(
+                select(Project).where(Project.is_active.is_(True))
+            )
+        ]
+        goals = [
+            (str(g.id), g.title)
+            for g in db.session.scalars(
+                select(Goal).where(Goal.is_active.is_(True))
+            )
+        ]
+        return projects, goals
+    except Exception:  # noqa: BLE001 — hints are optional; never crash the flow
+        return [], []
 
 
 def _call_claude_api_voice(
-    api_key: str, transcript: str,
+    api_key: str,
+    transcript: str,
+    projects: list[tuple[str, str]],
+    goals: list[tuple[str, str]],
 ) -> list[dict[str, Any]]:
     """Make the Claude API call for voice-memo parsing. Separated for
     testability — tests can patch this instead of the HTTP layer."""
     from datetime import date as _date
     today_iso = _date.today().isoformat()
+
+    # Render the titles as a comma-separated list for the prompt. If
+    # empty, use the explicit word "(none)" so Claude doesn't get
+    # confused by an empty field.
+    project_titles = ", ".join(
+        repr(title) for _, title in projects
+    ) or "(none)"
+    goal_titles = ", ".join(
+        repr(title) for _, title in goals
+    ) or "(none)"
+
     data = _post_to_claude(
         api_key=api_key,
         prompt=_VOICE_PARSE_PROMPT.format(
-            today=today_iso, transcript=transcript,
+            today=today_iso,
+            transcript=transcript,
+            project_titles=project_titles,
+            goal_titles=goal_titles,
         ),
         max_tokens=2048,
     )
     content = data.get("content", [{}])[0].get("text", "")
     return _normalise_voice_candidates(
-        _extract_json_object_list(content)
+        _extract_json_object_list(content),
+        projects=projects,
+        goals=goals,
     )
 
 
@@ -470,6 +563,9 @@ _VOICE_VALID_TIERS = {"inbox", "today", "tomorrow", "this_week"}
 
 def _normalise_voice_candidates(
     raw: list[dict[str, Any]],
+    *,
+    projects: list[tuple[str, str]] | None = None,
+    goals: list[tuple[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
     """Clean + coerce Claude's voice output to a predictable shape.
 
@@ -478,8 +574,28 @@ def _normalise_voice_candidates(
     - Coerces unknown type values to "personal".
     - Coerces unknown tier values to "inbox".
     - Validates due_date as ISO YYYY-MM-DD; drops (→ None) otherwise.
+    - Resolves project_hint / goal_hint to UUIDs via case-insensitive
+      exact title match against the supplied projects/goals lists
+      (#37). Unresolved hints stay in `project_hint` / `goal_hint`
+      on the candidate so the UI can surface them as free text.
+    - Defaults `is_task` to True (safer assumption — user unchecks
+      on the review screen if they want it dropped).
     """
     from datetime import date as _date
+
+    # Build case-insensitive title → id lookup maps. Skip if no
+    # projects/goals supplied (test case or empty-db case).
+    proj_by_title_lc = {
+        title.lower().strip(): pid
+        for pid, title in (projects or [])
+        if isinstance(title, str) and title.strip()
+    }
+    goal_by_title_lc = {
+        title.lower().strip(): gid
+        for gid, title in (goals or [])
+        if isinstance(title, str) and title.strip()
+    }
+
     out: list[dict[str, Any]] = []
     for item in raw:
         title = item.get("title")
@@ -508,11 +624,37 @@ def _normalise_voice_candidates(
             except ValueError:
                 due_date = None
 
+        # Resolve project_hint + goal_hint to UUIDs (#37). Hint
+        # string stays on the candidate regardless so the UI can
+        # show "Claude suggested X" even when X doesn't match.
+        project_hint = item.get("project_hint")
+        project_id: str | None = None
+        if isinstance(project_hint, str) and project_hint.strip():
+            project_id = proj_by_title_lc.get(
+                project_hint.strip().lower()
+            )
+
+        goal_hint = item.get("goal_hint")
+        goal_id: str | None = None
+        if isinstance(goal_hint, str) and goal_hint.strip():
+            goal_id = goal_by_title_lc.get(goal_hint.strip().lower())
+
+        # Default is_task=True so that a Claude miss (forgot to emit
+        # the field) still treats the item as a task. `is not False`
+        # preserves the "only literal False flips it off" semantic
+        # (None / missing / non-bool truthy all stay True).
+        is_task = item.get("is_task") is not False
+
         out.append({
             "title": title,
             "type": type_val,
             "tier": tier_val,
             "due_date": due_date,
+            "project_hint": project_hint if isinstance(project_hint, str) else None,
+            "project_id": project_id,
+            "goal_hint": goal_hint if isinstance(goal_hint, str) else None,
+            "goal_id": goal_id,
+            "is_task": is_task,
         })
     return out
 
@@ -587,11 +729,29 @@ def create_tasks_from_candidates(
             except ValueError:
                 due_date = None
 
+        # #37: honor inferred project_id + goal_id. Already resolved
+        # to UUIDs by _normalise_voice_candidates; validated here
+        # to prevent a spoofed or stale ID from blowing up the task
+        # INSERT. Unknown ID → silently None (user links manually).
+        project_id = None
+        raw_project_id = candidate.get("project_id")
+        if isinstance(raw_project_id, str) and raw_project_id:
+            with contextlib.suppress(ValueError):
+                project_id = uuid.UUID(raw_project_id)
+
+        goal_id = None
+        raw_goal_id = candidate.get("goal_id")
+        if isinstance(raw_goal_id, str) and raw_goal_id:
+            with contextlib.suppress(ValueError):
+                goal_id = uuid.UUID(raw_goal_id)
+
         task = Task(
             title=title,
             type=task_type,
             tier=tier,
             due_date=due_date,
+            project_id=project_id,
+            goal_id=goal_id,
             batch_id=batch_id,
         )
         db.session.add(task)

@@ -1652,6 +1652,39 @@ body {
 /* Backlog #36: tier + due_date controls from the NLP inference. */
 .voice-candidate-tier { padding: 6px 4px; flex-shrink: 0; }
 .voice-candidate-date { padding: 5px 6px; flex-shrink: 0; min-width: 135px; }
+/* Backlog #37: project + goal dropdowns per candidate + hint text
+   when Claude cited a name that didn't match any DB record. */
+.voice-candidate-project,
+.voice-candidate-goal {
+    padding: 6px 4px;
+    flex-shrink: 0;
+    max-width: 160px;
+    font-size: 0.9rem;
+}
+.voice-candidate-hint {
+    flex: 1 1 100%;
+    font-size: 0.8rem;
+    font-style: italic;
+    color: var(--text-muted, #6b7280);
+    margin: 2px 0 0 24px;
+}
+.voice-reflections {
+    margin-top: 16px;
+    padding: 8px 12px;
+    background: var(--bg-subtle, #f6f8fa);
+    border-radius: 6px;
+    border-left: 3px solid #9ca3af;
+}
+.voice-reflections summary {
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 0;
+}
+.voice-reflections-hint {
+    font-size: 0.85rem;
+    color: var(--text-muted, #6b7280);
+    margin: 4px 0 8px 0;
+}
 .voice-review-hint {
     font-size: 0.85rem;
     color: var(--text-muted);
