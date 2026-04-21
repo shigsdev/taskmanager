@@ -316,6 +316,23 @@ class TestDocsPage:
         # "Format guide" link with anchor into the docs page
         assert '/docs#import-onenote' in html
 
+    def test_docs_page_has_capture_bar(self, client, monkeypatch):
+        """Regression for 2026-04-21 bug: capture bar was initially
+        omitted on /docs ("this is reading material" reasoning),
+        but the user correctly called it out as an unexpected gap.
+        Every other subpage has it; /docs should too. Anything typed
+        lands in Inbox (server default, no data-default-tier)."""
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/docs").data.decode()
+        assert 'id="captureBar"' in html
+        assert 'id="captureInput"' in html
+        assert 'id="captureType"' in html
+        assert 'id="captureSubmit"' in html
+        # Scripts loaded so the bar actually works
+        assert 'capture.js' in html
+        assert 'parse_capture.js' in html
+        assert 'app.js' in html
+
 
 class TestCompletedPage:
     """Integration tests for the dedicated /completed page (backlog #29)."""
