@@ -336,8 +336,9 @@ def compute_previews_in_range(
             )
         )
         for task in spawned:
+            # Collision key #1: created_at bucketed by local date. Covers
+            # the "spawned today" case (cron / manual spawn into Today).
             created = task.created_at
-            # If created_at has no tzinfo (SQLite), treat it as UTC.
             if _tz is not None and created is not None:
                 if created.tzinfo is None:
                     from datetime import UTC
@@ -345,10 +346,22 @@ def compute_previews_in_range(
                 bucket_date = created.astimezone(_tz).date()
             else:
                 bucket_date = created.date() if created else None
-            if bucket_date is None:
-                continue
-            key = (task.recurring_task_id, bucket_date)
-            spawned_by_template_and_day.add(key)
+            if bucket_date is not None:
+                spawned_by_template_and_day.add(
+                    (task.recurring_task_id, bucket_date)
+                )
+            # Collision key #2 (backlog #34): due_date. Covers the case
+            # where the user manually created a task with a future
+            # due_date matching the template's fire day — e.g. created
+            # Monday with due=Friday and repeat=weekly(Friday). Without
+            # this key, the Friday preview would double-render with the
+            # real task. The two keys are complementary: created_at
+            # covers just-spawned-today; due_date covers user-planned-
+            # ahead.
+            if task.due_date is not None:
+                spawned_by_template_and_day.add(
+                    (task.recurring_task_id, task.due_date)
+                )
 
     previews: list[dict] = []
     # Iterate day-by-day across the range. 14 days max is our real

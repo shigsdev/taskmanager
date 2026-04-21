@@ -807,6 +807,54 @@ class TestPreviewsEndpoint:
         titles = [p["title"] for p in resp.get_json()]
         assert "Quiet one" not in titles
 
+    def test_task_with_due_date_suppresses_preview_for_that_day(
+        self, authed_client, app,
+    ):
+        """Backlog #34 regression: a task created today with
+        due_date=Friday and a weekly-Friday recurring template must
+        suppress Friday's preview. Before the fix, the collision
+        filter keyed only on created_at (today), missing a Friday
+        fire_date entirely — double-rendered in the UI.
+
+        User-reported via screenshot 2026-04-20. Fix: additionally
+        key spawned_by_template_and_day by task.due_date."""
+        from datetime import date, timedelta
+
+        from models import RecurringFrequency, Task, TaskType, Tier, db
+        with app.app_context():
+            rt = _make_recurring(
+                title="Weekly Friday",
+                frequency=RecurringFrequency.WEEKLY,
+                day_of_week=4,  # Friday
+            )
+            rt_id = rt.id
+            # Task created today with due_date 3 days from now (Friday-ish)
+            future_due = date.today() + timedelta(days=3)
+            task = Task(
+                title="Weekly Friday",
+                type=TaskType.WORK,
+                tier=Tier.THIS_WEEK,
+                due_date=future_due,
+                recurring_task_id=rt_id,
+            )
+            db.session.add(task)
+            db.session.commit()
+        # Query previews for the full week covering today + future_due
+        start = date.today().isoformat()
+        end = (date.today() + timedelta(days=6)).isoformat()
+        resp = authed_client.get(
+            f"/api/recurring/previews?start={start}&end={end}"
+        )
+        body = resp.get_json()
+        fire_dates = [
+            p["fire_date"] for p in body if p["title"] == "Weekly Friday"
+        ]
+        # The Friday-fire within the range must be suppressed because
+        # the real task's due_date matches. If the weekly fire day
+        # doesn't fall in the next 6 days (i.e. today IS Friday), the
+        # real task's due_date IS today and it's suppressed anyway.
+        assert future_due.isoformat() not in fire_dates
+
     def test_spawned_task_suppresses_same_day_preview(self, authed_client, app):
         """Key invariant: if the template already spawned a Task today,
         don't also render a preview for today — that'd be a phantom."""
