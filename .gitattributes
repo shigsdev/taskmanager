@@ -15,7 +15,15 @@
 *.cfg text eol=lf
 *.ini text eol=lf
 *.sh text eol=lf
+*.bash text eol=lf
 Procfile text eol=lf
+
+# Git hooks live in .githooks/ (per ADR-022) and are extension-less.
+# Without this rule, the default `* text=auto` above lets Windows
+# autocrlf rewrite the shebang to `#!/usr/bin/env bash\r\n`, and the
+# `\r` in `bash\r` makes Mac/Linux `env` fail to exec the interpreter.
+# Reproducer: backlog #39, fixed by ADR-027.
+.githooks/* text eol=lf
 
 # Binary files — don't touch
 *.png binary
