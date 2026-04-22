@@ -399,6 +399,117 @@ class TestSpawnTasks:
         assert "Idempotent test" not in titles
 
 
+class TestSpawnDueDateAndCrossTierDedup:
+    """Backlog #38: spawned tasks must (a) get due_date=target_date so
+    they match the auto-fill behaviour from #28, and (b) deduplicate
+    across ALL active tiers (not just TODAY title-match), so a planned-
+    ahead this_week task with the same recurring_task_id + due_date
+    doesn't get duplicated when the cron fires."""
+
+    def test_spawned_task_has_due_date_set(self, app):
+        """Gap A — cron-spawned tasks must have due_date populated, just
+        like manually-created TODAY tasks do via _auto_fill_tier_due_date."""
+        from datetime import date
+
+        from recurring_service import spawn_today_tasks
+        with app.app_context():
+            _make_recurring(title="Gap A test", frequency=RecurringFrequency.DAILY)
+            target = date(2026, 4, 24)
+            spawned = spawn_today_tasks(target_date=target)
+            assert len(spawned) == 1
+            assert spawned[0].due_date == target
+
+    def test_spawn_skipped_when_planned_ahead_in_this_week(self, app):
+        """Gap B — user manually created a task in this_week with the
+        same recurring_task_id and a due_date matching the fire date.
+        Spawn must NOT create a duplicate in TODAY (the "Meds" case
+        from the 2026-04-22 diagnosis)."""
+        from datetime import date
+
+        from models import Task, Tier
+        from recurring_service import spawn_today_tasks
+        with app.app_context():
+            rt = _make_recurring(title="Meds", frequency=RecurringFrequency.DAILY)
+            target = date(2026, 4, 24)
+            # Simulate the user planning ahead — same template, due Friday,
+            # parked in this_week.
+            planned = Task(
+                title="Meds",
+                type=TaskType.PERSONAL,
+                tier=Tier.THIS_WEEK,
+                due_date=target,
+                recurring_task_id=rt.id,
+            )
+            db.session.add(planned)
+            db.session.commit()
+
+            spawned = spawn_today_tasks(target_date=target)
+            # spawn must skip when (rt_id, due_date) matches a this_week task
+            assert spawned == []
+
+            # Confirm the planned task is the only one with this template
+            # — no TODAY duplicate created.
+            from sqlalchemy import select
+            all_meds = list(db.session.scalars(
+                select(Task).where(Task.recurring_task_id == rt.id),
+            ))
+            assert len(all_meds) == 1
+            assert all_meds[0].tier == Tier.THIS_WEEK
+
+    def test_spawn_dedup_keys_on_due_date_not_just_title(self, app):
+        """Counterpoint to the planned-ahead test: if the existing
+        this_week task has a DIFFERENT due_date than today's fire
+        date (e.g. yesterday's spawn that got moved to this_week),
+        the new spawn for TODAY's date SHOULD proceed."""
+        from datetime import date
+
+        from models import Task, Tier
+        from recurring_service import spawn_today_tasks
+        with app.app_context():
+            rt = _make_recurring(title="Walk", frequency=RecurringFrequency.DAILY)
+            yesterday = date(2026, 4, 23)
+            today = date(2026, 4, 24)
+            old = Task(
+                title="Walk",
+                type=TaskType.PERSONAL,
+                tier=Tier.THIS_WEEK,
+                due_date=yesterday,  # different fire date
+                recurring_task_id=rt.id,
+            )
+            db.session.add(old)
+            db.session.commit()
+
+            spawned = spawn_today_tasks(target_date=today)
+            assert len(spawned) == 1
+            assert spawned[0].due_date == today
+
+    def test_spawn_dedup_ignores_completed_tasks(self, app):
+        """If yesterday's spawn was completed, today's spawn should
+        proceed normally — completed tasks must NOT block new spawns
+        because the dedup query filters status == ACTIVE."""
+        from datetime import date
+
+        from models import Task, TaskStatus, Tier
+        from recurring_service import spawn_today_tasks
+        with app.app_context():
+            rt = _make_recurring(title="Daily check-in", frequency=RecurringFrequency.DAILY)
+            target = date(2026, 4, 24)
+            done = Task(
+                title="Daily check-in",
+                type=TaskType.WORK,
+                tier=Tier.TODAY,
+                due_date=target,
+                recurring_task_id=rt.id,
+                status=TaskStatus.ARCHIVED,  # completed
+            )
+            db.session.add(done)
+            db.session.commit()
+
+            spawned = spawn_today_tasks(target_date=target)
+            assert len(spawned) == 1
+            assert spawned[0].status == TaskStatus.ACTIVE
+
+
 # --- Blueprint registration --------------------------------------------------
 
 

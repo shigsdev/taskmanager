@@ -103,10 +103,15 @@ component is added, a data flow changes, or a security boundary shifts.
   - **recurring-spawn** at 00:05 (#35) — calls the idempotent
     `spawn_today_tasks()` so any RecurringTask firing today
     materialises into `Tier.TODAY` without the user hitting
-    `/api/recurring/spawn` manually. Title-match suppression
-    inside `spawn_today_tasks` makes it safe to re-run. The
-    spawned Task's `created_at.date()` triggers the #34
-    collision filter so the same-day preview card stops rendering.
+    `/api/recurring/spawn` manually. Spawned tasks land with
+    `due_date = today` (TZ-correct via `_local_today_date()`)
+    matching the #28 auto-fill semantics for manually-created
+    TODAY tasks. Dedup is keyed on `(recurring_task_id, due_date)`
+    across ALL active tiers (#38), so a planned-ahead task in
+    `this_week` with a matching template + fire date doesn't
+    spawn a TODAY duplicate. The same `(recurring_task_id,
+    due_date)` key also gates the #34 preview-collision filter
+    so same-day preview cards stop rendering once spawned.
   - **scheduler heartbeat** every 45s — writes a small JSON file the
     other gunicorn workers can read to prove the scheduler is alive
 - **Postgres enum repair gate** (`app._ensure_postgres_enum_values`) —

@@ -392,36 +392,66 @@ def compute_previews_in_range(
 def spawn_today_tasks(*, target_date: date | None = None) -> list[Task]:
     """Create actual Task records from today's recurring templates.
 
-    Each spawned task lands in the Today tier with status active.
+    Each spawned task lands in the Today tier with status active and
+    ``due_date`` set to the target date (TZ-correct via DIGEST_TZ).
     Returns the list of newly created tasks.
 
-    Idempotent — if a task with the same title already exists in Today
-    (active status), it will not be created again. Safe to call multiple
-    times per day.
+    Idempotent across all tiers — if an active task already exists for
+    this template AND fire date (any tier), it will not be created
+    again. This handles two cases (backlog #38):
+      A. Same-day re-run: spawn called twice on the same day, second
+         call sees the first call's TODAY task and skips.
+      B. Planned-ahead: user manually created a task in this_week with
+         the same recurring_task_id and a due_date matching today's
+         fire date — we DON'T also spawn a TODAY duplicate. Without
+         this, "Meds" planned-ahead in this_week for Friday would
+         double up when the Friday cron fires.
+
+    Dedup is keyed on ``(recurring_task_id, due_date)`` rather than
+    ``title`` (the old key) — title was a fragile match (case
+    sensitivity, edits, etc.) and missed cross-tier duplicates.
     """
     from models import TaskStatus
 
+    # Resolve target_date in the user's local TZ when not passed —
+    # the cron + manual API both call us with no args, and using UTC
+    # would mean a 10pm-ET spawn lands with due_date=tomorrow. Same
+    # _local_today_date() helper used by #28 and the Tomorrow auto-roll
+    # cron so the three TZ paths stay self-consistent.
+    if target_date is None:
+        from task_service import _local_today_date
+        target_date = _local_today_date()
+
     templates = tasks_due_today(target_date=target_date)
 
-    # Check existing active Today tasks to prevent duplicates
-    existing_titles = {
-        t.title
-        for t in db.session.scalars(
+    # Pre-compute the set of (recurring_task_id, due_date) tuples that
+    # already have an active task — across ALL tiers, not just TODAY.
+    # This is the cross-tier dedup that closes Gap B from #38.
+    template_ids = [rt.id for rt in templates]
+    existing_keys: set[tuple] = set()
+    if template_ids:
+        rows = db.session.scalars(
             select(Task).where(
-                Task.tier == Tier.TODAY,
+                Task.recurring_task_id.in_(template_ids),
+                Task.due_date == target_date,
                 Task.status == TaskStatus.ACTIVE,
             )
         )
-    }
+        existing_keys = {(t.recurring_task_id, t.due_date) for t in rows}
 
     spawned = []
     for rt in templates:
-        if rt.title in existing_titles:
+        if (rt.id, target_date) in existing_keys:
             continue
         task = Task(
             title=rt.title,
             type=rt.type,
             tier=Tier.TODAY,
+            # Set due_date so spawned tasks match the auto-fill behaviour
+            # from #28 (manually-created TODAY tasks get due_date=today).
+            # Without this, cron-spawned tasks were inconsistent — Gap A
+            # from #38.
+            due_date=target_date,
             project_id=rt.project_id,
             goal_id=rt.goal_id,
             notes=rt.notes,
@@ -461,6 +491,9 @@ def spawn_today_tasks(*, target_date: date | None = None) -> list[Task]:
                 title=title,
                 type=parent.type,
                 tier=Tier.TODAY,
+                # Mirror the parent's due_date for consistency with #28
+                # (manually-created TODAY tasks get auto-filled to today).
+                due_date=target_date,
                 parent_id=parent.id,
                 project_id=parent.project_id,
                 goal_id=parent.goal_id,
