@@ -43,6 +43,9 @@ skips:
   # different absolute locations; using bare names + PATH is the right
   # choice. Reviewed in the bandit MEDIUM/LOW pass on 2026-04-18.
   - B607
-# (Severity / confidence filtering happens at the CLI level via
-# `-ll -ii` flags in run_all_gates.sh — keeps the gate strict but
-# allows ad-hoc `bandit -r .` runs to surface lower-confidence noise.)
+# Severity / confidence threshold: gate runs at LOW/LOW (bandit
+# defaults), tightened from HIGH/HIGH on 2026-04-21 (backlog #20 +
+# ADR-024) once the audit pass confirmed the codebase was clean at
+# LOW/LOW. If a future legitimate change trips a LOW finding, prefer
+# a per-line `# nosec BXXX  # short reason` over adding a global
+# skip — keeps the exception scoped.

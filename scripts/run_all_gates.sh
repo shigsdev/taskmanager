@@ -161,13 +161,17 @@ fi
 # --- 5. Bandit (Python security linter) -------------------------------------
 
 banner "5. Bandit (security lint)"
-# -ll = HIGH severity threshold; -ii = HIGH confidence threshold.
-# Anything below those prints to stderr but doesn't fail the gate
-# (keeps false-positive noise out of the must-fix bucket).
-if python -m bandit -r . -c .bandit.yml -ll -ii --quiet; then
+# Default severity = LOW, default confidence = LOW. We previously gated
+# at HIGH/HIGH only, but the 2026-04-18 audit pass cleared every LOW/LOW
+# finding (some fixed in code, the rest documented as skips in
+# .bandit.yml with rationale). Locking the gate at LOW/LOW catches any
+# regression early — see backlog #20 + ADR-024.
+if python -m bandit -r . -c .bandit.yml --quiet; then
     pass "bandit"
 else
-    fail "bandit found a HIGH severity / HIGH confidence security issue"
+    fail "bandit found a security issue (LOW/LOW threshold). Review the report"
+    fail "  above. If it's a true positive, fix it. If it's a documented"
+    fail "  exception, add a per-line '# nosec BXXX  # reason' or update .bandit.yml."
     exit 1
 fi
 
