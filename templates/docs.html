@@ -22,19 +22,229 @@
 <div class="docs-page">
     <nav class="docs-toc" aria-label="Table of contents">
         <h2>Docs</h2>
+
+        <h3 class="docs-toc-group">Capturing</h3>
         <ul>
-            <li><a href="#import-onenote">Pasting tasks from OneNote</a></li>
+            <li><a href="#capture-hints">Capture bar hints</a></li>
+            <li><a href="#voice-input">Voice memo vs. voice dictation</a></li>
+            <li><a href="#image-scan">Image scan</a></li>
+            <li><a href="#import-onenote">Pasting from OneNote</a></li>
             <li><a href="#import-excel-goals">Importing goals from Excel</a></li>
         </ul>
+
+        <h3 class="docs-toc-group">Task lifecycle</h3>
+        <ul>
+            <li><a href="#tiers">Tiers and auto-fill</a></li>
+            <li><a href="#recurring">Recurring tasks</a></li>
+            <li><a href="#review-mode">Review mode</a></li>
+            <li><a href="#subtasks">Subtasks</a></li>
+        </ul>
+
+        <h3 class="docs-toc-group">Workflows</h3>
+        <ul>
+            <li><a href="#bulk-ops">Bulk operations</a></li>
+            <li><a href="#recycle-bin">Recycle bin and undo</a></li>
+            <li><a href="#print">Print view</a></li>
+        </ul>
+
+        <h3 class="docs-toc-group">Admin</h3>
+        <ul>
+            <li><a href="#digest">Email digest</a></li>
+            <li><a href="#settings">Settings</a></li>
+        </ul>
+
         <p class="docs-toc-hint">
-            More sections coming — this page holds user-facing
-            formatting rules, shortcuts, and behavior notes. If
-            something surprised you, it probably belongs here.
+            If something surprised you and isn't explained here, it
+            probably belongs on this page. File a BACKLOG entry.
         </p>
     </nav>
 
     <main class="docs-content">
         <h1>Task Manager — Documentation</h1>
+
+        {# =============================================================
+           CAPTURING
+           ============================================================= #}
+
+        <section id="capture-hints" class="docs-section">
+            <h2>Capture bar hints</h2>
+            <p>
+                The capture bar at the top of every main page accepts
+                plain text for the task title, plus inline
+                <strong>hashtag hints</strong> that set tier, type,
+                repeat frequency, and URL in one shot. Hints are
+                stripped from the title before the task is saved.
+            </p>
+            <p>
+                Default tier is <strong>Inbox</strong>. Default type
+                is whatever the dropdown next to the input is set to
+                (Work or Personal). Hashtag hints override both.
+            </p>
+
+            <h3>Tier hints</h3>
+            <ul>
+                <li><code>#today</code> → Today</li>
+                <li><code>#tomorrow</code> → Tomorrow</li>
+                <li><code>#week</code> → This Week</li>
+                <li><code>#next_week</code> or <code>#nextweek</code> → Next Week</li>
+                <li><code>#backlog</code> → Backlog</li>
+                <li><code>#freezer</code> → Freezer</li>
+            </ul>
+            <p>Only one tier hint is honored per capture — the first match wins.</p>
+
+            <h3>Type hints</h3>
+            <ul>
+                <li><code>#work</code> → type Work</li>
+                <li><code>#personal</code> → type Personal</li>
+            </ul>
+
+            <h3>Repeat hints</h3>
+            <p>Make the task recurring. A repeat template is created automatically and linked to the task.</p>
+            <ul>
+                <li><code>#daily</code> — fires every day</li>
+                <li><code>#weekdays</code> — fires Mon–Fri only</li>
+                <li><code>#weekly</code> — fires weekly on the same day-of-week you captured it</li>
+                <li><code>#monthly</code> — fires monthly on the same day-of-month you captured it</li>
+            </ul>
+
+            <h3>URL auto-detection</h3>
+            <p>
+                Any <code>http://</code> or <code>https://</code>
+                substring is detected, placed in the task's URL
+                field, and stripped from the title. Whatever's left
+                (before + after the URL) becomes the title. If
+                nothing's left, the URL itself becomes the title.
+            </p>
+
+            <h3>Matching rules</h3>
+            <ul>
+                <li>Hints are <strong>case-insensitive</strong> — <code>#TODAY</code> works.</li>
+                <li>Hints can appear anywhere — beginning, middle, or end of the text.</li>
+                <li>Longest-first matching: <code>#next_week</code> beats <code>#week</code>, <code>#weekly</code> beats <code>#week</code>.</li>
+                <li>Repeat hints are consumed before tier hints. <code>#weekly</code> on its own leaves the tier at Inbox (the repeat ate the <code>#week</code> substring). Add an explicit tier: <code>#today #weekly</code>.</li>
+            </ul>
+
+            <h3>What hints do NOT do</h3>
+            <ul>
+                <li>No project or goal hints — assign those via the detail panel or bulk toolbar.</li>
+                <li>No due-date hints (<code>due:2026-05-01</code>, <code>@friday</code>, etc.) — set in the detail panel.</li>
+                <li>No priority / notes / checklist hints.</li>
+                <li>Anything that isn't <code>#</code>-prefixed stays in the title verbatim.</li>
+            </ul>
+
+            <h3>Worked examples</h3>
+            <pre class="docs-example">Fix login bug #today #work
+  → title: "Fix login bug", tier: Today, type: Work
+
+Team retro #weekly
+  → title: "Team retro", tier: Inbox, type: (dropdown), repeats weekly
+
+Plan Q3 #next_week #work
+  → title: "Plan Q3", tier: Next Week, type: Work
+
+Call mom #tomorrow
+  → title: "Call mom", tier: Tomorrow
+
+Take meds #daily #personal
+  → title: "Take meds", type: Personal, repeats daily
+
+Read article https://example.com/foo #personal
+  → title: "Read article", type: Personal,
+    URL: https://example.com/foo
+
+https://example.com/foo
+  → title: "https://example.com/foo" (URL-only, title falls back to URL)</pre>
+        </section>
+
+        <section id="voice-input" class="docs-section">
+            <h2>Voice memo vs. voice dictation</h2>
+            <p>
+                Two different voice buttons sit next to the capture
+                bar. They look similar but behave differently — pick
+                based on how long your input is and whether you want
+                parsing.
+            </p>
+
+            <h3>🎤 Voice dictation (capture bar)</h3>
+            <ul>
+                <li>Uses the browser's Web Speech API — no upload, no Whisper, no Claude.</li>
+                <li>Appends the transcript directly to the capture-bar input so you can submit it as one task.</li>
+                <li>Single utterance per tap — stops listening when you pause.</li>
+                <li>No NLP: whatever you say becomes the task title (hashtag hints still work on the text).</li>
+                <li>Works best for short captures ("Fix login bug hashtag today hashtag work").</li>
+                <li>On iOS Safari, interim results are disabled — you see the final transcript only.</li>
+            </ul>
+
+            <h3>🎙️ Voice memo (dedicated page)</h3>
+            <ul>
+                <li>Opens <code>/voice-memo</code>, a record-and-review flow.</li>
+                <li>Records with <code>MediaRecorder</code>, uploads the audio to the server.</li>
+                <li>Server pipeline: Whisper transcribes → Claude parses the transcript into one or more task candidates.</li>
+                <li>Each candidate comes back with inferred title, type, tier, and due date, plus optional project/goal hints.</li>
+                <li>You review each candidate in a list, tweak any field, and then Add All or Add Selected.</li>
+                <li>Non-task items (reflections, asides) are grouped in a collapsed "Reflections" section, unchecked by default.</li>
+            </ul>
+
+            <h3>Size and duration limits</h3>
+            <ul>
+                <li>Voice memo recording cap: <strong>10 minutes</strong> (client-side hard stop).</li>
+                <li>Whisper upload cap: <strong>25 MB</strong>.</li>
+                <li>Global request cap for any upload: <strong>30 MB</strong>.</li>
+            </ul>
+
+            <h3>Privacy</h3>
+            <ul>
+                <li>Voice memo audio is processed in memory only — never written to disk or database.</li>
+                <li>Dictation audio never leaves the browser (Web Speech API is client-side).</li>
+                <li>Transcripts are not persisted beyond the review screen.</li>
+            </ul>
+
+            <h3>When each fails</h3>
+            <ul>
+                <li>🎤 dictation is unsupported on some desktop browsers and unreliable in iOS Safari PWA standalone mode.</li>
+                <li>🎙️ voice memo requires <code>OPENAI_API_KEY</code> and <code>ANTHROPIC_API_KEY</code> configured on the server.</li>
+                <li>iOS Safari has occasionally shipped MediaRecorder bugs that break the memo flow. Fall back to typing if you hit one.</li>
+            </ul>
+        </section>
+
+        <section id="image-scan" class="docs-section">
+            <h2>Image scan</h2>
+            <p>
+                The <a href="{{ url_for('scan_page') }}">/scan</a>
+                page accepts a photo of handwritten notes, a meeting
+                agenda, or a screenshot and turns it into task or goal
+                candidates. Pick the mode with the radio toggle at
+                the top.
+            </p>
+
+            <h3>Modes</h3>
+            <ul>
+                <li><strong>Tasks</strong> — candidates land in Inbox after confirmation. One candidate per extracted line.</li>
+                <li><strong>Goals</strong> — candidates become Goal rows with default category=work, priority=should, status=not_started. Edit any on the review screen before confirming.</li>
+            </ul>
+
+            <h3>Pipeline</h3>
+            <ol>
+                <li>Google Vision OCRs the image.</li>
+                <li>Claude parses the OCR text into candidates.</li>
+                <li>Review screen shows each candidate as editable.</li>
+                <li>On confirm, selected candidates become Tasks (or Goals), tagged with a shared <code>batch_id</code> so the whole scan is undoable as one unit.</li>
+            </ol>
+
+            <h3>Accepted formats and limits</h3>
+            <ul>
+                <li>Accepted MIME types: <code>image/jpeg</code>, <code>image/png</code>, <code>image/webp</code>.</li>
+                <li>Max file size: <strong>10 MB</strong>.</li>
+                <li>Images are processed in memory only — never saved to disk or database.</li>
+            </ul>
+
+            <h3>When it's wrong</h3>
+            <ul>
+                <li>OCR quality depends on handwriting legibility and lighting. Typed text is nearly always accurate; cursive script misses more often.</li>
+                <li>Edit any candidate on the review screen before confirming.</li>
+                <li>Deselect a candidate's checkbox to drop it from the batch without deleting.</li>
+            </ul>
+        </section>
 
         {# =============================================================
            Section: Pasting tasks from OneNote  (backlog #33)
@@ -98,7 +308,7 @@
                 <li>If you need metadata (tier, type, due date, project, goal): easiest to import first, then use the bulk-select toolbar on the resulting Inbox to apply those in one pass.</li>
             </ol>
 
-            <h3>Size & undo</h3>
+            <h3>Size &amp; undo</h3>
             <ul>
                 <li>Text paste has no explicit size cap in the app, but the server request body is capped at 30 MB (you'll hit browser limits well before that matters).</li>
                 <li>File uploads (.docx, .xlsx) are capped at <strong>5 MB</strong>.</li>
@@ -184,6 +394,406 @@ Skip this line (too short)</pre>
                 import. Undo the whole batch from the
                 <a href="{{ url_for('recycle_bin_page') }}">Recycle Bin</a>.
             </p>
+        </section>
+
+        {# =============================================================
+           TASK LIFECYCLE
+           ============================================================= #}
+
+        <section id="tiers" class="docs-section">
+            <h2>Tiers and auto-fill</h2>
+            <p>
+                Every task lives in exactly one tier. Tiers determine
+                where the task renders on the board and drive a few
+                automatic behaviors around due dates.
+            </p>
+
+            <h3>Tier list (board display order)</h3>
+            <ol>
+                <li><strong>Inbox</strong> — default for new captures; unsorted queue.</li>
+                <li><strong>Today</strong> — do today.</li>
+                <li><strong>Tomorrow</strong> — do tomorrow. Auto-rolls into Today at 00:01 local time.</li>
+                <li><strong>This Week</strong> — do this week. Tasks are grouped by day-of-week inside the panel.</li>
+                <li><strong>Next Week</strong> — do next week. Same day-of-week grouping.</li>
+                <li><strong>Backlog</strong> — later but still on the list.</li>
+                <li><strong>Freezer</strong> — maybe never. Review every so often to Keep, Delete, or pull back.</li>
+            </ol>
+
+            <h3>Due-date auto-fill</h3>
+            <p>
+                When a task lands in <strong>Today</strong> or
+                <strong>Tomorrow</strong> with no explicit due date,
+                the system fills it automatically:
+            </p>
+            <ul>
+                <li>TODAY → <code>due_date</code> = today (local timezone).</li>
+                <li>TOMORROW → <code>due_date</code> = today + 1.</li>
+                <li>Other tiers → no auto-fill.</li>
+            </ul>
+            <p>
+                Auto-fill is <strong>fill-if-null only</strong> — it
+                never overwrites an explicit value you set. And it
+                skips entirely if you mentioned <code>due_date</code>
+                in the same update (even setting it to blank is
+                treated as user intent).
+            </p>
+            <p>
+                Moving a task back out of Today/Tomorrow does NOT
+                clear the auto-filled date. The date is still
+                meaningful as a reminder.
+            </p>
+
+            <h3>Tomorrow → Today roll</h3>
+            <p>
+                A scheduled job at <strong>00:01</strong> local
+                (<code>DIGEST_TZ</code>) moves every Tomorrow task
+                into Today. The idea: yesterday's "tomorrow" is
+                today's "today," and you shouldn't have to move them
+                by hand.
+            </p>
+
+            <h3>Task status (separate from tier)</h3>
+            <ul>
+                <li><strong>Active</strong> — default.</li>
+                <li><strong>Archived</strong> — completed. Shows on the <a href="{{ url_for('completed_page') }}">/completed</a> page.</li>
+                <li><strong>Cancelled</strong> — consciously dropped, not done. Optional reason field.</li>
+                <li><strong>Deleted</strong> — soft-deleted. Hidden from the board; not in the recycle bin (regular deletes bypass the bin).</li>
+            </ul>
+        </section>
+
+        <section id="recurring" class="docs-section">
+            <h2>Recurring tasks</h2>
+            <p>
+                A recurring task is a <em>template</em>. The template
+                itself never appears on the board — it spawns real
+                task instances on the days it fires.
+            </p>
+
+            <h3>Frequencies</h3>
+            <ul>
+                <li><strong>Daily</strong> — fires every day.</li>
+                <li><strong>Weekdays</strong> — fires Mon–Fri only.</li>
+                <li><strong>Weekly</strong> — fires on one specific day-of-week.</li>
+                <li><strong>Day of week</strong> — same as weekly; used internally for templates with a specific weekday.</li>
+                <li><strong>Monthly (by date)</strong> — fires on a specific day-of-month (e.g. the 15th).</li>
+                <li><strong>Monthly (nth weekday)</strong> — fires on a specific weekday of the month (e.g. first Monday).</li>
+            </ul>
+
+            <h3>How a template gets created</h3>
+            <ul>
+                <li>Capture-bar hint (<code>#daily</code>, <code>#weekdays</code>, <code>#weekly</code>, <code>#monthly</code>) — creates a template matching today's weekday or day-of-month.</li>
+                <li>Task detail panel — add a repeat rule to an existing task.</li>
+                <li>Recurring editor — directly via the /recurring editor.</li>
+            </ul>
+
+            <h3>When tasks spawn</h3>
+            <p>
+                A scheduled job at <strong>00:05</strong> local time
+                runs through every active template and, for each one
+                firing today, creates a real task in Today with
+                <code>due_date</code> set to that fire date.
+            </p>
+            <p>
+                Spawning is <strong>idempotent</strong> — running the
+                cron twice on the same day or manually triggering a
+                spawn will not create duplicates. A planned-ahead task
+                in This Week with matching template + due date also
+                blocks a duplicate.
+            </p>
+
+            <h3>Preview cards vs. real tasks</h3>
+            <p>In the This Week and Next Week panels you'll see two card styles:</p>
+            <ul>
+                <li><strong>Solid border</strong> — a real task. Has a due date, is checkable, can be edited or moved.</li>
+                <li><strong>Dashed border</strong> — a <em>preview</em> of a recurring template that will fire on that day. Not a real task row yet. Clicking a preview opens the template editor, not a detail panel.</li>
+            </ul>
+            <p>
+                Previews disappear when the template fires (the real
+                task takes the preview's place) or when a real task
+                for the same template + date already exists.
+            </p>
+
+            <h3>Subtask inheritance</h3>
+            <p>
+                When a recurring parent's children are snapshotted to
+                the template, those subtasks are cloned fresh every
+                time the parent spawns. Snapshot captures only active
+                subtasks at template-save time — completed or
+                cancelled children don't carry forward.
+            </p>
+        </section>
+
+        <section id="review-mode" class="docs-section">
+            <h2>Review mode</h2>
+            <p>
+                The <a href="{{ url_for('review_page') }}">/review</a>
+                page steps through <em>stale</em> tasks one at a time
+                so the board doesn't accumulate forgotten rows.
+            </p>
+
+            <h3>What "stale" means</h3>
+            <ul>
+                <li>A task is stale if it has never been reviewed, or if it was last reviewed more than <strong>7 days ago</strong>.</li>
+                <li>Completed / cancelled / deleted tasks are never stale — they're out of the queue.</li>
+            </ul>
+
+            <h3>Actions</h3>
+            <p>One button per task. The card advances automatically after each action.</p>
+            <ul>
+                <li><strong>Keep</strong> — leave the task in its current tier. Stamps <code>last_reviewed</code> = today, so it drops out of the queue for 7 more days.</li>
+                <li><strong>Freeze</strong> — move to Freezer and stamp <code>last_reviewed</code>.</li>
+                <li><strong>Snooze</strong> — leave in place and stamp <code>last_reviewed</code> = today. Effectively the same as Keep; separate button for when you're deliberately deferring the decision.</li>
+                <li><strong>Delete</strong> — soft-delete (status = deleted). Does not go through the recycle bin (that's for import undos only).</li>
+            </ul>
+
+            <h3>UI</h3>
+            <ul>
+                <li>A progress bar at the top shows how many stale tasks remain.</li>
+                <li>An "All caught up" screen renders when the queue is empty.</li>
+            </ul>
+        </section>
+
+        <section id="subtasks" class="docs-section">
+            <h2>Subtasks</h2>
+            <p>
+                A task can have child tasks one level deep. Subtasks
+                are useful for breaking a larger thing into concrete
+                steps without leaving the parent tier.
+            </p>
+
+            <h3>Rules</h3>
+            <ul>
+                <li><strong>One level only</strong> — a subtask cannot have its own subtasks. Attempting to parent a child to another child is rejected.</li>
+                <li><strong>Goal + project inheritance</strong> — when a subtask is created without explicit <code>goal_id</code> / <code>project_id</code>, it inherits both from its parent. You can override either on the subtask itself.</li>
+                <li><strong>Parent-card badge</strong> — parent cards show a badge like <code>2/5 subtasks</code>. It turns green when the count hits total.</li>
+            </ul>
+
+            <h3>Completing a parent with open subtasks</h3>
+            <p>
+                Completing a parent with still-active subtasks shows
+                a prompt: complete all children along with the
+                parent, or close each subtask individually first.
+                There's no "archive parent and leave orphans" path —
+                that would leave subtasks with no visible home on the
+                board.
+            </p>
+
+            <h3>Subtasks and recurring templates</h3>
+            <p>
+                If the parent is a recurring task, its currently-active
+                subtasks are snapshotted into the template's
+                <code>subtasks_snapshot</code>. Every time the parent
+                spawns, the template clones those subtasks fresh. See
+                <a href="#recurring">Recurring tasks</a>.
+            </p>
+
+            <h3>Navigating from subtask back to parent</h3>
+            <p>
+                The subtask detail panel shows a "← Parent" link
+                that opens the parent's panel. If the parent is
+                archived, cancelled, or deleted, the link still
+                appears but is labeled with the parent's status.
+            </p>
+        </section>
+
+        {# =============================================================
+           WORKFLOWS
+           ============================================================= #}
+
+        <section id="bulk-ops" class="docs-section">
+            <h2>Bulk operations</h2>
+            <p>
+                Multi-select + a sticky bottom toolbar lets you apply
+                one change to many tasks in a single action.
+            </p>
+
+            <h3>Entering multi-select mode</h3>
+            <ul>
+                <li>Tap the multi-select toggle in the top-right of any tier panel.</li>
+                <li>Each task card shows a checkbox. Tap cards to include them.</li>
+                <li>The sticky toolbar appears at the bottom of the screen.</li>
+            </ul>
+
+            <h3>Toolbar actions</h3>
+            <ul>
+                <li><strong>Type</strong> — set all selected to Work or Personal.</li>
+                <li><strong>Tier</strong> — move all selected to a target tier.</li>
+                <li><strong>Goal</strong> — link all selected to a goal (or clear the link).</li>
+                <li><strong>Project</strong> — link all selected to a project (or clear).</li>
+                <li><strong>Complete</strong> — archive all selected.</li>
+                <li><strong>Delete</strong> — soft-delete all selected.</li>
+            </ul>
+
+            <h3>Rules</h3>
+            <ul>
+                <li><strong>Max 200 tasks per call</strong>. Beyond that, the request is rejected at the API layer.</li>
+                <li>Best-effort semantics: per-task failures are reported individually but don't roll back successful ones.</li>
+                <li>Cascade rules still apply — if you move a parent to a different tier, nothing forces subtasks to follow (subtasks stay put unless you include them in the selection).</li>
+                <li>Subtask goal/project inheritance still applies when the parent is changed.</li>
+            </ul>
+        </section>
+
+        <section id="recycle-bin" class="docs-section">
+            <h2>Recycle bin and undo</h2>
+            <p>
+                The <a href="{{ url_for('recycle_bin_page') }}">/recycle-bin</a>
+                page is the undo surface for <em>bulk imports only</em>
+                — OneNote pastes, Excel goal imports, and image-scan
+                confirmations. Regular task deletes do not go through
+                the bin.
+            </p>
+
+            <h3>How a batch lands there</h3>
+            <p>
+                Every import tags its new rows with a shared
+                <code>batch_id</code>. When you click Undo on an
+                import (from Settings → Import History or via the
+                Recycle Bin), every row with that <code>batch_id</code>
+                is soft-deleted in one step.
+            </p>
+
+            <h3>Batch states</h3>
+            <ol>
+                <li><strong>Live</strong> — rows visible on the board.</li>
+                <li><strong>In bin</strong> — rows hidden. <em>Undo</em> moves a batch here.</li>
+                <li><strong>Purged</strong> — rows hard-deleted from the DB. The ImportLog row stays as an audit trail.</li>
+            </ol>
+
+            <h3>Actions on a batch in the bin</h3>
+            <ul>
+                <li><strong>Restore</strong> — put the rows back on the board.</li>
+                <li><strong>Purge</strong> — permanent delete. Requires typing <code>DELETE</code> in the confirmation dialog.</li>
+            </ul>
+
+            <h3>Empty Bin</h3>
+            <p>
+                Purges every batch currently in the bin in one step.
+                Also requires typing <code>DELETE</code>.
+            </p>
+
+            <h3>No automated cleanup</h3>
+            <p>
+                Nothing in the bin is ever deleted on a timer. Items
+                stay there until you purge them. A TTL-based auto-
+                expiry is in the BACKLOG Freezer as a deferred idea.
+            </p>
+
+            <h3>Scope reminder</h3>
+            <ul>
+                <li>Regular delete (trash icon on a task card) → soft-deletes immediately, does NOT go to the recycle bin.</li>
+                <li>Review-mode Delete → same; does NOT go to the recycle bin.</li>
+                <li>Only bulk-import batch undos end up here.</li>
+            </ul>
+        </section>
+
+        <section id="print" class="docs-section">
+            <h2>Print view</h2>
+            <p>
+                The <a href="{{ url_for('print_page') }}">/print</a>
+                page renders a server-side print-optimized page for
+                taking to a meeting or a coffee break without a device.
+            </p>
+
+            <h3>What prints</h3>
+            <ul>
+                <li><strong>Overdue</strong> — tasks with a due date before today, not archived.</li>
+                <li><strong>Today</strong> — everything in the Today tier.</li>
+                <li><strong>This Week</strong> — everything in the This Week tier.</li>
+            </ul>
+
+            <h3>What doesn't</h3>
+            <ul>
+                <li>Navigation chrome, capture bar, action buttons — hidden via <code>@media print</code> CSS.</li>
+                <li>Inbox, Tomorrow, Next Week, Backlog, Freezer, Completed. If you need to print a specific tier, use the browser's Print to PDF after navigating there.</li>
+            </ul>
+
+            <h3>Layout</h3>
+            <ul>
+                <li>Checkbox column on the left for pen-and-paper completion.</li>
+                <li>Task titles with type, project, goal metadata inline.</li>
+                <li>Checklists (if any) render as nested checkboxes under the parent task.</li>
+                <li>Overdue tasks are visually highlighted.</li>
+            </ul>
+        </section>
+
+        {# =============================================================
+           ADMIN
+           ============================================================= #}
+
+        <section id="digest" class="docs-section">
+            <h2>Email digest</h2>
+            <p>
+                A plain-text daily digest is emailed via SendGrid. The
+                schedule and contents are fixed; adjustments happen
+                through environment variables on the deploy.
+            </p>
+
+            <h3>When it fires</h3>
+            <ul>
+                <li>Time: <code>DIGEST_TIME</code> env var, default <strong>07:00</strong>.</li>
+                <li>Timezone: <code>DIGEST_TZ</code> env var, default <strong>America/New_York</strong>.</li>
+                <li>Recipient: <code>DIGEST_TO_EMAIL</code> env var. No digest is sent if this is unset.</li>
+            </ul>
+
+            <h3>What's in it</h3>
+            <ol>
+                <li>Today's tasks (everything in the Today tier).</li>
+                <li>Tasks due today from any other tier (excluding those already listed above).</li>
+                <li>Overdue tasks (due date before today, not archived).</li>
+                <li>Goals that have active tasks in Today.</li>
+                <li>Tomorrow count and This Week remaining count.</li>
+            </ol>
+
+            <h3>Format</h3>
+            <ul>
+                <li>Plain text only — no HTML. Renders reliably in corporate Outlook and any other email client.</li>
+                <li>Task content is sanitized (tabs, carriage returns, excess whitespace stripped) before going into the body.</li>
+                <li>No API keys or session tokens ever appear in the digest body or server logs.</li>
+            </ul>
+
+            <h3>Preview and send-now</h3>
+            <p>
+                From <a href="{{ url_for('settings_page') }}">/settings</a>,
+                the Daily Digest panel offers:
+            </p>
+            <ul>
+                <li><strong>Preview Digest</strong> — renders the current digest inline without sending.</li>
+                <li><strong>Send Now</strong> — sends the current digest immediately to <code>DIGEST_TO_EMAIL</code>, independent of the schedule.</li>
+            </ul>
+        </section>
+
+        <section id="settings" class="docs-section">
+            <h2>Settings</h2>
+            <p>
+                The <a href="{{ url_for('settings_page') }}">/settings</a>
+                page is the operator dashboard — stats, service
+                status, digest controls, and import history.
+            </p>
+
+            <h3>App Overview (stats)</h3>
+            <ul>
+                <li><strong>Active Tasks</strong> — count of tasks with <code>status = active</code>.</li>
+                <li><strong>Total Tasks</strong> — every task row, including archived, cancelled, and deleted.</li>
+                <li><strong>Active Goals</strong> — goals with <code>is_active = true</code>.</li>
+                <li><strong>Recurring Templates</strong> — active recurring templates.</li>
+            </ul>
+
+            <h3>External Services</h3>
+            <p>A status table shows whether each integration has its API key configured. The actual key values are never displayed.</p>
+            <ul>
+                <li><strong>Google Vision</strong> — powers OCR for image scan.</li>
+                <li><strong>Anthropic</strong> — powers Claude parsing for image scan and voice memo.</li>
+                <li><strong>SendGrid</strong> — powers email digest delivery.</li>
+            </ul>
+
+            <h3>Daily Digest controls</h3>
+            <p>See <a href="#digest">Email digest</a> above. The panel shows the configured recipient and From address, plus Preview and Send Now buttons.</p>
+
+            <h3>Import History</h3>
+            <p>Every bulk import is logged here with source, item count, date, and per-batch Undo/Restore actions. The Recycle Bin link shows a count of batches currently in the bin.</p>
+
+            <h3>Quick Actions</h3>
+            <p>Shortcut buttons to Weekly Review, Scan Image, Import, and Print View.</p>
         </section>
     </main>
 </div>

@@ -2059,8 +2059,22 @@ body.bulk-select-mode .task-card .bulk-select-check { display: block; }
     color: var(--text-muted, #6b7280);
     margin: 0 0 8px 0;
 }
-.docs-toc ul { list-style: none; padding: 0; margin: 0; }
+.docs-toc ul { list-style: none; padding: 0; margin: 0 0 12px 0; }
 .docs-toc li { margin-bottom: 4px; }
+/* Group heading inside TOC — separates Capturing / Task lifecycle /
+   Workflows / Admin. Styled to sit between the "DOCS" top heading
+   and the link lists without fighting visually with either. */
+.docs-toc-group {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted, #6b7280);
+    font-weight: 700;
+    margin: 16px 0 6px 0;
+}
+.docs-toc-group:first-of-type {
+    margin-top: 4px;
+}
 .docs-toc a {
     color: var(--accent, #2563eb);
     text-decoration: none;
