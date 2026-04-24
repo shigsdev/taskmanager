@@ -50,6 +50,17 @@ instance/
 .DS_Store
 Thumbs.db
 
+# OneDrive sync-conflict files. Format: `<original>-<Machine Name>.<ext>`
+# (the hostname comes from System Settings > General > About on Mac, or
+# the equivalent on Windows). They appear when OneDrive can't reconcile
+# two simultaneous edits — pure stale snapshots, never wanted in git.
+# Note: Mac hostnames often contain a curly apostrophe (’) instead of '.
+*-*’s\ MacBook\ Pro.*
+*-*’s\ MacBook\ Air.*
+*-*\'s\ MacBook\ Pro.*
+*-*\'s\ MacBook\ Air.*
+*-shigs78-pc24.*
+
 # Logs
 *.log
 
