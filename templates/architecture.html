@@ -88,7 +88,21 @@
                 <code>architecture_service.build_er_diagram()</code>.
                 Reflects the schema currently registered with SQLAlchemy
                 — including FK arrows, nullable markers, and enum value
-                lists. Cannot drift from the actual models.
+                lists. Cannot drift from the actual models. Color groups
+                (<span class="er-legend er-legend-core">core</span>
+                <span class="er-legend er-legend-ops">operational</span>
+                <span class="er-legend er-legend-auth">auth</span>) are
+                hand-curated in <code>_ER_TABLE_GROUPS</code> for visual
+                hierarchy (#43); a CLAUDE.md cascade rule covers drift.
+            </p>
+            <p class="docs-source-note">
+                <strong>Hidden universal columns:</strong> every table
+                has <code>id</code> (UUID primary key),
+                <code>created_at</code>, and <code>updated_at</code>.
+                These are stripped from the diagram for visual density —
+                they're on every box and add noise without information.
+                The route catalog below shows the actual column names
+                for any endpoint that returns them.
             </p>
             <pre class="mermaid">{{ er_diagram }}</pre>
         </section>
@@ -102,12 +116,18 @@
             <p class="docs-source-note">
                 Auto-generated from <code>app.url_map</code> via
                 <code>architecture_service.build_route_catalog()</code>.
-                <strong>Auth: <code>login</code></strong> = the route is
-                wrapped with <code>@login_required</code> (OAuth + email
-                allowlist; validator cookie OK on safe HTTP methods per
-                ADR-004); <strong><code>public</code></strong> = no auth.
-                Static assets and OAuth callback paths are hidden.
+                Split into <strong>Pages</strong> (the user-facing tabs +
+                health probe) and <strong>API endpoints</strong> (JSON,
+                consumed by the client JavaScript and post-deploy
+                automation). <strong>Auth: <code>login</code></strong> =
+                the route is wrapped with <code>@login_required</code>
+                (OAuth + email allowlist; validator cookie OK on safe
+                HTTP methods per ADR-004); <strong><code>public</code></strong>
+                = no auth. Static assets and OAuth callback paths are
+                hidden from both tables.
             </p>
+
+            <h3>Pages ({{ page_routes|length }})</h3>
             <table class="route-catalog">
                 <thead>
                     <tr>
@@ -119,7 +139,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for r in route_catalog %}
+                    {% for r in page_routes %}
                     <tr>
                         <td><code>{{ r.method }}</code></td>
                         <td><code>{{ r.path }}</code></td>
@@ -138,6 +158,40 @@
                     {% endfor %}
                 </tbody>
             </table>
+
+            <details class="route-catalog-api">
+                <summary>API endpoints ({{ api_routes|length }}) — click to expand</summary>
+                <table class="route-catalog">
+                    <thead>
+                        <tr>
+                            <th>Method</th>
+                            <th>Path</th>
+                            <th>Auth</th>
+                            <th>Endpoint</th>
+                            <th>Doc</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in api_routes %}
+                        <tr>
+                            <td><code>{{ r.method }}</code></td>
+                            <td><code>{{ r.path }}</code></td>
+                            <td>
+                                {% if r.auth == 'login' %}
+                                    <span class="auth-login">login</span>
+                                {% elif r.auth == 'public' %}
+                                    <span class="auth-public">public</span>
+                                {% else %}
+                                    <span class="auth-unknown">{{ r.auth }}</span>
+                                {% endif %}
+                            </td>
+                            <td><code>{{ r.endpoint }}</code></td>
+                            <td>{{ r.doc }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </details>
         </section>
 
         {# =============================================================
@@ -156,30 +210,43 @@
                 <code>(recurring_task_id, due_date)</code> dedup key
                 that closes the cross-tier duplicate gap (#38).
             </p>
-            <pre class="mermaid">
-sequenceDiagram
-    autonumber
-    participant Cron as APScheduler<br/>(recurring_spawn @ 00:05 DIGEST_TZ)
-    participant Service as recurring_service<br/>spawn_today_tasks()
-    participant DB as Postgres<br/>(tasks, recurring_tasks)
-    Cron->>Service: spawn_today_tasks()
-    Service->>Service: target_date = _local_today_date() (#28)
-    Service->>DB: SELECT active RecurringTask WHERE _template_fires_on(today)
-    DB-->>Service: templates due today
-    Service->>DB: SELECT active Task WHERE recurring_task_id IN (...) AND due_date = today
-    DB-->>Service: existing_keys (cross-tier dedup, #38)
-    loop for each template
-        alt (rt.id, target_date) in existing_keys
-            Service->>Service: skip (already spawned or planned-ahead)
-        else
-            Service->>DB: INSERT Task(tier=TODAY, due_date=today, recurring_task_id=rt.id)
-        end
-    end
-    Service->>DB: COMMIT (parents)
-    Service->>DB: INSERT subtasks from rt.subtasks_snapshot (#26)
-    Service->>DB: COMMIT (subtasks)
-    Service-->>Cron: spawned tasks
-            </pre>
+            <p class="docs-source-note">
+                Linear flow with no branches — rendered as a numbered
+                list (#43). For flows with conditionals, see voice memo
+                + auth below which use Mermaid sequence diagrams.
+            </p>
+            <ol class="process-flow">
+                <li>APScheduler fires the <code>recurring_spawn</code> job at
+                    00:05 local (<code>DIGEST_TZ</code>) and calls
+                    <code>spawn_today_tasks()</code> with no arguments.</li>
+                <li>The service computes <code>target_date</code> in the
+                    user's timezone via <code>_local_today_date()</code>
+                    (<a href="https://github.com/shigsdev/taskmanager/blob/main/docs/adr/016-tier-due-date-auto-fill.md">ADR-016</a>) — using UTC would put 10pm-ET
+                    spawns on tomorrow's date.</li>
+                <li>SELECT active <code>RecurringTask</code> rows where
+                    the template fires today (frequency check via
+                    <code>_template_fires_on()</code>).</li>
+                <li>SELECT active <code>Task</code> rows already linked
+                    to those templates with <code>due_date == today</code>,
+                    across <strong>all tiers</strong>. This is the
+                    cross-tier dedup that closes Gap B from
+                    <a href="https://github.com/shigsdev/taskmanager/blob/main/docs/adr/026-spawn-due-date-and-cross-tier-dedup.md">ADR-026</a> (a planned-ahead
+                    "Meds" task in <code>this_week</code> for Friday
+                    blocks the Friday spawn).</li>
+                <li>For each template not in the existing-keys set,
+                    INSERT a new <code>Task</code> with
+                    <code>tier=TODAY</code>, <code>due_date=target_date</code>,
+                    and <code>recurring_task_id=template.id</code>.
+                    COMMIT.</li>
+                <li>For each spawned parent that has a
+                    <code>subtasks_snapshot</code> on its template
+                    (<a href="https://github.com/shigsdev/taskmanager/blob/main/docs/adr/013-recurring-subtasks-snapshot.md">ADR-013</a>),
+                    INSERT one subtask row per snapshot entry, also
+                    with <code>due_date=target_date</code>. COMMIT.</li>
+                <li>Return the list of spawned tasks (parents only) to
+                    the cron — used for the response body of the manual
+                    <code>/api/recurring/spawn</code> endpoint.</li>
+            </ol>
             <p>
                 Related ADRs: <strong>ADR-013</strong> (subtasks_snapshot
                 JSON column), <strong>ADR-014</strong> (Tomorrow tier +
@@ -209,30 +276,49 @@ sequenceDiagram
             <pre class="mermaid">
 sequenceDiagram
     autonumber
-    participant Browser as Browser<br/>(MediaRecorder + voice_memo.js)
-    participant Voice as voice_api<br/>POST /api/voice-memo/parse
-    participant Whisper as OpenAI Whisper<br/>(via egress.safe_call_api)
-    participant Scan as scan_service<br/>parse_voice_memo_to_tasks()
-    participant Claude as Anthropic Claude<br/>(via egress.safe_call_api)
-    participant DB as Postgres
+    participant Browser
+    participant Voice as voice_api
+    participant Whisper
+    participant Scan as scan_service
+    participant Claude
+    participant DB
     Browser->>Browser: record audio (10-min cap)
-    Browser->>Voice: POST audio (multipart, audio/webm or audio/mp4)
-    Voice->>Voice: utils.validate_upload (MIME, size, empty)
+    Browser->>Voice: POST audio (multipart)
+    Voice->>Voice: validate_upload (MIME, size, empty)
     Voice->>Whisper: POST /audio/transcriptions
     Whisper-->>Voice: transcript
     Voice->>Scan: parse_voice_memo_to_tasks(transcript)
-    Scan->>DB: SELECT active Project + Goal titles (for hint resolution)
-    Scan->>Claude: POST /v1/messages with structured prompt + titles
+    Scan->>DB: SELECT active Project + Goal titles
+    Scan->>Claude: POST /v1/messages with prompt + titles
     Claude-->>Scan: candidates JSON
-    Scan->>Scan: _normalise_voice_candidates (resolve hints to UUIDs)
+    Scan->>Scan: resolve hints to UUIDs
     Scan-->>Voice: candidates
     Voice-->>Browser: 200 OK with candidates
-    Browser->>Browser: render review screen (tier select, date input,<br/>project + goal dropdowns, is_task=false → Reflections section)
-    Browser->>Voice: POST /api/voice-memo/confirm with selected candidates
+    Browser->>Browser: render review screen
+    Browser->>Voice: POST /api/voice-memo/confirm
     Voice->>Scan: create_tasks_from_candidates()
-    Scan->>DB: INSERT Task(s) with project_id, goal_id, tier, due_date
+    Scan->>DB: INSERT Task(s)
     Voice-->>Browser: 201 Created
             </pre>
+            <p class="docs-source-note">
+                Participant labels in the diagram are short for layout.
+                Real callers (#43): <code>Browser</code> = MediaRecorder
+                + <code>static/voice_memo.js</code>. <code>Voice</code> =
+                <code>voice_api.py</code>, route
+                <code>POST /api/voice-memo/parse</code>.
+                <code>Whisper</code> = OpenAI Whisper at
+                <code>api.openai.com/v1/audio/transcriptions</code>, called
+                via <code>egress.safe_call_api</code>. <code>Scan</code> =
+                <code>scan_service.py</code>, function
+                <code>parse_voice_memo_to_tasks</code>.
+                <code>Claude</code> = Anthropic Claude at
+                <code>api.anthropic.com/v1/messages</code>, also via
+                <code>egress.safe_call_api</code>.
+                <code>DB</code> = Postgres.
+                The review screen renders a tier select, date input,
+                project + goal dropdowns; <code>is_task=false</code>
+                items go to a collapsed "Reflections" section.
+            </p>
             <p>
                 Related ADRs: <strong>ADR-005</strong> (voice memo error
                 handling + iOS Safari Content-Type quirk),
@@ -262,41 +348,54 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     participant Browser
-    participant Flask as Flask app<br/>@login_required wrapper
-    participant Bypass as _dev_bypass_active()<br/>(local only, four-gate)
-    participant Validator as validator_cookie<br/>(signed long-lived token)
-    participant OAuth as Google OAuth<br/>(Flask-Dance)
-    participant View as protected view
+    participant Flask
+    participant Bypass
+    participant Validator
+    participant OAuth
+    participant View
     Browser->>Flask: GET /protected
-    Flask->>Bypass: check 4-gate dev bypass
+    Flask->>Bypass: check dev bypass
     alt dev bypass active (LOCAL ONLY)
-        Bypass-->>Flask: short-circuit, AUTHORIZED_EMAIL
-        Flask->>View: call view(email=AUTHORIZED_EMAIL)
-    else validator_token cookie + safe HTTP method (GET/HEAD/OPTIONS)
+        Bypass-->>Flask: AUTHORIZED_EMAIL
+        Flask->>View: view(email=AUTHORIZED_EMAIL)
+    else validator cookie + safe method (GET/HEAD/OPTIONS)
         Flask->>Validator: verify signed token
-        alt valid + email matches AUTHORIZED_EMAIL
+        alt valid + email matches
             Validator-->>Flask: validator_email
-            Flask->>View: call view(email=validator_email)
+            Flask->>View: view(email=validator_email)
         else invalid OR mutation method
-            Flask->>OAuth: continue to OAuth path
+            Flask->>OAuth: fall through to OAuth
         end
     else
         Flask->>OAuth: get_current_user_email()
         alt no session
-            OAuth-->>Browser: 302 redirect to /login/google
-            Browser->>OAuth: complete OAuth flow
-            OAuth-->>Browser: redirect back to /protected
+            OAuth-->>Browser: 302 to /login/google
+            Browser->>OAuth: complete OAuth
+            OAuth-->>Browser: redirect to /protected
         else session exists
             OAuth-->>Flask: email from token
             alt email != AUTHORIZED_EMAIL
-                Flask-->>Browser: 403 unauthorized.html
+                Flask-->>Browser: 403 unauthorized
             else
-                Flask->>View: call view(email=email)
+                Flask->>View: view(email=email)
             end
         end
     end
     View-->>Browser: response
             </pre>
+            <p class="docs-source-note">
+                Participant labels short for layout (#43). Real callers:
+                <code>Flask</code> = the
+                <code>@login_required</code> wrapper in
+                <code>auth.py</code>. <code>Bypass</code> =
+                <code>_dev_bypass_active()</code>, the four-gate local-
+                only short-circuit (<a href="https://github.com/shigsdev/taskmanager/blob/main/docs/adr/002-four-gate-dev-bypass.md">ADR-002</a>).
+                <code>Validator</code> = <code>validator_cookie.py</code>,
+                signed long-lived token narrow-scoped to safe HTTP
+                methods (<a href="https://github.com/shigsdev/taskmanager/blob/main/docs/adr/004-validator-cookie-broaden-readonly.md">ADR-004</a>). <code>OAuth</code> =
+                Flask-Dance Google OAuth blueprint. <code>View</code> =
+                the actual Flask view function.
+            </p>
             <p>
                 Related ADRs: <strong>ADR-001</strong> (single-user
                 OAuth lockdown), <strong>ADR-002</strong> (four-gate

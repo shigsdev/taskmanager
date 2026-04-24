@@ -2236,3 +2236,68 @@ pre.mermaid svg {
     padding-left: 12px;
     margin: 16px 0 24px 0;
 }
+
+/* #43: ER diagram color-group legend swatches in the source-note text.
+   Match the Mermaid classDef fill colors in architecture_service.py. */
+.er-legend {
+    display: inline-block;
+    padding: 1px 8px;
+    margin: 0 2px;
+    border-radius: 3px;
+    font-size: 0.85em;
+    font-weight: 600;
+    border: 1px solid;
+}
+.er-legend-core {
+    background: #dbeafe;
+    border-color: #1d4ed8;
+    color: #0c1f4d;
+}
+.er-legend-ops {
+    background: #fef3c7;
+    border-color: #a16207;
+    color: #3a2806;
+}
+.er-legend-auth {
+    background: #fce7f3;
+    border-color: #a21caf;
+    color: #3d0a3a;
+}
+
+/* #43: Process flow rendered as a numbered list (used for the linear
+   recurring-spawn flow; voice memo + auth keep Mermaid). Wider line
+   spacing + slight indent so each step reads as a discrete unit. */
+ol.process-flow {
+    line-height: 1.6;
+    padding-left: 24px;
+    margin: 12px 0 16px 0;
+}
+ol.process-flow li {
+    margin-bottom: 10px;
+}
+ol.process-flow li code {
+    font-size: 0.95em;
+}
+
+/* #43: <details> wrapper for the API endpoints route catalog.
+   Default-collapsed so the page-routes table pops; clicking the
+   summary reveals the ~58 /api/* rows. */
+details.route-catalog-api {
+    margin-top: 16px;
+}
+details.route-catalog-api > summary {
+    cursor: pointer;
+    padding: 8px 12px;
+    background: var(--bg-subtle, #f6f8fa);
+    border: 1px solid var(--border, #e1e4e8);
+    border-radius: 6px;
+    font-weight: 600;
+    user-select: none;
+}
+details.route-catalog-api[open] > summary {
+    border-radius: 6px 6px 0 0;
+    border-bottom: none;
+}
+details.route-catalog-api > table {
+    margin-top: 0;
+}

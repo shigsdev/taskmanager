@@ -56,6 +56,31 @@ class TestArchitectureRoute:
         assert 'class="route-catalog"' in body
         assert "/architecture" in body
 
+    def test_route_catalog_split_into_pages_and_api(self, authed_client):
+        """#43: pages get an always-visible <h3>; API endpoints are
+        wrapped in a collapsed <details> so the user-facing routes
+        pop instead of being buried under 58 /api/* rows."""
+        resp = authed_client.get("/architecture")
+        body = resp.get_data(as_text=True)
+        # Pages section header (with count)
+        assert "<h3>Pages (" in body
+        # Collapsed API section
+        assert 'details class="route-catalog-api"' in body
+        assert "<summary>API endpoints (" in body
+
+    def test_recurring_spawn_renders_as_numbered_list_not_mermaid(self, authed_client):
+        """#43: the recurring-spawn flow is linear (no branches) and
+        renders as <ol class="process-flow"> rather than a Mermaid
+        sequence diagram. Mermaid is reserved for the voice-memo +
+        auth flows that have real conditionals."""
+        resp = authed_client.get("/architecture")
+        body = resp.get_data(as_text=True)
+        # The recurring-spawn section's H2 anchor still exists
+        assert 'id="flow-recurring-spawn"' in body
+        # And the section uses an <ol class="process-flow"> instead of
+        # the previous <pre class="mermaid"> block
+        assert 'class="process-flow"' in body
+
 
 # --- build_route_catalog ----------------------------------------------------
 
@@ -114,6 +139,41 @@ class TestBuildRouteCatalog:
             assert entry["method"] not in {"HEAD", "OPTIONS"}
 
 
+# --- split_route_catalog (#43) ---------------------------------------------
+
+
+class TestSplitRouteCatalog:
+
+    def test_partitions_pages_from_api_endpoints(self, app):
+        from architecture_service import build_route_catalog, split_route_catalog
+        catalog = build_route_catalog(app)
+        pages, apis = split_route_catalog(catalog)
+        # Every API endpoint starts with /api/
+        assert all(e["path"].startswith("/api/") for e in apis)
+        # No page route starts with /api/
+        assert not any(e["path"].startswith("/api/") for e in pages)
+        # The two together account for the full catalog (no entry dropped)
+        assert len(pages) + len(apis) == len(catalog)
+
+    def test_known_pages_land_in_pages_bucket(self, app):
+        from architecture_service import build_route_catalog, split_route_catalog
+        catalog = build_route_catalog(app)
+        pages, _ = split_route_catalog(catalog)
+        page_paths = {e["path"] for e in pages}
+        # User-facing tabs from base.html nav
+        for known_page in ("/", "/architecture", "/docs", "/goals"):
+            assert known_page in page_paths
+
+    def test_pages_bucket_smaller_than_api_bucket(self, app):
+        """Sanity: there should be far more API endpoints than page
+        routes. If this flips, the split is no longer a useful UX
+        improvement (the whole point of #43's collapse) — investigate."""
+        from architecture_service import build_route_catalog, split_route_catalog
+        catalog = build_route_catalog(app)
+        pages, apis = split_route_catalog(catalog)
+        assert len(apis) > len(pages)
+
+
 # --- build_er_diagram -------------------------------------------------------
 
 
@@ -134,12 +194,16 @@ class TestBuildErDiagram:
                       "app_logs", "import_log"):
             assert table in out, f"ER diagram missing table {table!r}"
 
-    def test_includes_pk_marker(self, app):
+    def test_no_pk_marker_when_id_columns_hidden(self, app):
+        """#43: `id` is hidden from the ER diagram (universal column,
+        all tables have UUID PK — the marker added noise without
+        info). PK markers correspondingly disappear; the template
+        footnote tells the user every table has an id PK + timestamps."""
         from architecture_service import build_er_diagram
         with app.app_context():
             out = build_er_diagram()
-        # Every table has a PK column marker
-        assert " PK" in out
+        # No id column rendered anywhere = no PK markers anywhere
+        assert " PK" not in out
 
     def test_includes_fk_relationship_arrows(self, app):
         from architecture_service import build_er_diagram
@@ -158,6 +222,82 @@ class TestBuildErDiagram:
         assert "enum_" in out
         # At least one Tier value should be visible
         assert "today" in out
+
+    def test_hides_id_and_timestamp_columns(self, app):
+        """#43: every table has id, created_at, updated_at — surfacing
+        them on every box adds noise without information. They're
+        hidden from the diagram (and footnoted in the template)."""
+        from architecture_service import build_er_diagram
+        with app.app_context():
+            out = build_er_diagram()
+        # The diagram has these tables but the universal-noise columns
+        # should not appear as column rows. Test by checking the lines
+        # inside the entity blocks.
+        # `created_at` and `updated_at` should not show as column rows
+        for line in out.splitlines():
+            stripped = line.strip()
+            # Column rows look like "type column_name PK" — we want to
+            # ensure no column row's name is in the hidden allowlist.
+            # Skip non-column lines (header, classDef, relationships, braces).
+            if not stripped or stripped in {"erDiagram", "}", ""}:
+                continue
+            if stripped.startswith(("class ", "classDef ", "direction ")):
+                continue
+            if stripped.endswith("{") or "||--o{" in stripped:
+                continue
+            # This is a column row — assert its name is not hidden
+            tokens = stripped.split()
+            # Format: "type name [markers]" — name is tokens[1]
+            if len(tokens) >= 2:
+                assert tokens[1] not in {"id", "created_at", "updated_at"}, \
+                    f"hidden column leaked into ER diagram: {stripped}"
+
+    def test_uses_lr_direction_for_wider_layout(self, app):
+        """#43: `direction LR` (left-to-right) reads more naturally
+        than the default top-down for a wide-page ER diagram."""
+        from architecture_service import build_er_diagram
+        with app.app_context():
+            out = build_er_diagram()
+        assert "direction LR" in out
+
+    def test_emits_classdef_color_groups(self, app):
+        """#43: tables are color-grouped (Core / Operational / Auth)
+        for visual hierarchy. classDef directives + per-table class
+        assignments should be present."""
+        from architecture_service import build_er_diagram
+        with app.app_context():
+            out = build_er_diagram()
+        # Three classDef directives — one per group
+        assert "classDef core" in out
+        assert "classDef ops" in out
+        assert "classDef auth" in out
+        # And at least one class assignment line per group with the
+        # expected tables. core: tasks should be assigned to it.
+        # Look for `class A,B,C core` style lines.
+        core_assignments = [
+            line for line in out.splitlines()
+            if line.strip().startswith("class ") and line.strip().endswith(" core")
+        ]
+        assert core_assignments, "expected at least one `class ... core` line"
+        # tasks must be in the core group (it's the central user entity)
+        assert any("tasks" in line for line in core_assignments)
+
+    def test_every_model_table_has_a_group(self, app):
+        """#43 drift gate: a future contributor adding a new
+        `db.Model` subclass must classify it in `_ER_TABLE_GROUPS`.
+        If they forget, this test fails — covers the cascade-check
+        rule for "A new SQLAlchemy db.Model subclass"."""
+        from architecture_service import _ER_TABLE_GROUPS
+        from models import db
+        for mapper in db.Model.registry.mappers:
+            if mapper.local_table is None:
+                continue
+            name = mapper.local_table.name
+            assert name in _ER_TABLE_GROUPS, (
+                f"model table {name!r} has no group in _ER_TABLE_GROUPS — "
+                f"add it to architecture_service._ER_TABLE_GROUPS "
+                f"(core/ops/auth) and _ER_TABLE_ORDER per CLAUDE.md cascade."
+            )
 
 
 # --- render_architecture_md -------------------------------------------------

@@ -125,6 +125,32 @@ def build_route_catalog(app: Flask) -> list[dict[str, Any]]:
     return catalog
 
 
+def split_route_catalog(
+    catalog: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split a route catalog into (page routes, API endpoints) for #43.
+
+    Page routes = anything not under ``/api/`` (the user-facing tabs +
+    `/healthz`); these go in the always-visible table at the top of
+    the route-catalog section.
+
+    API endpoints = everything starting with ``/api/`` (~58 of the 75
+    rows); these go in a collapsed `<details>` so the page routes
+    aren't buried under API noise.
+
+    Single-pass partition; preserves the input ordering inside each
+    bucket (already path-sorted by build_route_catalog).
+    """
+    pages: list[dict[str, Any]] = []
+    apis: list[dict[str, Any]] = []
+    for entry in catalog:
+        if entry["path"].startswith("/api/"):
+            apis.append(entry)
+        else:
+            pages.append(entry)
+    return pages, apis
+
+
 def _detect_auth(view: Any) -> str:
     """Return "login" if the view has the @login_required wrapper, else "public".
 
@@ -163,6 +189,43 @@ def _first_doc_line(view: Any) -> str:
 
 # --- ER diagram (Mermaid) ---------------------------------------------------
 
+# Columns hidden from the rendered ER diagram for visual readability (#43).
+# Every table has these; surfacing them on every box adds noise without
+# information. The footnote in the template tells the user they exist.
+_HIDDEN_ER_COLUMNS = frozenset({"id", "created_at", "updated_at"})
+
+# Domain grouping for color-coded ER diagram (#43). Maps each table name
+# to a group label used as a Mermaid `classDef` selector. Add new tables
+# to the right group when introducing a new model — see CLAUDE.md cascade
+# row "A new database column / enum member".
+_ER_TABLE_GROUPS: dict[str, str] = {
+    # Core: things the user creates and interacts with
+    "tasks": "core",
+    "goals": "core",
+    "projects": "core",
+    "recurring_tasks": "core",
+    # Operational: system-generated records
+    "app_logs": "ops",
+    "import_log": "ops",
+    # Auth: token storage by flask-dance
+    "flask_dance_oauth": "auth",
+}
+
+# Display order — Mermaid layouts respect entity declaration order
+# loosely. Listing related tables together helps clusters form.
+_ER_TABLE_ORDER = (
+    # Core cluster — Goal/Project parents first, then Task + RecurringTask
+    "goals",
+    "projects",
+    "tasks",
+    "recurring_tasks",
+    # Operational cluster
+    "app_logs",
+    "import_log",
+    # Auth (orphan)
+    "flask_dance_oauth",
+)
+
 
 def build_er_diagram() -> str:
     """Introspect SQLAlchemy models and emit a Mermaid ``erDiagram`` block.
@@ -172,41 +235,58 @@ def build_er_diagram() -> str:
     client-side via the JS lib loaded on the architecture page.
 
     Includes:
-      - One entity block per ``db.Model`` subclass
-      - All columns with their type
+      - One entity block per ``db.Model`` subclass (excluding tables
+        in `_HIDDEN_ER_COLUMNS` — id/created_at/updated_at are noise
+        on every box; #43)
+      - All non-hidden columns with their type
       - ``PK`` marker for primary keys
       - ``FK`` marker for foreign keys
       - ``"nullable"`` annotation for nullable columns
       - For Enum columns: comma-separated value list as the type
       - Foreign-key relationships rendered as Mermaid arrows
+      - `direction LR` (left-to-right) layout for wider screens
+      - `classDef` color groups (core/ops/auth) so related tables are
+        visually distinguishable at a glance (#43)
 
-    Tables and columns sorted alphabetically for stable output (so the
-    diagram doesn't churn between requests / Python versions).
+    Tables ordered by the curated `_ER_TABLE_ORDER` so related tables
+    cluster (Mermaid layouts respect declaration order loosely).
+    Columns sorted alphabetically for stable output.
     """
     # Local import — avoids a top-level cycle since architecture_service
     # is imported by app.py, and models.py imports db from extensions
     # which app.py also touches.
     from models import db
 
-    lines: list[str] = ["erDiagram"]
+    # `direction LR` (left-to-right) reads more naturally than the
+    # default top-down for an ER diagram on a wide page.
+    lines: list[str] = ["erDiagram", "    direction LR", ""]
 
-    # Collect (table_name, mapper) pairs, sorted by table name
-    mappers = sorted(
-        db.Model.registry.mappers,
-        key=lambda m: m.local_table.name if m.local_table is not None else "",
-    )
+    # Collect mappers indexed by table name so we can iterate in the
+    # curated `_ER_TABLE_ORDER` (related tables clustered together)
+    # rather than alphabetical (which scatters them).
+    by_name: dict[str, Any] = {}
+    for mapper in db.Model.registry.mappers:
+        if mapper.local_table is not None:
+            by_name[mapper.local_table.name] = mapper
+
+    # Tables in curated order first; any new (uncurated) tables fall
+    # through alphabetically at the end so we never silently drop one.
+    ordered_names = [n for n in _ER_TABLE_ORDER if n in by_name]
+    leftover = sorted(set(by_name) - set(ordered_names))
 
     # Track FK relationships to emit AFTER all entities
     relationships: list[str] = []
+    # Track which tables we actually emit so classDef only mentions them
+    emitted: list[str] = []
 
-    for mapper in mappers:
+    for table_name in [*ordered_names, *leftover]:
+        mapper = by_name[table_name]
         table = mapper.local_table
-        if table is None:
-            continue
-        table_name = table.name
 
         lines.append(f"    {table_name} {{")
         for col in sorted(table.columns, key=lambda c: c.name):
+            if col.name in _HIDDEN_ER_COLUMNS:
+                continue
             col_type = _format_col_type(col)
             markers = []
             if col.primary_key:
@@ -218,6 +298,7 @@ def build_er_diagram() -> str:
             marker_str = " " + " ".join(markers) if markers else ""
             lines.append(f"        {col_type} {col.name}{marker_str}")
         lines.append("    }")
+        emitted.append(table_name)
 
         # Capture FK arrows for after the entity blocks
         for col in table.columns:
@@ -233,6 +314,26 @@ def build_er_diagram() -> str:
     # Dedup relationships (multi-FK to same parent collapse)
     for rel in dict.fromkeys(relationships):
         lines.append(rel)
+
+    # Color-group `classDef`s + per-table assignments. Mermaid's ER
+    # diagram supports `classDef name fill:#color,stroke:#color`, then
+    # `class tableName name` to assign. Colors picked for adequate
+    # contrast on the existing pale-grey page background.
+    lines.append("")
+    lines.append("    classDef core fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d")
+    lines.append("    classDef ops fill:#fef3c7,stroke:#a16207,color:#3a2806")
+    lines.append("    classDef auth fill:#fce7f3,stroke:#a21caf,color:#3d0a3a")
+
+    # Group tables by their classDef so we can emit one `class A,B,C name` line
+    # per group instead of per table — Mermaid accepts comma-separated names.
+    groups: dict[str, list[str]] = {"core": [], "ops": [], "auth": []}
+    for name in emitted:
+        group = _ER_TABLE_GROUPS.get(name)
+        if group in groups:
+            groups[group].append(name)
+    for group_name, members in groups.items():
+        if members:
+            lines.append(f"    class {','.join(members)} {group_name}")
 
     return "\n".join(lines)
 

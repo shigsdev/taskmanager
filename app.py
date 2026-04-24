@@ -326,6 +326,7 @@ def create_app(config: dict | None = None) -> Flask:
             build_er_diagram,
             build_route_catalog,
             render_architecture_md,
+            split_route_catalog,
         )
         repo_root = Path(__file__).resolve().parent
         try:
@@ -336,10 +337,16 @@ def create_app(config: dict | None = None) -> Flask:
             arch_html = Markup(
                 "<p><em>ARCHITECTURE.md is missing from this deploy.</em></p>",
             )
+        # #43: split into Pages (always-visible) + API endpoints
+        # (collapsed) so the user-facing routes pop instead of being
+        # buried under the 58 /api/* rows.
+        catalog = build_route_catalog(app)
+        page_routes, api_routes = split_route_catalog(catalog)
         return render_template(
             "architecture.html",
             architecture_md_html=arch_html,
-            route_catalog=build_route_catalog(app),
+            page_routes=page_routes,
+            api_routes=api_routes,
             er_diagram=build_er_diagram(),
         )
 
