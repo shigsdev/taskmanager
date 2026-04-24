@@ -77,7 +77,9 @@ _(nothing currently in progress)_
 
 ## Bugs
 
-_(no open bugs)_
+| # | Item | Filed | Status |
+|---|---|---|---|
+| 46 | **Friday "Meds" task due today shows in This Week panel but not in Today** — recurring "Meds" task (weekly, fires Friday) was manually moved to `this_week` tier with `due_date=2026-04-24` (today, a Friday). On Friday morning: This Week panel shows the task labeled "due today"; Today panel does NOT show it. Likely a downstream UX effect of #38's cross-tier dedup fix — the 00:05 cron correctly skips spawning a TODAY duplicate (because the same-fire-date task already exists in this_week), but the user expectation is that a task "due today" should appear in Today. Open question: should there be an auto-promotion (like #27's TOMORROW → TODAY 00:01 roll) for `this_week` tasks whose due_date hits today? Or should the Today panel additionally surface tasks from other tiers whose due_date is today? Or is the current behavior correct and we just need a clearer visual cue? Filed during #44 ship 2026-04-24, Friday 2026-04-24. | 2026-04-24 | OPEN — needs investigation |
 
 ## Backlog (prioritized)
 
