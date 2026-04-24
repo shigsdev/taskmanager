@@ -619,6 +619,27 @@ def _start_digest_scheduler(app: Flask) -> None:
         replace_existing=True,
     )
 
+    # Backlog #46: promote planning-tier tasks (this_week / next_week /
+    # backlog) with due_date=today to TODAY. Closes the "task due today
+    # shows in This Week but not Today" gap. Runs at 00:02 — sandwiched
+    # between the 00:01 tomorrow_roll and the 00:05 recurring_spawn so
+    # the day's task ordering is: Tomorrow → Today, then this_week-due-
+    # today → Today, then spawn recurring (which #38 dedups against
+    # tasks already in today/this_week).
+    def _promote_due_today():
+        with app.app_context():
+            from task_service import promote_due_today_tasks
+            promote_due_today_tasks()
+
+    scheduler.add_job(
+        _promote_due_today,
+        "cron",
+        hour=0,
+        minute=2,
+        id="promote_due_today",
+        replace_existing=True,
+    )
+
     # Backlog #35: auto-spawn recurring task instances on their fire
     # day. Paired with #32's preview cards — previews show "this is
     # coming Friday," and this cron materialises them on Friday

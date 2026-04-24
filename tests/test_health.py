@@ -406,9 +406,9 @@ class TestSchedulerJobsRegistered:
         fields = {f.name: str(f) for f in getattr(trigger, "fields", [])}
         return fields.get("hour"), fields.get("minute")
 
-    def test_all_four_jobs_registered(self, app, monkeypatch):
-        """#35 regression: recurring_spawn cron must exist alongside
-        daily_digest, tomorrow_roll, scheduler_heartbeat."""
+    def test_all_five_jobs_registered(self, app, monkeypatch):
+        """All scheduler crons exist: daily_digest, tomorrow_roll,
+        promote_due_today (#46), recurring_spawn (#35), scheduler_heartbeat."""
         from app import _start_digest_scheduler
 
         # Need env set so the startup function doesn't early-exit.
@@ -425,10 +425,34 @@ class TestSchedulerJobsRegistered:
             job_ids = {j.id for j in scheduler.get_jobs()}
             assert "daily_digest" in job_ids
             assert "tomorrow_roll" in job_ids
+            assert "promote_due_today" in job_ids, (
+                "backlog #46: 00:02 promotion cron should be registered"
+            )
             assert "recurring_spawn" in job_ids, (
                 "backlog #35: auto-spawn cron should run at 00:05 local"
             )
             assert "scheduler_heartbeat" in job_ids
+        finally:
+            self._cleanup()
+
+    def test_promote_due_today_scheduled_at_00_02(self, app, monkeypatch):
+        """Schedule must be 00:02 so it lands between tomorrow_roll
+        (00:01) and recurring_spawn (00:05). Order matters per ADR-029
+        — by the time recurring_spawn runs, any planning-tier task
+        with due_date=today has been promoted, and the #38 cross-tier
+        dedup correctly sees it in TODAY."""
+        from app import _start_digest_scheduler
+
+        monkeypatch.setenv("DIGEST_TIME", "07:00")
+        monkeypatch.setenv("DIGEST_TZ", "America/New_York")
+        _start_digest_scheduler(app)
+        try:
+            import health as _health
+            job = _health._scheduler.get_job("promote_due_today")
+            assert job is not None
+            hour, minute = self._cron_spec(job)
+            assert "0" in str(hour)
+            assert "2" in str(minute)
         finally:
             self._cleanup()
 

@@ -100,6 +100,16 @@ component is added, a data flow changes, or a security boundary shifts.
   - **tomorrow-roll** at 00:01 (#27) — moves every active
     `Tier.TOMORROW` task to `Tier.TODAY` using an isolated
     `Session(db.engine)` so it survives without a request context
+  - **promote-due-today** at 00:02 (#46, scheduler id `promote_due_today`)
+    — moves every active task with `due_date == today` from a planning
+    tier (THIS_WEEK / NEXT_WEEK / BACKLOG) to TODAY. Closes the bug where a task
+    parked in this_week with a today date showed in the This Week
+    panel but not in Today. Inverse direction of #28's
+    tier→due_date auto-fill. Excludes INBOX (needs triage) and
+    FREEZER (user explicitly parked it). Same isolated-session
+    pattern as tomorrow-roll. Mid-day complement: an on-write hook
+    in `task_service.update_task` does the same promotion when
+    a user changes a task's due_date to today during the day.
   - **recurring-spawn** at 00:05 (#35) — calls the idempotent
     `spawn_today_tasks()` so any RecurringTask firing today
     materialises into `Tier.TODAY` without the user hitting
