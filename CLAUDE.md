@@ -488,6 +488,56 @@ Report.
 - New environment variables must be documented in README.md the same commit
   they are introduced
 
+### User-facing documentation fact-check rule (mandatory)
+
+Any user-facing documentation — the in-app `/docs` page, README feature
+descriptions, help / tooltip / placeholder copy shown to end users —
+must be **verified against code**, not invented from memory or inferred
+from a feature's purpose.
+
+**Process when drafting a new user-facing doc section:**
+
+1. Identify every factual claim (tier list, hint syntax, time window,
+   default value, error message, keyboard shortcut, cron time, error
+   text, button label behavior).
+2. Read the actual source file(s) to confirm each claim.
+3. Draft the prose.
+4. Attach a **fact-check table** to the review message sent to the
+   user — one row per claim, citing `file:line`. Example:
+
+   | Claim in draft | Source | Line |
+   |---|---|---|
+   | "#today sets tier to Today" | static/parse_capture.js | 62 |
+   | "Default tier is Inbox" | static/parse_capture.js | 18 |
+
+5. User reviews the prose AND can spot-check any row. The fact-check
+   table is **review-only** — it does NOT ship to the user-facing doc.
+
+**If a claim can't be tied to a source**, flag it explicitly in the
+review ("I believe X but couldn't find the source — can you confirm?").
+Never silently ship an unsourced claim.
+
+**Scope — this rule APPLIES to:**
+- `templates/docs.html` (in-app `/docs` page)
+- README.md user-facing Feature descriptions
+- Tooltip / placeholder / help-text / toast / error copy shown to end
+  users
+- ADRs describing current user-visible behavior
+
+**Scope — this rule does NOT apply to:**
+- `ARCHITECTURE.md` (dev-facing; already guarded by
+  `scripts/arch_sync_check.py`)
+- `CLAUDE.md` / `BACKLOG.md` / commit messages (intent + rationale,
+  not shipped-to-user truth)
+- Code comments (already adjacent to the source of truth)
+
+**Why:** app behavior drifts — tier names change, hashtag sets expand,
+auto-fill rules shift, cron times get retuned. A single wrong rule in
+a user doc undermines trust in the whole page. This rule cannot be
+automated — `run_all_gates.sh` can't know which prose line corresponds
+to which code path. The gate IS the human walk-through of the
+fact-check table. Missing that walk-through = violation.
+
 ### Backlog completion gate (mandatory)
 
 A backlog item is **NOT** marked ✅ complete in `BACKLOG.md` until BOTH:
