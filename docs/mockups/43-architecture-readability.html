@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mockup: /architecture redesign — Plain English first (#43 follow-up)</title>
+    <style>
+        /* Self-contained mockup — no external CSS, no JS, no Flask.
+           Open by double-clicking the file. Demonstrates the proposed
+           redesign of /architecture per #43 round 2 (audience reframe:
+           plain-English first, engineering content collapsible).
+           Real layout will plug into the existing static/style.css
+           classes (.docs-page, .docs-toc, .docs-content, .docs-section)
+           — this mockup just inlines what's needed to preview shape. */
+
+        :root {
+            --text: #0c1f4d;
+            --text-muted: #6e7681;
+            --border: #e1e4e8;
+            --bg-subtle: #f6f8fa;
+            --accent: #2563eb;
+            --core: #dbeafe;
+            --core-stroke: #1d4ed8;
+            --ops: #fef3c7;
+            --ops-stroke: #a16207;
+            --auth: #fce7f3;
+            --auth-stroke: #a21caf;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            line-height: 1.55;
+            color: var(--text);
+            max-width: 920px;
+            margin: 0 auto;
+            padding: 24px 32px 96px 32px;
+        }
+        h1 { margin: 0 0 8px 0; font-size: 1.9em; }
+        h2 {
+            margin-top: 40px;
+            font-size: 1.4em;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 6px;
+        }
+        h3 { margin-top: 24px; font-size: 1.1em; color: var(--core-stroke); }
+        h4 { margin-top: 16px; font-size: 1.0em; color: var(--text-muted); }
+        p { margin: 8px 0; }
+        code {
+            font-family: "SF Mono", Menlo, Monaco, monospace;
+            background: var(--bg-subtle);
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        .mockup-banner {
+            background: #fef3c7;
+            border: 1px solid #a16207;
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin-bottom: 24px;
+            font-size: 0.95em;
+        }
+        .mockup-banner strong { color: #3a2806; }
+
+        .intro-prose {
+            font-size: 1.05em;
+            color: var(--text);
+            background: #eff6ff;
+            border-left: 4px solid var(--accent);
+            padding: 16px 20px;
+            border-radius: 4px;
+            margin: 16px 0 24px 0;
+        }
+        .intro-prose p:last-child { margin-bottom: 0; }
+
+        /* Plain-English schema table */
+        table.schema-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+            font-size: 0.95em;
+        }
+        table.schema-table th,
+        table.schema-table td {
+            text-align: left;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            vertical-align: top;
+        }
+        table.schema-table th {
+            background: var(--bg-subtle);
+            font-weight: 600;
+        }
+        table.schema-table td:first-child {
+            font-family: "SF Mono", Menlo, Monaco, monospace;
+            font-weight: 600;
+            white-space: nowrap;
+            width: 14%;
+        }
+        table.schema-table td:nth-child(2) { width: 28%; }
+        table.schema-table td:nth-child(3) { width: 24%; font-style: italic; color: #444; }
+        table.schema-table td:nth-child(4) { width: 34%; color: #555; }
+
+        /* Color-coded row group prefix */
+        table.schema-table tr.group-core td:first-child { border-left: 4px solid var(--core-stroke); }
+        table.schema-table tr.group-ops td:first-child { border-left: 4px solid var(--ops-stroke); }
+        table.schema-table tr.group-auth td:first-child { border-left: 4px solid var(--auth-stroke); }
+
+        .legend {
+            font-size: 0.85em;
+            color: var(--text-muted);
+            margin-top: 8px;
+        }
+        .legend-swatch {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            margin-right: 4px;
+            margin-left: 12px;
+            border-radius: 2px;
+            vertical-align: middle;
+        }
+        .legend-swatch.core { background: var(--core); border: 1px solid var(--core-stroke); }
+        .legend-swatch.ops { background: var(--ops); border: 1px solid var(--ops-stroke); }
+        .legend-swatch.auth { background: var(--auth); border: 1px solid var(--auth-stroke); }
+
+        /* Pages table */
+        table.pages-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+            font-size: 0.95em;
+        }
+        table.pages-table th,
+        table.pages-table td {
+            text-align: left;
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: top;
+        }
+        table.pages-table th {
+            background: var(--bg-subtle);
+            font-weight: 600;
+        }
+        table.pages-table td:first-child {
+            font-family: "SF Mono", Menlo, Monaco, monospace;
+            white-space: nowrap;
+            width: 26%;
+        }
+
+        /* Process flow numbered steps */
+        ol.flow-steps {
+            margin: 12px 0;
+            padding-left: 28px;
+            line-height: 1.6;
+        }
+        ol.flow-steps li {
+            margin-bottom: 12px;
+            padding-left: 4px;
+        }
+        ol.flow-steps li code { font-size: 0.9em; }
+
+        /* Decision-tree style for branching flows (auth) */
+        .decision-tree {
+            margin: 16px 0;
+        }
+        .decision-tree h4 {
+            margin: 16px 0 4px 0;
+            color: var(--core-stroke);
+            font-size: 1.0em;
+        }
+        .decision-tree .branch {
+            margin: 8px 0 16px 24px;
+            padding: 10px 14px;
+            background: #fafbfc;
+            border-left: 3px solid var(--core-stroke);
+            border-radius: 0 4px 4px 0;
+        }
+        .decision-tree .branch p { margin: 4px 0; }
+        .decision-tree .yes { color: #1a7f37; font-weight: 600; }
+        .decision-tree .no { color: #b95000; font-weight: 600; }
+
+        /* Engineering details collapsibles */
+        details.engineering {
+            margin-top: 16px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: #fafbfc;
+        }
+        details.engineering > summary {
+            cursor: pointer;
+            padding: 10px 14px;
+            font-weight: 600;
+            background: var(--bg-subtle);
+            border-radius: 6px;
+            user-select: none;
+            color: var(--text-muted);
+        }
+        details.engineering[open] > summary {
+            border-radius: 6px 6px 0 0;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+        }
+        details.engineering > div.eng-body {
+            padding: 14px;
+            font-size: 0.93em;
+            color: #444;
+        }
+        details.engineering pre {
+            background: #f6f8fa;
+            padding: 12px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 0.85em;
+        }
+        .eng-stub {
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        section { margin-bottom: 8px; }
+
+        /* Mermaid flowchart container — styled to look like a clean
+           "diagram" block, not the dense sequence/ER diagrams the user
+           found hard to read. Centered, light bg, plenty of margin. */
+        .flow-diagram {
+            background: #fafbfc;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 20px;
+            margin: 16px 0;
+            text-align: center;
+            overflow-x: auto;
+        }
+        .flow-diagram svg { max-width: 100%; height: auto; }
+        .flow-diagram-caption {
+            font-size: 0.85em;
+            color: var(--text-muted);
+            margin-top: 8px;
+            font-style: italic;
+        }
+
+        /* Inline label above each diagram so you can tell at a glance
+           whether you're looking at the simple or detailed version. */
+        .flow-label {
+            display: inline-block;
+            font-size: 0.78em;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 3px 10px;
+            border-radius: 12px;
+            margin-bottom: 8px;
+        }
+        .flow-label.simple {
+            background: #dbeafe;
+            color: #0c1f4d;
+        }
+        .flow-label.detailed {
+            background: #ede9fe;
+            color: #4c1d95;
+        }
+
+        /* Per-table mini-table inside the database section.
+           Skip universal id/created_at/updated_at columns. */
+        .db-table-detail {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 14px 16px;
+            margin: 12px 0;
+            background: #fcfcfd;
+        }
+        .db-table-detail h4 {
+            margin: 0 0 4px 0;
+            font-family: "SF Mono", Menlo, Monaco, monospace;
+            font-size: 1.05em;
+            color: var(--core-stroke);
+        }
+        .db-table-detail .db-blurb {
+            color: var(--text-muted);
+            font-size: 0.92em;
+            margin: 0 0 6px 0;
+        }
+        /* Primary-key callout under each table heading. */
+        .db-table-detail .db-pk {
+            font-size: 0.88em;
+            margin: 0 0 10px 0;
+            padding: 4px 10px;
+            background: #fef9c3;
+            border-left: 3px solid #ca8a04;
+            border-radius: 0 3px 3px 0;
+            display: inline-block;
+        }
+        /* Per-row key markers in the column list. */
+        .key-pk, .key-fk {
+            display: inline-block;
+            font-size: 0.7em;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 3px;
+            margin-left: 6px;
+            vertical-align: middle;
+        }
+        .key-pk {
+            background: #fef9c3;
+            color: #854d0e;
+            border: 1px solid #ca8a04;
+        }
+        .key-fk {
+            background: #ddd6fe;
+            color: #4c1d95;
+            border: 1px solid #7c3aed;
+        }
+        /* Row tinting so FK rows are visually grouped at a glance. */
+        table.column-list tr.row-fk td:first-child {
+            border-left: 3px solid #7c3aed;
+        }
+        table.column-list {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+        }
+        table.column-list th,
+        table.column-list td {
+            text-align: left;
+            padding: 5px 10px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: top;
+        }
+        table.column-list th {
+            background: var(--bg-subtle);
+            font-weight: 600;
+        }
+        table.column-list td:first-child {
+            font-family: "SF Mono", Menlo, Monaco, monospace;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        table.column-list td:nth-child(3) {
+            color: var(--text-muted);
+            font-size: 0.92em;
+        }
+    </style>
+    <!-- Mermaid v10 — only used for the simple flowcharts in this
+         mockup. Real implementation will use the same CDN already
+         allowlisted in the app's CSP. -->
+    <script type="module">
+        import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.esm.min.mjs";
+        mermaid.initialize({ startOnLoad: true, theme: "default", flowchart: { curve: "basis" } });
+    </script>
+</head>
+<body>
+
+<div class="mockup-banner">
+    <strong>Mockup v3 — not the real page.</strong>
+    <strong>What's new in v4:</strong>
+    <ul style="margin: 6px 0 0 20px; padding: 0;">
+        <li>Each per-table card now has a <span class="db-pk" style="margin: 0; font-size: 0.85em;">🔑 <strong>Primary key</strong></span> callout right below the description ("note on the tables which row is the key")</li>
+        <li>Foreign-key columns get a <span class="key-fk">FK</span> badge next to the column name + a left-edge purple stripe on the row, so the relationship structure pops at a glance</li>
+        <li>Note: <code>import_log</code> is the one table that uses <code>batch_id</code> as PK rather than the universal <code>id</code> — called out explicitly</li>
+    </ul>
+    <p style="margin: 8px 0 0 0; font-size: 0.85em; color: var(--text-muted);">
+        Earlier rounds: v1 prose-first restructure; v2 simple flowcharts above each section;
+        v3 per-table DB breakdowns + "more detail" flowchart variants alongside the simple ones.
+    </p>
+</div>
+
+<h1>Task Manager — Architecture</h1>
+
+<div class="intro-prose">
+    <p>
+        Your task manager is a single-user web app that lives at
+        <code>web-production-3e3ae.up.railway.app</code>. It stores your
+        tasks, goals, and projects in a database, emails you a daily
+        digest, and runs a few automated jobs in the background.
+    </p>
+    <p>
+        This page explains <strong>how it's built</strong> in plain
+        English so you can answer your own "wait, why does it do that?"
+        questions without reading code. Each section has an
+        <strong>"Engineering"</strong> collapsible if you want the
+        technical detail (also useful for any engineer reading the
+        repo). For how to USE the app, see <a href="/docs">Help</a>.
+    </p>
+</div>
+
+<!-- ========================================================== -->
+<!-- WHAT'S RUNNING                                              -->
+<!-- ========================================================== -->
+
+<section>
+    <h2>What's running</h2>
+
+    <p>
+        The app has six moving parts. Here's the bird's-eye view of how
+        they connect:
+    </p>
+
+    <div class="flow-diagram">
+        <span class="flow-label simple">At a glance</span>
+        <pre class="mermaid">
+flowchart LR
+    You((You)) -->|browser| Web[Web app<br/>Flask + Python]
+    Web <-->|reads/writes| DB[(Database<br/>Postgres)]
+    Cron[/Scheduler<br/>4 nightly jobs/] -->|reads/writes| DB
+    Cron -->|sends| Mail[SendGrid<br/>email]
+    Web -.->|on demand| Ext[External APIs<br/>Whisper, Claude, Vision]
+    Web -.->|sign in| Google[Google OAuth]
+
+    classDef user fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
+    classDef internal fill:#fef3c7,stroke:#a16207,color:#3a2806
+    classDef external fill:#fce7f3,stroke:#a21caf,color:#3d0a3a
+    class You user
+    class Web,DB,Cron internal
+    class Mail,Ext,Google external
+        </pre>
+        <div class="flow-diagram-caption">
+            Solid arrows = always-on; dotted arrows = only when needed.
+            Blue = you. Amber = the app's own pieces. Pink = external services.
+        </div>
+    </div>
+
+    <div class="flow-diagram">
+        <span class="flow-label detailed">More detail</span>
+        <pre class="mermaid">
+flowchart LR
+    You((You))
+    Browser[Browser<br/>HTML + JS + Service Worker]
+    You --> Browser
+
+    subgraph WebApp[Flask app on Railway]
+        Routes[Route handlers<br/>tasks_api · goals_api · ...]
+        Auth[Auth wrapper<br/>login_required]
+        Services[Service layer<br/>task_service · scan_service · ...]
+        Routes --> Auth
+        Auth --> Services
+    end
+
+    Browser <-->|HTTPS| Routes
+    Services <-->|SQLAlchemy| DB[(Postgres<br/>tasks · goals · projects ·<br/>recurring_tasks · logs · imports)]
+
+    subgraph Scheduler[APScheduler — 4 cron jobs]
+        Digest[06:30 daily<br/>email digest]
+        TomorrowRoll[00:01 nightly<br/>Tomorrow → Today]
+        SpawnRecurring[00:05 nightly<br/>spawn recurring]
+        Heartbeat[every 45s<br/>heartbeat]
+    end
+
+    Scheduler --> Services
+    Digest -->|via egress| SendGrid[SendGrid]
+    Services -.->|when scanning| Vision[Google Vision<br/>image OCR]
+    Services -.->|when voice memo| Whisper[OpenAI Whisper<br/>transcription]
+    Services -.->|when scanning or voice| Claude[Anthropic Claude<br/>NLP / task extraction]
+
+    Auth -.->|OAuth| Google[Google OAuth<br/>email allowlist]
+
+    classDef user fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
+    classDef internal fill:#fef3c7,stroke:#a16207,color:#3a2806
+    classDef external fill:#fce7f3,stroke:#a21caf,color:#3d0a3a
+    class You,Browser user
+    class Routes,Auth,Services,DB,Digest,TomorrowRoll,SpawnRecurring,Heartbeat internal
+    class SendGrid,Vision,Whisper,Claude,Google external
+        </pre>
+        <div class="flow-diagram-caption">
+            Same shape, but with the inside of the web app + the four
+            scheduler jobs + the four external APIs broken out individually.
+        </div>
+    </div>
+
+    <p>The same six pieces, written out:</p>
+
+    <ol style="line-height: 1.8;">
+        <li>
+            <strong>The web app</strong> — a Python service (Flask) that
+            serves you the HTML pages and handles your clicks. Runs
+            inside Gunicorn workers on Railway.
+        </li>
+        <li>
+            <strong>The database</strong> — Postgres (managed by Railway).
+            Stores your tasks, goals, projects, etc. See the
+            <a href="#schema">schema</a> below for what's in it.
+        </li>
+        <li>
+            <strong>Scheduled jobs</strong> — four automated tasks that
+            run on a clock (in your timezone, default America/New_York):
+            <ul>
+                <li><strong>06:30 daily</strong> — sends you the digest email</li>
+                <li><strong>00:01 nightly</strong> — moves Tomorrow tasks to Today</li>
+                <li><strong>00:05 nightly</strong> — spawns the day's recurring tasks</li>
+                <li><strong>every 45 seconds</strong> — heartbeat (proves the scheduler is alive to other workers)</li>
+            </ul>
+        </li>
+        <li>
+            <strong>Authentication</strong> — Google sign-in. Only one
+            email is allowed in (the one configured on Railway); everyone
+            else gets a 403 page. There's also a long-lived signed
+            "validator cookie" used by automated post-deploy checks.
+        </li>
+        <li>
+            <strong>External services</strong> — OpenAI Whisper
+            (transcribes voice memos), Anthropic Claude (extracts tasks
+            from voice memos and image scans), Google Vision (OCRs
+            images), SendGrid (delivers the digest email).
+        </li>
+        <li>
+            <strong>Hosting</strong> — Railway. HTTPS enforced. Health
+            checks every few seconds via <code>/healthz</code>.
+        </li>
+    </ol>
+
+    <details class="engineering">
+        <summary>Engineering: full architecture document (ARCHITECTURE.md)</summary>
+        <div class="eng-body">
+            <p class="eng-stub">
+                [The current rendered ARCHITECTURE.md (~250 lines including
+                the ASCII components diagram, threat model table, scheduler
+                cron details, route + scheduler catalog, security boundaries,
+                etc.) renders here. Same content as today's top-of-page,
+                just default-collapsed. Source of truth lives in
+                <code>ARCHITECTURE.md</code> in the repo root — engineers
+                reading the GitHub repo see the same content there.]
+            </p>
+        </div>
+    </details>
+</section>
+
+<!-- ========================================================== -->
+<!-- DATABASE SCHEMA                                             -->
+<!-- ========================================================== -->
+
+<section>
+    <h2 id="schema">What the database stores</h2>
+
+    <p>
+        Seven tables. Three groups, color-coded:
+        <span class="legend">
+            <span class="legend-swatch core"></span> Core (things you create)
+            <span class="legend-swatch ops"></span> Operational (system records)
+            <span class="legend-swatch auth"></span> Auth (sign-in tokens)
+        </span>
+    </p>
+
+    <table class="schema-table">
+        <thead>
+            <tr>
+                <th>Table</th>
+                <th>What it stores</th>
+                <th>One row is</th>
+                <th>Linked to</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr class="group-core">
+                <td>tasks</td>
+                <td>Your to-do items, including completed and cancelled ones</td>
+                <td>One task on your board</td>
+                <td>A goal (optional), a project (optional), a parent task (for subtasks), a recurring template (if it was spawned from one)</td>
+            </tr>
+            <tr class="group-core">
+                <td>goals</td>
+                <td>Your strategic objectives — the "why" tasks roll up to</td>
+                <td>One goal you're working toward</td>
+                <td>Tasks and projects link to it</td>
+            </tr>
+            <tr class="group-core">
+                <td>projects</td>
+                <td>Work or personal areas that group related tasks</td>
+                <td>One project area (e.g. "Q2 OKRs", "Home renovation")</td>
+                <td>A goal (optional); tasks link to it</td>
+            </tr>
+            <tr class="group-core">
+                <td>recurring_tasks</td>
+                <td>Templates for tasks that repeat (daily, weekly, monthly)</td>
+                <td>One repeat template (e.g. "Walk dog every morning")</td>
+                <td>A goal (optional), a project (optional); spawns into <code>tasks</code> on the fire day</td>
+            </tr>
+            <tr class="group-ops">
+                <td>app_logs</td>
+                <td>System-generated log events (errors, warnings, requests)</td>
+                <td>One logged event with timestamp + level</td>
+                <td>—</td>
+            </tr>
+            <tr class="group-ops">
+                <td>import_log</td>
+                <td>History of bulk imports (OneNote text, Excel goals, scans)</td>
+                <td>One import batch (used for the recycle-bin undo)</td>
+                <td>Tasks/goals created by an import reference the batch</td>
+            </tr>
+            <tr class="group-auth">
+                <td>flask_dance_oauth</td>
+                <td>Stored Google OAuth tokens (managed by Flask-Dance)</td>
+                <td>One stored auth token</td>
+                <td>—</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <p style="font-size: 0.9em; color: var(--text-muted); margin-top: 12px;">
+        <strong>Every table also has:</strong> a unique <code>id</code>
+        (UUID), <code>created_at</code> + <code>updated_at</code>
+        timestamps. These are universal — omitted from each table below
+        to reduce visual noise.
+    </p>
+
+    <h3 style="margin-top: 28px;">Each table, broken out</h3>
+    <p>
+        Every table from the overview above, with its own column list.
+        Click an "Engineering" block at the bottom of the section if you
+        want types, enum value lists, FK arrows, or the full diagram.
+    </p>
+
+    <!-- ===== tasks ===== -->
+    <div class="db-table-detail">
+        <h4>tasks <span style="color: var(--text-muted); font-weight: normal; font-size: 0.85em;">(core)</span></h4>
+        <p class="db-blurb">Your to-do items. One row = one task on your board, in any tier (Today / Tomorrow / This Week / Next Week / Backlog / Freezer / Inbox), in any status (active / archived / cancelled).</p>
+        <p class="db-pk">🔑 <strong>Primary key:</strong> <code>id</code> (UUID, auto-generated)</p>
+        <table class="column-list">
+            <thead><tr><th>Column</th><th>What it is</th><th>Notes</th></tr></thead>
+            <tbody>
+                <tr><td>title</td><td>The task itself</td><td>Required, free text</td></tr>
+                <tr><td>type</td><td>Work or Personal</td><td>Drives which view shows it</td></tr>
+                <tr><td>tier</td><td>Where on the board</td><td>One of: today, tomorrow, this_week, next_week, backlog, freezer, inbox</td></tr>
+                <tr><td>status</td><td>Active, archived (done), or cancelled</td><td>Cancellation can have a reason</td></tr>
+                <tr><td>due_date</td><td>When it's due</td><td>Optional; auto-filled when tier=today/tomorrow</td></tr>
+                <tr><td>notes</td><td>Long-form notes on the task</td><td>Optional</td></tr>
+                <tr><td>checklist</td><td>Sub-bullets within the task</td><td>Optional list</td></tr>
+                <tr><td>url</td><td>A link saved with the task</td><td>Auto-detected from the capture bar; preview fetched</td></tr>
+                <tr><td>cancellation_reason</td><td>Why you cancelled it</td><td>Auto-clears when you reactivate</td></tr>
+                <tr class="row-fk"><td>goal_id <span class="key-fk">FK</span></td><td>Goal this task supports</td><td>Optional → links to <code>goals.id</code></td></tr>
+                <tr class="row-fk"><td>project_id <span class="key-fk">FK</span></td><td>Project area this task belongs to</td><td>Optional → links to <code>projects.id</code></td></tr>
+                <tr class="row-fk"><td>parent_id <span class="key-fk">FK</span></td><td>Parent task (for subtasks)</td><td>Optional → links to <code>tasks.id</code> (self-reference)</td></tr>
+                <tr class="row-fk"><td>recurring_task_id <span class="key-fk">FK</span></td><td>The recurring template that spawned this</td><td>Optional → links to <code>recurring_tasks.id</code></td></tr>
+                <tr class="row-fk"><td>batch_id <span class="key-fk">FK</span></td><td>Bulk-import batch (for recycle-bin undo)</td><td>Optional → links to <code>import_log.batch_id</code></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ===== goals ===== -->
+    <div class="db-table-detail">
+        <h4>goals <span style="color: var(--text-muted); font-weight: normal; font-size: 0.85em;">(core)</span></h4>
+        <p class="db-blurb">Your strategic objectives — the "why" tasks roll up to. One row = one goal you're working toward.</p>
+        <p class="db-pk">🔑 <strong>Primary key:</strong> <code>id</code> (UUID, auto-generated)</p>
+        <table class="column-list">
+            <thead><tr><th>Column</th><th>What it is</th><th>Notes</th></tr></thead>
+            <tbody>
+                <tr><td>title</td><td>The goal name</td><td>Required</td></tr>
+                <tr><td>category</td><td>Health, finance, career, etc.</td><td>One of a fixed set</td></tr>
+                <tr><td>priority</td><td>How important right now</td><td>P1 / P2 / P3</td></tr>
+                <tr><td>status</td><td>Active, achieved, or paused</td><td></td></tr>
+                <tr><td>actions</td><td>Free-text notes on what you're doing for this goal</td><td>Optional</td></tr>
+                <tr><td>target_date</td><td>When you want to hit it</td><td>Optional</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ===== projects ===== -->
+    <div class="db-table-detail">
+        <h4>projects <span style="color: var(--text-muted); font-weight: normal; font-size: 0.85em;">(core)</span></h4>
+        <p class="db-blurb">Work or personal areas that group related tasks (e.g. "Q2 OKRs", "Home renovation"). One row = one project area.</p>
+        <p class="db-pk">🔑 <strong>Primary key:</strong> <code>id</code> (UUID, auto-generated)</p>
+        <table class="column-list">
+            <thead><tr><th>Column</th><th>What it is</th><th>Notes</th></tr></thead>
+            <tbody>
+                <tr><td>name</td><td>The project name</td><td>Required</td></tr>
+                <tr><td>type</td><td>Work or Personal</td><td>Filters which view shows it</td></tr>
+                <tr><td>color</td><td>Color tag for the project</td><td>Hex code, set in the UI</td></tr>
+                <tr><td>sort_order</td><td>Manual sort order in the project list</td><td></td></tr>
+                <tr><td>is_active</td><td>Active or archived</td><td>Archived projects don't appear in capture-bar dropdowns</td></tr>
+                <tr class="row-fk"><td>goal_id <span class="key-fk">FK</span></td><td>Goal this project supports</td><td>Optional → links to <code>goals.id</code></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ===== recurring_tasks ===== -->
+    <div class="db-table-detail">
+        <h4>recurring_tasks <span style="color: var(--text-muted); font-weight: normal; font-size: 0.85em;">(core)</span></h4>
+        <p class="db-blurb">Templates for tasks that repeat. One row = one repeat template (e.g. "Walk dog every morning"). The 00:05 nightly job uses these to create new tasks each day.</p>
+        <p class="db-pk">🔑 <strong>Primary key:</strong> <code>id</code> (UUID, auto-generated)</p>
+        <table class="column-list">
+            <thead><tr><th>Column</th><th>What it is</th><th>Notes</th></tr></thead>
+            <tbody>
+                <tr><td>title</td><td>What the spawned task will be called</td><td></td></tr>
+                <tr><td>type</td><td>Work or Personal (inherited by spawned tasks)</td><td></td></tr>
+                <tr><td>frequency</td><td>How often it fires</td><td>daily / weekly / weekdays / monthly_date / monthly_nth_weekday / day_of_week</td></tr>
+                <tr><td>day_of_week</td><td>For weekly templates: 0=Mon, 6=Sun</td><td>Optional</td></tr>
+                <tr><td>day_of_month</td><td>For monthly_date templates: 1-31</td><td>Optional</td></tr>
+                <tr><td>nth_weekday</td><td>For monthly_nth_weekday: 1st Tuesday, etc.</td><td>Optional</td></tr>
+                <tr><td>notes / checklist / url</td><td>Inherited verbatim by every spawned task</td><td>Optional</td></tr>
+                <tr><td>subtasks_snapshot</td><td>List of subtasks to also spawn each cycle</td><td>JSON; captured at template create/update</td></tr>
+                <tr><td>is_active</td><td>Inactive templates don't spawn</td><td></td></tr>
+                <tr class="row-fk"><td>goal_id <span class="key-fk">FK</span></td><td>Goal these spawned tasks support</td><td>Optional → links to <code>goals.id</code></td></tr>
+                <tr class="row-fk"><td>project_id <span class="key-fk">FK</span></td><td>Project these spawned tasks belong to</td><td>Optional → links to <code>projects.id</code></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ===== app_logs ===== -->
+    <div class="db-table-detail">
+        <h4>app_logs <span style="color: var(--text-muted); font-weight: normal; font-size: 0.85em;">(operational)</span></h4>
+        <p class="db-blurb">System-generated log events — errors, warnings, request traces. One row = one logged event. Surfaced via the post-deploy validator and the <code>/api/debug/logs</code> endpoint.</p>
+        <p class="db-pk">🔑 <strong>Primary key:</strong> <code>id</code> (UUID, auto-generated)</p>
+        <table class="column-list">
+            <thead><tr><th>Column</th><th>What it is</th><th>Notes</th></tr></thead>
+            <tbody>
+                <tr><td>level</td><td>Severity</td><td>DEBUG / INFO / WARNING / ERROR</td></tr>
+                <tr><td>logger</td><td>Which Python logger emitted it</td><td>e.g. <code>app</code>, <code>scan_service</code></td></tr>
+                <tr><td>message</td><td>The log line</td><td>Sensitive fields scrubbed</td></tr>
+                <tr><td>traceback</td><td>Stack trace (if exception)</td><td>Optional</td></tr>
+                <tr><td>request_id</td><td>Correlates events from one HTTP request</td><td>UUID</td></tr>
+                <tr><td>route</td><td>Which URL triggered the log</td><td>Optional (server-side cron events have none)</td></tr>
+                <tr><td>method</td><td>HTTP method</td><td>Optional</td></tr>
+                <tr><td>status_code</td><td>HTTP response code</td><td>Optional</td></tr>
+                <tr><td>source</td><td>"server" or "client" (browser-reported)</td><td></td></tr>
+                <tr><td>timestamp</td><td>UTC time of the event</td><td></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ===== import_log ===== -->
+    <div class="db-table-detail">
+        <h4>import_log <span style="color: var(--text-muted); font-weight: normal; font-size: 0.85em;">(operational)</span></h4>
+        <p class="db-blurb">Audit trail of bulk imports (OneNote text, Excel goals, image scans, voice memos). One row = one import batch. Used by the recycle bin to "undo" an import in one click.</p>
+        <p class="db-pk">🔑 <strong>Primary key:</strong> <code>batch_id</code> (UUID — note: this table uses <code>batch_id</code> as PK rather than the universal <code>id</code> so created tasks/goals can reference it cleanly)</p>
+        <table class="column-list">
+            <thead><tr><th>Column</th><th>What it is</th><th>Notes</th></tr></thead>
+            <tbody>
+                <tr><td>source</td><td>Where it came from</td><td>"onenote", "excel", "scan", "voice", etc.</td></tr>
+                <tr><td>row_count</td><td>How many tasks/goals the import created</td><td></td></tr>
+                <tr><td>raw_text</td><td>The pasted/extracted source text</td><td>Stored for debug + audit</td></tr>
+                <tr><td>error</td><td>Failure message (if the import errored partway)</td><td>Optional</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ===== flask_dance_oauth ===== -->
+    <div class="db-table-detail">
+        <h4>flask_dance_oauth <span style="color: var(--text-muted); font-weight: normal; font-size: 0.85em;">(auth)</span></h4>
+        <p class="db-blurb">Stored Google OAuth tokens, managed entirely by the Flask-Dance library. You never read or write this directly — it's used internally to remember that you've signed in.</p>
+        <p class="db-pk">🔑 <strong>Primary key:</strong> <code>id</code> (auto-generated by Flask-Dance)</p>
+        <table class="column-list">
+            <thead><tr><th>Column</th><th>What it is</th><th>Notes</th></tr></thead>
+            <tbody>
+                <tr><td>provider</td><td>Always "google" for this app</td><td></td></tr>
+                <tr><td>token</td><td>The encrypted OAuth token</td><td>Refreshed automatically when it expires</td></tr>
+                <tr><td>provider_user_id</td><td>Google's user ID</td><td></td></tr>
+                <tr><td>provider_user_login</td><td>Email address from Google</td><td>Compared against AUTHORIZED_EMAIL on every request</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <details class="engineering">
+        <summary>Engineering: schema diagram (Mermaid <code>erDiagram</code> with FK arrows, exact types, enum value lists)</summary>
+        <div class="eng-body">
+            <p class="eng-stub">
+                [The Mermaid <code>erDiagram</code> currently shown on
+                the live page renders here — full column list per table,
+                <code>PK</code>/<code>FK</code>/<code>"nullable"</code>
+                markers, enum values inline (<code>tier</code>:
+                today,tomorrow,this_week,next_week,backlog,freezer; etc.),
+                arrows between related tables, color-coded by group.
+                Auto-generated from <code>db.Model.registry</code> via
+                <code>architecture_service.build_er_diagram()</code> —
+                cannot drift from the actual schema.]
+            </p>
+        </div>
+    </details>
+</section>
+
+<!-- ========================================================== -->
+<!-- PAGES                                                       -->
+<!-- ========================================================== -->
+
+<section>
+    <h2>Pages in the app</h2>
+
+    <p>
+        Every URL you can visit. (The technical "API endpoints" — JSON
+        the page-JavaScript talks to — live in the engineering block at
+        the bottom; you don't visit them by hand.)
+    </p>
+
+    <table class="pages-table">
+        <thead>
+            <tr>
+                <th>URL</th>
+                <th>What it does</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td>/</td><td>Main board — see all tasks by tier; capture new ones</td></tr>
+            <tr><td>/goals</td><td>View, create, edit your goals</td></tr>
+            <tr><td>/projects</td><td>Manage your work and personal project areas</td></tr>
+            <tr><td>/import</td><td>Bulk-import from OneNote text or Excel goals</td></tr>
+            <tr><td>/scan</td><td>Upload a photo of handwritten notes — get tasks parsed out</td></tr>
+            <tr><td>/voice-memo</td><td>Record a voice memo — get tasks parsed out</td></tr>
+            <tr><td>/review</td><td>Step through stale tasks one at a time (Keep / Freeze / Snooze / Delete)</td></tr>
+            <tr><td>/completed</td><td>Browse archived (completed) tasks</td></tr>
+            <tr><td>/recycle-bin</td><td>Soft-deleted items, recoverable for a window</td></tr>
+            <tr><td>/tier/&lt;name&gt;</td><td>Full-page view of one tier (Today, Tomorrow, This Week, Next Week, Backlog, Freezer)</td></tr>
+            <tr><td>/print</td><td>Printer-friendly view of Today + This Week + Overdue</td></tr>
+            <tr><td>/settings</td><td>App stats, digest controls, system status, quick links</td></tr>
+            <tr><td>/architecture</td><td>This page — system documentation</td></tr>
+            <tr><td>/docs</td><td>"Help" tab — how to USE the app (capture hints, tier rules, etc.)</td></tr>
+            <tr><td>/healthz</td><td>Health check (used by Railway's monitoring; you'll never visit it)</td></tr>
+        </tbody>
+    </table>
+
+    <details class="engineering">
+        <summary>Engineering: API endpoints (56) — JSON routes consumed by client JavaScript and post-deploy automation</summary>
+        <div class="eng-body">
+            <p class="eng-stub">
+                [The current full route catalog (auth column, docstring,
+                endpoint name, HTTP method) renders here for everything
+                under <code>/api/...</code>. Auto-generated from
+                <code>app.url_map</code>.]
+            </p>
+        </div>
+    </details>
+</section>
+
+<!-- ========================================================== -->
+<!-- PROCESS FLOWS                                                -->
+<!-- ========================================================== -->
+
+<section>
+    <h2>How the trickier flows work</h2>
+
+    <p>
+        Three flows are worth walking through step by step: how recurring
+        tasks appear automatically, what happens when you record a voice
+        memo, and how the app decides whether to let you in.
+    </p>
+
+    <!-- ===== Recurring spawn ===== -->
+
+    <h3>Recurring tasks — how they appear each morning</h3>
+    <p>
+        Recurring task templates ("Walk dog daily", "Weekly review every
+        Friday") don't sit on your board waiting to be checked off. Each
+        morning a job materializes the day's templates as real tasks in
+        Today.
+    </p>
+
+    <div class="flow-diagram">
+        <span class="flow-label simple">At a glance</span>
+        <pre class="mermaid">
+flowchart TD
+    Start([00:05 nightly]) --> Calc[Calculate today's date<br/>in your timezone]
+    Calc --> Find[Find templates<br/>scheduled for today]
+    Find --> Check{Already have<br/>this task for today?<br/>any tier}
+    Check -- Yes --> Skip[Skip — duplicate prevented]
+    Check -- No --> Create[Create task<br/>in Today tier]
+    Create --> Subs[Create subtasks<br/>if template has them]
+    Subs --> Done([Tasks waiting<br/>in Today])
+
+    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
+    classDef decision fill:#fef3c7,stroke:#a16207,color:#3a2806
+    classDef endNode fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    class Start startNode
+    class Check decision
+    class Done endNode
+    class Skip endNode
+        </pre>
+    </div>
+
+    <div class="flow-diagram">
+        <span class="flow-label detailed">More detail</span>
+        <pre class="mermaid">
+flowchart TD
+    Start([APScheduler fires<br/>recurring_spawn @ 00:05 DIGEST_TZ])
+    Start --> TZCalc["target_date = _local_today_date()<br/>see ADR-016 — uses DIGEST_TZ, not UTC"]
+    TZCalc --> Query["SELECT active RecurringTask<br/>WHERE _template_fires_on(target_date)"]
+    Query --> Prefetch["Pre-fetch existing keys:<br/>SELECT (recurring_task_id, due_date)<br/>WHERE due_date = target_date<br/>AND status = ACTIVE<br/>(across ALL tiers — closes #38 Gap B)"]
+    Prefetch --> Loop{For each<br/>template}
+    Loop --> KeyCheck{"(template.id, target_date)<br/>in existing keys?"}
+    KeyCheck -- Yes --> SkipBranch[Skip this template<br/>already spawned or planned-ahead]
+    KeyCheck -- No --> Insert["INSERT Task<br/>tier=TODAY, due_date=target_date,<br/>recurring_task_id=template.id"]
+    Insert --> Loop
+    Loop --> CommitParents[COMMIT — parents persisted]
+    CommitParents --> SubLoop{For each<br/>spawned parent}
+    SubLoop --> SubCheck{Template has<br/>subtasks_snapshot?<br/>see ADR-013}
+    SubCheck -- No --> SubLoop
+    SubCheck -- Yes --> SubInsert[INSERT subtask rows<br/>tier=TODAY, due_date=target_date,<br/>parent_id=parent.id]
+    SubInsert --> SubLoop
+    SubLoop --> CommitSubs[COMMIT — subtasks persisted]
+    CommitSubs --> End([Return spawned tasks<br/>to caller])
+
+    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
+    classDef decision fill:#fef3c7,stroke:#a16207,color:#3a2806
+    classDef endNode fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    class Start startNode
+    class Loop,KeyCheck,SubLoop,SubCheck decision
+    class End endNode
+    class SkipBranch endNode
+        </pre>
+        <div class="flow-diagram-caption">
+            Same flow, but with the dedup query, the loop structure,
+            the COMMIT points, and the subtask spawn pass made explicit.
+            ADR references in the boxes link to the design decisions.
+        </div>
+    </div>
+
+    <p>Step by step:</p>
+
+    <ol class="flow-steps">
+        <li>At <strong>00:05 every night</strong>, an automated job wakes up.</li>
+        <li>It calculates today's date in your timezone (default America/New_York — using the server's UTC clock would put 10pm-ET spawns on tomorrow's date).</li>
+        <li>It looks up which recurring task templates are scheduled to fire today (e.g. a weekly "Walk dog" template is included on Tuesdays only).</li>
+        <li>For each one, it checks whether you already have a task for today's date — <strong>across all tiers</strong>, not just Today. So if you'd already moved "Walk dog" into "this week" with a due date of today, the job sees it and skips spawning a duplicate.</li>
+        <li>For the rest, it creates a new task in the Today tier with today's due date.</li>
+        <li>If the recurring template has subtasks, it creates those too (also in Today).</li>
+        <li>You wake up, open the app, and the day's recurring tasks are waiting in Today.</li>
+    </ol>
+
+    <details class="engineering">
+        <summary>Engineering: full sequence + ADR references</summary>
+        <div class="eng-body">
+            <p class="eng-stub">
+                [A more detailed Mermaid sequence diagram could optionally
+                live here, plus ADR references: ADR-013 (subtasks_snapshot),
+                ADR-014 (Tomorrow tier auto-roll), ADR-016 (tier→due_date
+                auto-fill), ADR-026 (cross-tier dedup, the bug fix that
+                closed Gap B in step 4 above).]
+            </p>
+            <pre>recurring_service.spawn_today_tasks() — see source for the actual implementation</pre>
+        </div>
+    </details>
+
+    <!-- ===== Voice memo ===== -->
+
+    <h3>Voice memo capture — record audio, get tasks</h3>
+    <p>
+        You hit the 🎙️ icon, talk for up to 10 minutes, and end up with
+        a review screen of editable task candidates. Two external
+        services do the heavy lifting.
+    </p>
+
+    <div class="flow-diagram">
+        <span class="flow-label simple">At a glance</span>
+        <pre class="mermaid">
+flowchart TD
+    Start([Hit 🎙️]) --> Record[Browser records<br/>audio &lt;= 10 min]
+    Record --> Upload[Upload to server]
+    Upload --> Whisper[OpenAI Whisper<br/>audio → transcript]
+    Whisper --> Claude[Anthropic Claude<br/>transcript → task candidates]
+    Claude --> Resolve[Resolve project / goal<br/>names → real IDs]
+    Resolve --> Review[You review the candidates<br/>edit, uncheck, confirm]
+    Review --> Save[Server creates real tasks]
+    Save --> Done([Tasks appear<br/>in your tiers])
+
+    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
+    classDef external fill:#fce7f3,stroke:#a21caf,color:#3d0a3a
+    classDef user fill:#fef3c7,stroke:#a16207,color:#3a2806
+    classDef endNode fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    class Start startNode
+    class Whisper,Claude external
+    class Review user
+    class Done endNode
+        </pre>
+        <div class="flow-diagram-caption">
+            Pink steps = external services (the AI calls). Amber = you do something. Blue = start. Green = end.
+        </div>
+    </div>
+
+    <div class="flow-diagram">
+        <span class="flow-label detailed">More detail</span>
+        <pre class="mermaid">
+flowchart TD
+    Start([You hit 🎙️ icon])
+    Start --> Record[MediaRecorder records audio<br/>10-min hard cap, audio/webm or audio/mp4]
+    Record --> POST[POST /api/voice-memo/parse<br/>multipart upload]
+    POST --> Validate{utils.validate_upload<br/>format · size · empty?}
+    Validate -- Bad --> Err400[400/413/422 error<br/>back to browser]
+    Validate -- OK --> WhisperCall[egress.safe_call_api →<br/>POST api.openai.com<br/>/v1/audio/transcriptions]
+    WhisperCall --> Transcript[Whisper returns transcript]
+    Transcript --> FetchHints["SELECT active Project + Goal titles<br/>(for hint resolution, ADR-021)"]
+    FetchHints --> ClaudeCall[egress.safe_call_api →<br/>POST api.anthropic.com<br/>/v1/messages with structured prompt]
+    ClaudeCall --> Candidates[Claude returns JSON:<br/>title, type, tier, due_date,<br/>project_hint, goal_hint, is_task]
+    Candidates --> Normalise[_normalise_voice_candidates:<br/>resolve hints → real UUIDs<br/>case-insensitive title match]
+    Normalise --> ToBrowser[200 OK<br/>candidates back to browser]
+    ToBrowser --> Render[Browser renders review screen:<br/>tier select · date · project · goal<br/>is_task=false → Reflections section]
+    Render --> Confirm{User clicks<br/>Confirm?}
+    Confirm -- No --> Discard([Discarded])
+    Confirm -- Yes --> POST2[POST /api/voice-memo/confirm<br/>with selected candidates]
+    POST2 --> Create[create_tasks_from_candidates:<br/>INSERT Task with project_id, goal_id,<br/>tier, due_date, parent_id]
+    Create --> Final([Tasks live in your tiers])
+
+    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
+    classDef external fill:#fce7f3,stroke:#a21caf,color:#3d0a3a
+    classDef user fill:#fef3c7,stroke:#a16207,color:#3a2806
+    classDef decision fill:#fef3c7,stroke:#a16207,color:#3a2806
+    classDef endNode fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    classDef errNode fill:#fee2e2,stroke:#b91c1c,color:#5a0a0a
+    class Start startNode
+    class WhisperCall,ClaudeCall external
+    class Render,Confirm user
+    class Validate,Confirm decision
+    class Final endNode
+    class Err400,Discard errNode
+        </pre>
+        <div class="flow-diagram-caption">
+            Same shape, but with the actual API endpoints, the validation
+            gate (with its error path), the two-phase user interaction
+            (parse + confirm), and the iOS Safari Content-Type quirk
+            handled inside <code>validate_upload</code> (ADR-005, 025).
+        </div>
+    </div>
+
+    <p>Step by step:</p>
+
+    <ol class="flow-steps">
+        <li>You hit the <strong>🎙️ voice memo icon</strong> on the capture bar and start talking.</li>
+        <li>Your browser records the audio (10-minute hard cap).</li>
+        <li>When you stop, the audio file uploads to the server.</li>
+        <li>The server checks the file (correct format, not too big, not empty), then forwards it to <strong>OpenAI's Whisper</strong> for transcription.</li>
+        <li>Whisper sends back the transcript as plain text (e.g. <em>"Tomorrow I need to pick up prescriptions and call mom about Sunday"</em>).</li>
+        <li>The server then sends the transcript to <strong>Anthropic's Claude</strong>, along with a list of your active project and goal titles, asking it to identify discrete tasks and infer metadata: tier, due date, project hint, goal hint, and whether each item is actually a task or just a reflection ("I felt tired today" isn't a to-do).</li>
+        <li>Claude returns a list of candidates. The server resolves any project/goal hints to real IDs (case-insensitive title match against your active projects/goals).</li>
+        <li>You see a <strong>review screen</strong>: each candidate is an editable row (title, tier, date, project, goal). Reflections (non-tasks) are tucked into a collapsed section at the bottom, unchecked by default.</li>
+        <li>You uncheck what you don't want, edit anything wrong, then hit <strong>Confirm</strong>.</li>
+        <li>The server creates real tasks in your database with the fields you confirmed. They show up wherever you set the tier (Today, This Week, etc.).</li>
+    </ol>
+
+    <details class="engineering">
+        <summary>Engineering: file paths, ADR references, exact API call shapes</summary>
+        <div class="eng-body">
+            <p class="eng-stub">
+                [The full Mermaid sequence diagram with the actual function
+                names + endpoint paths could live here. Real callers:
+                browser = <code>static/voice_memo.js</code> + MediaRecorder;
+                server = <code>voice_api.py</code> →
+                <code>scan_service.parse_voice_memo_to_tasks</code>;
+                Whisper at <code>api.openai.com/v1/audio/transcriptions</code>;
+                Claude at <code>api.anthropic.com/v1/messages</code>; both
+                via <code>egress.safe_call_api</code>. ADRs: 005, 020, 021,
+                023, 025.]
+            </p>
+        </div>
+    </details>
+
+    <!-- ===== Auth (decision tree) ===== -->
+
+    <h3>Signing in — how the app decides to let you through</h3>
+    <p>
+        Three different ways to be authenticated, checked in priority
+        order. The vast majority of the time it's path #3 (a Google
+        OAuth session). The other two paths exist for specific
+        situations.
+    </p>
+
+    <div class="flow-diagram">
+        <span class="flow-label simple">At a glance</span>
+        <pre class="mermaid">
+flowchart TD
+    Start([You visit a page]) --> Q1{Local dev<br/>bypass on?}
+    Q1 -- YES --> In1([Logged in<br/>as configured email])
+    Q1 -- NO --> Q2{Validator cookie<br/>+ safe HTTP method?}
+    Q2 -- YES, valid --> In2([Logged in<br/>via cookie])
+    Q2 -- NO --> Q3{Google OAuth<br/>session?}
+    Q3 -- NO --> Redirect[Redirect to<br/>Google sign-in]
+    Redirect --> Q3
+    Q3 -- YES, email matches --> In3([Logged in<br/>via Google])
+    Q3 -- YES, email does NOT match --> Block([403 Unauthorized<br/>single-user lockdown])
+
+    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
+    classDef decision fill:#fef3c7,stroke:#a16207,color:#3a2806
+    classDef ok fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    classDef bad fill:#fee2e2,stroke:#b91c1c,color:#5a0a0a
+    class Start startNode
+    class Q1,Q2,Q3 decision
+    class In1,In2,In3 ok
+    class Block bad
+        </pre>
+        <div class="flow-diagram-caption">
+            Diamond shapes = a yes/no check. Green = you got in. Red = you didn't.
+        </div>
+    </div>
+
+    <div class="flow-diagram">
+        <span class="flow-label detailed">More detail</span>
+        <pre class="mermaid">
+flowchart TD
+    Start([Request hits @login_required wrapper])
+
+    Start --> BypassEnv{LOCAL_DEV_BYPASS_AUTH=1?}
+    BypassEnv -- No --> Cookie
+    BypassEnv -- Yes --> Tripwire{Any RAILWAY_*<br/>env var set?<br/>tripwire}
+    Tripwire -- Yes — REFUSE --> Block1([Refuse to bypass<br/>fall through to OAuth])
+    Tripwire -- No --> EnvFile{.env.dev-bypass<br/>file exists?}
+    EnvFile -- No --> Block1
+    EnvFile -- Yes --> AuthEmail{AUTHORIZED_EMAIL<br/>set?}
+    AuthEmail -- No --> Block1
+    AuthEmail -- Yes --> In1([Bypass active —<br/>logged in as<br/>AUTHORIZED_EMAIL])
+
+    Block1 --> Cookie
+
+    Cookie{validator_token<br/>cookie present?}
+    Cookie -- No --> OAuth
+    Cookie -- Yes --> Method{Safe HTTP method?<br/>GET/HEAD/OPTIONS}
+    Method -- No — mutation --> OAuth
+    Method -- Yes --> Verify{Verify signed token<br/>SECRET_KEY · expiry · email}
+    Verify -- Invalid/expired --> OAuth
+    Verify -- Valid + email matches --> In2([Logged in<br/>via validator cookie])
+
+    OAuth{Google OAuth session?<br/>flask-dance + flask_dance_oauth table}
+    OAuth -- No --> Redirect[Redirect to /login/google]
+    Redirect --> Callback[Google callback]
+    Callback --> Token[Token stored in<br/>flask_dance_oauth table]
+    Token --> Userinfo[google.get oauth2/v2/userinfo<br/>get email]
+    Userinfo --> EmailCheck
+    OAuth -- Yes — session exists --> Userinfo
+
+    EmailCheck{Email matches<br/>AUTHORIZED_EMAIL?}
+    EmailCheck -- No --> Bad([403 unauthorized.html<br/>session.clear])
+    EmailCheck -- Yes --> In3([Logged in via Google —<br/>view kwargs include email])
+
+    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
+    classDef decision fill:#fef3c7,stroke:#a16207,color:#3a2806
+    classDef ok fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    classDef bad fill:#fee2e2,stroke:#b91c1c,color:#5a0a0a
+    class Start startNode
+    class BypassEnv,Tripwire,EnvFile,AuthEmail,Cookie,Method,Verify,OAuth,EmailCheck decision
+    class In1,In2,In3 ok
+    class Bad bad
+        </pre>
+        <div class="flow-diagram-caption">
+            Same three paths, but with the four-gate dev bypass check
+            broken out (ADR-002), the validator cookie's signature/expiry
+            verification shown explicitly (ADR-003 + ADR-004), and the
+            OAuth callback + token storage step made visible.
+        </div>
+    </div>
+
+    <p>The same logic, written out:</p>
+
+    <div class="decision-tree">
+        <h4>1. Is this local development with the bypass turned on?</h4>
+        <div class="branch">
+            <p><span class="yes">YES</span> → skip authentication entirely. Log you in as the configured email. Used only on your local dev machine when the <code>.env.dev-bypass</code> file exists. Has four safety gates including a refusal to run if any Railway environment variable is set, so it can't accidentally activate in production.</p>
+            <p><span class="no">NO</span> → continue to check #2.</p>
+        </div>
+
+        <h4>2. Do you have a "validator cookie" AND is this a safe HTTP method?</h4>
+        <p style="margin-left: 24px; color: var(--text-muted); font-size: 0.9em;">
+            (A "validator cookie" is a long-lived signed token used by the
+            post-deploy automation to read pages without going through OAuth.
+            "Safe" methods = GET, HEAD, OPTIONS — i.e. reading data, not
+            changing it.)
+        </p>
+        <div class="branch">
+            <p><span class="yes">YES</span>, AND the email in the cookie matches your authorized email → log you in via the cookie. Used by the post-deploy Playwright tests and curl spot-checks.</p>
+            <p><span class="no">NO</span> (cookie missing/invalid OR you're trying to do something that changes data) → continue to check #3.</p>
+        </div>
+
+        <h4>3. Do you have a Google OAuth session?</h4>
+        <div class="branch">
+            <p><span class="no">NO session</span> → redirect you to Google to sign in, then come back to the page you wanted.</p>
+            <p><span class="yes">YES session</span>, AND the Google account email matches your authorized email → log you in. (Most normal use is this path.)</p>
+            <p><span class="no">YES session</span>, but the email <strong>doesn't</strong> match → 403 Unauthorized page (the single-user lockdown). This is what happens if anyone else tries to sign in.</p>
+        </div>
+
+        <p style="margin-top: 16px;">
+            In all three paths, once authenticated, the page renders normally with your email available to the view.
+        </p>
+    </div>
+
+    <details class="engineering">
+        <summary>Engineering: full Mermaid sequence with alt/else nesting + ADR references</summary>
+        <div class="eng-body">
+            <p class="eng-stub">
+                [The current full Mermaid sequence diagram lives here for
+                anyone who wants to trace the exact branch logic. Code:
+                <code>auth.py</code>, <code>login_required</code>
+                decorator. ADRs: 001 (single-user OAuth lockdown), 002
+                (four-gate dev bypass), 003 (validator cookie narrow
+                scope, SUPERSEDED), 004 (broaden validator to GET-only).]
+            </p>
+        </div>
+    </details>
+</section>
+
+</body>
+</html>
