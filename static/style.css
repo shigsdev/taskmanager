@@ -2135,3 +2135,104 @@ body.bulk-select-mode .task-card .bulk-select-check { display: block; }
         border-radius: 6px;
     }
 }
+
+/* --- Architecture page (#42) --- */
+
+/* The auto-generated route catalog can run 50+ rows; let the table
+   wrap horizontally on narrow viewports rather than overflowing. */
+.route-catalog {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+    margin: 12px 0;
+}
+.route-catalog th,
+.route-catalog td {
+    text-align: left;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border, #e1e4e8);
+    vertical-align: top;
+}
+.route-catalog th {
+    background: var(--bg-subtle, #f6f8fa);
+    font-weight: 600;
+}
+.route-catalog code {
+    font-size: 0.95em;
+    word-break: break-all;
+}
+.auth-login {
+    color: #1a7f37;
+    font-weight: 600;
+}
+.auth-public {
+    color: #b95000;
+    font-weight: 600;
+}
+.auth-unknown {
+    color: #6e7781;
+    font-style: italic;
+}
+
+/* Mermaid renders into the <pre> block — make sure SVG never overflows
+   on mobile, and the loading placeholder text is monospace-readable. */
+pre.mermaid {
+    background: var(--bg-subtle, #f6f8fa);
+    padding: 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+    text-align: center;
+    font-size: 0.85em;
+    line-height: 1.4;
+}
+pre.mermaid svg {
+    max-width: 100%;
+    height: auto;
+}
+
+/* Source-of-truth notes under each auto-generated section heading.
+   Muted grey + italic so users know this is meta-info, not content. */
+.docs-source-note {
+    color: var(--text-muted, #6e7781);
+    font-style: italic;
+    font-size: 0.9em;
+    margin-bottom: 12px;
+}
+
+/* The block of HTML that comes from the markdown render of
+   ARCHITECTURE.md needs sane defaults — the Python `markdown` lib
+   doesn't add CSS classes, just bare h1/h2/p/ul/code/pre tags. */
+.architecture-md h1,
+.architecture-md h2,
+.architecture-md h3 {
+    margin-top: 1.5em;
+}
+.architecture-md pre {
+    background: var(--bg-subtle, #f6f8fa);
+    padding: 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 0.85em;
+}
+.architecture-md table {
+    border-collapse: collapse;
+    margin: 12px 0;
+}
+.architecture-md table th,
+.architecture-md table td {
+    border: 1px solid var(--border, #e1e4e8);
+    padding: 4px 8px;
+    text-align: left;
+}
+.architecture-md table th {
+    background: var(--bg-subtle, #f6f8fa);
+}
+
+/* Intro paragraph above the first section — links to the Help page
+   so users can pivot if they're on the wrong tab. */
+.docs-intro {
+    color: var(--text-muted, #6e7781);
+    border-left: 3px solid var(--accent, #2563eb);
+    padding-left: 12px;
+    margin: 16px 0 24px 0;
+}

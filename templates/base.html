@@ -34,8 +34,9 @@
             <a href="{{ url_for('scan_page') }}" class="nav-tab {% if active_page == 'scan' %}active{% endif %}">Scan</a>
             <a href="{{ url_for('review_page') }}" class="nav-tab {% if active_page == 'review' %}active{% endif %}">Review</a>
             <a href="{{ url_for('settings_page') }}" class="nav-tab {% if active_page == 'settings' %}active{% endif %}">Settings</a>
+            <a href="{{ url_for('architecture_page') }}" class="nav-tab {% if active_page == 'architecture' %}active{% endif %}">Architecture</a>
             <a href="{{ url_for('print_page') }}" class="nav-tab {% if active_page == 'print' %}active{% endif %}">Print</a>
-            <a href="{{ url_for('docs_page') }}" class="nav-tab {% if active_page == 'docs' %}active{% endif %}">Docs</a>
+            <a href="{{ url_for('docs_page') }}" class="nav-tab {% if active_page == 'docs' %}active{% endif %}">Help</a>
             <span class="inbox-badge" id="inboxBadge" title="Inbox items">0</span>
             <a href="{{ url_for('logout') }}" class="btn-link">Log out</a>
             {% endblock %}

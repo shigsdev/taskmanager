@@ -424,7 +424,13 @@ commit — the check will fail otherwise.
 - `/settings` — settings page
 - `/print` — print-friendly view
 - `/recycle-bin` — batch undo
-- `/docs` — in-app documentation hub (#33)
+- `/docs` — in-app documentation hub (#33; tab labeled "Help" since #42)
+- `/architecture` — in-app system architecture page (#42) — renders this
+  ARCHITECTURE.md inline + auto-generated SQLAlchemy ER diagram + auto-
+  generated route catalog from `app.url_map` + 3 hand-written Mermaid
+  sequence flows (recurring spawn, voice memo, auth). Backed by
+  `architecture_service.py`. Tab labeled "Architecture" in the nav.
+  ADR-028.
 - `/api/export` — download user data
 
 ### API endpoints

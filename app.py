@@ -194,7 +194,11 @@ def create_app(config: dict | None = None) -> Flask:
     if not app.config.get("TESTING") and os.environ.get("FLASK_ENV") != "development":
         csp = {
             "default-src": "'self'",
-            "script-src": "'self' 'unsafe-inline'",
+            # cdn.jsdelivr.net: Mermaid v10 ESM module loaded only on
+            # the /architecture page (#42). Pinned-version URL hashed
+            # via SRI in the template, so CDN tampering can't substitute
+            # arbitrary code. ADR-028.
+            "script-src": "'self' 'unsafe-inline' https://cdn.jsdelivr.net",
             "style-src": "'self' 'unsafe-inline'",
             "img-src": "'self' data:",
             "font-src": "'self' https://fonts.gstatic.com",
@@ -302,6 +306,42 @@ def create_app(config: dict | None = None) -> Flask:
         sidebar TOC so future topics slot in cleanly.
         """
         return render_template("docs.html")
+
+    @app.route("/architecture")
+    @login_required
+    def architecture_page(email: str):  # noqa: ARG001
+        """In-app system architecture documentation (#42).
+
+        Renders ARCHITECTURE.md inline + auto-generated route catalog
+        + auto-generated SQLAlchemy ER diagram + 3 hand-written Mermaid
+        sequence flows (recurring spawn, voice memo, auth). The
+        rendered content is the source of truth, not a hand-edited
+        copy — see ADR-028 for the drift-prevention rationale.
+        """
+        from pathlib import Path
+
+        from markupsafe import Markup
+
+        from architecture_service import (
+            build_er_diagram,
+            build_route_catalog,
+            render_architecture_md,
+        )
+        repo_root = Path(__file__).resolve().parent
+        try:
+            arch_html = render_architecture_md(repo_root / "ARCHITECTURE.md")
+        except FileNotFoundError:
+            # Static fallback string, no user data — wrapped in Markup
+            # so Jinja renders the <em> tag instead of escaping it.
+            arch_html = Markup(
+                "<p><em>ARCHITECTURE.md is missing from this deploy.</em></p>",
+            )
+        return render_template(
+            "architecture.html",
+            architecture_md_html=arch_html,
+            route_catalog=build_route_catalog(app),
+            er_diagram=build_er_diagram(),
+        )
 
     @app.route("/goals")
     @login_required

@@ -208,4 +208,9 @@ def login_required(view):
             return render_template("unauthorized.html"), 403
         return view(*args, email=email, **kwargs)
 
+    # Marker attribute used by architecture_service.build_route_catalog
+    # to distinguish login-required routes from public ones in the
+    # auto-generated route table on the /architecture page (#42).
+    # No behavioural effect — just a readable boolean for introspection.
+    wrapped._login_required = True
     return wrapped

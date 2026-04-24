@@ -16,3 +16,8 @@ apscheduler==3.10.4
 # transitive via flask-dance/sendgrid; declare explicitly so a future
 # transitive change can't silently break the app at boot.
 requests==2.33.0
+# Renders ARCHITECTURE.md to HTML for the in-app /architecture page
+# (#42). Uses the `fenced_code` + `tables` extensions to support the
+# triple-backtick ASCII diagrams and the threat-model table already
+# present in ARCHITECTURE.md. ADR-028.
+markdown==3.8.1
