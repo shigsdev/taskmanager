@@ -324,6 +324,7 @@ def create_app(config: dict | None = None) -> Flask:
 
         from architecture_service import (
             build_er_diagram,
+            build_per_table_schema,
             build_route_catalog,
             render_architecture_md,
             split_route_catalog,
@@ -348,6 +349,8 @@ def create_app(config: dict | None = None) -> Flask:
             page_routes=page_routes,
             api_routes=api_routes,
             er_diagram=build_er_diagram(),
+            # #44: per-table plain-English schema cards
+            per_table_schema=build_per_table_schema(),
         )
 
     @app.route("/goals")

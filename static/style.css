@@ -2301,3 +2301,273 @@ details.route-catalog-api[open] > summary {
 details.route-catalog-api > table {
     margin-top: 0;
 }
+
+/* ===========================================================
+   #44 — /architecture audience reframe
+   Plain-English first; engineering content in <details> blocks.
+   =========================================================== */
+
+/* Multi-paragraph reader-orientation block at the top of the page. */
+.intro-prose {
+    font-size: 1.02em;
+    background: #eff6ff;
+    border-left: 4px solid var(--accent, #2563eb);
+    padding: 14px 18px;
+    border-radius: 4px;
+    margin: 16px 0 24px 0;
+}
+.intro-prose p { margin: 6px 0; }
+.intro-prose p:last-child { margin-bottom: 0; }
+
+/* Plain-English schema overview table (4 cols). */
+table.schema-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 0.95em;
+}
+table.schema-table th,
+table.schema-table td {
+    text-align: left;
+    padding: 10px 12px;
+    border: 1px solid var(--border, #e1e4e8);
+    vertical-align: top;
+}
+table.schema-table th {
+    background: var(--bg-subtle, #f6f8fa);
+    font-weight: 600;
+}
+table.schema-table td:first-child {
+    font-family: "SF Mono", Menlo, Monaco, monospace;
+    font-weight: 600;
+    white-space: nowrap;
+}
+table.schema-table td:nth-child(3) { font-style: italic; color: #444; }
+table.schema-table tr.group-core td:first-child { border-left: 4px solid #1d4ed8; }
+table.schema-table tr.group-ops td:first-child { border-left: 4px solid #a16207; }
+table.schema-table tr.group-auth td:first-child { border-left: 4px solid #a21caf; }
+
+/* Inline color legend under the section heading. */
+.legend-inline {
+    font-size: 0.85em;
+    color: var(--text-muted, #6e7681);
+}
+.legend-inline .legend-swatch {
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    margin: 0 4px 0 12px;
+    border-radius: 2px;
+    vertical-align: middle;
+}
+.legend-inline .legend-swatch.core { background: #dbeafe; border: 1px solid #1d4ed8; }
+.legend-inline .legend-swatch.ops { background: #fef3c7; border: 1px solid #a16207; }
+.legend-inline .legend-swatch.auth { background: #fce7f3; border: 1px solid #a21caf; }
+
+/* Universal-columns footnote between the overview table and per-table cards. */
+.universal-columns-note {
+    font-size: 0.9em;
+    color: var(--text-muted, #6e7681);
+    margin: 12px 0 8px 0;
+}
+
+.schema-subhead {
+    margin-top: 28px;
+    color: var(--accent, #2563eb);
+}
+
+/* Per-table cards (one per db.Model). */
+.db-table-detail {
+    border: 1px solid var(--border, #e1e4e8);
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin: 12px 0;
+    background: #fcfcfd;
+}
+.db-table-detail h4 {
+    margin: 0 0 4px 0;
+    font-family: "SF Mono", Menlo, Monaco, monospace;
+    font-size: 1.05em;
+    color: #1d4ed8;
+}
+.db-group-tag {
+    color: var(--text-muted, #6e7681);
+    font-weight: normal;
+    font-size: 0.85em;
+}
+.db-table-detail .db-blurb {
+    color: var(--text-muted, #6e7681);
+    font-size: 0.92em;
+    margin: 0 0 6px 0;
+}
+.db-table-detail .db-pk {
+    font-size: 0.88em;
+    margin: 0 0 10px 0;
+    padding: 4px 10px;
+    background: #fef9c3;
+    border-left: 3px solid #ca8a04;
+    border-radius: 0 3px 3px 0;
+    display: inline-block;
+}
+
+/* Per-row key markers in column lists. */
+.key-pk, .key-fk {
+    display: inline-block;
+    font-size: 0.7em;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+.key-pk {
+    background: #fef9c3;
+    color: #854d0e;
+    border: 1px solid #ca8a04;
+}
+.key-fk {
+    background: #ddd6fe;
+    color: #4c1d95;
+    border: 1px solid #7c3aed;
+}
+
+/* Column list inside each per-table card. */
+table.column-list {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+}
+table.column-list th,
+table.column-list td {
+    text-align: left;
+    padding: 5px 10px;
+    border-bottom: 1px solid var(--border, #e1e4e8);
+    vertical-align: top;
+}
+table.column-list th {
+    background: var(--bg-subtle, #f6f8fa);
+    font-weight: 600;
+}
+table.column-list td:first-child {
+    font-family: "SF Mono", Menlo, Monaco, monospace;
+    font-weight: 600;
+    white-space: nowrap;
+}
+table.column-list td:nth-child(3) {
+    color: var(--text-muted, #6e7681);
+    font-size: 0.92em;
+}
+table.column-list tr.row-fk td:first-child {
+    border-left: 3px solid #7c3aed;
+}
+
+/* Pages-in-the-app simplified table (URL · What it does). */
+table.pages-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 0.95em;
+}
+table.pages-table th,
+table.pages-table td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border, #e1e4e8);
+    vertical-align: top;
+}
+table.pages-table th {
+    background: var(--bg-subtle, #f6f8fa);
+    font-weight: 600;
+}
+table.pages-table td:first-child {
+    font-family: "SF Mono", Menlo, Monaco, monospace;
+    white-space: nowrap;
+}
+
+/* Diagram container — used for both simple + detailed Mermaid blocks. */
+.flow-diagram {
+    background: #fafbfc;
+    border: 1px solid var(--border, #e1e4e8);
+    border-radius: 6px;
+    padding: 20px;
+    margin: 16px 0;
+    text-align: center;
+    overflow-x: auto;
+}
+.flow-diagram svg { max-width: 100%; height: auto; }
+.flow-diagram-caption {
+    font-size: 0.85em;
+    color: var(--text-muted, #6e7681);
+    margin-top: 8px;
+    font-style: italic;
+}
+
+/* Pill labels above each diagram so it's clear at a glance whether
+   you're looking at the simple or detailed version. */
+.flow-label {
+    display: inline-block;
+    font-size: 0.78em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 3px 10px;
+    border-radius: 12px;
+    margin-bottom: 8px;
+}
+.flow-label.simple { background: #dbeafe; color: #0c1f4d; }
+.flow-label.detailed { background: #ede9fe; color: #4c1d95; }
+
+/* Decision-tree prose used for the auth flow. */
+.decision-tree { margin: 16px 0; }
+.decision-tree h4 {
+    margin: 16px 0 4px 0;
+    color: #1d4ed8;
+    font-size: 1.0em;
+}
+.decision-tree .branch {
+    margin: 8px 0 16px 24px;
+    padding: 10px 14px;
+    background: #fafbfc;
+    border-left: 3px solid #1d4ed8;
+    border-radius: 0 4px 4px 0;
+}
+.decision-tree .branch p { margin: 4px 0; }
+.decision-tree .branch-note {
+    margin-left: 24px;
+    font-size: 0.88em;
+    color: var(--text-muted, #6e7681);
+}
+.decision-tree .yes { color: #1a7f37; font-weight: 600; }
+.decision-tree .no { color: #b95000; font-weight: 600; }
+
+/* Engineering details collapsibles — visually distinct so it's clear
+   they're "behind a click". One per section. */
+details.engineering {
+    margin-top: 16px;
+    border: 1px solid var(--border, #e1e4e8);
+    border-radius: 6px;
+    background: #fafbfc;
+}
+details.engineering > summary {
+    cursor: pointer;
+    padding: 10px 14px;
+    font-weight: 600;
+    background: var(--bg-subtle, #f6f8fa);
+    border-radius: 6px;
+    user-select: none;
+    color: var(--text-muted, #6e7681);
+}
+details.engineering[open] > summary {
+    border-radius: 6px 6px 0 0;
+    border-bottom: 1px solid var(--border, #e1e4e8);
+    color: #0c1f4d;
+}
+details.engineering > div.eng-body {
+    padding: 14px;
+    font-size: 0.93em;
+    color: #444;
+}
+
+/* Numbered prose lists (used inside "What's running" + "step by step" blocks). */
+ol.prose-list { line-height: 1.7; padding-left: 24px; }
+ol.prose-list li { margin-bottom: 8px; }

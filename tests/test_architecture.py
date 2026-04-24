@@ -28,11 +28,14 @@ class TestArchitectureRoute:
     def test_authed_user_gets_200(self, authed_client):
         resp = authed_client.get("/architecture")
         assert resp.status_code == 200
-        # Page contains the section anchors we expect
+        # Page contains the section anchors we expect (#44 reorg —
+        # er-diagram + route-catalog moved into engineering <details>;
+        # top-level anchors are now the plain-English sections).
         body = resp.get_data(as_text=True)
-        assert 'id="er-diagram"' in body
-        assert 'id="route-catalog"' in body
-        assert 'id="flow-recurring-spawn"' in body
+        assert 'id="running"' in body
+        assert 'id="schema"' in body
+        assert 'id="pages"' in body
+        assert 'id="flow-recurring"' in body
         assert 'id="flow-voice-memo"' in body
         assert 'id="flow-auth"' in body
 
@@ -57,29 +60,56 @@ class TestArchitectureRoute:
         assert "/architecture" in body
 
     def test_route_catalog_split_into_pages_and_api(self, authed_client):
-        """#43: pages get an always-visible <h3>; API endpoints are
-        wrapped in a collapsed <details> so the user-facing routes
-        pop instead of being buried under 58 /api/* rows."""
+        """#43/#44: pages get an always-visible plain table (under the
+        "Pages in the app" H2); API endpoints are wrapped in an
+        engineering <details> so the user-facing routes pop instead of
+        being buried under 58 /api/* rows."""
         resp = authed_client.get("/architecture")
         body = resp.get_data(as_text=True)
-        # Pages section header (with count)
-        assert "<h3>Pages (" in body
-        # Collapsed API section
-        assert 'details class="route-catalog-api"' in body
-        assert "<summary>API endpoints (" in body
+        # Pages section H2 (#44 renamed from "Pages" to user-friendly)
+        assert "Pages in the app" in body
+        # Engineering details for API endpoints
+        assert "API endpoints (" in body
+        # The pages table (always visible) renders as <table class="pages-table">
+        assert 'class="pages-table"' in body
 
-    def test_recurring_spawn_renders_as_numbered_list_not_mermaid(self, authed_client):
-        """#43: the recurring-spawn flow is linear (no branches) and
-        renders as <ol class="process-flow"> rather than a Mermaid
-        sequence diagram. Mermaid is reserved for the voice-memo +
-        auth flows that have real conditionals."""
+    def test_per_table_cards_render_with_pk_callout(self, authed_client):
+        """#44: each db.Model has a per-table card with a 🔑 Primary
+        key callout under the description, before the column list."""
         resp = authed_client.get("/architecture")
         body = resp.get_data(as_text=True)
-        # The recurring-spawn section's H2 anchor still exists
-        assert 'id="flow-recurring-spawn"' in body
-        # And the section uses an <ol class="process-flow"> instead of
-        # the previous <pre class="mermaid"> block
-        assert 'class="process-flow"' in body
+        # PK callout marker — emoji in the template
+        assert "🔑" in body
+        assert "Primary key" in body
+        # Per-table card containers
+        assert 'class="db-table-detail"' in body
+        # The known table headings (each db.Model gets a card)
+        assert "<h4>tasks" in body
+        assert "<h4>goals" in body
+        assert "<h4>flask_dance_oauth" in body
+
+    def test_fk_columns_get_fk_badge(self, authed_client):
+        """#44: foreign-key columns in the per-table cards get a
+        purple 'FK' badge next to the column name + a left-edge stripe
+        on the row, so relationships pop visually."""
+        resp = authed_client.get("/architecture")
+        body = resp.get_data(as_text=True)
+        # FK badge class + at least one row-fk row
+        assert 'class="key-fk"' in body
+        assert 'class="row-fk"' in body
+        # tasks has 5 FKs; one of them should be visible
+        assert "goal_id" in body
+
+    def test_recurring_spawn_uses_flow_steps_list(self, authed_client):
+        """#43/#44: the recurring-spawn flow has a linear-form
+        numbered list (`<ol class="flow-steps">`) under the simple +
+        detailed Mermaid flowcharts."""
+        resp = authed_client.get("/architecture")
+        body = resp.get_data(as_text=True)
+        # The recurring-spawn section's H3 anchor (#44 renamed to flow-recurring)
+        assert 'id="flow-recurring"' in body
+        # And the section includes an <ol class="flow-steps"> for the prose
+        assert 'class="flow-steps"' in body
 
 
 # --- build_route_catalog ----------------------------------------------------
@@ -137,6 +167,63 @@ class TestBuildRouteCatalog:
             assert "doc" in entry
             # No HEAD/OPTIONS leaked through the filter
             assert entry["method"] not in {"HEAD", "OPTIONS"}
+
+
+# --- build_per_table_schema (#44) ------------------------------------------
+
+
+class TestBuildPerTableSchema:
+
+    def test_returns_one_entry_per_known_table(self, app):
+        from architecture_service import build_per_table_schema
+        with app.app_context():
+            out = build_per_table_schema()
+        names = {e["name"] for e in out}
+        for known in ("tasks", "goals", "projects", "recurring_tasks",
+                      "app_logs", "import_log", "flask_dance_oauth"):
+            assert known in names, f"missing table {known!r} in per-table schema"
+
+    def test_each_entry_has_required_fields(self, app):
+        from architecture_service import build_per_table_schema
+        with app.app_context():
+            out = build_per_table_schema()
+        for e in out:
+            assert "name" in e
+            assert "group" in e and e["group"] in {"core", "ops", "auth"}
+            assert "blurb" in e and e["blurb"], f"{e['name']} blurb empty"
+            assert "pk_label" in e and e["pk_label"]
+            assert "columns" in e and isinstance(e["columns"], list)
+
+    def test_fk_columns_marked(self, app):
+        from architecture_service import build_per_table_schema
+        with app.app_context():
+            out = build_per_table_schema()
+        tasks = next(e for e in out if e["name"] == "tasks")
+        fk_cols = [c for c in tasks["columns"] if c["is_fk"]]
+        # tasks has 5 FK columns: goal_id, project_id, parent_id,
+        # recurring_task_id, batch_id
+        assert len(fk_cols) >= 4
+        fk_names = {c["name"] for c in fk_cols}
+        assert "goal_id" in fk_names
+        assert "project_id" in fk_names
+
+    def test_fk_target_string_present_for_fk_cols(self, app):
+        from architecture_service import build_per_table_schema
+        with app.app_context():
+            out = build_per_table_schema()
+        tasks = next(e for e in out if e["name"] == "tasks")
+        goal_id_col = next(c for c in tasks["columns"] if c["name"] == "goal_id")
+        # fk_target is the human-readable target like "goals.id"
+        assert goal_id_col["fk_target"] == "goals.id"
+
+    def test_import_log_uses_batch_id_as_pk_label(self, app):
+        """import_log uses batch_id as PK rather than the universal id;
+        the PK label should call this out."""
+        from architecture_service import build_per_table_schema
+        with app.app_context():
+            out = build_per_table_schema()
+        import_log = next(e for e in out if e["name"] == "import_log")
+        assert "batch_id" in import_log["pk_label"]
 
 
 # --- split_route_catalog (#43) ---------------------------------------------
@@ -281,6 +368,41 @@ class TestBuildErDiagram:
         assert core_assignments, "expected at least one `class ... core` line"
         # tasks must be in the core group (it's the central user entity)
         assert any("tasks" in line for line in core_assignments)
+
+    def test_every_column_has_a_description(self, app):
+        """#44 drift gate: every non-universal, non-optional column on
+        every db.Model must have a plain-English description in
+        `_SCHEMA_DESCRIPTIONS`. If a contributor adds a column without
+        a description, this test fails — covers the cascade-check rule
+        for "A new column on an existing db.Model"."""
+        from architecture_service import (
+            _DESCRIPTION_OPTIONAL_COLUMNS,
+            _HIDDEN_ER_COLUMNS,
+            _SCHEMA_DESCRIPTIONS,
+        )
+        from models import db
+        for mapper in db.Model.registry.mappers:
+            if mapper.local_table is None:
+                continue
+            tname = mapper.local_table.name
+            assert tname in _SCHEMA_DESCRIPTIONS, (
+                f"table {tname!r} missing from _SCHEMA_DESCRIPTIONS — "
+                f"add a {{blurb, columns: {{...}}}} entry per the "
+                f"CLAUDE.md cascade-check rule for new db.Model subclasses."
+            )
+            described = _SCHEMA_DESCRIPTIONS[tname].get("columns", {})
+            for col in mapper.local_table.columns:
+                # Skip the universal columns we deliberately don't render
+                if col.name in _HIDDEN_ER_COLUMNS and col.name not in described:
+                    continue
+                if col.name in _DESCRIPTION_OPTIONAL_COLUMNS:
+                    continue
+                assert col.name in described, (
+                    f"column {tname}.{col.name} has no description in "
+                    f"_SCHEMA_DESCRIPTIONS — add a {{desc, notes, "
+                    f"fk_target?}} entry per the CLAUDE.md cascade-check "
+                    f"rule for new columns."
+                )
 
     def test_every_model_table_has_a_group(self, app):
         """#43 drift gate: a future contributor adding a new

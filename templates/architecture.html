@@ -3,8 +3,8 @@
 {% block title %}Architecture — Task Manager{% endblock %}
 
 {% block capture %}
-{# Full capture bar — same pattern as docs/goals/projects.
-   Reading architecture docs doesn't preclude capturing a task. #}
+{# Full capture bar — same pattern as docs/goals/projects. Reading
+   architecture docs doesn't preclude capturing a task. #}
 <div class="capture-bar" id="captureBar">
     <input type="text" id="captureInput" placeholder="Add a task…" autocomplete="off">
     <select id="captureType" title="Task type">
@@ -24,395 +24,721 @@
 
         <h3 class="docs-toc-group">Overview</h3>
         <ul>
-            <li><a href="#overview">System overview (ARCHITECTURE.md)</a></li>
+            <li><a href="#running">What's running</a></li>
         </ul>
 
-        <h3 class="docs-toc-group">Live introspection</h3>
+        <h3 class="docs-toc-group">Data</h3>
         <ul>
-            <li><a href="#er-diagram">Database schema</a></li>
-            <li><a href="#route-catalog">Route catalog</a></li>
+            <li><a href="#schema">What the database stores</a></li>
+            <li><a href="#pages">Pages in the app</a></li>
         </ul>
 
         <h3 class="docs-toc-group">Process flows</h3>
         <ul>
-            <li><a href="#flow-recurring-spawn">Recurring task spawn</a></li>
+            <li><a href="#flow-recurring">Recurring tasks</a></li>
             <li><a href="#flow-voice-memo">Voice memo capture</a></li>
-            <li><a href="#flow-auth">Auth (OAuth + validator cookie)</a></li>
+            <li><a href="#flow-auth">Signing in</a></li>
         </ul>
 
         <p class="docs-toc-hint">
-            Auto-generated bits (schema, route catalog) introspect the
-            running app at request time — they cannot drift. Hand-written
-            sections (process flows, ARCHITECTURE.md) are protected by
-            the CLAUDE.md cascade-check. ADR-028.
+            Plain-English up top, engineering detail (Mermaid sequence
+            diagrams, full ARCHITECTURE.md, /api/* routes) in
+            collapsible blocks — click any "Engineering" heading to
+            expand. ADR-029.
         </p>
     </nav>
 
     <main class="docs-content">
         <h1>Task Manager — Architecture</h1>
-        <p class="docs-intro">
-            <em>How the app is built. Updated whenever code changes via the
-            CLAUDE.md cascade-check rule for user-visible behavior + process
-            flows; auto-generated for routes and schema. See
-            <a href="/docs">Help</a> for how to USE the app.</em>
-        </p>
+
+        <div class="intro-prose">
+            <p>
+                Your task manager is a single-user web app that lives at
+                <code>web-production-3e3ae.up.railway.app</code>. It
+                stores your tasks, goals, and projects in a database,
+                emails you a daily digest, and runs a few automated jobs
+                in the background.
+            </p>
+            <p>
+                This page explains <strong>how it's built</strong> in
+                plain English. Each section also has an
+                <strong>"Engineering"</strong> collapsible for the
+                technical detail (also useful for any engineer reading
+                the repo). For how to USE the app, see
+                <a href="{{ url_for('docs_page') }}">Help</a>.
+            </p>
+        </div>
 
         {# =============================================================
-           OVERVIEW — rendered from ARCHITECTURE.md
+           WHAT'S RUNNING
            ============================================================= #}
 
-        <section id="overview" class="docs-section">
-            <h2>System overview</h2>
-            <p class="docs-source-note">
-                Source: <code>ARCHITECTURE.md</code> in the repo root.
-                Re-rendered on every request.
+        <section id="running" class="docs-section">
+            <h2>What's running</h2>
+
+            <p>
+                The app has six moving parts. Here's the bird's-eye view
+                of how they connect:
             </p>
-            <div class="architecture-md">
-                {# `architecture_md_html` is a `markupsafe.Markup` object
-                   from architecture_service.render_architecture_md, so
-                   Jinja renders it as HTML without requiring `| safe`.
-                   Source is the on-disk ARCHITECTURE.md (repo-tracked,
-                   never user input). See ADR-028. #}
-                {{ architecture_md_html }}
+
+            <div class="flow-diagram">
+                <span class="flow-label simple">At a glance</span>
+                <pre class="mermaid">
+flowchart LR
+    You((You)) -->|browser| Web[Web app<br/>Flask + Python]
+    Web <-->|reads/writes| DB[(Database<br/>Postgres)]
+    Cron[/Scheduler<br/>4 nightly jobs/] -->|reads/writes| DB
+    Cron -->|sends| Mail[SendGrid<br/>email]
+    Web -.->|on demand| Ext[External APIs<br/>Whisper, Claude, Vision]
+    Web -.->|sign in| Google[Google OAuth]
+
+    classDef user fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
+    classDef internal fill:#fef3c7,stroke:#a16207,color:#3a2806
+    classDef external fill:#fce7f3,stroke:#a21caf,color:#3d0a3a
+    class You user
+    class Web,DB,Cron internal
+    class Mail,Ext,Google external
+                </pre>
+                <div class="flow-diagram-caption">
+                    Solid arrows = always-on; dotted arrows = only when
+                    needed. Blue = you. Amber = the app's own pieces.
+                    Pink = external services.
+                </div>
             </div>
+
+            <div class="flow-diagram">
+                <span class="flow-label detailed">More detail</span>
+                <pre class="mermaid">
+flowchart LR
+    You((You))
+    Browser[Browser<br/>HTML + JS + Service Worker]
+    You --> Browser
+
+    subgraph WebApp[Flask app on Railway]
+        Routes[Route handlers<br/>tasks_api · goals_api · ...]
+        Auth[Auth wrapper<br/>login_required]
+        Services[Service layer<br/>task_service · scan_service · ...]
+        Routes --> Auth
+        Auth --> Services
+    end
+
+    Browser <-->|HTTPS| Routes
+    Services <-->|SQLAlchemy| DB[(Postgres<br/>tasks · goals · projects ·<br/>recurring_tasks · logs · imports)]
+
+    subgraph Scheduler[APScheduler — 4 cron jobs]
+        Digest[06:30 daily<br/>email digest]
+        TomorrowRoll[00:01 nightly<br/>Tomorrow → Today]
+        SpawnRecurring[00:05 nightly<br/>spawn recurring]
+        Heartbeat[every 45s<br/>heartbeat]
+    end
+
+    Scheduler --> Services
+    Digest -->|via egress| SendGrid[SendGrid]
+    Services -.->|when scanning| Vision[Google Vision<br/>image OCR]
+    Services -.->|when voice memo| Whisper[OpenAI Whisper<br/>transcription]
+    Services -.->|when scanning or voice| Claude[Anthropic Claude<br/>NLP / task extraction]
+
+    Auth -.->|OAuth| Google[Google OAuth<br/>email allowlist]
+
+    classDef user fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
+    classDef internal fill:#fef3c7,stroke:#a16207,color:#3a2806
+    classDef external fill:#fce7f3,stroke:#a21caf,color:#3d0a3a
+    class You,Browser user
+    class Routes,Auth,Services,DB,Digest,TomorrowRoll,SpawnRecurring,Heartbeat internal
+    class SendGrid,Vision,Whisper,Claude,Google external
+                </pre>
+                <div class="flow-diagram-caption">
+                    Same shape, with the inside of the web app + the four
+                    scheduler jobs + the four external APIs broken out.
+                </div>
+            </div>
+
+            <p>The same six pieces, written out:</p>
+
+            <ol class="prose-list">
+                <li><strong>The web app</strong> — a Python service (Flask) that serves you the HTML pages and handles your clicks. Runs inside Gunicorn workers on Railway.</li>
+                <li><strong>The database</strong> — Postgres (managed by Railway). Stores your tasks, goals, projects, etc. See the <a href="#schema">schema</a> below.</li>
+                <li>
+                    <strong>Scheduled jobs</strong> — four automated tasks that run on a clock (in your timezone, default America/New_York):
+                    <ul>
+                        <li><strong>06:30 daily</strong> — sends you the digest email</li>
+                        <li><strong>00:01 nightly</strong> — moves Tomorrow tasks to Today</li>
+                        <li><strong>00:05 nightly</strong> — spawns the day's recurring tasks</li>
+                        <li><strong>every 45 seconds</strong> — heartbeat (proves the scheduler is alive to other workers)</li>
+                    </ul>
+                </li>
+                <li><strong>Authentication</strong> — Google sign-in. Only one email is allowed in (the one configured on Railway); everyone else gets a 403 page. There's also a long-lived signed "validator cookie" used by automated post-deploy checks.</li>
+                <li><strong>External services</strong> — OpenAI Whisper (transcribes voice memos), Anthropic Claude (extracts tasks from voice memos and image scans), Google Vision (OCRs images), SendGrid (delivers the digest email).</li>
+                <li><strong>Hosting</strong> — Railway. HTTPS enforced. Health checks every few seconds via <code>/healthz</code>.</li>
+            </ol>
+
+            <details class="engineering">
+                <summary>Engineering: full architecture document (ARCHITECTURE.md)</summary>
+                <div class="eng-body">
+                    <p class="docs-source-note">
+                        Source: <code>ARCHITECTURE.md</code> in the repo
+                        root. Re-rendered on every request.
+                    </p>
+                    <div class="architecture-md">
+                        {{ architecture_md_html }}
+                    </div>
+                </div>
+            </details>
         </section>
 
         {# =============================================================
-           ER DIAGRAM — auto-generated from SQLAlchemy models
+           DATABASE SCHEMA
            ============================================================= #}
 
-        <section id="er-diagram" class="docs-section">
-            <h2>Database schema</h2>
-            <p class="docs-source-note">
-                Auto-generated from <code>db.Model.registry</code> via
-                <code>architecture_service.build_er_diagram()</code>.
-                Reflects the schema currently registered with SQLAlchemy
-                — including FK arrows, nullable markers, and enum value
-                lists. Cannot drift from the actual models. Color groups
-                (<span class="er-legend er-legend-core">core</span>
-                <span class="er-legend er-legend-ops">operational</span>
-                <span class="er-legend er-legend-auth">auth</span>) are
-                hand-curated in <code>_ER_TABLE_GROUPS</code> for visual
-                hierarchy (#43); a CLAUDE.md cascade rule covers drift.
-            </p>
-            <p class="docs-source-note">
-                <strong>Hidden universal columns:</strong> every table
-                has <code>id</code> (UUID primary key),
-                <code>created_at</code>, and <code>updated_at</code>.
-                These are stripped from the diagram for visual density —
-                they're on every box and add noise without information.
-                The route catalog below shows the actual column names
-                for any endpoint that returns them.
-            </p>
-            <pre class="mermaid">{{ er_diagram }}</pre>
-        </section>
+        <section id="schema" class="docs-section">
+            <h2>What the database stores</h2>
 
-        {# =============================================================
-           ROUTE CATALOG — auto-generated from app.url_map
-           ============================================================= #}
-
-        <section id="route-catalog" class="docs-section">
-            <h2>Route catalog</h2>
-            <p class="docs-source-note">
-                Auto-generated from <code>app.url_map</code> via
-                <code>architecture_service.build_route_catalog()</code>.
-                Split into <strong>Pages</strong> (the user-facing tabs +
-                health probe) and <strong>API endpoints</strong> (JSON,
-                consumed by the client JavaScript and post-deploy
-                automation). <strong>Auth: <code>login</code></strong> =
-                the route is wrapped with <code>@login_required</code>
-                (OAuth + email allowlist; validator cookie OK on safe
-                HTTP methods per ADR-004); <strong><code>public</code></strong>
-                = no auth. Static assets and OAuth callback paths are
-                hidden from both tables.
+            <p>
+                Seven tables. Three groups, color-coded:
+                <span class="legend-inline">
+                    <span class="legend-swatch core"></span> Core (things you create)
+                    <span class="legend-swatch ops"></span> Operational (system records)
+                    <span class="legend-swatch auth"></span> Auth (sign-in tokens)
+                </span>
             </p>
 
-            <h3>Pages ({{ page_routes|length }})</h3>
-            <table class="route-catalog">
+            <table class="schema-table">
                 <thead>
                     <tr>
-                        <th>Method</th>
-                        <th>Path</th>
-                        <th>Auth</th>
-                        <th>Endpoint</th>
-                        <th>Doc</th>
+                        <th>Table</th>
+                        <th>What it stores</th>
+                        <th>One row is</th>
+                        <th>Linked to</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="group-core">
+                        <td>tasks</td>
+                        <td>Your to-do items, including completed and cancelled ones</td>
+                        <td>One task on your board</td>
+                        <td>A goal (optional), a project (optional), a parent task (for subtasks), a recurring template (if spawned)</td>
+                    </tr>
+                    <tr class="group-core">
+                        <td>goals</td>
+                        <td>Your strategic objectives — the "why" tasks roll up to</td>
+                        <td>One goal you're working toward</td>
+                        <td>Tasks and projects link to it</td>
+                    </tr>
+                    <tr class="group-core">
+                        <td>projects</td>
+                        <td>Work or personal areas that group related tasks</td>
+                        <td>One project area (e.g. "Q2 OKRs")</td>
+                        <td>A goal (optional); tasks link to it</td>
+                    </tr>
+                    <tr class="group-core">
+                        <td>recurring_tasks</td>
+                        <td>Templates for tasks that repeat (daily, weekly, monthly)</td>
+                        <td>One repeat template</td>
+                        <td>A goal (optional), a project (optional); spawns into <code>tasks</code></td>
+                    </tr>
+                    <tr class="group-ops">
+                        <td>app_logs</td>
+                        <td>System-generated log events (errors, warnings, requests)</td>
+                        <td>One logged event</td>
+                        <td>—</td>
+                    </tr>
+                    <tr class="group-ops">
+                        <td>import_log</td>
+                        <td>History of bulk imports (OneNote, Excel, scans)</td>
+                        <td>One import batch (for recycle-bin undo)</td>
+                        <td>Tasks/goals created by an import reference it</td>
+                    </tr>
+                    <tr class="group-auth">
+                        <td>flask_dance_oauth</td>
+                        <td>Stored Google OAuth tokens (managed by Flask-Dance)</td>
+                        <td>One stored auth token</td>
+                        <td>—</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <p class="universal-columns-note">
+                <strong>Every table also has:</strong> a unique
+                <code>id</code> (UUID), <code>created_at</code> +
+                <code>updated_at</code> timestamps. Universal — omitted
+                from each table below to reduce visual noise.
+            </p>
+
+            <h3 class="schema-subhead">Each table, broken out</h3>
+            <p>
+                Click an "Engineering" block at the bottom of the section
+                if you want types, enum value lists, or the full
+                auto-generated schema diagram.
+            </p>
+
+            {% for t in per_table_schema %}
+            <div class="db-table-detail">
+                <h4>{{ t.name }}
+                    <span class="db-group-tag db-group-{{ t.group }}">({{ {'core':'core','ops':'operational','auth':'auth'}[t.group] }})</span>
+                </h4>
+                <p class="db-blurb">{{ t.blurb }}</p>
+                <p class="db-pk">🔑 <strong>Primary key:</strong> <code>{{ t.pk_label }}</code></p>
+                <table class="column-list">
+                    <thead>
+                        <tr>
+                            <th>Column</th>
+                            <th>What it is</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in t.columns %}
+                        <tr{% if c.is_fk %} class="row-fk"{% endif %}>
+                            <td>
+                                {{ c.name }}{% if c.is_fk %} <span class="key-fk">FK</span>{% endif %}
+                            </td>
+                            <td>{{ c.desc }}</td>
+                            <td>
+                                {% if c.fk_target %}{{ c.notes }}{% if c.notes %}; {% endif %}→ links to <code>{{ c.fk_target }}</code>{% else %}{{ c.notes }}{% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endfor %}
+
+            <details class="engineering">
+                <summary>Engineering: schema diagram (Mermaid <code>erDiagram</code> with FK arrows, types, enum value lists)</summary>
+                <div class="eng-body">
+                    <p class="docs-source-note">
+                        Auto-generated from <code>db.Model.registry</code>
+                        via <code>architecture_service.build_er_diagram()</code>.
+                        Cannot drift from the actual models.
+                    </p>
+                    <pre class="mermaid">{{ er_diagram }}</pre>
+                </div>
+            </details>
+        </section>
+
+        {# =============================================================
+           PAGES IN THE APP
+           ============================================================= #}
+
+        <section id="pages" class="docs-section">
+            <h2>Pages in the app</h2>
+
+            <p>
+                Every URL you can visit. (The technical "API endpoints" —
+                JSON the page-JavaScript talks to — live in the
+                engineering block below; you don't visit them by hand.)
+            </p>
+
+            <table class="pages-table">
+                <thead>
+                    <tr>
+                        <th>URL</th>
+                        <th>What it does</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for r in page_routes %}
                     <tr>
-                        <td><code>{{ r.method }}</code></td>
                         <td><code>{{ r.path }}</code></td>
-                        <td>
-                            {% if r.auth == 'login' %}
-                                <span class="auth-login">login</span>
-                            {% elif r.auth == 'public' %}
-                                <span class="auth-public">public</span>
-                            {% else %}
-                                <span class="auth-unknown">{{ r.auth }}</span>
-                            {% endif %}
-                        </td>
-                        <td><code>{{ r.endpoint }}</code></td>
-                        <td>{{ r.doc }}</td>
+                        <td>{{ r.doc or '(no description)' }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
 
-            <details class="route-catalog-api">
-                <summary>API endpoints ({{ api_routes|length }}) — click to expand</summary>
-                <table class="route-catalog">
-                    <thead>
-                        <tr>
-                            <th>Method</th>
-                            <th>Path</th>
-                            <th>Auth</th>
-                            <th>Endpoint</th>
-                            <th>Doc</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for r in api_routes %}
-                        <tr>
-                            <td><code>{{ r.method }}</code></td>
-                            <td><code>{{ r.path }}</code></td>
-                            <td>
-                                {% if r.auth == 'login' %}
-                                    <span class="auth-login">login</span>
-                                {% elif r.auth == 'public' %}
-                                    <span class="auth-public">public</span>
-                                {% else %}
-                                    <span class="auth-unknown">{{ r.auth }}</span>
-                                {% endif %}
-                            </td>
-                            <td><code>{{ r.endpoint }}</code></td>
-                            <td>{{ r.doc }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <details class="engineering">
+                <summary>Engineering: API endpoints ({{ api_routes|length }}) — JSON routes consumed by client JS and post-deploy automation</summary>
+                <div class="eng-body">
+                    <p class="docs-source-note">
+                        Auto-generated from <code>app.url_map</code>.
+                        <strong><code>login</code></strong> = route
+                        wrapped with <code>@login_required</code>;
+                        <strong><code>public</code></strong> = no auth.
+                    </p>
+                    <table class="route-catalog">
+                        <thead>
+                            <tr>
+                                <th>Method</th>
+                                <th>Path</th>
+                                <th>Auth</th>
+                                <th>Endpoint</th>
+                                <th>Doc</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in api_routes %}
+                            <tr>
+                                <td><code>{{ r.method }}</code></td>
+                                <td><code>{{ r.path }}</code></td>
+                                <td>
+                                    {% if r.auth == 'login' %}
+                                        <span class="auth-login">login</span>
+                                    {% elif r.auth == 'public' %}
+                                        <span class="auth-public">public</span>
+                                    {% else %}
+                                        <span class="auth-unknown">{{ r.auth }}</span>
+                                    {% endif %}
+                                </td>
+                                <td><code>{{ r.endpoint }}</code></td>
+                                <td>{{ r.doc }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </details>
         </section>
 
         {# =============================================================
-           PROCESS FLOW — recurring spawn (#34, #35, #38)
+           PROCESS FLOWS
            ============================================================= #}
 
-        <section id="flow-recurring-spawn" class="docs-section">
-            <h2>Process flow: recurring task spawn</h2>
+        <section class="docs-section">
+            <h2>How the trickier flows work</h2>
+
             <p>
-                The <code>recurring_spawn</code> APScheduler cron fires
-                at 00:05 in <code>DIGEST_TZ</code> (default
-                <code>America/New_York</code>) and materialises any
-                <code>RecurringTask</code> firing today as a real
-                <code>Task</code> in the Today tier. Idempotent across
-                all active tiers — see ADR-026 for the
-                <code>(recurring_task_id, due_date)</code> dedup key
-                that closes the cross-tier duplicate gap (#38).
+                Three flows are worth walking through step by step: how
+                recurring tasks appear automatically, what happens when
+                you record a voice memo, and how the app decides whether
+                to let you in.
             </p>
-            <p class="docs-source-note">
-                Linear flow with no branches — rendered as a numbered
-                list (#43). For flows with conditionals, see voice memo
-                + auth below which use Mermaid sequence diagrams.
+
+            {# ---- Recurring spawn ---- #}
+
+            <h3 id="flow-recurring">Recurring tasks — how they appear each morning</h3>
+            <p>
+                Recurring task templates ("Walk dog daily", "Weekly
+                review every Friday") don't sit on your board waiting to
+                be checked off. Each morning a job materializes the
+                day's templates as real tasks in Today.
             </p>
-            <ol class="process-flow">
-                <li>APScheduler fires the <code>recurring_spawn</code> job at
-                    00:05 local (<code>DIGEST_TZ</code>) and calls
-                    <code>spawn_today_tasks()</code> with no arguments.</li>
-                <li>The service computes <code>target_date</code> in the
-                    user's timezone via <code>_local_today_date()</code>
-                    (<a href="https://github.com/shigsdev/taskmanager/blob/main/docs/adr/016-tier-due-date-auto-fill.md">ADR-016</a>) — using UTC would put 10pm-ET
-                    spawns on tomorrow's date.</li>
-                <li>SELECT active <code>RecurringTask</code> rows where
-                    the template fires today (frequency check via
-                    <code>_template_fires_on()</code>).</li>
-                <li>SELECT active <code>Task</code> rows already linked
-                    to those templates with <code>due_date == today</code>,
-                    across <strong>all tiers</strong>. This is the
-                    cross-tier dedup that closes Gap B from
-                    <a href="https://github.com/shigsdev/taskmanager/blob/main/docs/adr/026-spawn-due-date-and-cross-tier-dedup.md">ADR-026</a> (a planned-ahead
-                    "Meds" task in <code>this_week</code> for Friday
-                    blocks the Friday spawn).</li>
-                <li>For each template not in the existing-keys set,
-                    INSERT a new <code>Task</code> with
-                    <code>tier=TODAY</code>, <code>due_date=target_date</code>,
-                    and <code>recurring_task_id=template.id</code>.
-                    COMMIT.</li>
-                <li>For each spawned parent that has a
-                    <code>subtasks_snapshot</code> on its template
-                    (<a href="https://github.com/shigsdev/taskmanager/blob/main/docs/adr/013-recurring-subtasks-snapshot.md">ADR-013</a>),
-                    INSERT one subtask row per snapshot entry, also
-                    with <code>due_date=target_date</code>. COMMIT.</li>
-                <li>Return the list of spawned tasks (parents only) to
-                    the cron — used for the response body of the manual
-                    <code>/api/recurring/spawn</code> endpoint.</li>
+
+            <div class="flow-diagram">
+                <span class="flow-label simple">At a glance</span>
+                <pre class="mermaid">
+flowchart TD
+    Start([00:05 nightly]) --> Calc[Calculate today's date<br/>in your timezone]
+    Calc --> Find[Find templates<br/>scheduled for today]
+    Find --> Check{Already have<br/>this task for today?<br/>any tier}
+    Check -- Yes --> Skip[Skip — duplicate prevented]
+    Check -- No --> Create[Create task<br/>in Today tier]
+    Create --> Subs[Create subtasks<br/>if template has them]
+    Subs --> Done([Tasks waiting<br/>in Today])
+
+    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
+    classDef decision fill:#fef3c7,stroke:#a16207,color:#3a2806
+    classDef endNode fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    class Start startNode
+    class Check decision
+    class Done,Skip endNode
+                </pre>
+            </div>
+
+            <div class="flow-diagram">
+                <span class="flow-label detailed">More detail</span>
+                <pre class="mermaid">
+flowchart TD
+    Start([APScheduler fires<br/>recurring_spawn @ 00:05 DIGEST_TZ])
+    Start --> TZCalc["target_date = _local_today_date()<br/>ADR-016 — uses DIGEST_TZ, not UTC"]
+    TZCalc --> Query["SELECT active RecurringTask<br/>WHERE _template_fires_on(target_date)"]
+    Query --> Prefetch["Pre-fetch existing keys:<br/>SELECT (recurring_task_id, due_date)<br/>WHERE due_date = target_date AND status = ACTIVE<br/>(across ALL tiers — closes #38 Gap B)"]
+    Prefetch --> Loop{For each<br/>template}
+    Loop --> KeyCheck{"(template.id, target_date)<br/>in existing keys?"}
+    KeyCheck -- Yes --> SkipBranch[Skip — already spawned<br/>or planned-ahead]
+    KeyCheck -- No --> Insert["INSERT Task<br/>tier=TODAY, due_date=target_date,<br/>recurring_task_id=template.id"]
+    Insert --> Loop
+    Loop --> CommitParents[COMMIT — parents persisted]
+    CommitParents --> SubLoop{For each<br/>spawned parent}
+    SubLoop --> SubCheck{Template has<br/>subtasks_snapshot?<br/>ADR-013}
+    SubCheck -- No --> SubLoop
+    SubCheck -- Yes --> SubInsert[INSERT subtask rows<br/>tier=TODAY, due_date=target_date,<br/>parent_id=parent.id]
+    SubInsert --> SubLoop
+    SubLoop --> CommitSubs[COMMIT — subtasks persisted]
+    CommitSubs --> End([Return spawned tasks])
+
+    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
+    classDef decision fill:#fef3c7,stroke:#a16207,color:#3a2806
+    classDef endNode fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    class Start startNode
+    class Loop,KeyCheck,SubLoop,SubCheck decision
+    class End,SkipBranch endNode
+                </pre>
+            </div>
+
+            <p>Step by step:</p>
+            <ol class="flow-steps">
+                <li>At <strong>00:05 every night</strong>, an automated job wakes up.</li>
+                <li>It calculates today's date in your timezone (default America/New_York — using UTC would put 10pm-ET spawns on tomorrow's date).</li>
+                <li>It looks up which recurring task templates are scheduled to fire today (e.g. a weekly "Walk dog" template is included on Tuesdays only).</li>
+                <li>For each template, it checks whether you already have a task for today's date — <strong>across all tiers</strong>, not just Today. So if you'd already moved "Walk dog" into "this week" with today's due date, the job sees it and skips spawning a duplicate.</li>
+                <li>For the rest, it creates a new task in the Today tier with today's due date.</li>
+                <li>If the recurring template has subtasks, it creates those too (also in Today).</li>
+                <li>You wake up, open the app, and the day's recurring tasks are waiting in Today.</li>
             </ol>
-            <p>
-                Related ADRs: <strong>ADR-013</strong> (subtasks_snapshot
-                JSON column), <strong>ADR-014</strong> (Tomorrow tier +
-                auto-roll cron), <strong>ADR-016</strong> (tier→due_date
-                auto-fill), <strong>ADR-026</strong> (spawn due_date +
-                cross-tier dedup).
-            </p>
-        </section>
 
-        {# =============================================================
-           PROCESS FLOW — voice memo capture (#36, #37)
-           ============================================================= #}
+            <details class="engineering">
+                <summary>Engineering: related ADRs</summary>
+                <div class="eng-body">
+                    <p>
+                        <strong>ADR-013</strong> (subtasks_snapshot JSON column),
+                        <strong>ADR-014</strong> (Tomorrow tier + auto-roll cron),
+                        <strong>ADR-016</strong> (tier→due_date auto-fill),
+                        <strong>ADR-026</strong> (spawn due_date + cross-tier dedup).
+                        Code: <code>recurring_service.spawn_today_tasks()</code>.
+                    </p>
+                </div>
+            </details>
 
-        <section id="flow-voice-memo" class="docs-section">
-            <h2>Process flow: voice memo capture</h2>
-            <p>
-                Browser records audio via <code>MediaRecorder</code>,
-                POSTs to the server, server forwards to OpenAI Whisper
-                for transcription, then to Anthropic Claude with a
-                structured prompt that returns task candidates with
-                <code>title / type / tier / due_date / project_hint /
-                goal_hint / is_task</code>. Hints are resolved against
-                the user's actual projects + goals via case-insensitive
-                exact-title match. User reviews on screen, edits if
-                needed, confirms to create real Tasks.
-            </p>
-            <pre class="mermaid">
-sequenceDiagram
-    autonumber
-    participant Browser
-    participant Voice as voice_api
-    participant Whisper
-    participant Scan as scan_service
-    participant Claude
-    participant DB
-    Browser->>Browser: record audio (10-min cap)
-    Browser->>Voice: POST audio (multipart)
-    Voice->>Voice: validate_upload (MIME, size, empty)
-    Voice->>Whisper: POST /audio/transcriptions
-    Whisper-->>Voice: transcript
-    Voice->>Scan: parse_voice_memo_to_tasks(transcript)
-    Scan->>DB: SELECT active Project + Goal titles
-    Scan->>Claude: POST /v1/messages with prompt + titles
-    Claude-->>Scan: candidates JSON
-    Scan->>Scan: resolve hints to UUIDs
-    Scan-->>Voice: candidates
-    Voice-->>Browser: 200 OK with candidates
-    Browser->>Browser: render review screen
-    Browser->>Voice: POST /api/voice-memo/confirm
-    Voice->>Scan: create_tasks_from_candidates()
-    Scan->>DB: INSERT Task(s)
-    Voice-->>Browser: 201 Created
-            </pre>
-            <p class="docs-source-note">
-                Participant labels in the diagram are short for layout.
-                Real callers (#43): <code>Browser</code> = MediaRecorder
-                + <code>static/voice_memo.js</code>. <code>Voice</code> =
-                <code>voice_api.py</code>, route
-                <code>POST /api/voice-memo/parse</code>.
-                <code>Whisper</code> = OpenAI Whisper at
-                <code>api.openai.com/v1/audio/transcriptions</code>, called
-                via <code>egress.safe_call_api</code>. <code>Scan</code> =
-                <code>scan_service.py</code>, function
-                <code>parse_voice_memo_to_tasks</code>.
-                <code>Claude</code> = Anthropic Claude at
-                <code>api.anthropic.com/v1/messages</code>, also via
-                <code>egress.safe_call_api</code>.
-                <code>DB</code> = Postgres.
-                The review screen renders a tier select, date input,
-                project + goal dropdowns; <code>is_task=false</code>
-                items go to a collapsed "Reflections" section.
-            </p>
-            <p>
-                Related ADRs: <strong>ADR-005</strong> (voice memo error
-                handling + iOS Safari Content-Type quirk),
-                <strong>ADR-020</strong> (NLP MVP — structured prompt
-                grammar), <strong>ADR-021</strong> (NLP phase 2 — hint
-                resolution + non-task detection),
-                <strong>ADR-023</strong> (egress module),
-                <strong>ADR-025</strong> (upload validation helper).
-            </p>
-        </section>
+            {# ---- Voice memo ---- #}
 
-        {# =============================================================
-           PROCESS FLOW — auth (ADRs 001, 002, 003, 004)
-           ============================================================= #}
+            <h3 id="flow-voice-memo">Voice memo capture — record audio, get tasks</h3>
+            <p>
+                You hit the 🎙️ icon, talk for up to 10 minutes, and end
+                up with a review screen of editable task candidates. Two
+                external services do the heavy lifting.
+            </p>
 
-        <section id="flow-auth" class="docs-section">
-            <h2>Process flow: authentication</h2>
+            <div class="flow-diagram">
+                <span class="flow-label simple">At a glance</span>
+                <pre class="mermaid">
+flowchart TD
+    Start([Hit 🎙️]) --> Record[Browser records<br/>audio &lt;= 10 min]
+    Record --> Upload[Upload to server]
+    Upload --> Whisper[OpenAI Whisper<br/>audio → transcript]
+    Whisper --> Claude[Anthropic Claude<br/>transcript → task candidates]
+    Claude --> Resolve[Resolve project / goal<br/>names → real IDs]
+    Resolve --> Review[You review the candidates<br/>edit, uncheck, confirm]
+    Review --> Save[Server creates real tasks]
+    Save --> Done([Tasks appear<br/>in your tiers])
+
+    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
+    classDef external fill:#fce7f3,stroke:#a21caf,color:#3d0a3a
+    classDef user fill:#fef3c7,stroke:#a16207,color:#3a2806
+    classDef endNode fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    class Start startNode
+    class Whisper,Claude external
+    class Review user
+    class Done endNode
+                </pre>
+                <div class="flow-diagram-caption">
+                    Pink steps = external services (the AI calls).
+                    Amber = you do something.
+                </div>
+            </div>
+
+            <div class="flow-diagram">
+                <span class="flow-label detailed">More detail</span>
+                <pre class="mermaid">
+flowchart TD
+    Start([You hit 🎙️ icon])
+    Start --> Record[MediaRecorder records audio<br/>10-min hard cap, audio/webm or audio/mp4]
+    Record --> POST[POST /api/voice-memo/parse<br/>multipart upload]
+    POST --> Validate{utils.validate_upload<br/>format · size · empty?}
+    Validate -- Bad --> Err400[400/413/422 error<br/>back to browser]
+    Validate -- OK --> WhisperCall[egress.safe_call_api →<br/>POST api.openai.com/v1/audio/transcriptions]
+    WhisperCall --> Transcript[Whisper returns transcript]
+    Transcript --> FetchHints["SELECT active Project + Goal titles<br/>for hint resolution, ADR-021"]
+    FetchHints --> ClaudeCall[egress.safe_call_api →<br/>POST api.anthropic.com/v1/messages]
+    ClaudeCall --> Candidates[Claude returns JSON:<br/>title, type, tier, due_date,<br/>project_hint, goal_hint, is_task]
+    Candidates --> Normalise[_normalise_voice_candidates:<br/>resolve hints → real UUIDs<br/>case-insensitive title match]
+    Normalise --> ToBrowser[200 OK with candidates]
+    ToBrowser --> Render[Review screen:<br/>tier · date · project · goal<br/>is_task=false → Reflections]
+    Render --> Confirm{User clicks<br/>Confirm?}
+    Confirm -- No --> Discard([Discarded])
+    Confirm -- Yes --> POST2[POST /api/voice-memo/confirm]
+    POST2 --> Create[create_tasks_from_candidates:<br/>INSERT Task rows]
+    Create --> Final([Tasks live in your tiers])
+
+    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
+    classDef external fill:#fce7f3,stroke:#a21caf,color:#3d0a3a
+    classDef user fill:#fef3c7,stroke:#a16207,color:#3a2806
+    classDef decision fill:#fef3c7,stroke:#a16207,color:#3a2806
+    classDef endNode fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    classDef errNode fill:#fee2e2,stroke:#b91c1c,color:#5a0a0a
+    class Start startNode
+    class WhisperCall,ClaudeCall external
+    class Render,Confirm user
+    class Validate decision
+    class Final endNode
+    class Err400,Discard errNode
+                </pre>
+            </div>
+
+            <p>Step by step:</p>
+            <ol class="flow-steps">
+                <li>You hit the <strong>🎙️ voice memo icon</strong> on the capture bar and start talking.</li>
+                <li>Your browser records the audio (10-minute hard cap).</li>
+                <li>When you stop, the audio file uploads to the server.</li>
+                <li>The server checks the file (correct format, not too big, not empty), then forwards it to <strong>OpenAI's Whisper</strong> for transcription.</li>
+                <li>Whisper sends back the transcript as plain text.</li>
+                <li>The server sends the transcript to <strong>Anthropic's Claude</strong>, along with a list of your active project and goal titles, asking it to identify discrete tasks and infer metadata.</li>
+                <li>Claude returns a list of candidates. The server resolves any project/goal hints to real IDs (case-insensitive title match).</li>
+                <li>You see a <strong>review screen</strong>: each candidate is an editable row. Reflections (non-tasks) are tucked into a collapsed section at the bottom, unchecked by default.</li>
+                <li>You uncheck what you don't want, edit anything wrong, then hit <strong>Confirm</strong>.</li>
+                <li>The server creates real tasks in your database with the fields you confirmed.</li>
+            </ol>
+
+            <details class="engineering">
+                <summary>Engineering: file paths + related ADRs</summary>
+                <div class="eng-body">
+                    <p>
+                        Browser: <code>static/voice_memo.js</code> +
+                        MediaRecorder. Server:
+                        <code>voice_api.py</code> →
+                        <code>scan_service.parse_voice_memo_to_tasks</code>.
+                        Whisper at
+                        <code>api.openai.com/v1/audio/transcriptions</code>;
+                        Claude at
+                        <code>api.anthropic.com/v1/messages</code>; both
+                        via <code>egress.safe_call_api</code>.
+                        ADRs: <strong>005</strong> (voice memo error
+                        handling + iOS Safari Content-Type quirk),
+                        <strong>020</strong> (NLP MVP),
+                        <strong>021</strong> (hints + non-task detection),
+                        <strong>023</strong> (egress module),
+                        <strong>025</strong> (upload validation helper).
+                    </p>
+                </div>
+            </details>
+
+            {# ---- Auth (decision tree) ---- #}
+
+            <h3 id="flow-auth">Signing in — how the app decides to let you through</h3>
             <p>
-                Three authentication paths, in priority order: dev
-                bypass (local only, four-gate check), validator cookie
-                (long-lived signed token, GET-only routes), then
-                Google OAuth (the production user path). All paths
-                end with the same <code>AUTHORIZED_EMAIL</code> single-
-                user lockdown check.
+                Three different ways to be authenticated, checked in
+                priority order. The vast majority of the time it's path
+                #3 (a Google OAuth session). The other two paths exist
+                for specific situations.
             </p>
-            <pre class="mermaid">
-sequenceDiagram
-    autonumber
-    participant Browser
-    participant Flask
-    participant Bypass
-    participant Validator
-    participant OAuth
-    participant View
-    Browser->>Flask: GET /protected
-    Flask->>Bypass: check dev bypass
-    alt dev bypass active (LOCAL ONLY)
-        Bypass-->>Flask: AUTHORIZED_EMAIL
-        Flask->>View: view(email=AUTHORIZED_EMAIL)
-    else validator cookie + safe method (GET/HEAD/OPTIONS)
-        Flask->>Validator: verify signed token
-        alt valid + email matches
-            Validator-->>Flask: validator_email
-            Flask->>View: view(email=validator_email)
-        else invalid OR mutation method
-            Flask->>OAuth: fall through to OAuth
-        end
-    else
-        Flask->>OAuth: get_current_user_email()
-        alt no session
-            OAuth-->>Browser: 302 to /login/google
-            Browser->>OAuth: complete OAuth
-            OAuth-->>Browser: redirect to /protected
-        else session exists
-            OAuth-->>Flask: email from token
-            alt email != AUTHORIZED_EMAIL
-                Flask-->>Browser: 403 unauthorized
-            else
-                Flask->>View: view(email=email)
-            end
-        end
-    end
-    View-->>Browser: response
-            </pre>
-            <p class="docs-source-note">
-                Participant labels short for layout (#43). Real callers:
-                <code>Flask</code> = the
-                <code>@login_required</code> wrapper in
-                <code>auth.py</code>. <code>Bypass</code> =
-                <code>_dev_bypass_active()</code>, the four-gate local-
-                only short-circuit (<a href="https://github.com/shigsdev/taskmanager/blob/main/docs/adr/002-four-gate-dev-bypass.md">ADR-002</a>).
-                <code>Validator</code> = <code>validator_cookie.py</code>,
-                signed long-lived token narrow-scoped to safe HTTP
-                methods (<a href="https://github.com/shigsdev/taskmanager/blob/main/docs/adr/004-validator-cookie-broaden-readonly.md">ADR-004</a>). <code>OAuth</code> =
-                Flask-Dance Google OAuth blueprint. <code>View</code> =
-                the actual Flask view function.
-            </p>
-            <p>
-                Related ADRs: <strong>ADR-001</strong> (single-user
-                OAuth lockdown), <strong>ADR-002</strong> (four-gate
-                dev bypass), <strong>ADR-003</strong> (validator cookie
-                narrow scope, SUPERSEDED), <strong>ADR-004</strong>
-                (broaden validator cookie to GET-only routes).
-            </p>
+
+            <div class="flow-diagram">
+                <span class="flow-label simple">At a glance</span>
+                <pre class="mermaid">
+flowchart TD
+    Start([You visit a page]) --> Q1{Local dev<br/>bypass on?}
+    Q1 -- YES --> In1([Logged in<br/>as configured email])
+    Q1 -- NO --> Q2{Validator cookie<br/>+ safe HTTP method?}
+    Q2 -- YES, valid --> In2([Logged in<br/>via cookie])
+    Q2 -- NO --> Q3{Google OAuth<br/>session?}
+    Q3 -- NO --> Redirect[Redirect to<br/>Google sign-in]
+    Redirect --> Q3
+    Q3 -- YES, email matches --> In3([Logged in<br/>via Google])
+    Q3 -- YES, email does NOT match --> Block([403 Unauthorized<br/>single-user lockdown])
+
+    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
+    classDef decision fill:#fef3c7,stroke:#a16207,color:#3a2806
+    classDef ok fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    classDef bad fill:#fee2e2,stroke:#b91c1c,color:#5a0a0a
+    class Start startNode
+    class Q1,Q2,Q3 decision
+    class In1,In2,In3 ok
+    class Block bad
+                </pre>
+                <div class="flow-diagram-caption">
+                    Diamond shapes = a yes/no check. Green = you got in.
+                    Red = you didn't.
+                </div>
+            </div>
+
+            <div class="flow-diagram">
+                <span class="flow-label detailed">More detail</span>
+                <pre class="mermaid">
+flowchart TD
+    Start([Request hits @login_required wrapper])
+
+    Start --> BypassEnv{LOCAL_DEV_BYPASS_AUTH=1?}
+    BypassEnv -- No --> Cookie
+    BypassEnv -- Yes --> Tripwire{Any RAILWAY_*<br/>env var set?<br/>tripwire}
+    Tripwire -- Yes — REFUSE --> Block1([Refuse to bypass<br/>fall through to OAuth])
+    Tripwire -- No --> EnvFile{.env.dev-bypass<br/>file exists?}
+    EnvFile -- No --> Block1
+    EnvFile -- Yes --> AuthEmail{AUTHORIZED_EMAIL<br/>set?}
+    AuthEmail -- No --> Block1
+    AuthEmail -- Yes --> In1([Bypass active —<br/>logged in as<br/>AUTHORIZED_EMAIL])
+
+    Block1 --> Cookie
+
+    Cookie{validator_token<br/>cookie present?}
+    Cookie -- No --> OAuth
+    Cookie -- Yes --> Method{Safe HTTP method?<br/>GET/HEAD/OPTIONS}
+    Method -- No — mutation --> OAuth
+    Method -- Yes --> Verify{Verify signed token<br/>SECRET_KEY · expiry · email}
+    Verify -- Invalid/expired --> OAuth
+    Verify -- Valid + email matches --> In2([Logged in<br/>via validator cookie])
+
+    OAuth{Google OAuth session?<br/>flask-dance + flask_dance_oauth table}
+    OAuth -- No --> Redirect[Redirect to /login/google]
+    Redirect --> Callback[Google callback]
+    Callback --> Token[Token stored in<br/>flask_dance_oauth table]
+    Token --> Userinfo[google.get oauth2/v2/userinfo<br/>get email]
+    Userinfo --> EmailCheck
+    OAuth -- Yes — session exists --> Userinfo
+
+    EmailCheck{Email matches<br/>AUTHORIZED_EMAIL?}
+    EmailCheck -- No --> Bad([403 unauthorized.html<br/>session.clear])
+    EmailCheck -- Yes --> In3([Logged in via Google —<br/>view kwargs include email])
+
+    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
+    classDef decision fill:#fef3c7,stroke:#a16207,color:#3a2806
+    classDef ok fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    classDef bad fill:#fee2e2,stroke:#b91c1c,color:#5a0a0a
+    class Start startNode
+    class BypassEnv,Tripwire,EnvFile,AuthEmail,Cookie,Method,Verify,OAuth,EmailCheck decision
+    class In1,In2,In3 ok
+    class Bad bad
+                </pre>
+            </div>
+
+            <div class="decision-tree">
+                <p>The same logic, written out:</p>
+
+                <h4>1. Is this local development with the bypass turned on?</h4>
+                <div class="branch">
+                    <p><span class="yes">YES</span> → skip authentication entirely. Log you in as the configured email. Used only on your local dev machine when the <code>.env.dev-bypass</code> file exists, AND no <code>RAILWAY_*</code> tripwire env var is set. Four safety gates total.</p>
+                    <p><span class="no">NO</span> → continue to check #2.</p>
+                </div>
+
+                <h4>2. Do you have a "validator cookie" AND is this a safe HTTP method?</h4>
+                <p class="branch-note">
+                    A "validator cookie" is a long-lived signed token
+                    used by the post-deploy automation to read pages
+                    without OAuth. "Safe" methods = GET, HEAD, OPTIONS.
+                </p>
+                <div class="branch">
+                    <p><span class="yes">YES</span>, AND the email in the cookie matches your authorized email → log you in via the cookie. Used by the post-deploy Playwright tests.</p>
+                    <p><span class="no">NO</span> (cookie missing/invalid OR you're trying to mutate data) → continue to check #3.</p>
+                </div>
+
+                <h4>3. Do you have a Google OAuth session?</h4>
+                <div class="branch">
+                    <p><span class="no">NO session</span> → redirect you to Google, then back to the page you wanted.</p>
+                    <p><span class="yes">YES session</span>, AND the Google account email matches your authorized email → log you in. (Most normal use is this path.)</p>
+                    <p><span class="no">YES session</span>, but the email <strong>doesn't</strong> match → 403 Unauthorized page (the single-user lockdown).</p>
+                </div>
+            </div>
+
+            <details class="engineering">
+                <summary>Engineering: file paths + related ADRs</summary>
+                <div class="eng-body">
+                    <p>
+                        Code: <code>auth.py</code>,
+                        <code>login_required</code> decorator.
+                        ADRs: <strong>001</strong> (single-user OAuth
+                        lockdown), <strong>002</strong> (four-gate dev
+                        bypass), <strong>003</strong> (validator cookie
+                        narrow scope, SUPERSEDED), <strong>004</strong>
+                        (broaden validator to GET-only routes).
+                    </p>
+                </div>
+            </details>
         </section>
     </main>
 </div>
 
-{# Mermaid loaded only on this page (not pulled into the SW APP_SHELL).
-   Pinned to a known-good major.minor; SRI ensures the byte content
-   matches what we tested against. CDN allowance is restricted to
-   cdn.jsdelivr.net via CSP (ADR-028). #}
+{# Mermaid loaded only on this page. Pinned version — CSP allows
+   cdn.jsdelivr.net for script-src per ADR-028. #}
 <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.esm.min.mjs";
-    mermaid.initialize({ startOnLoad: true, theme: "default" });
+    mermaid.initialize({ startOnLoad: true, theme: "default", flowchart: { curve: "basis" } });
 </script>
 {% endblock %}
