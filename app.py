@@ -218,6 +218,15 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(auth_api.bp)
     app.register_blueprint(voice_api.bp)
 
+    # --- Global error handlers (#50, ADR-031) ---
+    # Catch any exception that escapes per-route handlers and shape it
+    # into a JSON response with the request_id. Without this, Flask's
+    # default 500 returns an HTML page with no JSON body — frontend's
+    # apiFetch falls back to empty statusText and the user sees
+    # "Save failed:" with a blank message (the original #52 symptom).
+    from errors import register_error_handlers
+    register_error_handlers(app)
+
     # --- Persistent application logging (see logging_service.py) ---
     # Installs DBLogHandler on the root logger so WARNING+ events land
     # in the app_logs table, plus Flask before/after_request hooks that
@@ -624,11 +633,23 @@ def _start_digest_scheduler(app: Flask) -> None:
 
     def _send_scheduled_digest():
         with app.app_context():
+            import logging
+            log = logging.getLogger(__name__)
             from digest_service import send_digest
 
             to_email = os.environ.get("DIGEST_TO_EMAIL")
-            if to_email:
+            if not to_email:
+                return
+            # send_digest now raises EgressError on SendGrid failure
+            # (#50, ADR-031). The cron shouldn't crash the scheduler
+            # thread — log + swallow. The error already lands in
+            # app_logs via DBLogHandler so /api/debug/logs surfaces it
+            # post-deploy.
+            try:
                 send_digest(to_email=to_email)
+            except Exception as e:  # noqa: BLE001
+                log.exception("Scheduled digest send failed: %s: %s",
+                              type(e).__name__, e)
 
     scheduler = BackgroundScheduler(timezone=tz)
     scheduler.add_job(

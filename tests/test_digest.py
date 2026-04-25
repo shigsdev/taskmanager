@@ -273,7 +273,12 @@ class TestSendDigest:
             result = send_digest(to_email="test@example.com", body="Test")
         assert result is False
 
-    def test_send_returns_false_on_error(self, app, monkeypatch):
+    def test_send_propagates_error_instead_of_returning_false(self, app, monkeypatch):
+        """Behavior change in #50/ADR-031: send_digest used to swallow
+        any exception and return False, killing the SendGrid error
+        context (which is exactly what produced bug #47's misleading
+        error message). Now exceptions propagate so the global error
+        handler can shape them into useful JSON for the user."""
         from digest_service import send_digest
 
         monkeypatch.setenv("SENDGRID_API_KEY", "fake-key")
@@ -285,8 +290,12 @@ class TestSendDigest:
                 side_effect=Exception("Network error"),
             ),
         ):
-            result = send_digest(to_email="test@example.com", body="Test")
-        assert result is False
+            try:
+                send_digest(to_email="test@example.com", body="Test")
+            except Exception as e:
+                assert "Network error" in str(e)
+            else:
+                raise AssertionError("send_digest should have raised, not returned False")
 
 
 # --- API endpoints ------------------------------------------------------------
@@ -320,12 +329,18 @@ class TestDigestSendAPI:
         assert resp.status_code == 422
         assert "DIGEST_TO_EMAIL" in resp.get_json()["error"]
 
-    def test_send_without_api_key_returns_500(self, authed_client, monkeypatch):
-        """If SENDGRID_API_KEY is missing, sending fails."""
+    def test_send_without_api_key_returns_422(self, authed_client, monkeypatch):
+        """If SENDGRID_API_KEY env var is unset, the API short-circuits
+        with a 422 + clear "env var is not set" message. Status changed
+        from 500 to 422 in #50/ADR-031: the user can act on this (set
+        the env var), so it's a config problem (Unprocessable), not a
+        server bug. Old behaviour returned 500 with the misleading
+        hardcoded "check SENDGRID_API_KEY" message."""
         monkeypatch.setenv("DIGEST_TO_EMAIL", "work@example.com")
         monkeypatch.delenv("SENDGRID_API_KEY", raising=False)
         resp = authed_client.post("/api/digest/send")
-        assert resp.status_code == 500
+        assert resp.status_code == 422
+        assert "SENDGRID_API_KEY" in resp.get_json()["error"]
 
     def test_send_success(self, authed_client, monkeypatch):
         monkeypatch.setenv("DIGEST_TO_EMAIL", "work@example.com")

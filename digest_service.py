@@ -222,11 +222,16 @@ def send_digest(
         logger.warning("SENDGRID_API_KEY not set — digest not sent")
         return False
 
-    try:
-        return _sendgrid_send(api_key, from_email, to_email, subject, body)
-    except Exception:
-        logger.exception("Failed to send digest email")
-        return False
+    # Bug #50 (ADR-031): previously this caught Exception → False, which
+    # killed all SendGrid error context (the actual cause was usually
+    # "from address not verified" returning HTTP 403, but the user saw
+    # a hardcoded "check SENDGRID_API_KEY" string). Now we let the
+    # exception propagate; the global error handler in errors.py
+    # extracts the SendGrid status + response body and surfaces a useful
+    # message ("SendGrid returned HTTP 403: ..."). Boolean callers (the
+    # daily cron job) still get False on failure — caught at the cron
+    # site so we don't crash the scheduler.
+    return _sendgrid_send(api_key, from_email, to_email, subject, body)
 
 
 def _sendgrid_send(
@@ -236,9 +241,18 @@ def _sendgrid_send(
     subject: str,
     body: str,
 ) -> bool:
-    """Send email via SendGrid API. Separated for testability."""
+    """Send email via SendGrid API. Separated for testability.
+
+    Raises ``EgressError`` (the same wrapper used by all other external
+    API calls — see ADR-023) so failures propagate with the actual
+    SendGrid status code + response body. This is what makes the user-
+    facing error useful instead of the previous hardcoded "check
+    SENDGRID_API_KEY" string. ADR-031.
+    """
     import sendgrid
     from sendgrid.helpers.mail import Content, Mail, To
+
+    from egress import EgressError
 
     sg = sendgrid.SendGridAPIClient(api_key=api_key)
     message = Mail(
@@ -247,5 +261,31 @@ def _sendgrid_send(
         subject=subject,
         plain_text_content=Content("text/plain", body),
     )
-    response = sg.send(message)
-    return response.status_code in (200, 201, 202)
+    try:
+        response = sg.send(message)
+    except Exception as e:
+        # Common SendGrid SDK exceptions (ForbiddenError, BadRequestsError,
+        # UnauthorizedError, etc.) all carry the response status + body.
+        # Extract whatever useful detail we can.
+        status_code = getattr(e, "status_code", None)
+        body_attr = getattr(e, "body", b"")
+        body_str = (
+            body_attr.decode("utf-8", errors="replace")
+            if isinstance(body_attr, bytes)
+            else str(body_attr)
+        )
+        # Trim the body to the first useful line — SendGrid's JSON
+        # errors look like {"errors":[{"message":"...","field":...}]}.
+        # Even raw, the first 200 chars are always actionable.
+        detail = body_str.replace("\n", " ").strip()[:200]
+        if status_code:
+            raise EgressError(
+                f"SendGrid returned HTTP {status_code}"
+                + (f": {detail}" if detail else ""),
+            ) from e
+        raise EgressError(f"SendGrid call failed: {type(e).__name__}") from e
+
+    if response.status_code in (200, 201, 202):
+        return True
+    # Unexpected non-2xx response that didn't raise — surface it.
+    raise EgressError(f"SendGrid returned HTTP {response.status_code}")

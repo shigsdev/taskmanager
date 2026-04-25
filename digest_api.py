@@ -41,8 +41,14 @@ def send_now(email: str):  # noqa: ARG001
         return jsonify({"error": "DIGEST_TO_EMAIL not configured"}), 422
 
     body = build_digest()
+    # send_digest now raises EgressError on SendGrid failure (#50, ADR-031)
+    # — the global error handler catches it and returns a JSON 502 with
+    # the actual SendGrid status + body. No hardcoded misleading message
+    # any more. Returns False only for the "no API key set" early-out
+    # path (logged warning, not an error from the user's POV).
     ok = send_digest(to_email=to_email, body=body)
-
     if ok:
         return jsonify({"status": "sent"})
-    return jsonify({"error": "Failed to send — check SENDGRID_API_KEY"}), 500
+    return jsonify({
+        "error": "SENDGRID_API_KEY env var is not set on this server",
+    }), 422
