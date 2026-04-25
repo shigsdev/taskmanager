@@ -34,9 +34,15 @@
         <h3>External Services</h3>
         <p class="settings-hint">Shows whether each service has its API key configured.
            Keys are set via environment variables and never displayed here.</p>
+        <p class="settings-hint" style="margin-top: 4px;">
+            <strong>Note (#48):</strong> "Env var set" only means the key
+            is configured on the server — it does NOT prove the service
+            actually works. For SendGrid, use the Test send button
+            below to verify end-to-end delivery.
+        </p>
         <table class="settings-table" id="settingsServiceTable">
             <thead>
-                <tr><th>Service</th><th>Status</th></tr>
+                <tr><th>Service</th><th>Status</th><th>Actions</th></tr>
             </thead>
             <tbody id="settingsServiceBody"></tbody>
         </table>

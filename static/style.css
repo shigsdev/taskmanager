@@ -1258,6 +1258,18 @@ body {
 .settings-table th { font-weight: 600; color: var(--muted); }
 .settings-ok { color: var(--success); }
 .settings-warn { color: var(--danger); }
+
+/* #48 — inline test-send button + result chip on the SendGrid row.
+   Result chip displays "✓ Sent" green or "✗ <real error>" red,
+   surfacing the actual upstream cause via the #50 global handler. */
+.sendgrid-test-wrap { display: inline-flex; align-items: center; gap: 8px; }
+.sendgrid-test-result { font-size: 13px; }
+.sendgrid-test-result.settings-ok { font-weight: 600; }
+.sendgrid-test-result.settings-warn {
+    font-size: 12px;
+    max-width: 420px;
+    word-break: break-word;
+}
 .settings-digest-info { margin-bottom: 12px; font-size: 14px; }
 .settings-digest-info p { margin: 4px 0; }
 .settings-digest-actions { display: flex; gap: 8px; margin-bottom: 12px; }
