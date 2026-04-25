@@ -55,6 +55,33 @@ def test_create_project_minimal(authed_client):
     assert body["target_quarter"] is None
 
 
+def test_create_project_with_actions_and_notes(authed_client):
+    """#65 (2026-04-25): projects can carry actions and notes text fields."""
+    resp = authed_client.post(
+        "/api/projects",
+        json={"name": "AN", "actions": "Step 1\nStep 2", "notes": "context here"},
+    )
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert body["actions"] == "Step 1\nStep 2"
+    assert body["notes"] == "context here"
+
+
+def test_patch_project_actions_notes_round_trip(authed_client):
+    pid = authed_client.post("/api/projects", json={"name": "RT2"}).get_json()["id"]
+    resp = authed_client.patch(
+        f"/api/projects/{pid}",
+        json={"actions": "do this", "notes": "and remember that"},
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["actions"] == "do this"
+    assert resp.get_json()["notes"] == "and remember that"
+    # Clear both with empty string
+    resp = authed_client.patch(f"/api/projects/{pid}", json={"actions": "", "notes": ""})
+    assert resp.get_json()["actions"] is None
+    assert resp.get_json()["notes"] is None
+
+
 def test_create_project_with_target_quarter(authed_client):
     """Bug #61 (2026-04-25): projects can carry a target_quarter for planning."""
     resp = authed_client.post(

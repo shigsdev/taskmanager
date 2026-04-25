@@ -233,6 +233,8 @@ function projectDetailNew() {
     document.getElementById("projectColor").value = DEFAULT_PROJECT_COLOR;
     document.getElementById("projectTargetQuarter").value = "";
     document.getElementById("projectSortOrder").value = "0";
+    document.getElementById("projectActions").value = "";
+    document.getElementById("projectNotes").value = "";
     populateGoalDropdown(null);
     document.getElementById("projectTaskSummary").style.display = "none";
     // No archive on a project that doesn't exist yet.
@@ -248,6 +250,8 @@ function projectDetailOpen(project) {
     document.getElementById("projectColor").value = project.color || DEFAULT_PROJECT_COLOR;
     document.getElementById("projectTargetQuarter").value = project.target_quarter || "";
     document.getElementById("projectSortOrder").value = String(project.sort_order || 0);
+    document.getElementById("projectActions").value = project.actions || "";
+    document.getElementById("projectNotes").value = project.notes || "";
     populateGoalDropdown(project.goal_id);
 
     // Task summary.
@@ -279,6 +283,8 @@ async function projectDetailSave(e) {
         type: document.getElementById("projectType").value,
         color: document.getElementById("projectColor").value || null,
         target_quarter: document.getElementById("projectTargetQuarter").value.trim() || null,
+        actions: document.getElementById("projectActions").value.trim() || null,
+        notes: document.getElementById("projectNotes").value.trim() || null,
         goal_id: goalSel || null,
         sort_order: sortRaw === "" ? 0 : parseInt(sortRaw, 10) || 0,
     };
