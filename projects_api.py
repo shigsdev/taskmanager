@@ -26,6 +26,7 @@ def _serialize(project: Project) -> dict:
         "name": project.name,
         "type": project.type.value,
         "color": project.color,
+        "target_quarter": project.target_quarter,
         "goal_id": str(project.goal_id) if project.goal_id else None,
         "is_active": project.is_active,
         "sort_order": project.sort_order,

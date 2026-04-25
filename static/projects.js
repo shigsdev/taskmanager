@@ -142,6 +142,14 @@ function projectCardEl(project) {
 
     card.appendChild(titleRow);
 
+    // Target quarter (if set).
+    if (project.target_quarter) {
+        const tqBadge = document.createElement("span");
+        tqBadge.className = "badge";
+        tqBadge.textContent = project.target_quarter;
+        titleRow.appendChild(tqBadge);
+    }
+
     // Linked goal (if any).
     if (project.goal_id) {
         const goal = projectsGoals.find((g) => g.id === project.goal_id);
@@ -223,6 +231,7 @@ function projectDetailNew() {
     document.getElementById("projectName").value = "";
     document.getElementById("projectType").value = "work";
     document.getElementById("projectColor").value = DEFAULT_PROJECT_COLOR;
+    document.getElementById("projectTargetQuarter").value = "";
     document.getElementById("projectSortOrder").value = "0";
     populateGoalDropdown(null);
     document.getElementById("projectTaskSummary").style.display = "none";
@@ -237,6 +246,7 @@ function projectDetailOpen(project) {
     document.getElementById("projectName").value = project.name;
     document.getElementById("projectType").value = project.type;
     document.getElementById("projectColor").value = project.color || DEFAULT_PROJECT_COLOR;
+    document.getElementById("projectTargetQuarter").value = project.target_quarter || "";
     document.getElementById("projectSortOrder").value = String(project.sort_order || 0);
     populateGoalDropdown(project.goal_id);
 
@@ -268,6 +278,7 @@ async function projectDetailSave(e) {
         name: document.getElementById("projectName").value.trim(),
         type: document.getElementById("projectType").value,
         color: document.getElementById("projectColor").value || null,
+        target_quarter: document.getElementById("projectTargetQuarter").value.trim() || null,
         goal_id: goalSel || null,
         sort_order: sortRaw === "" ? 0 : parseInt(sortRaw, 10) || 0,
     };

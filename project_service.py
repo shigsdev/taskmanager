@@ -64,6 +64,7 @@ def create_project(data: dict) -> Project:
         name=name,
         type=_parse_enum(ProjectType, data.get("type", "work"), "type"),
         color=(data.get("color") or "").strip() or None,
+        target_quarter=(data.get("target_quarter") or "").strip() or None,
         goal_id=_parse_uuid(data.get("goal_id"), "goal_id"),
         sort_order=_parse_int(data.get("sort_order", 0), "sort_order"),
     )
@@ -88,7 +89,10 @@ def list_projects(
     return list(db.session.scalars(stmt))
 
 
-_UPDATABLE_FIELDS = {"name", "type", "color", "goal_id", "is_active", "sort_order"}
+_UPDATABLE_FIELDS = {
+    "name", "type", "color", "target_quarter",
+    "goal_id", "is_active", "sort_order",
+}
 
 
 def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
@@ -107,6 +111,9 @@ def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
 
     if "color" in data:
         project.color = (data["color"] or "").strip() or None
+
+    if "target_quarter" in data:
+        project.target_quarter = (data["target_quarter"] or "").strip() or None
 
     if "goal_id" in data:
         project.goal_id = _parse_uuid(data["goal_id"], "goal_id")

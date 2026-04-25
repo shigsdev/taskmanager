@@ -50,7 +50,37 @@ def test_create_project_201(authed_client):
 def test_create_project_minimal(authed_client):
     resp = authed_client.post("/api/projects", json={"name": "Minimal"})
     assert resp.status_code == 201
-    assert resp.get_json()["color"] is None
+    body = resp.get_json()
+    assert body["color"] is None
+    assert body["target_quarter"] is None
+
+
+def test_create_project_with_target_quarter(authed_client):
+    """Bug #61 (2026-04-25): projects can carry a target_quarter for planning."""
+    resp = authed_client.post(
+        "/api/projects",
+        json={"name": "Q4 Push", "target_quarter": "2026-Q4"},
+    )
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert body["target_quarter"] == "2026-Q4"
+
+
+def test_patch_project_target_quarter_round_trip(authed_client):
+    """Set target_quarter via PATCH, then GET, then clear it."""
+    pid = authed_client.post(
+        "/api/projects", json={"name": "RT", "type": "personal"}
+    ).get_json()["id"]
+    # PATCH a value
+    resp = authed_client.patch(f"/api/projects/{pid}", json={"target_quarter": "2026-Q3"})
+    assert resp.status_code == 200
+    assert resp.get_json()["target_quarter"] == "2026-Q3"
+    # GET round-trips
+    assert authed_client.get(f"/api/projects/{pid}").get_json()["target_quarter"] == "2026-Q3"
+    # Clearing with empty string returns null
+    resp = authed_client.patch(f"/api/projects/{pid}", json={"target_quarter": ""})
+    assert resp.status_code == 200
+    assert resp.get_json()["target_quarter"] is None
 
 
 def test_create_project_with_goal(authed_client, app):

@@ -148,6 +148,7 @@ class Project(db.Model):
         Enum(ProjectType), nullable=False, default=ProjectType.WORK
     )
     color: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    target_quarter: Mapped[str | None] = mapped_column(String(20), nullable=True)
     goal_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("goals.id"), nullable=True
     )
