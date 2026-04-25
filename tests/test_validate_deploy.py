@@ -54,6 +54,73 @@ class TestMinutesSince:
 # --- do_log_check ------------------------------------------------------------
 
 
+class TestFetchDebugLogsUrl:
+    """Bug #49 regression: the URL the script constructs for the
+    /api/debug/logs query must use the param name the endpoint actually
+    reads (`since=Nm` shorthand, NOT `since_minutes=N`). Prior version
+    sent `since_minutes=` which the endpoint silently ignored, falling
+    back to its 1-hour default — every deploy validate erroneously
+    flagged errors up to an hour pre-deploy as RED."""
+
+    def test_uses_since_shorthand_not_since_minutes(self):
+        """Pass since_minutes=5 → URL must contain `since=5m`, NOT
+        `since_minutes=5`. Prevents the false-positive DEPLOY RED that
+        bit us 4× in 2026-04-24/25."""
+        from unittest.mock import MagicMock, patch
+        captured_url = {}
+
+        def _fake_run(cmd, *args, **kwargs):
+            # Last positional arg in the curl invocation is the URL
+            captured_url["url"] = cmd[-1]
+            res = MagicMock()
+            res.stdout = '{"logs":[],"count":0}\n200'
+            res.returncode = 0
+            return res
+
+        with patch.object(vd.subprocess, "run", side_effect=_fake_run):
+            vd.fetch_debug_logs(
+                "https://example.com/api/debug/logs",
+                "cookie",
+                level="ERROR",
+                since_minutes=5,
+                limit=50,
+            )
+        url = captured_url.get("url", "")
+        assert "since=5m" in url, (
+            f"URL must use `since=5m` (the param the endpoint reads); "
+            f"saw {url!r}"
+        )
+        # Belt-and-braces: ensure we did NOT send the broken param name.
+        assert "since_minutes=" not in url, (
+            f"Bug #49 regression: URL contained the unrecognized "
+            f"`since_minutes=` param; saw {url!r}"
+        )
+
+    def test_omits_since_when_no_since_minutes(self):
+        """If since_minutes is None or 0, the URL must not include any
+        since= param — let the endpoint use its 1h default."""
+        from unittest.mock import MagicMock, patch
+        captured_url = {}
+
+        def _fake_run(cmd, *args, **kwargs):
+            captured_url["url"] = cmd[-1]
+            res = MagicMock()
+            res.stdout = '{"logs":[],"count":0}\n200'
+            res.returncode = 0
+            return res
+
+        with patch.object(vd.subprocess, "run", side_effect=_fake_run):
+            vd.fetch_debug_logs(
+                "https://example.com/api/debug/logs",
+                "cookie",
+                level="ERROR",
+                since_minutes=None,
+                limit=50,
+            )
+        url = captured_url.get("url", "")
+        assert "since" not in url
+
+
 class TestDoLogCheck:
     """Classifier over fetch_debug_logs output.
 

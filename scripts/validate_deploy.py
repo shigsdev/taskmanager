@@ -149,7 +149,13 @@ def fetch_debug_logs(
     """
     qs = [f"level={level}", f"limit={limit}"]
     if since_minutes is not None and since_minutes > 0:
-        qs.append(f"since_minutes={since_minutes}")
+        # Bug #49: the endpoint reads `?since=` (shorthand `Nm`/`Nh`/`Nd`
+        # or ISO-8601), NOT `?since_minutes=`. The prior version sent
+        # `since_minutes=` which the endpoint silently ignored, falling
+        # back to its default 1-hour window — so every deploy validate
+        # post-2026-04-25 reported false-positive RED on errors that
+        # actually predated the new container by up to an hour.
+        qs.append(f"since={since_minutes}m")
     full_url = f"{url}?{'&'.join(qs)}"
     try:
         result = subprocess.run(
