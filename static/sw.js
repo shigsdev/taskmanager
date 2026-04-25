@@ -5,11 +5,12 @@
  * Bump CACHE_VERSION when deploying new static files.
  */
 
-var CACHE_VERSION = "v53";
+var CACHE_VERSION = "v54";
 var CACHE_NAME = "taskmanager-" + CACHE_VERSION;
 
+// HTML is intentionally NOT pre-cached (see fetch handler below — Bug #56).
+// Only static assets go in here.
 var APP_SHELL = [
-    "/",
     "/static/style.css",
     "/static/app.js",
     "/static/parse_capture.js",
@@ -73,25 +74,18 @@ self.addEventListener("fetch", function (event) {
     // Skip non-GET requests
     if (event.request.method !== "GET") return;
 
-    // API calls and HTML pages: network-first with cache fallback
+    // API calls and HTML pages: always network, never cached.
+    //
+    // Bug #56 (2026-04-24): we used to cache HTML responses for offline
+    // fallback, but that created a post-deploy race — the new HTML
+    // referenced new hashed-by-version assets, but a stale cached copy
+    // of the HTML kept loading old asset URLs until the user did a hard
+    // refresh. Pages need the API to be useful anyway, so the offline
+    // HTML fallback was mostly theoretical. Drop it: HTML always comes
+    // from the network. Static assets below are still cached normally.
     var acceptHeader = event.request.headers.get("accept") || "";
     if (url.pathname.startsWith("/api/") || acceptHeader.includes("text/html")) {
-        event.respondWith(
-            fetch(event.request)
-                .then(function (response) {
-                    // Cache successful page responses for offline fallback
-                    if (response.ok && acceptHeader.includes("text/html")) {
-                        var clone = response.clone();
-                        caches.open(CACHE_NAME).then(function (cache) {
-                            cache.put(event.request, clone);
-                        });
-                    }
-                    return response;
-                })
-                .catch(function () {
-                    return caches.match(event.request);
-                })
-        );
+        event.respondWith(fetch(event.request));
         return;
     }
 
