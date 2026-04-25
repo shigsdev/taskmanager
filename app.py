@@ -85,6 +85,15 @@ def _ensure_postgres_enum_values() -> None:
                 "ALTER TYPE tier ADD VALUE IF NOT EXISTS 'NEXT_WEEK'",
                 "ALTER TYPE tier ADD VALUE IF NOT EXISTS 'TOMORROW'",
                 "ALTER TYPE taskstatus ADD VALUE IF NOT EXISTS 'CANCELLED'",
+                # Bug #52 (2026-04-24): same alembic-rollback issue as
+                # NEXT_WEEK/TOMORROW/CANCELLED — ProjectType.PERSONAL
+                # was added by an earlier migration that silently rolled
+                # back, leaving production projecttype enum with only
+                # 'WORK'. Saving any Personal project from the UI
+                # returned a 500 with a blank error message (the only
+                # caught exception is ValidationError; everything else
+                # bubbles up un-shaped).
+                "ALTER TYPE projecttype ADD VALUE IF NOT EXISTS 'PERSONAL'",
             ):
                 try:
                     conn.execute(text(sql))
