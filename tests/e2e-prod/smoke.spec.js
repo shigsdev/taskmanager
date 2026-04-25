@@ -106,6 +106,41 @@ test.describe("Prod smoke — page renders", () => {
         await expect(page.locator("#filterCategory")).toBeVisible();
         expect(errors).toEqual([]);
     });
+
+    /**
+     * Bug #55 (2026-04-25): /architecture pages embed Mermaid diagrams
+     * loaded from cdn.jsdelivr.net via <script type="module">. After a
+     * deploy, a stale-SW-cache combo could leave the diagrams
+     * unrendered (raw text inside <pre>). Phase 6 verification ran in
+     * dev-bypass (no CSP, no SW) and missed it. This test runs
+     * against the live URL and asserts at least one Mermaid SVG
+     * actually rendered — catching CSP regressions, jsdelivr
+     * outages, ad-blocker effects, and stale-SW combos.
+     */
+    test("architecture page renders Mermaid diagrams", async ({ page }) => {
+        const errors = [];
+        page.on("pageerror", (err) => errors.push(err.message));
+
+        await page.goto("/architecture?nosw=1");
+        await page.waitForLoadState("networkidle");
+
+        // Mermaid script loads from CDN then converts every
+        // <pre class="mermaid"> into an <svg>. Wait up to 10s for the
+        // first conversion to complete — accommodates slow CDN fetch
+        // on a first-deploy cold container.
+        await expect(
+            page.locator("pre.mermaid svg").first(),
+        ).toBeVisible({ timeout: 10_000 });
+
+        // Sanity: should have multiple diagrams rendered, not just one.
+        // /architecture currently has 10 (1 ER + 4 simple flows + 4
+        // detailed flows + 1 ship-lifecycle). Assert >=5 to leave
+        // headroom for content changes without breaking the gate.
+        const svgCount = await page.locator("pre.mermaid svg").count();
+        expect(svgCount).toBeGreaterThanOrEqual(5);
+
+        expect(errors).toEqual([]);
+    });
 });
 
 test.describe("Prod smoke — API responds correctly", () => {

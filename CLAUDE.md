@@ -237,6 +237,28 @@ Report.
   3. Always navigate with `?nosw=1` to prevent service worker reload loops
      in the headless browser (e.g. `http://localhost:5111/?nosw=1`)
 
+  **Phase 6 limitation — `?nosw=1` masks SW + CSP differences from prod
+  (Bug #55, 2026-04-25):** the dev bypass disables both the service
+  worker (via `?nosw=1`) AND Talisman/CSP enforcement (via the
+  `if not TESTING and FLASK_ENV != development` gate in app.py). Pages
+  that rely on external scripts (Mermaid CDN on `/architecture`,
+  future CDN-loaded libs) need an additional check against prod after
+  ship. Two options:
+  - **Preferred**: ensure the prod-side smoke test asserts the rendered
+    output (e.g. `expect(page.locator('pre.mermaid svg').first()).toBeVisible()`).
+    See `tests/e2e-prod/smoke.spec.js` "architecture page renders Mermaid
+    diagrams" for the pattern. This catches the regression at
+    deploy-validate time, not user-report time.
+  - **Manual fallback**: after deploy validation passes, do one more
+    real-browser load of the affected page WITHOUT `?nosw=1` and
+    confirm the page works through the SW path. Document in the SOP
+    Compliance Report.
+
+  This gap is the same class as #53's SQLite-vs-Postgres limitation —
+  test environment ≠ prod environment. Mitigations are mechanical
+  assertions in prod smoke (preferred) or explicit SOP human-process
+  rules (fallback when mechanical isn't feasible).
+
   **Visual checks** (both viewports — desktop first, then mobile):
   3. Navigate to every page affected by the change
   4. For each page, check:
