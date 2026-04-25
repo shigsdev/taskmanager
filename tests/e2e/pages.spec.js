@@ -200,6 +200,143 @@ test.describe("Detail panel", () => {
             }, [taskId, projectId]);
         }
     });
+
+    /**
+     * Bug #58 sweep (2026-04-25): #57 was a silent payload drop. Sibling
+     * bugs of the same class would silently drop other detail-panel
+     * fields. This test sets EVERY field on a task via the detail panel,
+     * saves, then asserts each value persisted via the API. Catches any
+     * field that the save handler is silently rewriting or dropping.
+     *
+     * Note: checklist + repeat are tested separately because their UI
+     * shape is dynamic.
+     */
+    test("every detail-panel field round-trips via save-and-reload", async ({ page }) => {
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+
+        // Seed: project (work), goal, task — so dropdowns have selectable values.
+        const seed = await page.evaluate(async () => {
+            const proj = await fetch("/api/projects", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: "RoundTrip Proj", type: "work" }),
+            }).then((r) => r.json());
+            const goal = await fetch("/api/goals", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    title: "RoundTrip Goal",
+                    category: "work",
+                    priority: "should",
+                    quarter: "2026-Q4",
+                }),
+            }).then((r) => r.json());
+            const task = await fetch("/api/tasks", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title: "roundtrip-task", type: "work", tier: "inbox" }),
+            }).then((r) => r.json());
+            return { projectId: proj.id, goalId: goal.id, taskId: task.id };
+        });
+
+        try {
+            await page.reload();
+            await page.waitForLoadState("networkidle");
+            await page.evaluate(async (id) => {
+                const t = await fetch(`/api/tasks/${id}`).then((r) => r.json());
+                window.taskDetailOpen(t);
+            }, seed.taskId);
+            await expect(page.locator("#detailPanel")).toBeVisible();
+
+            // Set every field. Distinct values so silent overwrites are easy
+            // to spot in the assertion message.
+            await page.fill("#detailTitle", "round-trip new title");
+            await page.selectOption("#detailTier", "today");
+            await page.selectOption("#detailType", "work");
+            await page.selectOption("#detailProject", seed.projectId);
+            await page.fill("#detailDueDate", "2026-12-31");
+            await page.selectOption("#detailGoal", seed.goalId);
+            await page.fill("#detailUrl", "https://example.com/round-trip");
+            await page.fill("#detailNotes", "round-trip notes body");
+
+            await page.evaluate(() => document.getElementById("detailForm").requestSubmit());
+            await expect(page.locator("#detailOverlay")).toBeHidden({ timeout: 3000 });
+
+            const persisted = await page.evaluate(async (id) => {
+                return await fetch(`/api/tasks/${id}`).then((r) => r.json());
+            }, seed.taskId);
+
+            expect(persisted.title, "title").toBe("round-trip new title");
+            expect(persisted.tier, "tier").toBe("today");
+            expect(persisted.type, "type").toBe("work");
+            expect(persisted.project_id, "project_id").toBe(seed.projectId);
+            expect(persisted.due_date, "due_date").toBe("2026-12-31");
+            expect(persisted.goal_id, "goal_id").toBe(seed.goalId);
+            expect(persisted.url, "url").toBe("https://example.com/round-trip");
+            expect(persisted.notes, "notes").toBe("round-trip notes body");
+        } finally {
+            await page.evaluate(async (s) => {
+                await fetch(`/api/tasks/${s.taskId}`, { method: "DELETE" });
+                await fetch(`/api/projects/${s.projectId}`, { method: "DELETE" });
+                await fetch(`/api/goals/${s.goalId}`, { method: "DELETE" });
+            }, seed);
+        }
+    });
+
+    /**
+     * Bug #58 sweep (2026-04-25): checklist items are stored as JSON in the
+     * task row. They have a dynamic DOM (one row per item, add/remove
+     * buttons). A silent drop here would mean a user adds steps to a task,
+     * saves, and the steps disappear on reload. Test that checklist
+     * items round-trip both ways: add new ones, save, reload, assert
+     * they're still there.
+     */
+    test("checklist items round-trip via save-and-reload", async ({ page }) => {
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+
+        const taskId = await page.evaluate(async () => {
+            const r = await fetch("/api/tasks", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title: "checklist-test", type: "work", tier: "inbox" }),
+            });
+            return (await r.json()).id;
+        });
+
+        try {
+            await page.reload();
+            await page.waitForLoadState("networkidle");
+            await page.evaluate(async (id) => {
+                const t = await fetch(`/api/tasks/${id}`).then((r) => r.json());
+                window.taskDetailOpen(t);
+            }, taskId);
+            await expect(page.locator("#detailPanel")).toBeVisible();
+
+            // Add three checklist items via the helper that the UI uses.
+            await page.evaluate(() => {
+                window.taskDetailAddChecklistRow("buy bread", false);
+                window.taskDetailAddChecklistRow("buy milk", true);
+                window.taskDetailAddChecklistRow("buy eggs", false);
+            });
+
+            await page.evaluate(() => document.getElementById("detailForm").requestSubmit());
+            await expect(page.locator("#detailOverlay")).toBeHidden({ timeout: 3000 });
+
+            const persisted = await page.evaluate(async (id) => {
+                return await fetch(`/api/tasks/${id}`).then((r) => r.json());
+            }, taskId);
+            expect(persisted.checklist).toHaveLength(3);
+            expect(persisted.checklist.map((c) => c.text)).toEqual(["buy bread", "buy milk", "buy eggs"]);
+            expect(persisted.checklist[1].checked).toBe(true);
+            expect(persisted.checklist[0].checked).toBe(false);
+        } finally {
+            await page.evaluate(async (id) => {
+                await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+            }, taskId);
+        }
+    });
 });
 
 test.describe("Goals page filters", () => {

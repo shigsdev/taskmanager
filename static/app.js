@@ -9,6 +9,12 @@ const PROJECTS_API = "/api/projects";
 
 let allTasks = [];
 let allGoals = [];
+// #59 (2026-04-25): track load state separately from `[]` so the bulk
+// dropdowns can distinguish "still loading — try again in a moment"
+// from "truly no goals exist — go create one." Without this the user
+// sees a misleading empty dropdown on early clicks.
+let goalsLoaded = false;
+let projectsLoaded = false;
 let allProjects = [];
 let allPreviews = [];  // recurring-template previews (#32). Each item:
 // {template_id, title, type, frequency, project_id, goal_id,
@@ -47,13 +53,29 @@ async function loadTasks() {
     renderBoard();
 }
 
+// #59 (2026-04-25): wrap goal/project loads in try/catch matching the
+// loadTasks pattern. Without this, a network blip or 401 on /api/goals
+// would leave allGoals = [] silently, and the bulk-edit + detail-panel
+// dropdowns would render empty with no feedback to the user.
 async function loadGoals() {
-    allGoals = await apiFetch(GOALS_API);
+    try {
+        allGoals = await apiFetch(GOALS_API);
+        goalsLoaded = true;
+    } catch (err) {
+        console.error("Failed to load goals:", err);
+        return;
+    }
     taskDetailPopulateGoals();
 }
 
 async function loadProjects() {
-    allProjects = await apiFetch(PROJECTS_API);
+    try {
+        allProjects = await apiFetch(PROJECTS_API);
+        projectsLoaded = true;
+    } catch (err) {
+        console.error("Failed to load projects:", err);
+        return;
+    }
     taskDetailPopulateProjects();
     renderProjectFilter();
 }
@@ -1985,6 +2007,16 @@ function initBulkSelect() {
         for (const g of allGoals) {
             items.push({ label: g.title, onClick: () => bulkPatch({ goal_id: g.id }) });
         }
+        // #59 (2026-04-25): if there are no goals, distinguish "still
+        // loading" from "truly empty." User reported a delay where the
+        // dropdown was misleadingly empty for a few seconds before goals
+        // loaded — happens on a slow network or cold container.
+        if (allGoals.length === 0) {
+            const msg = goalsLoaded
+                ? "(no goals available — create one on Goals page)"
+                : "(loading goals… try again in a moment)";
+            items.push({ label: msg, onClick: () => {} });
+        }
         showBulkDropdown(goalBtn, items);
     });
 
@@ -1993,6 +2025,12 @@ function initBulkSelect() {
         const items = [{ label: "(no project)", onClick: () => bulkPatch({ project_id: null }) }];
         for (const p of allProjects) {
             items.push({ label: p.name, onClick: () => bulkPatch({ project_id: p.id }) });
+        }
+        if (allProjects.length === 0) {
+            const msg = projectsLoaded
+                ? "(no projects available — create one on Projects page)"
+                : "(loading projects… try again in a moment)";
+            items.push({ label: msg, onClick: () => {} });
         }
         showBulkDropdown(projBtn, items);
     });
