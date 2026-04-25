@@ -73,6 +73,50 @@ class TestArchitectureRoute:
         # The pages table (always visible) renders as <table class="pages-table">
         assert 'class="pages-table"' in body
 
+    def test_quality_and_testing_section_renders(self, authed_client):
+        """#54: new "Quality & testing" section between Process flows
+        and the engineering details. Anchors must be present so the
+        TOC links work."""
+        resp = authed_client.get("/architecture")
+        body = resp.get_data(as_text=True)
+        # New TOC group + section anchors
+        assert "Quality &amp; testing" in body
+        assert 'id="ship-lifecycle"' in body
+        assert 'id="quality-gates"' in body
+        assert 'id="drift-gates"' in body
+        assert 'id="testing-limitations"' in body
+
+    def test_quality_gates_table_lists_all_11_gates(self, authed_client):
+        """#54: the 11 quality gates table must mention every gate
+        from run_all_gates.sh by name. If a contributor adds a new
+        gate without updating the table, this test fails."""
+        resp = authed_client.get("/architecture")
+        body = resp.get_data(as_text=True)
+        # Spot-check the gate names that appear in run_all_gates.sh
+        for gate_name in (
+            "ruff", "pytest", "Jest", "Playwright", "bandit",
+            "pip-audit", "npm audit", "docs_sync_check",
+            "arch_sync_check", "semgrep", "gitleaks",
+        ):
+            assert gate_name in body, (
+                f"Quality & testing section missing reference to gate {gate_name!r}"
+            )
+
+    def test_drift_gates_table_lists_known_drift_prevention(self, authed_client):
+        """#54: the drift-gates table must call out the mechanical
+        sync checks that were added in response to specific bug classes."""
+        resp = authed_client.get("/architecture")
+        body = resp.get_data(as_text=True)
+        # Each drift gate ties to a numbered bug for traceability.
+        for ref in (
+            "test_every_model_table_has_a_group",
+            "test_every_column_has_a_description",
+            "check_enum_coverage",
+            "test_repo_hygiene",
+            "_build_enum_repair_statements",
+        ):
+            assert ref in body
+
     def test_per_table_cards_render_with_pk_callout(self, authed_client):
         """#44: each db.Model has a per-table card with a 🔑 Primary
         key callout under the description, before the column list."""

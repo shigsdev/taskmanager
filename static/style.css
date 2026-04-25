@@ -2583,3 +2583,37 @@ details.engineering > div.eng-body {
 /* Numbered prose lists (used inside "What's running" + "step by step" blocks). */
 ol.prose-list { line-height: 1.7; padding-left: 24px; }
 ol.prose-list li { margin-bottom: 8px; }
+
+/* #54 — Quality & testing tables on /architecture (gates catalog,
+   drift gates, known limitations). Same shape as schema-table but
+   tighter line height for dense reference data. */
+table.quality-gates {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 0.92em;
+}
+table.quality-gates th,
+table.quality-gates td {
+    text-align: left;
+    padding: 8px 10px;
+    border: 1px solid var(--border, #e1e4e8);
+    vertical-align: top;
+}
+table.quality-gates th {
+    background: var(--bg-subtle, #f6f8fa);
+    font-weight: 600;
+}
+table.quality-gates td:first-child {
+    white-space: nowrap;
+    font-weight: 600;
+}
+/* When the first cell is short numeric (gate # column), narrow it. */
+table.quality-gates td:first-child:not(:has(code)) {
+    width: 40px;
+    text-align: center;
+}
+table.quality-gates code {
+    font-size: 0.95em;
+    word-break: break-word;
+}

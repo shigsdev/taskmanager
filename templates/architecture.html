@@ -40,6 +40,14 @@
             <li><a href="#flow-auth">Signing in</a></li>
         </ul>
 
+        <h3 class="docs-toc-group">Quality &amp; testing</h3>
+        <ul>
+            <li><a href="#ship-lifecycle">Ship lifecycle</a></li>
+            <li><a href="#quality-gates">11 quality gates</a></li>
+            <li><a href="#drift-gates">Drift-prevention gates</a></li>
+            <li><a href="#testing-limitations">Known testing limitations</a></li>
+        </ul>
+
         <p class="docs-toc-hint">
             Plain-English up top, engineering detail (Mermaid sequence
             diagrams, full ARCHITECTURE.md, /api/* routes) in
@@ -728,6 +736,268 @@ flowchart TD
                         bypass), <strong>003</strong> (validator cookie
                         narrow scope, SUPERSEDED), <strong>004</strong>
                         (broaden validator to GET-only routes).
+                    </p>
+                </div>
+            </details>
+        </section>
+
+        {# =============================================================
+           QUALITY & TESTING (#54)
+           ============================================================= #}
+
+        <section class="docs-section">
+            <h2>Quality &amp; testing</h2>
+
+            <p>
+                How code gets from "I just edited a file" to "live on
+                Railway" — the gates it passes through, what each catches,
+                and the limitations of what local testing can verify.
+                Useful both as engineering reference for anyone working
+                in the repo and as future-self orientation when
+                investigating why something slipped past tests.
+            </p>
+
+            {# ---- Ship lifecycle ---- #}
+
+            <h3 id="ship-lifecycle">Ship lifecycle</h3>
+            <p>
+                Every code change goes through the same sequence —
+                pre-deploy gates locally, then a real Railway deploy,
+                then post-deploy verification, then a separate "flip"
+                commit marking the BACKLOG item ✅.
+            </p>
+
+            <div class="flow-diagram">
+                <span class="flow-label simple">At a glance</span>
+                <pre class="mermaid">
+flowchart TD
+    Edit([Edit code]) --> Gates{11 quality gates<br/>bash scripts/run_all_gates.sh}
+    Gates -- Any fail --> Fix[Fix the failure]
+    Fix --> Gates
+    Gates -- All green --> Commit[Commit on feature branch]
+    Commit --> Phase6{UI change?}
+    Phase6 -- Yes --> Browser[Phase 6 manual regression<br/>desktop + mobile via Claude Preview]
+    Phase6 -- No --> Merge
+    Browser --> Merge[Merge to main + push]
+    Merge --> Deploy[Railway auto-deploys]
+    Deploy --> Validate{validate_deploy.py<br/>SHA match · 9 healthz · log scan}
+    Validate -- RED --> Investigate[Investigate; rollback if needed]
+    Validate -- GREEN --> Smoke{npm run test:e2e:prod<br/>5 Playwright tests on live URL}
+    Smoke -- Any fail --> Investigate
+    Smoke -- 5/5 PASS --> Flip[Flip BACKLOG row to ✅<br/>separate commit]
+
+    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
+    classDef decision fill:#fef3c7,stroke:#a16207,color:#3a2806
+    classDef ok fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    classDef bad fill:#fee2e2,stroke:#b91c1c,color:#5a0a0a
+    class Edit startNode
+    class Gates,Phase6,Validate,Smoke decision
+    class Flip ok
+    class Investigate bad
+                </pre>
+                <div class="flow-diagram-caption">
+                    Diamond = a check. Green end = shipped. Red = back
+                    to investigation, possibly rollback.
+                </div>
+            </div>
+
+            {# ---- 11 quality gates table ---- #}
+
+            <h3 id="quality-gates">11 quality gates (pre-deploy)</h3>
+            <p>
+                Single command — <code>bash scripts/run_all_gates.sh</code>
+                — runs all 11 in sequence and exits non-zero on any
+                failure. Skipping a gate without a documented reason is
+                an SOP violation per CLAUDE.md. Bandit was tightened
+                from HIGH/HIGH to LOW/LOW in #20; the bar is strict.
+            </p>
+
+            <table class="quality-gates">
+                <thead>
+                    <tr><th>#</th><th>Gate</th><th>What it catches</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>1</td><td><code>ruff check</code></td><td>Python lint (style, unused imports, line length, import order, ~700 rules)</td></tr>
+                    <tr><td>2</td><td><code>pytest --cov</code></td><td>Python unit + route tests, 80% coverage floor (currently ~86%). The Postgres-enum bug class slips past here because tests run on SQLite (#53)</td></tr>
+                    <tr><td>3</td><td><code>npm test</code> (Jest)</td><td>JavaScript unit tests — capture parser, day-of-week grouper, etc.</td></tr>
+                    <tr><td>4</td><td><code>npm run test:e2e</code> (Playwright local)</td><td>23 browser E2E tests — service worker lifecycle, Web Speech API, real DOM interaction. Auto-manages a bypass server. Currently broken on Mac (#41)</td></tr>
+                    <tr><td>5</td><td><code>bandit</code></td><td>Python security antipatterns at LOW/LOW threshold (#20) — subprocess shell injection, weak hashes, etc.</td></tr>
+                    <tr><td>6</td><td><code>pip-audit</code></td><td>Known CVEs in <code>requirements.txt</code> — fails on any HIGH+ severity</td></tr>
+                    <tr><td>7</td><td><code>npm audit</code></td><td>Known CVEs in <code>package.json</code> — fails on HIGH+ only (LOW/MED warn)</td></tr>
+                    <tr><td>8</td><td><code>docs_sync_check.py</code></td><td>Every env var read in code is documented in README's env-var table (drift gate)</td></tr>
+                    <tr><td>8b</td><td><code>arch_sync_check.py</code></td><td>Every <code>@app.route</code> / <code>@bp.verb</code> / <code>scheduler.add_job(id=)</code> name appears in ARCHITECTURE.md (drift gate)</td></tr>
+                    <tr><td>9</td><td><code>semgrep</code></td><td>Flask + OWASP security patterns — Jinja unescaped output, hardcoded secrets, SQL string concat. Cross-platform PATH issue on Win Python 3.14 (#16)</td></tr>
+                    <tr><td>10</td><td><code>gitleaks</code></td><td>Secrets in staged content (and full history) via <code>.gitleaks.toml</code> rule pack. Also runs as <code>.githooks/pre-commit</code> hook (#17)</td></tr>
+                </tbody>
+            </table>
+
+            {# ---- Drift gates ---- #}
+
+            <h3 id="drift-gates">Drift-prevention gates</h3>
+            <p>
+                Mechanical sync checks that prevent specific bug classes
+                from recurring. Each was added in response to a real
+                incident — listed with the bug it prevents.
+            </p>
+
+            <table class="quality-gates">
+                <thead>
+                    <tr><th>Gate</th><th>What it asserts</th><th>Prevents recurrence of</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>arch_sync_check.py</code></td>
+                        <td>Every route / scheduler job / API endpoint name from code appears in ARCHITECTURE.md</td>
+                        <td>ARCHITECTURE.md drifted 3× before this gate landed (#21-35 catchups)</td>
+                    </tr>
+                    <tr>
+                        <td><code>docs_sync_check.py</code></td>
+                        <td>Every env var read in code is documented in README's env-var table</td>
+                        <td>Adding a new env var without README docs (the audit-pass concern)</td>
+                    </tr>
+                    <tr>
+                        <td><code>test_every_model_table_has_a_group</code></td>
+                        <td>Every <code>db.Model</code> subclass is classified in <code>_ER_TABLE_GROUPS</code> (core / ops / auth)</td>
+                        <td>Adding a new table without a color group on the /architecture ER diagram (#43)</td>
+                    </tr>
+                    <tr>
+                        <td><code>test_every_column_has_a_description</code></td>
+                        <td>Every non-universal column on every model has a plain-English description in <code>_SCHEMA_DESCRIPTIONS</code></td>
+                        <td>Adding a column without docs on the /architecture per-table cards (#44)</td>
+                    </tr>
+                    <tr>
+                        <td><code>check_enum_coverage</code> (in <code>/healthz</code>)</td>
+                        <td>Every Python enum member used as a column type exists in the live Postgres <code>pg_enum</code> catalog</td>
+                        <td>Postgres-enum-drift class (3× recurrence: #23, #25, #52 → #53 added prevention)</td>
+                    </tr>
+                    <tr>
+                        <td><code>test_repo_hygiene</code></td>
+                        <td>Shell scripts + git hooks have LF line endings (no CRLF), have correct shebangs</td>
+                        <td>Cross-platform exec failures from Windows autocrlf rewriting hook shebangs (#39)</td>
+                    </tr>
+                    <tr>
+                        <td><code>_build_enum_repair_statements</code></td>
+                        <td>Auto-derives <code>ALTER TYPE … ADD VALUE</code> for every Python enum member at boot — no manual list to drift behind</td>
+                        <td>Same as above (#53). Layer A complement to <code>check_enum_coverage</code></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            {# ---- Post-deploy verification ---- #}
+
+            <h3>Post-deploy verification</h3>
+            <p>
+                After <code>git push</code> Railway builds + rolling-
+                deploys. Two checks run against the live URL to confirm
+                the new container is actually serving correctly.
+            </p>
+            <ol class="flow-steps">
+                <li>
+                    <strong><code>python3.14 scripts/validate_deploy.py</code></strong>
+                    polls <code>/healthz</code> every 15s for up to 10
+                    minutes. Deploy is GREEN only when all of: SHA match
+                    (proves you're hitting the NEW container, not the
+                    old one), HTTP 200, all 9 health checks <code>ok</code>,
+                    auth preflight via the long-lived validator cookie,
+                    AND a clean error-log scan since the new container's
+                    <code>started_at</code> (the since-filter param-
+                    name bug from #49 is fixed).
+                </li>
+                <li>
+                    <strong><code>npm run test:e2e:prod</code></strong>
+                    runs 5 Playwright smoke tests against the live
+                    Railway URL using the validator cookie: auth
+                    status, home page renders w/o JS errors, goals page
+                    same, /api/tasks shape, /healthz reports git_sha.
+                </li>
+                <li>
+                    Only when both are GREEN does the BACKLOG row flip
+                    from 🔄 IN PROGRESS to ✅ — and that flip is a
+                    separate commit so the SHA history reads "ship,
+                    verify, mark done" in three discrete steps.
+                </li>
+            </ol>
+
+            {# ---- Known limitations ---- #}
+
+            <h3 id="testing-limitations">Known testing limitations</h3>
+            <p>
+                Things the local + post-deploy gates cannot catch.
+                Surfacing them honestly so future investigation knows
+                where to look when a bug "should" have been caught.
+            </p>
+            <table class="quality-gates">
+                <thead>
+                    <tr><th>Limitation</th><th>Why</th><th>Mitigation</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>SQLite vs Postgres</strong></td>
+                        <td>Local tests use SQLite (no native enum type, no concurrent locking, no pg-specific catalogs). Production is Postgres — strict enums, real concurrency.</td>
+                        <td>The <code>enum_coverage</code> healthz check (#53) catches the most common class. Post-deploy automation surfaces other Postgres-only issues at deploy time.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Validator cookie is GET-only</strong></td>
+                        <td>The post-deploy automation's auth token is intentionally narrow — it can't POST/PATCH/DELETE so a leaked cookie can't mutate data (ADR-004).</td>
+                        <td>Post-deploy smoke covers READ paths only. Mutating endpoints are exercised by local Playwright (which uses the dev bypass) + manual Phase 6 regression.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Local Playwright fails on Mac</strong></td>
+                        <td>Node TLS handshake mis-negotiates with Playwright's Azure CDN from this Mac specifically (#41). Doesn't affect prod or Windows.</td>
+                        <td>Mac contributors run gate 4 + prod e2e from the Windows desktop instead. Documented; not blocking.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>External API success is mocked</strong></td>
+                        <td>Tests don't actually call SendGrid / Whisper / Claude / Vision — would burn budget and be flaky. Mocked at the <code>egress.safe_call_api</code> seam.</td>
+                        <td>The Settings → SendGrid Test send button (#48) does a real round-trip when needed. Other services exercised when actually used.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>HTML routes still use Flask's default error page</strong></td>
+                        <td>The global error handler (#50) returns JSON only for /api/ paths to avoid breaking the browser experience on HTML routes.</td>
+                        <td>Acceptable — most failures the user sees are API calls. HTML route failures are rarer; address with a custom error template if/when needed.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Single-user app — multi-tenant assumptions untested</strong></td>
+                        <td>The <code>AUTHORIZED_EMAIL</code> single-user lockdown (ADR-001) assumes one user; rate limiting is per-process; recovery is manual restore from Railway backups.</td>
+                        <td>Out of threat model — see CLAUDE.md threat-model section. Revisit if multi-user is ever added.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <details class="engineering">
+                <summary>Engineering: how to actually run the gates + cascade rules</summary>
+                <div class="eng-body">
+                    <p><strong>Run all 11 gates locally:</strong></p>
+                    <pre>bash scripts/run_all_gates.sh</pre>
+                    <p>
+                        Single command, exits 0 only if all pass. The
+                        script auto-manages the bypass server for gate 4
+                        and tears it down on exit. Skipping a gate is an
+                        SOP violation; if a gate genuinely cannot run in
+                        this environment (e.g. node missing on a Mac
+                        without node dev setup), the commit message
+                        must include a <code>Gates-skipped: &lt;gate&gt;
+                        (&lt;reason&gt;)</code> trailer.
+                    </p>
+                    <p><strong>Post-deploy validation:</strong></p>
+                    <pre>python3.14 scripts/validate_deploy.py
+export TASKMANAGER_SESSION_COOKIE="$(cat ~/.taskmanager-session-cookie)"
+npm run test:e2e:prod</pre>
+                    <p><strong>CLAUDE.md cascade-check rules</strong> (auto-applied on every change — see CLAUDE.md):</p>
+                    <ul>
+                        <li>New env var → README env-var table; <code>docs_sync_check</code> enforces</li>
+                        <li>New route / scheduler job / API endpoint → ARCHITECTURE.md; <code>arch_sync_check</code> enforces</li>
+                        <li>New file-upload endpoint → use <code>utils.validate_upload</code> (ADR-025); add oversize/empty/MIME tests</li>
+                        <li>New external API caller → route through <code>egress.safe_call_api</code> (ADR-023); add scrub-key test</li>
+                        <li>New <code>db.Model</code> subclass → add to <code>_ER_TABLE_GROUPS</code> + <code>_ER_TABLE_ORDER</code> + <code>_SCHEMA_DESCRIPTIONS</code>; drift-gate tests enforce (#43, #44, #53)</li>
+                        <li>New column on existing model → add description to <code>_SCHEMA_DESCRIPTIONS</code> (#44); drift-gate enforces</li>
+                        <li>New gate added to <code>run_all_gates.sh</code> → also update this section of /architecture (#54)</li>
+                        <li>User-visible behavior change → update <code>templates/docs.html</code> (Help) per the user-facing fact-check SOP</li>
+                    </ul>
+                    <p>
+                        Full cascade-check table with rationale per row
+                        lives in CLAUDE.md ("Cascade check — when you
+                        change X, what else must change?").
                     </p>
                 </div>
             </details>
