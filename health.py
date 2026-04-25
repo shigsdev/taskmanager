@@ -394,6 +394,61 @@ CRITICAL_CHECKS = {
 }
 
 
+def check_enum_coverage(db: Any) -> str:
+    """Bug #53: assert every Python enum member used as a column type
+    exists in the live Postgres enum.
+
+    This is the second layer of defense against the alembic
+    ALTER-TYPE-rolls-back-silently bug class (#23, #25, #52). The
+    first layer is `_ensure_postgres_enum_values()` in app.py, which
+    auto-emits ALTER TYPE for every member at boot. If that gate ever
+    silently fails (or someone deletes an enum value out-of-band), this
+    check catches it and turns the deploy red — surfacing in
+    `validate_deploy.py`'s `/healthz` poll instead of failing the next
+    user request with `InvalidTextRepresentation`.
+
+    SQLite skip: enums are stored as VARCHAR with no native enum type,
+    so there's nothing to verify.
+
+    Returns "ok" if every Python enum member appears in pg_enum.
+    Returns "fail: <enum>.<value> missing in Postgres (and N more)"
+    listing the first missing pair.
+    """
+    if db.engine.dialect.name != "postgresql":
+        return "skipped: not postgres"
+
+    from sqlalchemy import text
+    missing: list[str] = []
+    try:
+        with db.engine.connect() as conn:
+            for mapper in db.Model.registry.mappers:
+                if mapper.local_table is None:
+                    continue
+                for col in mapper.local_table.columns:
+                    enum_cls = getattr(col.type, "enum_class", None)
+                    if enum_cls is None:
+                        continue
+                    pg_enum_name = enum_cls.__name__.lower()
+                    rows = conn.execute(text(
+                        "SELECT enumlabel FROM pg_enum "
+                        "JOIN pg_type ON pg_type.oid = pg_enum.enumtypid "
+                        "WHERE pg_type.typname = :name",
+                    ), {"name": pg_enum_name}).fetchall()
+                    db_values = {r[0] for r in rows}
+                    for member in enum_cls:
+                        if member.name not in db_values:
+                            missing.append(f"{pg_enum_name}.{member.name}")
+    except Exception as e:
+        return f"warn: enum coverage check failed: {_short(e)}"
+
+    if missing:
+        first = missing[0]
+        rest = len(missing) - 1
+        suffix = f" (and {rest} more)" if rest > 0 else ""
+        return f"fail: {first} missing in Postgres{suffix}"
+    return "ok"
+
+
 def _safe_call(name: str, fn, *args) -> str:
     """Run a check but never let it raise — convert any unhandled
     exception to a ``warn:`` so /healthz stays up."""
@@ -420,6 +475,7 @@ def run_health_checks(app: Any, db: Any) -> dict:
         "encryption": _safe_call("encryption", check_encryption),
         "digest": _safe_call("digest", check_digest),
         "static_assets": _safe_call("static_assets", check_static_assets),
+        "enum_coverage": _safe_call("enum_coverage", check_enum_coverage, db),
     }
 
     # Overall ``status`` reflects ANY fail (for the report). HTTP 503

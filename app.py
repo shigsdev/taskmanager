@@ -72,6 +72,15 @@ def _ensure_postgres_enum_values() -> None:
     add the **UPPERCASE** member names. ``IF NOT EXISTS`` keeps this
     safe to run on every startup forever.
     """
+    # Bug #53 (2026-04-25): the prior implementation hardcoded a
+    # manually-curated list of ALTER TYPE statements (one per known
+    # missing value: NEXT_WEEK, TOMORROW, CANCELLED, PERSONAL). Three
+    # times now (#23, #25, #52), someone added a new Python enum value
+    # and forgot to update this list — silently breaking production until
+    # a user hit the new value at runtime. Now the list is DERIVED from
+    # `db.Model.registry`, so the bug class is impossible by construction.
+    # The drift gate is the SQL itself: every Python enum member used as
+    # a column type gets its own `IF NOT EXISTS` ALTER TYPE every boot.
     import logging
     log = logging.getLogger(__name__)
     try:
@@ -81,20 +90,7 @@ def _ensure_postgres_enum_values() -> None:
             return
         with engine.connect() as conn:
             conn = conn.execution_options(isolation_level="AUTOCOMMIT")
-            for sql in (
-                "ALTER TYPE tier ADD VALUE IF NOT EXISTS 'NEXT_WEEK'",
-                "ALTER TYPE tier ADD VALUE IF NOT EXISTS 'TOMORROW'",
-                "ALTER TYPE taskstatus ADD VALUE IF NOT EXISTS 'CANCELLED'",
-                # Bug #52 (2026-04-24): same alembic-rollback issue as
-                # NEXT_WEEK/TOMORROW/CANCELLED — ProjectType.PERSONAL
-                # was added by an earlier migration that silently rolled
-                # back, leaving production projecttype enum with only
-                # 'WORK'. Saving any Personal project from the UI
-                # returned a 500 with a blank error message (the only
-                # caught exception is ValidationError; everything else
-                # bubbles up un-shaped).
-                "ALTER TYPE projecttype ADD VALUE IF NOT EXISTS 'PERSONAL'",
-            ):
+            for sql in _build_enum_repair_statements():
                 try:
                     conn.execute(text(sql))
                 except Exception as e:  # noqa: BLE001
@@ -106,6 +102,42 @@ def _ensure_postgres_enum_values() -> None:
         # Don't crash startup if DB isn't reachable; health check covers
         # genuine connectivity issues. This is a repair gate, not critical.
         log.warning("enum repair gate failed: %s: %s", type(e).__name__, e)
+
+
+def _build_enum_repair_statements() -> list[str]:
+    """Derive the full set of `ALTER TYPE … ADD VALUE IF NOT EXISTS …`
+    statements from `db.Model.registry` — every enum member used as a
+    column type gets one, so the boot gate cannot drift behind the
+    Python enum definitions (#53).
+
+    Returns deduped, deterministically-ordered list (sort by enum name
+    then value name) so the boot logs are reproducible. SQLite skip
+    happens in the caller; this function is dialect-agnostic.
+
+    The Postgres enum type name is the lowercased Python class name
+    (SQLAlchemy's default for ``Enum(MyEnum)``). Member identifier in
+    storage is the Python NAME (UPPERCASE), not ``.value`` — matches
+    SQLAlchemy's default behaviour and the behaviour the prior bugs
+    revealed (see comment above).
+    """
+    from models import db
+
+    pairs: set[tuple[str, str]] = set()
+    for mapper in db.Model.registry.mappers:
+        if mapper.local_table is None:
+            continue
+        for col in mapper.local_table.columns:
+            enum_cls = getattr(col.type, "enum_class", None)
+            if enum_cls is None:
+                continue
+            pg_enum_name = enum_cls.__name__.lower()
+            for member in enum_cls:
+                pairs.add((pg_enum_name, member.name))
+
+    return [
+        f"ALTER TYPE {enum_name} ADD VALUE IF NOT EXISTS '{value}'"
+        for enum_name, value in sorted(pairs)
+    ]
 
 
 def create_app(config: dict | None = None) -> Flask:

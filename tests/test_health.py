@@ -12,6 +12,121 @@ import health
 # --- check_database ----------------------------------------------------------
 
 
+class TestCheckEnumCoverage:
+    """Bug #53: defense-in-depth check that every Python enum member
+    used as a column type exists in the live Postgres enum. SQLite
+    test runs hit the skip branch (no enum table to query)."""
+
+    def test_skipped_on_sqlite(self, app, db):
+        """Tests run on SQLite — the check should short-circuit with
+        'skipped: not postgres' rather than try (and fail) to query
+        pg_enum."""
+        with app.app_context():
+            result = health.check_enum_coverage(db)
+        assert result == "skipped: not postgres"
+
+    def test_fails_when_pg_enum_missing_value(self, monkeypatch):
+        """Simulate the bug class: Python enum has a member that the
+        Postgres enum doesn't. Check must return fail:."""
+        import enum as _enum
+        from unittest.mock import MagicMock
+
+        # Fake DB returning a postgres dialect + an empty enum row set.
+        fake_db = MagicMock()
+        fake_db.engine.dialect.name = "postgresql"
+        # `pg_enum` query returns no rows (DB has no enum values at all)
+        fake_conn = MagicMock()
+        fake_conn.execute.return_value.fetchall.return_value = []
+        fake_db.engine.connect.return_value.__enter__.return_value = fake_conn
+
+        # Fake one mapper with one column whose type carries an enum_class.
+        class _FakeEnum(_enum.StrEnum):
+            ALPHA = "alpha"
+            BETA = "beta"
+
+        fake_mapper = MagicMock()
+        fake_col = MagicMock()
+        fake_col.type.enum_class = _FakeEnum
+        fake_mapper.local_table.columns = [fake_col]
+        fake_db.Model.registry.mappers = [fake_mapper]
+
+        result = health.check_enum_coverage(fake_db)
+        assert result.startswith("fail:")
+        # Should mention at least one missing value
+        assert "ALPHA" in result or "BETA" in result
+
+    def test_ok_when_pg_enum_has_all_values(self, monkeypatch):
+        """All Python enum members appear in pg_enum → ok."""
+        import enum as _enum
+        from unittest.mock import MagicMock
+
+        fake_db = MagicMock()
+        fake_db.engine.dialect.name = "postgresql"
+        # pg_enum returns the values our Python enum has
+        fake_conn = MagicMock()
+        fake_conn.execute.return_value.fetchall.return_value = [("ALPHA",), ("BETA",)]
+        fake_db.engine.connect.return_value.__enter__.return_value = fake_conn
+
+        class _FakeEnum(_enum.StrEnum):
+            ALPHA = "alpha"
+            BETA = "beta"
+
+        fake_mapper = MagicMock()
+        fake_col = MagicMock()
+        fake_col.type.enum_class = _FakeEnum
+        fake_mapper.local_table.columns = [fake_col]
+        fake_db.Model.registry.mappers = [fake_mapper]
+
+        assert health.check_enum_coverage(fake_db) == "ok"
+
+
+# --- _build_enum_repair_statements (auto-derived ALTER TYPE) ---------------
+
+
+class TestBuildEnumRepairStatements:
+    """Bug #53: prevention — _build_enum_repair_statements derives the
+    ALTER TYPE list from db.Model.registry, eliminating the manual list
+    that drifted three times (#23, #25, #52)."""
+
+    def test_emits_alter_for_every_python_enum_member(self, app):
+        """For every (enum_class, member) used as a column type in
+        models.py, the function emits an ALTER TYPE statement. Catches
+        the bug class by construction — if a contributor adds
+        ProjectType.PERSONAL to the Python enum, the corresponding
+        ALTER TYPE appears in the boot gate without any manual edit."""
+        from app import _build_enum_repair_statements
+        with app.app_context():
+            stmts = _build_enum_repair_statements()
+        # Spot check known members: TaskType.WORK, ProjectType.PERSONAL
+        # (the missed-third-time #52 case), Tier.NEXT_WEEK, etc.
+        assert any("projecttype" in s and "PERSONAL" in s for s in stmts), (
+            "must emit ALTER TYPE for ProjectType.PERSONAL "
+            "(the bug that motivated #53)"
+        )
+        assert any("tier" in s and "NEXT_WEEK" in s for s in stmts)
+        assert any("tier" in s and "TOMORROW" in s for s in stmts)
+        assert any("taskstatus" in s and "CANCELLED" in s for s in stmts)
+
+    def test_uses_if_not_exists(self, app):
+        """Every statement must be IF NOT EXISTS so re-running on every
+        boot is safe (no error if the value's already there)."""
+        from app import _build_enum_repair_statements
+        with app.app_context():
+            stmts = _build_enum_repair_statements()
+        for s in stmts:
+            assert "IF NOT EXISTS" in s
+
+    def test_dedups_when_same_enum_used_by_multiple_columns(self, app):
+        """TaskType is used by both `tasks.type` and
+        `recurring_tasks.type` — the gate should emit ONE statement per
+        (enum, member), not duplicates."""
+        from app import _build_enum_repair_statements
+        with app.app_context():
+            stmts = _build_enum_repair_statements()
+        # No duplicate strings
+        assert len(stmts) == len(set(stmts))
+
+
 class TestCheckDatabase:
     def test_ok_when_select_works(self, app, db):
         with app.app_context():
