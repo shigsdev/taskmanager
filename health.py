@@ -107,6 +107,7 @@ EXPECTED_TABLES = {
 # Missing any of these means a broken build.
 EXPECTED_STATIC_FILES = (
     "static/app.js",
+    "static/task_detail_payload.js",
     "static/style.css",
     "static/sw.js",
     "static/parse_capture.js",

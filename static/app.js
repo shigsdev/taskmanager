@@ -1641,20 +1641,19 @@ async function taskDetailSave(e) {
         }
     });
 
-    const type = document.getElementById("detailType").value;
     const rawUrl = document.getElementById("detailUrl").value.trim();
-    const data = {
+    const data = buildTaskDetailPayload({
         title: document.getElementById("detailTitle").value.trim(),
         tier: document.getElementById("detailTier").value,
-        type: type,
-        project_id: type === "work" ? (document.getElementById("detailProject").value || null) : null,
-        due_date: document.getElementById("detailDueDate").value || null,
-        goal_id: document.getElementById("detailGoal").value || null,
-        url: rawUrl || null,
-        notes: document.getElementById("detailNotes").value || "",
+        type: document.getElementById("detailType").value,
+        project_id: document.getElementById("detailProject").value,
+        due_date: document.getElementById("detailDueDate").value,
+        goal_id: document.getElementById("detailGoal").value,
+        url: rawUrl,
+        notes: document.getElementById("detailNotes").value,
         checklist: clItems,
         repeat: taskDetailCollectRepeat(),
-    };
+    });
 
     try {
         await apiFetch(`${API}/${id}`, {

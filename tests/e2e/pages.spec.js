@@ -124,6 +124,82 @@ test.describe("Detail panel", () => {
         const panel = page.locator("#detailPanel");
         await expect(panel).toBeVisible({ timeout: 2000 });
     });
+
+    /**
+     * Bug #57 (2026-04-25): a stale `type === "work"` conditional in
+     * app.js taskDetailSave forced project_id: null on every non-work
+     * task save, silently dropping the dropdown selection. The API
+     * accepted what it received, so there was no error — only a
+     * round-trip assertion catches it. This test creates a personal
+     * task + personal project via the API, opens the detail panel,
+     * picks the project, saves, reloads, and asserts the dropdown
+     * still shows the project.
+     */
+    test("personal task project assignment persists across reload", async ({ page }) => {
+        // Navigate first so relative fetch URLs resolve against the dev origin.
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+
+        // Seed: create a personal project + personal task via API.
+        const projectId = await page.evaluate(async () => {
+            const r = await fetch("/api/projects", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: "Persist Test Proj", type: "personal" }),
+            });
+            return (await r.json()).id;
+        });
+
+        const taskId = await page.evaluate(async () => {
+            const r = await fetch("/api/tasks", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title: "persist-test-task", type: "personal", tier: "inbox" }),
+            });
+            return (await r.json()).id;
+        });
+
+        try {
+            // Reload so allProjects/allTasks include the freshly seeded rows
+            // and the project dropdown is populated.
+            await page.reload();
+            await page.waitForLoadState("networkidle");
+            await page.evaluate(async (id) => {
+                const t = await fetch(`/api/tasks/${id}`).then((r) => r.json());
+                window.taskDetailOpen(t);
+            }, taskId);
+            await expect(page.locator("#detailPanel")).toBeVisible();
+
+            // Pick the project, save.
+            await page.selectOption("#detailProject", projectId);
+            await page.evaluate(() => document.getElementById("detailForm").requestSubmit());
+            // Save closes the panel; wait for that.
+            await expect(page.locator("#detailOverlay")).toBeHidden({ timeout: 3000 });
+
+            // Verify via the API that the project_id actually persisted —
+            // this is the assertion that catches bug #57's silent drop.
+            const persisted = await page.evaluate(async (id) => {
+                const r = await fetch(`/api/tasks/${id}`);
+                return (await r.json()).project_id;
+            }, taskId);
+            expect(persisted).toBe(projectId);
+
+            // Re-open the panel; the dropdown should reflect the saved value.
+            await page.evaluate(async (id) => {
+                const t = await fetch(`/api/tasks/${id}`).then((r) => r.json());
+                window.taskDetailOpen(t);
+            }, taskId);
+            await expect(page.locator("#detailPanel")).toBeVisible();
+            const dropdownValue = await page.inputValue("#detailProject");
+            expect(dropdownValue).toBe(projectId);
+        } finally {
+            // Cleanup: delete the seed task + project so the test stays idempotent.
+            await page.evaluate(async ([tid, pid]) => {
+                await fetch(`/api/tasks/${tid}`, { method: "DELETE" });
+                await fetch(`/api/projects/${pid}`, { method: "DELETE" });
+            }, [taskId, projectId]);
+        }
+    });
 });
 
 test.describe("Goals page filters", () => {
