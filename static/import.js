@@ -65,6 +65,29 @@
     var currentMode = null; // "tasks" or "goals"
     var currentCandidates = [];
 
+    // #76 (2026-04-25): preview rows now expose all writable fields, so
+    // we need the goal + project lists. Loaded once on first review.
+    var importGoals = [];
+    var importProjects = [];
+    var importLookupsLoaded = false;
+
+    async function loadImportLookups() {
+        if (importLookupsLoaded) return;
+        try {
+            var [g, p] = await Promise.all([
+                fetch("/api/goals").then(function (r) { return r.json(); }),
+                fetch("/api/projects").then(function (r) { return r.json(); }),
+            ]);
+            importGoals = Array.isArray(g) ? g : [];
+            importProjects = Array.isArray(p) ? p : [];
+            importLookupsLoaded = true;
+        } catch (err) {
+            console.error("Failed to load goals/projects for import editor:", err);
+            // Leave lookups empty — dropdowns will still render but only
+            // (no goal) / (no project). User can pick later in detail panel.
+        }
+    }
+
     // --- Section management --------------------------------------------------
 
     function showSection(section) {
@@ -177,6 +200,7 @@
                 reviewTitle.textContent = "Review Task Candidates";
                 reviewDesc.textContent =
                     data.total + " task(s) found. Edit, include, or exclude before importing.";
+                await loadImportLookups();
                 renderTaskCandidates();
                 showSection(reviewSection);
             } else {
@@ -220,6 +244,7 @@
                 reviewTitle.textContent = "Review Task Candidates";
                 reviewDesc.textContent =
                     data.total + " task(s) found. Edit, include, or exclude before importing.";
+                await loadImportLookups();
                 renderTaskCandidates();
                 showSection(reviewSection);
             } else {
@@ -268,6 +293,8 @@
                 setStatus(goalsStatus, "No goals found in the Excel file.", true);
                 parseGoalsBtn.disabled = false;
             }
+            // (No need to load goals/projects for the goals-import path —
+            // goals don't reference each other or projects.)
         } catch (err) {
             setStatus(goalsStatus, "Parse failed: " + err.message, true);
             parseGoalsBtn.disabled = false;
@@ -276,11 +303,42 @@
 
     // --- Render candidates ---------------------------------------------------
 
+    // Helpers for the expanded editor (#76).
+    function _selectFrom(options, valueKey, labelKey, current) {
+        var sel = document.createElement("select");
+        // Always include a "blank" option for foreign keys.
+        var blank = document.createElement("option");
+        blank.value = "";
+        blank.textContent = "—";
+        sel.appendChild(blank);
+        options.forEach(function (o) {
+            var opt = document.createElement("option");
+            opt.value = o[valueKey];
+            opt.textContent = o[labelKey];
+            sel.appendChild(opt);
+        });
+        sel.value = current || "";
+        return sel;
+    }
+
+    function _labeledField(labelText, control) {
+        var wrap = document.createElement("label");
+        wrap.className = "import-field";
+        var span = document.createElement("span");
+        span.textContent = labelText;
+        wrap.appendChild(span);
+        wrap.appendChild(control);
+        return wrap;
+    }
+
     function renderTaskCandidates() {
         candidatesEl.innerHTML = "";
         currentCandidates.forEach(function (c, i) {
             var row = document.createElement("div");
             row.className = "import-candidate" + (c.duplicate ? " import-duplicate" : "");
+
+            var head = document.createElement("div");
+            head.className = "import-candidate-head";
 
             var cb = document.createElement("input");
             cb.type = "checkbox";
@@ -290,7 +348,7 @@
                 currentCandidates[i].included = cb.checked;
             });
             if (c.duplicate) currentCandidates[i].included = false;
-            row.appendChild(cb);
+            head.appendChild(cb);
 
             var input = document.createElement("input");
             input.type = "text";
@@ -299,30 +357,112 @@
             input.addEventListener("input", function () {
                 currentCandidates[i].title = input.value;
             });
-            row.appendChild(input);
+            head.appendChild(input);
 
             var typeSelect = document.createElement("select");
             typeSelect.className = "import-candidate-type";
-            var workOpt = document.createElement("option");
-            workOpt.value = "work";
-            workOpt.textContent = "Work";
-            var persOpt = document.createElement("option");
-            persOpt.value = "personal";
-            persOpt.textContent = "Personal";
-            typeSelect.appendChild(workOpt);
-            typeSelect.appendChild(persOpt);
+            ["work", "personal"].forEach(function (val) {
+                var opt = document.createElement("option");
+                opt.value = val;
+                opt.textContent = val.charAt(0).toUpperCase() + val.slice(1);
+                typeSelect.appendChild(opt);
+            });
             typeSelect.value = c.type || "work";
             typeSelect.addEventListener("change", function () {
                 currentCandidates[i].type = typeSelect.value;
             });
-            row.appendChild(typeSelect);
+            head.appendChild(typeSelect);
+
+            // Expand/collapse toggle (#76).
+            var toggleBtn = document.createElement("button");
+            toggleBtn.type = "button";
+            toggleBtn.className = "import-expand-toggle";
+            toggleBtn.textContent = "▾";
+            toggleBtn.title = "Edit all fields";
+            head.appendChild(toggleBtn);
 
             if (c.duplicate) {
                 var badge = document.createElement("span");
                 badge.className = "import-dup-badge";
                 badge.textContent = "duplicate";
-                row.appendChild(badge);
+                head.appendChild(badge);
             }
+
+            row.appendChild(head);
+
+            // Expanded editor (hidden by default).
+            var expanded = document.createElement("div");
+            expanded.className = "import-candidate-expanded";
+            expanded.style.display = "none";
+
+            var fieldsRow1 = document.createElement("div");
+            fieldsRow1.className = "import-fields-row";
+
+            var tierSel = document.createElement("select");
+            ["inbox", "today", "tomorrow", "this_week", "next_week", "backlog", "freezer"].forEach(function (t) {
+                var opt = document.createElement("option");
+                opt.value = t;
+                opt.textContent = t.replace("_", " ");
+                tierSel.appendChild(opt);
+            });
+            tierSel.value = c.tier || "inbox";
+            tierSel.addEventListener("change", function () {
+                currentCandidates[i].tier = tierSel.value;
+            });
+            fieldsRow1.appendChild(_labeledField("Tier", tierSel));
+
+            var dueInput = document.createElement("input");
+            dueInput.type = "date";
+            dueInput.value = c.due_date || "";
+            dueInput.addEventListener("input", function () {
+                currentCandidates[i].due_date = dueInput.value;
+            });
+            fieldsRow1.appendChild(_labeledField("Due date", dueInput));
+
+            expanded.appendChild(fieldsRow1);
+
+            var fieldsRow2 = document.createElement("div");
+            fieldsRow2.className = "import-fields-row";
+
+            var goalSel = _selectFrom(importGoals, "id", "title", c.goal_id);
+            goalSel.addEventListener("change", function () {
+                currentCandidates[i].goal_id = goalSel.value;
+            });
+            fieldsRow2.appendChild(_labeledField("Goal", goalSel));
+
+            var projSel = _selectFrom(importProjects, "id", "name", c.project_id);
+            projSel.addEventListener("change", function () {
+                currentCandidates[i].project_id = projSel.value;
+            });
+            fieldsRow2.appendChild(_labeledField("Project", projSel));
+
+            expanded.appendChild(fieldsRow2);
+
+            var urlInput = document.createElement("input");
+            urlInput.type = "text";
+            urlInput.value = c.url || "";
+            urlInput.placeholder = "https://...";
+            urlInput.addEventListener("input", function () {
+                currentCandidates[i].url = urlInput.value;
+            });
+            expanded.appendChild(_labeledField("URL", urlInput));
+
+            var notesInput = document.createElement("textarea");
+            notesInput.rows = 2;
+            notesInput.value = c.notes || "";
+            notesInput.placeholder = "Optional notes";
+            notesInput.addEventListener("input", function () {
+                currentCandidates[i].notes = notesInput.value;
+            });
+            expanded.appendChild(_labeledField("Notes", notesInput));
+
+            row.appendChild(expanded);
+
+            toggleBtn.addEventListener("click", function () {
+                var isOpen = expanded.style.display !== "none";
+                expanded.style.display = isOpen ? "none" : "";
+                toggleBtn.textContent = isOpen ? "▾" : "▴";
+            });
 
             candidatesEl.appendChild(row);
         });
@@ -334,6 +474,9 @@
             var row = document.createElement("div");
             row.className = "import-candidate" + (c.duplicate ? " import-duplicate" : "");
 
+            var head = document.createElement("div");
+            head.className = "import-candidate-head";
+
             var cb = document.createElement("input");
             cb.type = "checkbox";
             cb.checked = c.included !== false && !c.duplicate;
@@ -342,7 +485,7 @@
                 currentCandidates[i].included = cb.checked;
             });
             if (c.duplicate) currentCandidates[i].included = false;
-            row.appendChild(cb);
+            head.appendChild(cb);
 
             var input = document.createElement("input");
             input.type = "text";
@@ -351,7 +494,7 @@
             input.addEventListener("input", function () {
                 currentCandidates[i].title = input.value;
             });
-            row.appendChild(input);
+            head.appendChild(input);
 
             var catSelect = document.createElement("select");
             catSelect.className = "import-candidate-type";
@@ -367,14 +510,95 @@
             catSelect.addEventListener("change", function () {
                 currentCandidates[i].category = catSelect.value;
             });
-            row.appendChild(catSelect);
+            head.appendChild(catSelect);
+
+            // Expand toggle (#76).
+            var toggleBtn = document.createElement("button");
+            toggleBtn.type = "button";
+            toggleBtn.className = "import-expand-toggle";
+            toggleBtn.textContent = "▾";
+            toggleBtn.title = "Edit all fields";
+            head.appendChild(toggleBtn);
 
             if (c.duplicate) {
                 var badge = document.createElement("span");
                 badge.className = "import-dup-badge";
                 badge.textContent = "duplicate";
-                row.appendChild(badge);
+                head.appendChild(badge);
             }
+
+            row.appendChild(head);
+
+            // Expanded editor (hidden by default).
+            var expanded = document.createElement("div");
+            expanded.className = "import-candidate-expanded";
+            expanded.style.display = "none";
+
+            var fieldsRow1 = document.createElement("div");
+            fieldsRow1.className = "import-fields-row";
+
+            var prioSel = document.createElement("select");
+            ["must", "should", "could", "need_more_info"].forEach(function (p) {
+                var opt = document.createElement("option");
+                opt.value = p;
+                opt.textContent = p.replace("_", " ").replace(/\b\w/g, function (l) { return l.toUpperCase(); });
+                prioSel.appendChild(opt);
+            });
+            prioSel.value = c.priority || "should";
+            prioSel.addEventListener("change", function () {
+                currentCandidates[i].priority = prioSel.value;
+            });
+            fieldsRow1.appendChild(_labeledField("Priority", prioSel));
+
+            var statusSel = document.createElement("select");
+            ["not_started", "in_progress", "done", "on_hold"].forEach(function (s) {
+                var opt = document.createElement("option");
+                opt.value = s;
+                opt.textContent = s.replace("_", " ").replace(/\b\w/g, function (l) { return l.toUpperCase(); });
+                statusSel.appendChild(opt);
+            });
+            statusSel.value = c.status || "not_started";
+            statusSel.addEventListener("change", function () {
+                currentCandidates[i].status = statusSel.value;
+            });
+            fieldsRow1.appendChild(_labeledField("Status", statusSel));
+
+            expanded.appendChild(fieldsRow1);
+
+            var tqInput = document.createElement("input");
+            tqInput.type = "text";
+            tqInput.value = c.target_quarter || "";
+            tqInput.placeholder = "e.g. 2026-Q4";
+            tqInput.addEventListener("input", function () {
+                currentCandidates[i].target_quarter = tqInput.value;
+            });
+            expanded.appendChild(_labeledField("Target quarter", tqInput));
+
+            var actionsInput = document.createElement("textarea");
+            actionsInput.rows = 2;
+            actionsInput.value = c.actions || "";
+            actionsInput.placeholder = "Concrete next-actions";
+            actionsInput.addEventListener("input", function () {
+                currentCandidates[i].actions = actionsInput.value;
+            });
+            expanded.appendChild(_labeledField("Actions", actionsInput));
+
+            var notesInput = document.createElement("textarea");
+            notesInput.rows = 2;
+            notesInput.value = c.notes || "";
+            notesInput.placeholder = "Optional notes";
+            notesInput.addEventListener("input", function () {
+                currentCandidates[i].notes = notesInput.value;
+            });
+            expanded.appendChild(_labeledField("Notes", notesInput));
+
+            row.appendChild(expanded);
+
+            toggleBtn.addEventListener("click", function () {
+                var isOpen = expanded.style.display !== "none";
+                expanded.style.display = isOpen ? "none" : "";
+                toggleBtn.textContent = isOpen ? "▾" : "▴";
+            });
 
             candidatesEl.appendChild(row);
         });
@@ -397,6 +621,13 @@
                 var item = { title: c.title, included: true };
                 if (currentMode === "tasks") {
                     item.type = c.type || "work";
+                    // #76: forward all writable fields if the user touched them.
+                    item.tier = c.tier || "inbox";
+                    item.due_date = c.due_date || "";
+                    item.goal_id = c.goal_id || "";
+                    item.project_id = c.project_id || "";
+                    item.url = c.url || "";
+                    item.notes = c.notes || "";
                 } else {
                     item.category = c.category || "work";
                     item.priority = c.priority || "should";

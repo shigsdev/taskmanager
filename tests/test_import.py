@@ -491,6 +491,73 @@ class TestCreateTasksFromImport:
             )
             assert len(tasks) == 0
 
+    def test_accepts_full_field_set_per_candidate(self, app):
+        """#76: each candidate carries optional tier/due_date/goal_id/project_id/notes/url."""
+        from datetime import date
+
+        from import_service import create_tasks_from_import
+        from models import Goal, GoalCategory, GoalPriority, Project
+
+        with app.app_context():
+            goal = Goal(
+                title="g", category=GoalCategory.WORK, priority=GoalPriority.MUST,
+            )
+            project = Project(name="p")
+            db.session.add_all([goal, project])
+            db.session.commit()
+            goal_id = str(goal.id)
+            project_id = str(project.id)
+
+            tasks = create_tasks_from_import(
+                [
+                    {
+                        "title": "Full field task",
+                        "type": "personal",
+                        "tier": "today",
+                        "due_date": "2026-12-31",
+                        "goal_id": goal_id,
+                        "project_id": project_id,
+                        "notes": "imported with notes",
+                        "url": "https://example.com",
+                        "included": True,
+                    },
+                ],
+                source="test",
+            )
+            assert len(tasks) == 1
+            t = tasks[0]
+            assert t.tier == Tier.TODAY
+            assert t.type == TaskType.PERSONAL
+            assert t.due_date == date(2026, 12, 31)
+            assert str(t.goal_id) == goal_id
+            assert str(t.project_id) == project_id
+            assert t.notes == "imported with notes"
+            assert t.url == "https://example.com"
+
+    def test_invalid_optional_fields_silently_default(self, app):
+        """Bad tier/due_date/goal_id are coerced to defaults (don't abort import)."""
+        from import_service import create_tasks_from_import
+
+        with app.app_context():
+            tasks = create_tasks_from_import(
+                [
+                    {
+                        "title": "Bad fields",
+                        "tier": "not-a-tier",
+                        "due_date": "not-a-date",
+                        "goal_id": "not-a-uuid",
+                        "project_id": "not-a-uuid",
+                        "included": True,
+                    },
+                ],
+                source="test",
+            )
+            assert len(tasks) == 1
+            assert tasks[0].tier == Tier.INBOX
+            assert tasks[0].due_date is None
+            assert tasks[0].goal_id is None
+            assert tasks[0].project_id is None
+
 
 # --- Create goals from import ------------------------------------------------
 

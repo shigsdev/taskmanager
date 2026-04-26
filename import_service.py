@@ -15,6 +15,7 @@ import io
 import logging
 import re
 import uuid
+from datetime import date
 from typing import Any
 
 from sqlalchemy import select
@@ -359,8 +360,53 @@ def create_tasks_from_import(
         except ValueError:
             task_type = TaskType.WORK
 
+        # #76 (2026-04-25): preview row now exposes more fields. Default
+        # tier remains Inbox; everything else is optional. Bad values are
+        # silently coerced to defaults rather than aborting the whole
+        # import — the user just edited each row, so we trust them.
+        tier_str = candidate.get("tier") or "inbox"
+        try:
+            tier = Tier(tier_str)
+        except ValueError:
+            tier = Tier.INBOX
+
+        due_date_val: date | None = None
+        due_raw = (candidate.get("due_date") or "").strip()
+        if due_raw:
+            try:
+                due_date_val = date.fromisoformat(due_raw)
+            except ValueError:
+                due_date_val = None
+
+        goal_id_val: uuid.UUID | None = None
+        goal_raw = (candidate.get("goal_id") or "").strip()
+        if goal_raw:
+            try:
+                goal_id_val = uuid.UUID(goal_raw)
+            except ValueError:
+                goal_id_val = None
+
+        project_id_val: uuid.UUID | None = None
+        project_raw = (candidate.get("project_id") or "").strip()
+        if project_raw:
+            try:
+                project_id_val = uuid.UUID(project_raw)
+            except ValueError:
+                project_id_val = None
+
+        notes = (candidate.get("notes") or "").strip() or None
+        url = (candidate.get("url") or "").strip() or None
+
         task = Task(
-            title=title, type=task_type, tier=Tier.INBOX, batch_id=batch_id
+            title=title,
+            type=task_type,
+            tier=tier,
+            due_date=due_date_val,
+            goal_id=goal_id_val,
+            project_id=project_id_val,
+            notes=notes,
+            url=url,
+            batch_id=batch_id,
         )
         db.session.add(task)
         created.append(task)
