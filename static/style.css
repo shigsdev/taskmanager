@@ -1812,6 +1812,15 @@ body {
     border-bottom: 1px solid var(--border);
 }
 .voice-candidate input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; }
+.voice-candidate-route {
+    background: var(--accent, #2563eb); color: #fff;
+    border: none; padding: 4px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; cursor: pointer;
+    flex-shrink: 0;
+}
+.voice-candidate-route.route-task    { background: var(--accent, #2563eb); }
+.voice-candidate-route.route-goal    { background: var(--success, #16a34a); }
+.voice-candidate-route.route-project { background: #ec4899; }
 .voice-candidate-title { flex: 1; min-width: 120px; padding: 6px 8px; }
 .voice-candidate-type { padding: 6px 4px; flex-shrink: 0; }
 /* Backlog #36: tier + due_date controls from the NLP inference. */

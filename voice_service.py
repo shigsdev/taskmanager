@@ -54,6 +54,48 @@ ALLOWED_AUDIO_TYPES = frozenset({
 })
 
 
+# #67 (2026-04-26): voice memo intent router.
+#
+# Per scoping (a) "simple keyword router". Detects prefixes in a
+# parsed candidate's title that signal it should become a goal or
+# project instead of a task. Strips the prefix from the title.
+#
+# Order matters: check the more-specific phrases first (e.g.
+# "create a project" before "create"), and longer prefixes before
+# shorter ones to avoid greedy-shortest matching.
+_GOAL_PREFIXES = (
+    "create a goal:", "create a goal ",
+    "new goal:", "new goal ",
+    "add a goal:", "add a goal ",
+    "goal:",
+)
+_PROJECT_PREFIXES = (
+    "create a project:", "create a project ",
+    "new project:", "new project ",
+    "add a project:", "add a project ",
+    "project:",
+)
+
+
+def classify_voice_candidate(title: str) -> tuple[str, str]:
+    """Return ``(route, cleaned_title)`` for a single voice memo line.
+
+    route ∈ {"task", "goal", "project"}. Default is "task".
+    Prefix matching is case-insensitive; the prefix is stripped from
+    the returned title and the leading whitespace is trimmed.
+    """
+    if not title:
+        return "task", title or ""
+    lowered = title.lstrip().lower()
+    for prefix in _GOAL_PREFIXES:
+        if lowered.startswith(prefix):
+            return "goal", title.lstrip()[len(prefix):].strip()
+    for prefix in _PROJECT_PREFIXES:
+        if lowered.startswith(prefix):
+            return "project", title.lstrip()[len(prefix):].strip()
+    return "task", title
+
+
 def transcribe_audio(audio_bytes: bytes, mime_type: str) -> dict[str, Any]:
     """Send audio to Whisper and return ``{transcript, duration_seconds, cost_usd}``.
 

@@ -49,6 +49,53 @@ class TestTranscribeAudio:
         assert result["duration_seconds"] == 47.3
         assert result["cost_usd"] == pytest.approx(0.00473, abs=1e-5)
 
+    # --- #67: voice candidate router -------------------------------------
+
+    def test_classify_default_is_task(self):
+        from voice_service import classify_voice_candidate
+        route, cleaned = classify_voice_candidate("Buy milk")
+        assert route == "task"
+        assert cleaned == "Buy milk"
+
+    def test_classify_goal_prefix_strips_prefix(self):
+        from voice_service import classify_voice_candidate
+        route, cleaned = classify_voice_candidate("Goal: ship the calendar")
+        assert route == "goal"
+        assert cleaned == "ship the calendar"
+        route, cleaned = classify_voice_candidate("Create a goal: read 12 books")
+        assert route == "goal"
+        assert cleaned == "read 12 books"
+        route, cleaned = classify_voice_candidate("New goal exercise weekly")
+        assert route == "goal"
+        assert cleaned == "exercise weekly"
+
+    def test_classify_project_prefix_strips_prefix(self):
+        from voice_service import classify_voice_candidate
+        route, cleaned = classify_voice_candidate("Project: portal redesign")
+        assert route == "project"
+        assert cleaned == "portal redesign"
+        route, cleaned = classify_voice_candidate("New project taskmanager v2")
+        assert route == "project"
+        assert cleaned == "taskmanager v2"
+
+    def test_classify_case_insensitive(self):
+        from voice_service import classify_voice_candidate
+        assert classify_voice_candidate("GOAL: x")[0] == "goal"
+        assert classify_voice_candidate("project: y")[0] == "project"
+        assert classify_voice_candidate("Goal: z")[0] == "goal"
+
+    def test_classify_no_prefix_in_middle_of_string(self):
+        """Don't false-positive on 'goal' appearing mid-sentence."""
+        from voice_service import classify_voice_candidate
+        route, cleaned = classify_voice_candidate("My goal is to ship faster")
+        assert route == "task"
+        assert cleaned == "My goal is to ship faster"
+
+    def test_classify_empty_string_safe(self):
+        from voice_service import classify_voice_candidate
+        assert classify_voice_candidate("") == ("task", "")
+        assert classify_voice_candidate(None) == ("task", "")
+
     def test_filename_for_mime_picks_correct_extension(self):
         from voice_service import _filename_for_mime
 

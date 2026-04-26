@@ -134,16 +134,20 @@ def upload(email: str):  # noqa: ARG001
 
     # Wire the inferred fields into the candidate shape the UI renders.
     # `included` starts true for every candidate (user unchecks to drop).
-    candidates_out = [
-        {
-            "title": c["title"],
+    # #67 (2026-04-26): classify each candidate as task/goal/project via
+    # the keyword router. UI shows the route badge; user can override.
+    from voice_service import classify_voice_candidate
+    candidates_out = []
+    for c in structured:
+        route, cleaned = classify_voice_candidate(c["title"])
+        candidates_out.append({
+            "title": cleaned,
             "type": c["type"],
             "tier": c["tier"],
             "due_date": c["due_date"],
+            "route": route,
             "included": True,
-        }
-        for c in structured
-    ]
+        })
 
     return jsonify({
         "transcript": transcript,
@@ -178,11 +182,59 @@ def confirm(email: str):  # noqa: ARG001
     if not isinstance(candidates, list):
         return jsonify({"error": "candidates must be a list"}), 422
 
-    tasks = create_tasks_from_candidates(candidates, source_prefix="voice")
-    return jsonify({
-        "created": len(tasks),
+    # #67 (2026-04-26): split candidates by route. Tasks go to the
+    # existing voice creator; goals route through the import-goals
+    # creator (already supports voice as a source). Projects bulk-
+    # creation is queued for #80 — for now they're created as tasks
+    # with "(project) " prefix so the user doesn't lose data, and a
+    # warning is included in the response.
+    task_candidates = []
+    goal_candidates = []
+    project_fallback_count = 0
+    for c in candidates:
+        if not isinstance(c, dict):
+            continue
+        route = c.get("route") or "task"
+        if route == "goal":
+            goal_candidates.append({
+                "title": c.get("title"),
+                "category": c.get("type") if c.get("type") in (
+                    "health", "personal_growth", "relationships", "work", "bau",
+                ) else "work",
+                "priority": c.get("priority") or "should",
+                "included": c.get("included", True),
+            })
+        elif route == "project":
+            # Defer project creation until #80 ships the bulk endpoint.
+            project_fallback_count += 1
+            task_candidates.append({
+                **c,
+                "title": "(project) " + (c.get("title") or ""),
+            })
+        else:
+            task_candidates.append(c)
+
+    tasks = create_tasks_from_candidates(task_candidates, source_prefix="voice")
+
+    goals_created = []
+    if goal_candidates:
+        from import_service import create_goals_from_import
+        goals_created = create_goals_from_import(goal_candidates, source="voice_goal")
+
+    response = {
+        "created": len(tasks) + len(goals_created),
         "tasks": [
             {"id": str(t.id), "title": t.title, "tier": t.tier.value}
             for t in tasks
         ],
-    }), 201
+        "goals": [
+            {"id": str(g.id), "title": g.title, "category": g.category.value}
+            for g in goals_created
+        ],
+    }
+    if project_fallback_count > 0:
+        response["warning"] = (
+            f"{project_fallback_count} project candidate(s) created as tasks "
+            f"with '(project) ' prefix — bulk project creation lands with #80."
+        )
+    return jsonify(response), 201

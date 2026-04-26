@@ -414,6 +414,23 @@
         });
         row.appendChild(cb);
 
+        // #67 (2026-04-26): route badge — Task / Goal / Project. User
+        // can override by clicking the badge to cycle.
+        const routeBadge = document.createElement("button");
+        routeBadge.type = "button";
+        routeBadge.className = "voice-candidate-route route-" + (candidate.route || "task");
+        routeBadge.textContent = (candidate.route || "task").toUpperCase();
+        routeBadge.title = "Click to cycle: Task → Goal → Project";
+        routeBadge.addEventListener("click", function () {
+            const order = ["task", "goal", "project"];
+            const cur = currentCandidates[idx].route || "task";
+            const next = order[(order.indexOf(cur) + 1) % order.length];
+            currentCandidates[idx].route = next;
+            routeBadge.textContent = next.toUpperCase();
+            routeBadge.className = "voice-candidate-route route-" + next;
+        });
+        row.appendChild(routeBadge);
+
         const titleInput = document.createElement("input");
         titleInput.type = "text";
         titleInput.value = candidate.title || "";
