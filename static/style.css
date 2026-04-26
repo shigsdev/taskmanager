@@ -313,6 +313,56 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    cursor: grab;  /* #94 — affordance: tasks are draggable */
+}
+.calendar-cell-tasks li.dragging,
+.calendar-unscheduled-list li.dragging {
+    opacity: 0.5;
+    cursor: grabbing;
+}
+
+/* #94 (PR26): Unscheduled side panel for /calendar. */
+.calendar-layout {
+    display: grid;
+    grid-template-columns: 1fr 240px;
+    gap: 16px;
+    align-items: start;
+}
+.calendar-unscheduled {
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    background: var(--surface-sunk);
+    min-height: 200px;
+}
+.calendar-unscheduled h3 {
+    font-size: 0.9rem;
+    margin: 0 0 8px;
+}
+.calendar-unscheduled-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.calendar-unscheduled-list li {
+    font-size: 0.8rem;
+    background: var(--card);
+    padding: 4px 8px;
+    border-radius: 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: grab;
+}
+.calendar-unscheduled-hover {
+    background: var(--success, #16a34a) !important;
+    border-style: solid;
+}
+@media (max-width: 700px) {
+    .calendar-layout { grid-template-columns: 1fr; }
 }
 .calendar-cell-empty {
     color: var(--text-muted);

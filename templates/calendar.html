@@ -18,8 +18,16 @@
 {% block content %}
 <div class="calendar-page">
     <h1>Calendar</h1>
-    <p class="calendar-hint">Drag tasks from any tier onto a day to set the due date. Tasks already due each day list inside the cell.</p>
-    <div class="calendar-grid" id="calendarGrid"></div>
+    <p class="calendar-hint">
+        Drag any task between days to change its due date.
+        Tasks without a due date appear under <strong>Unscheduled</strong>;
+        drop them on a day to schedule, or drop a scheduled task back
+        on Unscheduled to clear its date.
+    </p>
+    <div class="calendar-layout">
+        <div class="calendar-grid" id="calendarGrid"></div>
+        <aside class="calendar-unscheduled" id="calendarUnscheduled"></aside>
+    </div>
 </div>
 {% endblock %}
 

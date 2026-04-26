@@ -877,7 +877,8 @@ Skip this line (too short)</pre>
             <h3><a href="{{ url_for('calendar_page') }}">/calendar</a> page</h3>
             <ul>
                 <li>Larger 2-row Mon–Sat grid. Each cell shows its date header + the existing tasks already due that day.</li>
-                <li>Same drag-and-drop semantics as the strip; useful when you want to see what's already on a given day before you drop another task there.</li>
+                <li>Tasks in cells are themselves draggable — drag any task between days to change its <code>due_date</code>.</li>
+                <li>An <strong>Unscheduled</strong> side panel lists every task with no <code>due_date</code>; drop it on a day cell to schedule, or drop a scheduled task back on the panel to clear its date.</li>
             </ul>
 
             <h3>Auto-scroll while dragging</h3>

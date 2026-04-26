@@ -41,12 +41,20 @@
             console.error("Failed to load tasks for calendar:", err);
         }
         const byDate = {};
+        const unscheduled = [];
         for (const t of tasks) {
             if (t.due_date) {
                 if (!byDate[t.due_date]) byDate[t.due_date] = [];
                 byDate[t.due_date].push(t);
+            } else {
+                unscheduled.push(t);
             }
         }
+        // #94 (PR26): render an "Unscheduled" side list so the user has
+        // a source to drag FROM. Tasks already in cells are also
+        // draggable (between days). Without this, /calendar had nothing
+        // draggable on the page at all.
+        _renderUnscheduled(unscheduled);
 
         // 2 weeks × 6 days (Mon-Sat per #72) = 12 cells. Render as 2 rows.
         for (let week = 0; week < 2; week++) {
@@ -74,6 +82,22 @@
                     const li = document.createElement("li");
                     li.textContent = t.title;
                     li.title = t.title;
+                    // #94 (PR26): make in-cell tasks draggable so you can
+                    // move them between days. Without this the only thing
+                    // the user can drag is... nothing — the page has no
+                    // tier panels to drag from.
+                    li.draggable = true;
+                    li.dataset.taskId = t.id;
+                    li.addEventListener("dragstart", function (e) {
+                        li.classList.add("dragging");
+                        if (e.dataTransfer) {
+                            e.dataTransfer.effectAllowed = "move";
+                            e.dataTransfer.setData("text/plain", t.id);
+                        }
+                    });
+                    li.addEventListener("dragend", function () {
+                        li.classList.remove("dragging");
+                    });
                     list.appendChild(li);
                 }
                 if (items.length === 0) {
@@ -113,6 +137,72 @@
             }
             grid.appendChild(row);
         }
+    }
+
+    // #94 (PR26): render the unscheduled-tasks side panel. Tasks here
+    // are draggable onto any calendar day; dropping a calendar task on
+    // this panel clears its due_date.
+    function _renderUnscheduled(tasks) {
+        const panel = document.getElementById("calendarUnscheduled");
+        if (!panel) return;
+        panel.innerHTML = "";
+        const h = document.createElement("h3");
+        h.textContent = `Unscheduled (${tasks.length})`;
+        panel.appendChild(h);
+
+        const list = document.createElement("ul");
+        list.className = "calendar-unscheduled-list";
+        if (tasks.length === 0) {
+            const empty = document.createElement("li");
+            empty.className = "calendar-cell-empty";
+            empty.textContent = "Drop a task here to clear its due date";
+            list.appendChild(empty);
+        }
+        for (const t of tasks) {
+            const li = document.createElement("li");
+            li.textContent = t.title;
+            li.title = t.title;
+            li.draggable = true;
+            li.dataset.taskId = t.id;
+            li.addEventListener("dragstart", function (e) {
+                li.classList.add("dragging");
+                if (e.dataTransfer) {
+                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData("text/plain", t.id);
+                }
+            });
+            li.addEventListener("dragend", function () {
+                li.classList.remove("dragging");
+            });
+            list.appendChild(li);
+        }
+        panel.appendChild(list);
+
+        // Drop target: clear due_date.
+        panel.addEventListener("dragover", function (e) {
+            e.preventDefault();
+            panel.classList.add("calendar-unscheduled-hover");
+        });
+        panel.addEventListener("dragleave", function () {
+            panel.classList.remove("calendar-unscheduled-hover");
+        });
+        panel.addEventListener("drop", async function (e) {
+            e.preventDefault();
+            panel.classList.remove("calendar-unscheduled-hover");
+            const taskId = e.dataTransfer && e.dataTransfer.getData("text/plain");
+            if (!taskId) return;
+            try {
+                const r = await fetch(`/api/tasks/${taskId}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ due_date: null }),
+                });
+                if (!r.ok) throw new Error("PATCH failed");
+                await renderCalendar();
+            } catch (err) {
+                alert("Failed to clear due date: " + err.message);
+            }
+        });
     }
 
     function init() {
