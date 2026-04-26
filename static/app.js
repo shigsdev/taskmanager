@@ -20,10 +20,14 @@ let allPreviews = [];  // recurring-template previews (#32). Each item:
 // {template_id, title, type, frequency, project_id, goal_id,
 //  fire_date: "YYYY-MM-DD", notes, url}
 let currentView = "all"; // "all" | "work" | "personal"
-let projectFilter = null; // UUID string or null
-// #92 (PR25, 2026-04-26): goal/objective filter, parallel to projectFilter.
-// Persisted to localStorage so it survives page reloads + cross-page nav.
-let goalFilter = null; // UUID string or null
+// #97 (PR31, 2026-04-26): multi-select filters. Sets allow OR-within-
+// dimension (multiple projects → tasks in any of them; same for goals).
+// Type filter (Work/Personal) stays single-select since the data is
+// mutually exclusive — picking "both" is just "All".
+// localStorage persists comma-joined ids; old single-UUID values from
+// PR25 parse cleanly into a Set with one element.
+let projectFilter = new Set();  // Set<UUID>; empty = "All"
+let goalFilter = new Set();     // Set<UUID>; empty = "All"
 const _FILTER_LS_KEYS = {
     view: "tm.filter.view",
     project: "tm.filter.project",
@@ -33,23 +37,33 @@ const _FILTER_LS_KEYS = {
 // stale localStorage value can't silently hide all tasks (or worse,
 // flow into a future server-side request as a malformed identifier).
 const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function _parseUuidCsv(raw) {
+    if (!raw) return new Set();
+    return new Set(
+        raw.split(",").map(s => s.trim()).filter(s => _UUID_RE.test(s))
+    );
+}
 function _loadFilterPrefs() {
     try {
         const v = localStorage.getItem(_FILTER_LS_KEYS.view);
         if (v === "all" || v === "work" || v === "personal") currentView = v;
-        const p = localStorage.getItem(_FILTER_LS_KEYS.project);
-        if (p && _UUID_RE.test(p)) projectFilter = p;
-        const g = localStorage.getItem(_FILTER_LS_KEYS.goal);
-        if (g && _UUID_RE.test(g)) goalFilter = g;
+        projectFilter = _parseUuidCsv(localStorage.getItem(_FILTER_LS_KEYS.project));
+        goalFilter = _parseUuidCsv(localStorage.getItem(_FILTER_LS_KEYS.goal));
     } catch (_) { /* private mode etc. — silently use defaults */ }
 }
 function _saveFilterPrefs() {
     try {
         localStorage.setItem(_FILTER_LS_KEYS.view, currentView);
-        if (projectFilter) localStorage.setItem(_FILTER_LS_KEYS.project, projectFilter);
-        else localStorage.removeItem(_FILTER_LS_KEYS.project);
-        if (goalFilter) localStorage.setItem(_FILTER_LS_KEYS.goal, goalFilter);
-        else localStorage.removeItem(_FILTER_LS_KEYS.goal);
+        if (projectFilter.size) {
+            localStorage.setItem(_FILTER_LS_KEYS.project, Array.from(projectFilter).join(","));
+        } else {
+            localStorage.removeItem(_FILTER_LS_KEYS.project);
+        }
+        if (goalFilter.size) {
+            localStorage.setItem(_FILTER_LS_KEYS.goal, Array.from(goalFilter).join(","));
+        } else {
+            localStorage.removeItem(_FILTER_LS_KEYS.goal);
+        }
     } catch (_) { /* ignore */ }
 }
 _loadFilterPrefs();
@@ -227,7 +241,7 @@ function _previewsForTier(tier) {
         if (ms < startMs || ms > endMs) return false;
         if (currentView === "work" && p.type !== "work") return false;
         if (currentView === "personal" && p.type !== "personal") return false;
-        if (projectFilter && p.project_id !== projectFilter) return false;
+        if (projectFilter.size && !projectFilter.has(p.project_id)) return false;  // #97
         return true;
     });
 }
@@ -518,7 +532,7 @@ function renderBoard() {
             // In work/personal view with no project filter, group by project.
             // This applies on BOTH the multi-tier board and the single-tier
             // detail page — the function only needs a list element + tasks.
-            if ((currentView === "work" || currentView === "personal") && !projectFilter) {
+            if ((currentView === "work" || currentView === "personal") && projectFilter.size === 0) {  // #97
                 renderTierGroupedByProject(list, tasks);
             } else if (DAY_GROUPED_TIERS.has(tier)) {
                 // This Week + Next Week: group by day-of-week of due_date.
@@ -824,8 +838,10 @@ function filteredTasks() {
     let tasks = allTasks;
     if (currentView === "work") tasks = tasks.filter((t) => t.type === "work");
     if (currentView === "personal") tasks = tasks.filter((t) => t.type === "personal");
-    if (projectFilter) tasks = tasks.filter((t) => t.project_id === projectFilter);
-    if (goalFilter) tasks = tasks.filter((t) => t.goal_id === goalFilter);  // #92
+    // #97 (PR31): multi-select — filter passes if task's id is in the
+    // chosen set (OR semantics). Empty set = "All" (no filter applied).
+    if (projectFilter.size) tasks = tasks.filter((t) => projectFilter.has(t.project_id));
+    if (goalFilter.size) tasks = tasks.filter((t) => goalFilter.has(t.goal_id));
     return tasks;
 }
 
@@ -1165,19 +1181,30 @@ function renderProjectFilter() {
     label.textContent = "Project:";
     container.appendChild(label);
 
+    // #97 (PR31): "All" clears the set; individual chips toggle membership.
     const allBtn = document.createElement("button");
     allBtn.type = "button";
-    allBtn.className = "btn-sm project-filter-btn" + (!projectFilter ? " active" : "");
+    allBtn.className = "btn-sm project-filter-btn" + (projectFilter.size === 0 ? " active" : "");
     allBtn.textContent = "All";
-    allBtn.addEventListener("click", () => { projectFilter = null; _saveFilterPrefs(); renderBoard(); renderCompletedList(); renderProjectFilter(); });
+    allBtn.addEventListener("click", () => {
+        projectFilter.clear(); _saveFilterPrefs();
+        renderBoard(); renderCompletedList(); renderProjectFilter();
+    });
     container.appendChild(allBtn);
 
     for (const p of viewProjects) {
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.className = "btn-sm project-filter-btn" + (projectFilter === p.id ? " active" : "");
+        const active = projectFilter.has(p.id);
+        btn.className = "btn-sm project-filter-btn" + (active ? " active" : "");
         btn.innerHTML = `<span class="project-dot" style="background:${p.color || '#999'}"></span> ${escapeHtml(p.name)}`;
-        btn.addEventListener("click", () => { projectFilter = p.id; _saveFilterPrefs(); renderBoard(); renderCompletedList(); renderProjectFilter(); });
+        btn.addEventListener("click", () => {
+            // #97: toggle in/out of the multi-select Set.
+            if (projectFilter.has(p.id)) projectFilter.delete(p.id);
+            else projectFilter.add(p.id);
+            _saveFilterPrefs();
+            renderBoard(); renderCompletedList(); renderProjectFilter();
+        });
         container.appendChild(btn);
     }
 }
@@ -1195,12 +1222,13 @@ function renderGoalFilter() {
     label.textContent = "Objective:";
     container.appendChild(label);
 
+    // #97 (PR31): "All" clears the set; individual chips toggle membership.
     const allBtn = document.createElement("button");
     allBtn.type = "button";
-    allBtn.className = "btn-sm goal-filter-btn" + (!goalFilter ? " active" : "");
+    allBtn.className = "btn-sm goal-filter-btn" + (goalFilter.size === 0 ? " active" : "");
     allBtn.textContent = "All";
     allBtn.addEventListener("click", () => {
-        goalFilter = null; _saveFilterPrefs();
+        goalFilter.clear(); _saveFilterPrefs();
         renderBoard(); renderCompletedList(); renderCancelledList();
         renderGoalFilter();
     });
@@ -1215,11 +1243,14 @@ function renderGoalFilter() {
     for (const g of sorted) {
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.className = "btn-sm goal-filter-btn" + (goalFilter === g.id ? " active" : "");
+        const active = goalFilter.has(g.id);
+        btn.className = "btn-sm goal-filter-btn" + (active ? " active" : "");
         btn.textContent = g.title;
         btn.title = g.title + (g.category ? ` — ${g.category}` : "");
         btn.addEventListener("click", () => {
-            goalFilter = g.id; _saveFilterPrefs();
+            if (goalFilter.has(g.id)) goalFilter.delete(g.id);
+            else goalFilter.add(g.id);
+            _saveFilterPrefs();
             renderBoard(); renderCompletedList(); renderCancelledList();
             renderGoalFilter();
         });
@@ -1347,7 +1378,7 @@ function setupNavTabs() {
             document.querySelectorAll(".view-filter-btn").forEach((t) => t.classList.remove("active"));
             tab.classList.add("active");
             currentView = tab.dataset.view;
-            projectFilter = null;  // resetting type clears project to avoid empty results
+            projectFilter.clear();  // #97 (PR31): resetting type clears all project chips to avoid empty results
             _saveFilterPrefs();  // #92: persist view + clear stale project filter
             renderBoard();
             renderCompletedList();
@@ -1439,8 +1470,10 @@ function filteredCompleted() {
     let tasks = allCompleted;
     if (currentView === "work") tasks = tasks.filter((t) => t.type === "work");
     if (currentView === "personal") tasks = tasks.filter((t) => t.type === "personal");
-    if (projectFilter) tasks = tasks.filter((t) => t.project_id === projectFilter);
-    if (goalFilter) tasks = tasks.filter((t) => t.goal_id === goalFilter);  // #92
+    // #97 (PR31): multi-select — filter passes if task's id is in the
+    // chosen set (OR semantics). Empty set = "All" (no filter applied).
+    if (projectFilter.size) tasks = tasks.filter((t) => projectFilter.has(t.project_id));
+    if (goalFilter.size) tasks = tasks.filter((t) => goalFilter.has(t.goal_id));
     return tasks;
 }
 
@@ -1618,8 +1651,10 @@ function filteredCancelled() {
     let tasks = allCancelled;
     if (currentView === "work") tasks = tasks.filter((t) => t.type === "work");
     if (currentView === "personal") tasks = tasks.filter((t) => t.type === "personal");
-    if (projectFilter) tasks = tasks.filter((t) => t.project_id === projectFilter);
-    if (goalFilter) tasks = tasks.filter((t) => t.goal_id === goalFilter);  // #92
+    // #97 (PR31): multi-select — filter passes if task's id is in the
+    // chosen set (OR semantics). Empty set = "All" (no filter applied).
+    if (projectFilter.size) tasks = tasks.filter((t) => projectFilter.has(t.project_id));
+    if (goalFilter.size) tasks = tasks.filter((t) => goalFilter.has(t.goal_id));
     return tasks;
 }
 
