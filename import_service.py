@@ -348,6 +348,77 @@ def parse_project_names_text(text: str) -> list[dict[str, Any]]:
     return candidates
 
 
+def parse_excel_tasks(file_bytes: bytes) -> list[dict[str, Any]]:
+    """#89 (2026-04-26): parse a .xlsx of task rows.
+
+    Expected header row (case-insensitive):
+      - title (required)
+      - type: work, personal — default work
+      - tier: inbox, today, tomorrow, this_week, next_week, backlog,
+        freezer — default inbox
+      - due_date: ISO YYYY-MM-DD; openpyxl returns datetime which gets
+        normalised to YYYY-MM-DD string
+      - linked_goal: free-text goal title; matched case-insensitive at
+        create time. No exact-id requirement.
+      - linked_project: free-text project name; same matching.
+      - notes: free text
+      - url: free text
+
+    Rows with no title are skipped. Returns the candidate shape the
+    review UI consumes (the field mapping mirrors what
+    `create_tasks_from_import` already accepts).
+    """
+    import openpyxl
+
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True)
+    except Exception as e:
+        raise ValueError(f"Cannot read Excel file: {e}") from e
+
+    ws = wb.active
+    if ws is None:
+        raise ValueError("Excel file has no active worksheet")
+
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return []
+
+    headers = [str(h).strip().lower() if h else "" for h in rows[0]]
+    col_map = {name: idx for idx, name in enumerate(headers) if name}
+
+    candidates: list[dict[str, Any]] = []
+    for row in rows[1:]:
+        title = _cell_str(row, col_map.get("title"))
+        if not title:
+            continue
+        type_str = _cell_str(row, col_map.get("type")).lower()
+        if not _valid_enum(TaskType, type_str):
+            type_str = "work"
+        tier_str = _cell_str(row, col_map.get("tier")).lower()
+        if not _valid_enum(Tier, tier_str):
+            tier_str = "inbox"
+        # due_date may come back from openpyxl as a date / datetime —
+        # normalise to YYYY-MM-DD string. Plain strings pass through.
+        due_idx = col_map.get("due_date")
+        due_raw = row[due_idx] if (due_idx is not None and due_idx < len(row)) else None
+        if hasattr(due_raw, "strftime"):
+            due_str = due_raw.strftime("%Y-%m-%d")
+        else:
+            due_str = _cell_str(row, due_idx)
+        candidates.append({
+            "title": title,
+            "type": type_str,
+            "tier": tier_str,
+            "due_date": due_str,
+            "linked_goal": _cell_str(row, col_map.get("linked_goal")),
+            "linked_project": _cell_str(row, col_map.get("linked_project")),
+            "notes": _cell_str(row, col_map.get("notes")),
+            "url": _cell_str(row, col_map.get("url")),
+            "included": True,
+        })
+    return candidates
+
+
 def parse_excel_projects(file_bytes: bytes) -> list[dict[str, Any]]:
     """#80 (2026-04-26): parse a .xlsx of project rows.
 
@@ -452,6 +523,21 @@ def create_tasks_from_import(
     Returns:
         List of newly created Task records.
     """
+    # #89 (2026-04-26): pre-load goal + project lookups once so any
+    # candidate carrying `linked_goal` or `linked_project` (Excel paths)
+    # resolves O(1) instead of N queries. Lower-cased title/name is the
+    # match key (matches the project import behavior in #80).
+    goal_index: dict[str, Any] = {}
+    for g in db.session.scalars(
+        select(Goal).where(Goal.is_active.is_(True))
+    ):
+        goal_index[g.title.strip().lower()] = g.id
+    project_index: dict[str, Any] = {}
+    for p in db.session.scalars(
+        select(Project).where(Project.is_active.is_(True))
+    ):
+        project_index[p.name.strip().lower()] = p.id
+
     batch_id = uuid.uuid4()
     created = []
     for candidate in candidates:
@@ -486,6 +572,8 @@ def create_tasks_from_import(
             except ValueError:
                 due_date_val = None
 
+        # goal_id can be a UUID string OR fall through to a free-text
+        # `linked_goal` lookup (#89 Excel path).
         goal_id_val: uuid.UUID | None = None
         goal_raw = (candidate.get("goal_id") or "").strip()
         if goal_raw:
@@ -493,6 +581,10 @@ def create_tasks_from_import(
                 goal_id_val = uuid.UUID(goal_raw)
             except ValueError:
                 goal_id_val = None
+        if goal_id_val is None:
+            linked_goal_raw = (candidate.get("linked_goal") or "").strip()
+            if linked_goal_raw:
+                goal_id_val = goal_index.get(linked_goal_raw.lower())
 
         project_id_val: uuid.UUID | None = None
         project_raw = (candidate.get("project_id") or "").strip()
@@ -501,6 +593,10 @@ def create_tasks_from_import(
                 project_id_val = uuid.UUID(project_raw)
             except ValueError:
                 project_id_val = None
+        if project_id_val is None:
+            linked_project_raw = (candidate.get("linked_project") or "").strip()
+            if linked_project_raw:
+                project_id_val = project_index.get(linked_project_raw.lower())
 
         notes = (candidate.get("notes") or "").strip() or None
         url = (candidate.get("url") or "").strip() or None

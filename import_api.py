@@ -21,6 +21,7 @@ from import_service import (
     find_duplicate_tasks,
     parse_excel_goals,
     parse_excel_projects,
+    parse_excel_tasks,
     parse_onenote_docx,
     parse_onenote_text,
     parse_project_names_text,
@@ -95,6 +96,42 @@ def upload_tasks(email: str):  # noqa: ARG001
     # Flag duplicates
     titles = [c["title"] for c in candidates]
     duplicates = set(t.lower() for t in find_duplicate_tasks(titles))
+    for c in candidates:
+        c["duplicate"] = c["title"].lower() in duplicates
+
+    return jsonify({"candidates": candidates, "total": len(candidates)})
+
+
+@bp.post("/tasks/upload-xlsx")
+@login_required
+def upload_tasks_xlsx(email: str):  # noqa: ARG001
+    """#89 (2026-04-26): parse an uploaded .xlsx of task rows.
+
+    Accepts multipart/form-data with a 'file' field (.xlsx).
+    Required header: title. Optional: type, tier, due_date, linked_goal,
+    linked_project, notes, url. linked_* matched case-insensitively at
+    create time.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    file = request.files["file"]
+    if not file.filename:
+        return jsonify({"error": "No filename"}), 400
+    if not file.filename.lower().endswith(".xlsx"):
+        return jsonify({"error": "Only .xlsx files are supported"}), 422
+    file_bytes = file.read()
+    if len(file_bytes) > MAX_FILE_SIZE:
+        return jsonify({"error": "File too large (max 5MB)"}), 413
+    if not file_bytes:
+        return jsonify({"error": "Empty file"}), 400
+
+    try:
+        candidates = parse_excel_tasks(file_bytes)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 422
+
+    titles = [c["title"] for c in candidates]
+    duplicates = {t.lower() for t in find_duplicate_tasks(titles)}
     for c in candidates:
         c["duplicate"] = c["title"].lower() in duplicates
 

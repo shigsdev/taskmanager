@@ -237,6 +237,68 @@ class TestParseOnenoteDocx:
 # --- Excel goals parsing ----------------------------------------------------
 
 
+class TestParseExcelTasks:
+    """#89 (2026-04-26): Excel upload for tasks."""
+
+    def test_basic_tasks(self):
+        from import_service import parse_excel_tasks
+        xlsx = _make_xlsx([
+            ["title", "type", "tier"],
+            ["Buy bread", "personal", "today"],
+            ["Ship deck", "work", "this_week"],
+        ])
+        result = parse_excel_tasks(xlsx)
+        assert len(result) == 2
+        assert result[0]["title"] == "Buy bread"
+        assert result[0]["tier"] == "today"
+        assert result[1]["type"] == "work"
+
+    def test_skips_no_title_rows(self):
+        from import_service import parse_excel_tasks
+        xlsx = _make_xlsx([
+            ["title", "type"],
+            ["Real task", "work"],
+            [None, "work"],
+            ["", "work"],
+        ])
+        result = parse_excel_tasks(xlsx)
+        assert len(result) == 1
+
+    def test_invalid_enum_falls_back_to_default(self):
+        from import_service import parse_excel_tasks
+        xlsx = _make_xlsx([
+            ["title", "type", "tier"],
+            ["X", "garbage", "alsobad"],
+        ])
+        result = parse_excel_tasks(xlsx)
+        assert result[0]["type"] == "work"
+        assert result[0]["tier"] == "inbox"
+
+    def test_linked_goal_resolves_at_create(self, app):
+        """Excel candidate with linked_goal resolves to existing goal id."""
+        from import_service import (
+            create_tasks_from_import,
+            parse_excel_tasks,
+        )
+        with app.app_context():
+            g = Goal(
+                title="Ship Q4",
+                category=GoalCategory.WORK,
+                priority=GoalPriority.MUST,
+            )
+            db.session.add(g)
+            db.session.commit()
+            goal_id = g.id
+            xlsx = _make_xlsx([
+                ["title", "linked_goal"],
+                ["Plan kickoff", "ship q4"],
+            ])
+            candidates = parse_excel_tasks(xlsx)
+            assert candidates[0]["linked_goal"] == "ship q4"
+            tasks = create_tasks_from_import(candidates, source="test")
+            assert tasks[0].goal_id == goal_id
+
+
 class TestParseExcelGoals:
     """Verify parse_excel_goals handles various Excel formats."""
 

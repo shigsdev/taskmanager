@@ -13,10 +13,32 @@
         <div class="import-mode-buttons">
             <button class="btn" id="importTasksBtn">Paste OneNote Tasks</button>
             <button class="btn" id="importDocxBtn">Upload OneNote .docx</button>
+            <button class="btn" id="importTasksExcelBtn">Upload Excel Tasks</button>
             <button class="btn" id="importGoalsBtn">Upload Excel Goals</button>
             <button class="btn" id="importProjectsTextBtn">Paste Project Names</button>
             <button class="btn" id="importProjectsExcelBtn">Upload Excel Projects</button>
         </div>
+    </div>
+
+    {# #89 (2026-04-26): Excel tasks upload — header columns title/type/
+       tier/due_date/linked_goal/linked_project/notes/url. #}
+    <div class="import-input" id="importTasksExcelInput" style="display:none">
+        <h2>Upload Excel Tasks</h2>
+        <p>Upload an .xlsx file with a header row. Required column: <strong>title</strong>.
+           Optional: type, tier, due_date (YYYY-MM-DD), linked_goal, linked_project, notes, url.
+           linked_goal / linked_project are matched case-insensitively against existing rows.</p>
+        <div class="import-file-area">
+            <label for="importTasksExcelFile" class="scan-file-label" id="importTasksExcelFileLabel">
+                Choose .xlsx file
+            </label>
+            <input type="file" id="importTasksExcelFile" accept=".xlsx" style="display:none">
+            <span id="importTasksExcelFileName" class="import-file-name"></span>
+        </div>
+        <div class="import-input-actions">
+            <button class="btn" id="importParseTasksExcelBtn" disabled>Parse Tasks</button>
+            <button class="btn btn-sm" id="importBackFromTasksExcel">Back</button>
+        </div>
+        <div class="import-status" id="importTasksExcelStatus" style="display:none"></div>
     </div>
 
     {# #80 (2026-04-26): paste project names — one per line. #}

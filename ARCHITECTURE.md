@@ -495,6 +495,7 @@ the code.
 # import_api.py
 /api/import/tasks/parse
 /api/import/tasks/upload
+/api/import/tasks/upload-xlsx        # #89 — Excel task rows
 /api/import/tasks/confirm
 /api/import/goals/parse
 /api/import/goals/confirm

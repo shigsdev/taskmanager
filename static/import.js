@@ -105,6 +105,9 @@
         var pei = document.getElementById("importProjectsExcelInput");
         if (pti) pti.style.display = "none";
         if (pei) pei.style.display = "none";
+        // #89: tasks Excel mode section.
+        var tei = document.getElementById("importTasksExcelInput");
+        if (tei) tei.style.display = "none";
         section.style.display = "";
     }
 
@@ -150,6 +153,64 @@
     backFromTasks.addEventListener("click", resetAll);
     backFromDocx.addEventListener("click", resetAll);
     backFromGoals.addEventListener("click", resetAll);
+
+    // #89 (2026-04-26): Excel tasks upload — mirrors docx handler.
+    var tasksExcelBtn = document.getElementById("importTasksExcelBtn");
+    var tasksExcelInput = document.getElementById("importTasksExcelInput");
+    var tasksExcelFile = document.getElementById("importTasksExcelFile");
+    var tasksExcelFileLabel = document.getElementById("importTasksExcelFileLabel");
+    var tasksExcelFileName = document.getElementById("importTasksExcelFileName");
+    var parseTasksExcelBtn = document.getElementById("importParseTasksExcelBtn");
+    var backFromTasksExcel = document.getElementById("importBackFromTasksExcel");
+    var tasksExcelStatus = document.getElementById("importTasksExcelStatus");
+
+    if (tasksExcelBtn) tasksExcelBtn.addEventListener("click", function () {
+        currentMode = "tasks";
+        showSection(tasksExcelInput);
+    });
+    if (backFromTasksExcel) backFromTasksExcel.addEventListener("click", resetAll);
+    if (tasksExcelFileLabel) tasksExcelFileLabel.addEventListener("click", function () {
+        tasksExcelFile.click();
+    });
+    if (tasksExcelFile) tasksExcelFile.addEventListener("change", function () {
+        var file = tasksExcelFile.files[0];
+        if (!file) return;
+        tasksExcelFileName.textContent = file.name;
+        parseTasksExcelBtn.disabled = false;
+    });
+    if (parseTasksExcelBtn) parseTasksExcelBtn.addEventListener("click", async function () {
+        var file = tasksExcelFile.files[0];
+        if (!file) return;
+        parseTasksExcelBtn.disabled = true;
+        setStatus(tasksExcelStatus, "Parsing tasks from Excel…", false);
+        var formData = new FormData();
+        formData.append("file", file);
+        try {
+            var resp = await fetch("/api/import/tasks/upload-xlsx", {
+                method: "POST", body: formData,
+            });
+            var data = await resp.json();
+            if (!resp.ok) {
+                setStatus(tasksExcelStatus, "Error: " + (data.error || "Parse failed"), true);
+                parseTasksExcelBtn.disabled = false;
+                return;
+            }
+            if (data.candidates && data.candidates.length > 0) {
+                currentCandidates = data.candidates;
+                reviewTitle.textContent = "Review Task Candidates";
+                reviewDesc.textContent = data.total + " task(s) found. Edit any field before importing.";
+                await loadImportLookups();
+                renderTaskCandidates();
+                showSection(reviewSection);
+            } else {
+                setStatus(tasksExcelStatus, "No tasks found in the Excel file.", true);
+                parseTasksExcelBtn.disabled = false;
+            }
+        } catch (err) {
+            setStatus(tasksExcelStatus, "Parse failed: " + err.message, true);
+            parseTasksExcelBtn.disabled = false;
+        }
+    });
 
     // #80 (2026-04-26): Projects bulk-upload — paste-text + Excel modes.
     var projectsTextBtn = document.getElementById("importProjectsTextBtn");
@@ -840,6 +901,11 @@
                     item.project_id = c.project_id || "";
                     item.url = c.url || "";
                     item.notes = c.notes || "";
+                    // #89: Excel upload may carry free-text linked_goal /
+                    // linked_project. Backend resolves them case-insensitively
+                    // when goal_id / project_id is empty.
+                    if (c.linked_goal) item.linked_goal = c.linked_goal;
+                    if (c.linked_project) item.linked_project = c.linked_project;
                 } else {
                     item.category = c.category || "work";
                     item.priority = c.priority || "should";
