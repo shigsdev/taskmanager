@@ -369,6 +369,24 @@ body {
     font-size: 0.7rem;
     font-style: italic;
 }
+
+/* #99 (PR34): recurring-template previews on /calendar — dashed border
+   to match the main board's preview-card treatment (#32). */
+.calendar-cell-previews {
+    margin-top: 4px;
+}
+.calendar-preview-item {
+    font-size: 0.7rem;
+    background: transparent;
+    color: var(--text-muted, #666);
+    padding: 2px 6px;
+    border: 1px dashed var(--border, #ccc);
+    border-radius: 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: default;
+}
 @media (max-width: 700px) {
     .calendar-row { grid-template-columns: repeat(2, 1fr); }
 }

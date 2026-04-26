@@ -51,6 +51,21 @@
         } catch (err) {
             console.error("Failed to load tasks for calendar:", err);
         }
+        // #99 (PR34): also pull recurring-template previews for the
+        // 12-day window. Each preview = {template_id, title, type,
+        // frequency, fire_date, ...}. Render as dashed-border items
+        // matching the main board's preview treatment (#32).
+        let previews = [];
+        const startIso = _isoDate(thisMonday);
+        const endIso = _isoDate(new Date(thisMonday.getTime() + 12 * 86400000));
+        try {
+            const resp = await fetch(
+                `/api/recurring/previews?start=${startIso}&end=${endIso}`
+            );
+            if (resp.ok) previews = await resp.json();
+        } catch (err) {
+            console.error("Failed to load recurring previews:", err);
+        }
         // PR29 (#100): tasks in tier=TODAY/TOMORROW without an explicit
         // due_date used to fall through to "Unscheduled" even though
         // they obviously belong on today/tomorrow's cell. Caused the
@@ -80,6 +95,12 @@
         // draggable (between days). Without this, /calendar had nothing
         // draggable on the page at all.
         _renderUnscheduled(unscheduled);
+        // #99 (PR34): bucket previews by fire_date for the per-cell render.
+        const previewsByDate = {};
+        for (const p of previews) {
+            if (!previewsByDate[p.fire_date]) previewsByDate[p.fire_date] = [];
+            previewsByDate[p.fire_date].push(p);
+        }
 
         // 2 weeks × 6 days (Mon-Sat per #72) = 12 cells. Render as 2 rows.
         for (let week = 0; week < 2; week++) {
@@ -125,13 +146,29 @@
                     });
                     list.appendChild(li);
                 }
-                if (items.length === 0) {
+                cell.appendChild(list);
+                // #99 (PR34): recurring-template previews for this cell —
+                // dashed-border items, not draggable, not real tasks
+                // (they materialize when the spawn cron runs at 00:05).
+                const dayPreviews = previewsByDate[iso] || [];
+                if (dayPreviews.length > 0) {
+                    const pList = document.createElement("ul");
+                    pList.className = "calendar-cell-tasks calendar-cell-previews";
+                    for (const p of dayPreviews) {
+                        const li = document.createElement("li");
+                        li.className = "calendar-preview-item";
+                        li.textContent = p.title;
+                        li.title = p.title + " (recurring — not yet spawned)";
+                        pList.appendChild(li);
+                    }
+                    cell.appendChild(pList);
+                }
+                if (items.length === 0 && dayPreviews.length === 0) {
                     const empty = document.createElement("div");
                     empty.className = "calendar-cell-empty";
                     empty.textContent = "Drop here";
                     cell.appendChild(empty);
                 }
-                cell.appendChild(list);
 
                 cell.addEventListener("dragover", function (e) {
                     e.preventDefault();
