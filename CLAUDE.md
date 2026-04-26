@@ -36,7 +36,21 @@ gets tested there, and only merges to `main` when all quality gates pass.
    git push
    ```
 
-6. **Run deploy validation** (`python scripts/validate_deploy.py`).
+6. **Run deploy validation + monitor + prod smoke** before declaring done:
+   ```
+   python scripts/validate_deploy.py --monitor-minutes 5
+   npm run test:e2e:prod
+   ```
+   - `--monitor-minutes 5`: after the initial GREEN, wait 5 min and
+     re-scan logs for ERRORs that surfaced under real traffic. PR37
+     added this — declaring done at "initial GREEN + 6 generic smoke"
+     was missing background-job + cron-fire regressions.
+   - `npm run test:e2e:prod`: 22 prod Playwright tests covering every
+     shipped page + key feature surface (filters, /projects bulk-edit,
+     /calendar cells, Excel template downloads, recurring end_date
+     input, admin-endpoint guards, etc.). PR37 grew this from 6 to 22.
+   - For doc-only or trivial changes, --monitor-minutes 0 (the default)
+     is fine.
 
 7. **Clean up** the feature branch after deploy is green:
    ```

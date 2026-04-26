@@ -523,6 +523,16 @@ def main() -> int:
         const=False,
         help="Skip the log check even if the cookie file is present.",
     )
+    parser.add_argument(
+        "--monitor-minutes",
+        type=int,
+        default=0,
+        help="PR37: after the initial GREEN gate passes, sleep this many "
+             "minutes then re-scan logs. Catches errors that only surface "
+             "once real traffic hits the new container (e.g. background "
+             "jobs that fire on a cron, lazy-loaded code paths). 0 disables. "
+             "Recommended: 5 for any PR that touches a route or service.",
+    )
     args = parser.parse_args()
 
     # Backward-compat: if --url includes /healthz we accept it but warn.
@@ -635,6 +645,36 @@ def main() -> int:
         log_status=log_status_label,
         log_error_rows=log_error_rows,
     )
+
+    # PR37: deferred log monitor. Sleep N minutes, then re-scan for any
+    # NEW server ERRORs that surfaced after initial GREEN. Catches
+    # regressions that only appear once real traffic hits the new
+    # container — background-job exceptions, cron firing on the new
+    # build for the first time, lazy-loaded code paths.
+    if green and args.monitor_minutes > 0 and cookie_value:
+        print(f"\n--- Post-deploy monitor: sleeping {args.monitor_minutes} min ---")
+        # Use absolute timestamp so the second scan only sees logs that
+        # arrived AFTER the initial GREEN, not ones we already saw.
+        import datetime
+        watch_start = datetime.datetime.now(datetime.UTC)
+        time.sleep(args.monitor_minutes * 60)
+        print(f"Re-scanning logs for ERRORs since {watch_start.isoformat()}...")
+        new_status, new_rows = do_log_check(
+            base_url, cookie_value,
+            watch_start.isoformat().replace("+00:00", "Z"),
+        )
+        print(f"Monitor scan: {new_status}"
+              + (f" ({len(new_rows)} new ERROR rows)" if new_rows else ""))
+        if new_status == "FAIL":
+            print("\nDEPLOY MONITOR RED — errors surfaced after initial GREEN:")
+            for r in new_rows[:5]:
+                ts = r.get("timestamp", "?")
+                route = r.get("route", "?")
+                msg = (r.get("message") or "")[:120]
+                print(f"  {ts}  {route}  {msg}")
+            return EXIT_RED
+        print("Monitor window clean. DEPLOY MONITOR GREEN.")
+
     return EXIT_GREEN if green else EXIT_RED
 
 
