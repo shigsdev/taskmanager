@@ -5,7 +5,7 @@
  * Bump CACHE_VERSION when deploying new static files.
  */
 
-var CACHE_VERSION = "v71";
+var CACHE_VERSION = "v72";
 var CACHE_NAME = "taskmanager-" + CACHE_VERSION;
 
 // HTML is intentionally NOT pre-cached (see fetch handler below — Bug #56).
@@ -86,16 +86,25 @@ self.addEventListener("fetch", function (event) {
     // refresh. Pages need the API to be useful anyway, so the offline
     // HTML fallback was mostly theoretical. Drop it: HTML always comes
     // from the network. Static assets below are still cached normally.
+    // #56 + bug 2026-04-26: don't intercept HTML or /api/ at all. The
+    // browser handles them natively — no caching, no proxying, no
+    // chance for the SW's own fetch() to reject (e.g. when an OAuth
+    // redirect to accounts.google.com violates connect-src CSP, which
+    // surfaced as "Failed to fetch" on /import for the user). Static
+    // assets below are still cached.
     var acceptHeader = event.request.headers.get("accept") || "";
     if (url.pathname.startsWith("/api/") || acceptHeader.includes("text/html")) {
-        event.respondWith(fetch(event.request));
-        return;
+        return;  // bare return = browser handles natively
     }
 
-    // Static assets: cache-first with network fallback
+    // Static assets: cache-first with network fallback. Wrapped in
+    // .catch so an unreachable origin returns a 503 Response instead of
+    // throwing an unhandled TypeError that surfaces as "Failed to fetch"
+    // in console with no actionable message.
     event.respondWith(
         caches.match(event.request).then(function (cached) {
-            return cached || fetch(event.request).then(function (response) {
+            if (cached) return cached;
+            return fetch(event.request).then(function (response) {
                 if (response.ok) {
                     var clone = response.clone();
                     caches.open(CACHE_NAME).then(function (cache) {
@@ -103,6 +112,10 @@ self.addEventListener("fetch", function (event) {
                     });
                 }
                 return response;
+            }).catch(function () {
+                return new Response("", {
+                    status: 503, statusText: "Service Unavailable",
+                });
             });
         })
     );
