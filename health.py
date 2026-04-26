@@ -112,6 +112,7 @@ EXPECTED_STATIC_FILES = (
     "static/sw.js",
     "static/parse_capture.js",
     "static/capture.js",
+    "static/import.js",  # PR24 BUG-1: was missing — sw.js APP_SHELL caches it
     "static/voice_memo.js",
     "static/day_group.js",
     "static/projects.js",

@@ -191,13 +191,22 @@ def confirm(email: str):  # noqa: ARG001
     task_candidates = []
     goal_candidates = []
     project_fallback_count = 0
+    skipped_empty = 0  # PR24 TD-2: surface silent skips back to the user
     for c in candidates:
         if not isinstance(c, dict):
             continue
+        # PR24 TD-2: titles can end up empty after the prefix-strip in
+        # classify_voice_candidate (e.g. "goal:" with nothing after).
+        # create_*_from_import silently drops empty titles, so the user
+        # would see "0 created" with no explanation. Count + report.
+        title = (c.get("title") or "").strip()
         route = c.get("route") or "task"
+        if not title:
+            skipped_empty += 1
+            continue
         if route == "goal":
             goal_candidates.append({
-                "title": c.get("title"),
+                "title": title,
                 "category": c.get("type") if c.get("type") in (
                     "health", "personal_growth", "relationships", "work", "bau",
                 ) else "work",
@@ -209,7 +218,7 @@ def confirm(email: str):  # noqa: ARG001
             project_fallback_count += 1
             task_candidates.append({
                 **c,
-                "title": "(project) " + (c.get("title") or ""),
+                "title": "(project) " + title,
             })
         else:
             task_candidates.append(c)
@@ -237,4 +246,12 @@ def confirm(email: str):  # noqa: ARG001
             f"{project_fallback_count} project candidate(s) created as tasks "
             f"with '(project) ' prefix — bulk project creation lands with #80."
         )
+    if skipped_empty > 0:
+        existing = response.get("warning", "")
+        msg = (
+            f"{skipped_empty} candidate(s) skipped because the title was "
+            f"empty (often happens when a route prefix like 'goal:' has "
+            f"nothing after it)."
+        )
+        response["warning"] = (existing + " " + msg).strip() if existing else msg
     return jsonify(response), 201

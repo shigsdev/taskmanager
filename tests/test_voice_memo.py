@@ -438,6 +438,30 @@ class TestVoiceConfirm:
         )
         assert resp.status_code == 422
 
+    def test_empty_title_is_skipped_and_warned(self, client, monkeypatch):
+        """PR24 TD-2: candidates with an empty title (e.g. user said
+        "goal:" with nothing after it) used to be silently dropped by
+        the import creators, leaving the user with "0 created" and no
+        explanation. Now the response includes a warning + count."""
+        _bypass_auth(monkeypatch)
+        with patch("voice_api.create_tasks_from_candidates") as mock_create:
+            mock_create.return_value = []
+            resp = client.post(
+                "/api/voice-memo/confirm",
+                json={
+                    "candidates": [
+                        {"title": "", "route": "goal", "included": True},
+                        {"title": "  ", "route": "task", "included": True},
+                    ]
+                },
+            )
+        body = resp.get_json()
+        assert resp.status_code == 201
+        assert body["created"] == 0
+        assert "warning" in body
+        assert "skipped" in body["warning"].lower()
+        assert "2" in body["warning"]
+
 
 # --- Regression: scan_service refactor preserved default behavior ------------
 

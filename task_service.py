@@ -411,15 +411,22 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
 
     if "project_id" in data:
         task.project_id = _parse_uuid(data["project_id"], "project_id")
-        # #77 (2026-04-26): cascade the project's goal onto the task. Per
-        # scoping (b) "always overwrite" — every project change forces the
-        # goal to match the project's goal (or NULL if project has none).
-        # If the caller ALSO sets goal_id explicitly in this same payload,
-        # respect that — handled by the next branch which writes after.
+        # #77 (2026-04-26) + PR24 audit refinement (BUG-2):
+        #   - Assigning a project WITH a goal → cascade the goal onto
+        #     the task (always overwrite — feature, not bug).
+        #   - Assigning a project WITHOUT a goal → preserve the task's
+        #     existing goal (silent-data-loss otherwise — the audit
+        #     finding).
+        #   - Clearing the project (project_id → None) → clear the goal
+        #     too. Same as before — unwinding the inheritance.
+        # If the caller ALSO sets goal_id explicitly in this same
+        # payload, that wins via the next branch which writes after.
         if task.project_id is not None:
             from models import Project
             proj = db.session.get(Project, task.project_id)
-            task.goal_id = proj.goal_id if proj else None
+            if proj and proj.goal_id is not None:
+                task.goal_id = proj.goal_id
+            # else: project has no goal — preserve task's existing goal
         else:
             task.goal_id = None
 

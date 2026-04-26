@@ -1831,3 +1831,31 @@ class TestProjectGoalCascade:
             json={"title": "X", "type": "work", "project_id": pid},
         ).get_json()
         assert t["goal_id"] == gid
+
+    def test_assigning_project_without_goal_preserves_existing_goal(self, authed_client):
+        """PR24 BUG-2 regression: project with no goal must NOT silently
+        clear the task's explicit goal. The audit caught this as a
+        silent-data-loss edge in the original "always overwrite" spec."""
+        # Project with NO goal.
+        proj_no_goal = authed_client.post(
+            "/api/projects",
+            json={"name": "Lonely", "type": "work"},
+        ).get_json()
+        assert proj_no_goal["goal_id"] is None
+        # Task with an explicit goal, no project.
+        g = authed_client.post(
+            "/api/goals",
+            json={"title": "G2", "category": "work", "priority": "must"},
+        ).get_json()
+        t = authed_client.post(
+            "/api/tasks",
+            json={"title": "X", "type": "work", "goal_id": g["id"]},
+        ).get_json()
+        assert t["goal_id"] == g["id"]
+        # Assign project that has no goal — task's goal must survive.
+        resp = authed_client.patch(
+            f"/api/tasks/{t['id']}", json={"project_id": proj_no_goal["id"]}
+        )
+        body = resp.get_json()
+        assert body["project_id"] == proj_no_goal["id"]
+        assert body["goal_id"] == g["id"], "goal must NOT be silently cleared"

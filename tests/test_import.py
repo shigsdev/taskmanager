@@ -274,6 +274,24 @@ class TestParseExcelTasks:
         assert result[0]["type"] == "work"
         assert result[0]["tier"] == "inbox"
 
+    def test_due_date_normalises_datetime_cells(self):
+        """PR24 TD-1: openpyxl returns a Python datetime for date-formatted
+        cells — parse_excel_tasks must call .strftime to coerce to
+        YYYY-MM-DD. Previous tests only covered the string-cell branch."""
+        from datetime import datetime
+
+        from import_service import parse_excel_tasks
+        xlsx = _make_xlsx([
+            ["title", "due_date"],
+            # Real datetime → exercises the hasattr(due_raw, "strftime") branch.
+            ["Real date cell", datetime(2026, 5, 15, 9, 30)],
+            # Plain string → exercises the else branch.
+            ["String date cell", "2026-06-01"],
+        ])
+        result = parse_excel_tasks(xlsx)
+        assert result[0]["due_date"] == "2026-05-15"
+        assert result[1]["due_date"] == "2026-06-01"
+
     def test_linked_goal_resolves_at_create(self, app):
         """Excel candidate with linked_goal resolves to existing goal id."""
         from import_service import (
