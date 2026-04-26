@@ -2473,9 +2473,72 @@ function promptCustomDate(anchor) {
     }, 0);
 }
 
+// --- Drag auto-scroll (#87) -------------------------------------------------
+//
+// When the user drags a card past the top or bottom edge of the
+// viewport, scroll the page so the drop target reachable. Standard
+// pattern: a single document-level dragover listener checks pointer Y
+// vs window edges; if within EDGE_PX of either edge, schedule a
+// requestAnimationFrame loop that scrolls until the pointer leaves the
+// edge zone or the drag ends. Speed scales with proximity (closer to
+// edge = faster scroll).
+
+function _setupDragAutoScroll() {
+    var EDGE_PX = 60;       // start scrolling when within this many px of edge
+    var MAX_SPEED = 20;     // px per frame at the very edge
+    var scrollDir = 0;      // -1 up, 0 idle, +1 down
+    var scrollSpeed = 0;    // px per frame
+    var rafId = null;
+
+    function frame() {
+        if (scrollDir === 0) {
+            rafId = null;
+            return;
+        }
+        window.scrollBy(0, scrollDir * scrollSpeed);
+        rafId = requestAnimationFrame(frame);
+    }
+
+    function start() {
+        if (rafId === null) rafId = requestAnimationFrame(frame);
+    }
+
+    function stop() {
+        scrollDir = 0;
+        scrollSpeed = 0;
+        if (rafId !== null) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+        }
+    }
+
+    document.addEventListener("dragover", function (e) {
+        // Only act on actual drags (dataTransfer present).
+        if (!e.dataTransfer) return;
+        var y = e.clientY;
+        var h = window.innerHeight;
+        if (y < EDGE_PX) {
+            scrollDir = -1;
+            // Closer to top = faster (1.0 at edge, 0 at EDGE_PX away).
+            scrollSpeed = Math.max(2, Math.round(MAX_SPEED * (1 - y / EDGE_PX)));
+            start();
+        } else if (y > h - EDGE_PX) {
+            scrollDir = 1;
+            scrollSpeed = Math.max(2, Math.round(MAX_SPEED * (1 - (h - y) / EDGE_PX)));
+            start();
+        } else {
+            stop();
+        }
+    }, { passive: true });
+
+    document.addEventListener("dragend", stop);
+    document.addEventListener("drop", stop);
+}
+
 // --- Boot --------------------------------------------------------------------
 
 document.addEventListener("DOMContentLoaded", () => {
     init();
     initBulkSelect();
+    _setupDragAutoScroll();
 });
