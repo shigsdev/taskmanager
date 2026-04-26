@@ -278,6 +278,54 @@ OCR text:
 """
 
 
+# #86 (2026-04-26): scan-to-projects prompt. Mirrors the goal/task
+# prompts but produces project candidates (name + type + optional
+# target quarter).
+_PROJECT_PARSE_PROMPT = """\
+You are a project extraction assistant. Given raw OCR text from an \
+image (which may contain handwritten notes, planning whiteboards, or \
+meeting agendas), extract discrete PROJECTS — areas of focus that \
+group multiple related tasks (e.g. "Q3 Planning", "Portal Redesign", \
+"Home Renovation").
+
+Each project must be a JSON object with these keys:
+- name: short project name (under 200 characters, required)
+- type: one of "work", "personal"
+- target_quarter: optional free-text like "2026-Q4", or null
+
+Rules:
+- Focus on multi-task initiatives, not individual tasks or aspirational goals
+- If type is unclear, use "work"
+- Consolidate related bullets into a single project
+- Return ONLY a JSON array of objects, no other text
+
+Example output:
+[
+  {{"name": "Portal redesign", "type": "work", "target_quarter": "2026-Q3"}},
+  {{"name": "Garden cleanup", "type": "personal", "target_quarter": null}}
+]
+
+OCR text:
+{ocr_text}
+"""
+
+
+def parse_projects_from_text(ocr_text: str) -> list[dict[str, Any]]:
+    """#86: extract project candidates from OCR text via Claude."""
+    if not ocr_text.strip():
+        return []
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY not configured")
+    data = _post_to_claude(
+        api_key=api_key,
+        prompt=_PROJECT_PARSE_PROMPT.format(ocr_text=ocr_text),
+        max_tokens=2048,
+    )
+    content = data.get("content", [{}])[0].get("text", "")
+    return _extract_json_object_list(content)
+
+
 def parse_goals_from_text(ocr_text: str) -> list[dict[str, Any]]:
     """Send OCR text to Claude API to parse into goal candidates.
 

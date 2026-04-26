@@ -839,3 +839,44 @@ class TestScanBlueprint:
         rules = [r.rule for r in app.url_map.iter_rules()]
         assert "/api/scan/upload" in rules
         assert "/api/scan/confirm" in rules
+
+
+class TestKindRouter:
+    """#86 (2026-04-26): scan kind router accepts tasks/goals/projects."""
+
+    def test_normalize_kind_defaults_tasks(self):
+        from scan_api import _normalize_kind
+        assert _normalize_kind(None) == "tasks"
+        assert _normalize_kind("") == "tasks"
+        assert _normalize_kind("nope") == "tasks"
+
+    def test_normalize_kind_recognises_goals(self):
+        from scan_api import _normalize_kind
+        assert _normalize_kind("goal") == "goals"
+        assert _normalize_kind("goals") == "goals"
+        assert _normalize_kind("GOALS") == "goals"
+
+    def test_normalize_kind_recognises_projects(self):
+        from scan_api import _normalize_kind
+        assert _normalize_kind("project") == "projects"
+        assert _normalize_kind("projects") == "projects"
+        assert _normalize_kind("PROJECT") == "projects"
+
+    def test_confirm_projects_creates_via_import_creator(self, authed_client):
+        """End-to-end: POST /api/scan/confirm with kind=projects creates
+        rows via create_projects_from_import (same path as #80)."""
+        resp = authed_client.post(
+            "/api/scan/confirm",
+            json={
+                "kind": "projects",
+                "candidates": [
+                    {"name": "Scanned Proj", "type": "personal", "included": True},
+                ],
+            },
+        )
+        assert resp.status_code == 201
+        body = resp.get_json()
+        assert body["kind"] == "projects"
+        assert body["created"] == 1
+        assert body["projects"][0]["name"] == "Scanned Proj"
+        assert body["projects"][0]["type"] == "personal"

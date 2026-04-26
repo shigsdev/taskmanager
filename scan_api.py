@@ -11,11 +11,13 @@ import logging
 from flask import Blueprint, jsonify, request
 
 from auth import login_required
+from import_service import create_projects_from_import
 from scan_service import (
     create_goals_from_candidates,
     create_tasks_from_candidates,
     extract_text_from_image,
     parse_goals_from_text,
+    parse_projects_from_text,
     parse_tasks_from_text,
 )
 from utils import validate_upload
@@ -23,16 +25,18 @@ from utils import validate_upload
 # Scan modes. Clients pass ``parse_as`` in the upload form-data and
 # ``kind`` in the confirm JSON. We accept plural or singular for both
 # so the UI can use whichever reads more naturally.
-_VALID_KINDS = {"tasks", "task", "goals", "goal"}
+_VALID_KINDS = {"tasks", "task", "goals", "goal", "projects", "project"}
 
 
 def _normalize_kind(raw: str | None) -> str:
-    """Return canonical 'tasks' or 'goals'. Defaults to 'tasks'."""
+    """Return canonical 'tasks' / 'goals' / 'projects'. Defaults to 'tasks'."""
     if not raw:
         return "tasks"
     raw = raw.strip().lower()
     if raw in ("goal", "goals"):
         return "goals"
+    if raw in ("project", "projects"):
+        return "projects"
     return "tasks"
 
 logger = logging.getLogger(__name__)
@@ -121,6 +125,21 @@ def upload(email: str):  # noqa: ARG001
                 for g in goal_dicts
                 if (g.get("title") or "").strip()
             ]
+        elif kind == "projects":
+            # #86 (2026-04-26): scan → projects. UI uses `title` for the
+            # input even though projects are stored as `name`; we expose
+            # both so the same renderer + confirm path works.
+            proj_dicts = parse_projects_from_text(ocr_text)
+            candidates_out = [
+                {
+                    "title": (p.get("name") or "").strip(),
+                    "type": p.get("type") or "work",
+                    "target_quarter": p.get("target_quarter") or "",
+                    "included": True,
+                }
+                for p in proj_dicts
+                if (p.get("name") or "").strip()
+            ]
         else:
             task_titles = parse_tasks_from_text(ocr_text)
             candidates_out = [
@@ -179,6 +198,20 @@ def confirm(email: str):  # noqa: ARG001
                     "priority": g.priority.value,
                 }
                 for g in goals
+            ],
+        }), 201
+
+    if kind == "projects":
+        # #86 (2026-04-26): re-use the import_service creator so the same
+        # batch_id + ImportLog pattern applies (recycle-bin batch undo
+        # works for scan-created projects).
+        projects = create_projects_from_import(candidates, source="scan_projects")
+        return jsonify({
+            "kind": "projects",
+            "created": len(projects),
+            "projects": [
+                {"id": str(p.id), "name": p.name, "type": p.type.value}
+                for p in projects
             ],
         }), 201
 

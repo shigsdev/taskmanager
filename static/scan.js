@@ -138,7 +138,9 @@
 
             if (data.candidates && data.candidates.length > 0) {
                 currentCandidates = data.candidates;
-                currentKind = data.kind === "goals" ? "goals" : "tasks";
+                currentKind =
+                    data.kind === "goals" ? "goals"
+                    : (data.kind === "projects" ? "projects" : "tasks");
                 ocrTextEl.textContent = data.ocr_text || "(no text)";
                 renderCandidates();
                 showSection(reviewSection);
@@ -223,6 +225,31 @@
                     currentCandidates[i].target_quarter = quarter.value;
                 });
                 row.appendChild(quarter);
+            } else if (currentKind === "projects") {
+                // #86 (2026-04-26): scan → projects. Type select +
+                // optional target_quarter.
+                row.appendChild(
+                    buildSelect(
+                        "scan-candidate-type",
+                        [
+                            ["work", "Work"],
+                            ["personal", "Personal"],
+                        ],
+                        c.type || "work",
+                        function (e) {
+                            currentCandidates[i].type = e.target.value;
+                        }
+                    )
+                );
+                var pquarter = document.createElement("input");
+                pquarter.type = "text";
+                pquarter.className = "scan-candidate-quarter";
+                pquarter.placeholder = "Target quarter (e.g. 2026-Q4)";
+                pquarter.value = c.target_quarter || "";
+                pquarter.addEventListener("input", function () {
+                    currentCandidates[i].target_quarter = pquarter.value;
+                });
+                row.appendChild(pquarter);
             } else {
                 row.appendChild(
                     buildSelect(
@@ -247,16 +274,23 @@
 
     async function confirmCandidates(allIncluded) {
         var toSend = currentCandidates.map(function (c) {
+            // Projects use `name` instead of `title` per the import_service
+            // shape — translate so create_projects_from_import is happy.
             var base = {
-                title: c.title,
                 included: allIncluded ? true : c.included,
             };
-            if (currentKind === "goals") {
+            if (currentKind === "projects") {
+                base.name = c.title;
+                base.type = c.type || "work";
+                base.target_quarter = c.target_quarter || "";
+            } else if (currentKind === "goals") {
+                base.title = c.title;
                 base.category = c.category || "personal_growth";
                 base.priority = c.priority || "need_more_info";
                 base.target_quarter = c.target_quarter || "";
                 base.actions = c.actions || "";
             } else {
+                base.title = c.title;
                 base.type = c.type || "work";
             }
             return base;
@@ -274,11 +308,12 @@
             var data = await resp.json();
 
             if (resp.ok) {
-                var label = currentKind === "goals" ? "goal(s)" : "task(s)";
+                var label = currentKind === "goals" ? "goal(s)"
+                          : (currentKind === "projects" ? "project(s)" : "task(s)");
                 var suffix =
-                    currentKind === "goals"
-                        ? " added to your goals."
-                        : " added to your inbox.";
+                    currentKind === "goals" ? " added to your goals."
+                    : (currentKind === "projects" ? " added to your projects."
+                       : " added to your inbox.");
                 doneMessage.textContent = data.created + " " + label + suffix;
                 showSection(doneSection);
             } else {
