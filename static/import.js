@@ -48,6 +48,20 @@
     var confirmAllBtn = document.getElementById("importConfirmAll");
     var confirmSelectedBtn = document.getElementById("importConfirmSelected");
     var startOverBtn = document.getElementById("importStartOver");
+    var expandAllBtn = document.getElementById("importExpandAll");
+    var collapseAllBtn = document.getElementById("importCollapseAll");
+
+    function setAllExpanded(open) {
+        document.querySelectorAll(".import-candidate").forEach(function (row) {
+            var expanded = row.querySelector(".import-candidate-expanded");
+            var toggle = row.querySelector(".import-expand-toggle");
+            if (!expanded || !toggle) return;
+            expanded.style.display = open ? "" : "none";
+            toggle.textContent = open ? "Hide fields ▴" : "Edit all fields ▾";
+        });
+    }
+    if (expandAllBtn) expandAllBtn.addEventListener("click", function () { setAllExpanded(true); });
+    if (collapseAllBtn) collapseAllBtn.addEventListener("click", function () { setAllExpanded(false); });
 
     // DOM refs — confirm summary
     var confirmSection = document.getElementById("importConfirm");
@@ -373,12 +387,14 @@
             });
             head.appendChild(typeSelect);
 
-            // Expand/collapse toggle (#76).
+            // Expand/collapse toggle (#76). Bug followup 2026-04-25: the
+            // bare ▾ glyph wasn't discoverable — promote to a labeled
+            // button so users know it does something.
             var toggleBtn = document.createElement("button");
             toggleBtn.type = "button";
             toggleBtn.className = "import-expand-toggle";
-            toggleBtn.textContent = "▾";
-            toggleBtn.title = "Edit all fields";
+            toggleBtn.textContent = "Edit all fields ▾";
+            toggleBtn.title = "Edit tier, due date, goal, project, URL, and notes";
             head.appendChild(toggleBtn);
 
             if (c.duplicate) {
@@ -461,7 +477,7 @@
             toggleBtn.addEventListener("click", function () {
                 var isOpen = expanded.style.display !== "none";
                 expanded.style.display = isOpen ? "none" : "";
-                toggleBtn.textContent = isOpen ? "▾" : "▴";
+                toggleBtn.textContent = isOpen ? "Edit all fields ▾" : "Hide fields ▴";
             });
 
             candidatesEl.appendChild(row);
@@ -597,7 +613,7 @@
             toggleBtn.addEventListener("click", function () {
                 var isOpen = expanded.style.display !== "none";
                 expanded.style.display = isOpen ? "none" : "";
-                toggleBtn.textContent = isOpen ? "▾" : "▴";
+                toggleBtn.textContent = isOpen ? "Edit all fields ▾" : "Hide fields ▴";
             });
 
             candidatesEl.appendChild(row);

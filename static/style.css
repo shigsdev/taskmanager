@@ -1218,11 +1218,20 @@ body {
 .import-candidate-title { flex: 1; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-sunk); color: var(--text); }
 .import-candidate-type { padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-sunk); color: var(--text); }
 .import-expand-toggle {
-    background: transparent; border: 1px solid var(--border); color: var(--text);
-    padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 14px;
-    line-height: 1; min-width: 28px;
+    background: var(--surface-sunk); border: 1px solid var(--border); color: var(--text);
+    padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;
+    line-height: 1.4; white-space: nowrap;
 }
-.import-expand-toggle:hover { background: var(--surface-sunk); }
+.import-expand-toggle:hover { background: var(--card); border-color: var(--accent, #2563eb); }
+.import-candidates-controls {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    margin: 8px 0 12px 0; font-size: 13px;
+}
+.import-candidates-controls .btn-link {
+    background: none; border: none; color: var(--accent, #2563eb);
+    cursor: pointer; padding: 4px 0; font-size: 13px; text-decoration: underline;
+}
+.import-controls-hint { color: var(--text-muted, #888); font-size: 12px; flex: 1; min-width: 200px; }
 .import-candidate-expanded {
     display: flex; flex-direction: column; gap: 8px;
     padding: 8px; background: var(--surface-sunk);
