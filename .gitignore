@@ -43,6 +43,8 @@ instance/
 .idea/
 .claude/settings.local.json
 .claude/launch.local.json
+.claude/launch.json
+.claude/scheduled_tasks.lock
 # Claude Code creates ephemeral worktrees here when running spawn_task /
 # isolated subagents. Never tracked in the parent repo.
 .claude/worktrees/
