@@ -45,6 +45,9 @@
         <h3 class="docs-toc-group">Workflows</h3>
         <ul>
             <li><a href="#bulk-ops">Bulk operations</a></li>
+            <li><a href="#calendar-day-strip">Calendar &amp; day strip</a></li>
+            <li><a href="#projects-feature">Projects</a></li>
+            <li><a href="#goals-feature">Goals</a></li>
             <li><a href="#recycle-bin">Recycle bin and undo</a></li>
             <li><a href="#print">Print view</a></li>
         </ul>
@@ -187,6 +190,25 @@ https://example.com/foo
                 <li>Non-task items (reflections, asides) are grouped in a collapsed "Reflections" section, unchecked by default.</li>
             </ul>
 
+            <h3>Routing to task / goal / project</h3>
+            <p>
+                Each candidate is auto-classified by a keyword router
+                that scans the start of the title for prefix phrases:
+            </p>
+            <ul>
+                <li><strong>Goal</strong> if the title starts with: <code>goal:</code>, <code>create a goal</code>, <code>new goal</code>, <code>add a goal</code> (case-insensitive; the colon variant or trailing space variant both work). The prefix is stripped from the saved title.</li>
+                <li><strong>Project</strong> if the title starts with: <code>project:</code>, <code>create a project</code>, <code>new project</code>, <code>add a project</code>. Same prefix-strip behavior.</li>
+                <li>Otherwise: <strong>task</strong> (default).</li>
+            </ul>
+            <p>
+                The review screen shows a colored route badge next to
+                each candidate. Click the badge to cycle
+                <em>task → goal → project → task</em> if the auto-pick
+                is wrong. On confirm, goals and projects flow through
+                the same import pipelines used by the Excel importers
+                (so they get a recycle-bin batch you can undo).
+            </p>
+
             <h3>Size and duration limits</h3>
             <ul>
                 <li>Voice memo recording cap: <strong>10 minutes</strong> (client-side hard stop).</li>
@@ -214,15 +236,16 @@ https://example.com/foo
             <p>
                 The <a href="{{ url_for('scan_page') }}">/scan</a>
                 page accepts a photo of handwritten notes, a meeting
-                agenda, or a screenshot and turns it into task or goal
-                candidates. Pick the mode with the radio toggle at
-                the top.
+                agenda, or a screenshot and turns it into task, goal,
+                or project candidates. Pick the target with the radio
+                toggle at the top.
             </p>
 
             <h3>Modes</h3>
             <ul>
                 <li><strong>Tasks</strong> — candidates land in Inbox after confirmation. One candidate per extracted line.</li>
                 <li><strong>Goals</strong> — candidates become Goal rows with default category=work, priority=should, status=not_started. Edit any on the review screen before confirming.</li>
+                <li><strong>Projects</strong> — candidates become Project rows with default type=work, status=not_started, color=per-type default (Work blue / Personal green). Edit any on the review screen before confirming. Same recycle-bin batch undo as the other modes.</li>
             </ul>
 
             <h3>Pipeline</h3>
@@ -536,7 +559,7 @@ Skip this line (too short)</pre>
                 <li><strong>Freezer</strong> — maybe never. Review every so often to Keep, Delete, or pull back.</li>
             </ol>
 
-            <h3>Due-date auto-fill</h3>
+            <h3>Due-date auto-fill (tier → date)</h3>
             <p>
                 When a task lands in <strong>Today</strong> or
                 <strong>Tomorrow</strong> with no explicit due date,
@@ -554,6 +577,29 @@ Skip this line (too short)</pre>
                 in the same update (even setting it to blank is
                 treated as user intent).
             </p>
+
+            <h3>Tier auto-route (date → tier)</h3>
+            <p>
+                The reverse direction also runs: setting a
+                <code>due_date</code> automatically moves the task to
+                the tier that matches the date.
+            </p>
+            <ul>
+                <li>Date = today → <strong>Today</strong>.</li>
+                <li>Date = tomorrow → <strong>Tomorrow</strong>.</li>
+                <li>Date inside this Mon–Sat → <strong>This Week</strong>.</li>
+                <li>Date inside next Mon–Sat → <strong>Next Week</strong>.</li>
+                <li>Anything later → <strong>Backlog</strong>.</li>
+            </ul>
+            <p>
+                Auto-route runs on every <code>due_date</code> change
+                (always overwrites the tier) <em>except</em> when:
+            </p>
+            <ul>
+                <li>You set <code>tier</code> and <code>due_date</code> in the same update — your explicit tier wins.</li>
+                <li>The task is in <strong>Freezer</strong> — you parked it on purpose; the date is just a reminder.</li>
+                <li>The task is not Active (archived/cancelled/deleted).</li>
+            </ul>
             <p>
                 Moving a task back out of Today/Tomorrow does NOT
                 clear the auto-filled date. The date is still
@@ -592,6 +638,7 @@ Skip this line (too short)</pre>
                 <li><strong>Weekdays</strong> — fires Mon–Fri only.</li>
                 <li><strong>Weekly</strong> — fires on one specific day-of-week.</li>
                 <li><strong>Day of week</strong> — same as weekly; used internally for templates with a specific weekday.</li>
+                <li><strong>Multi day of week</strong> — fires on a <em>set</em> of weekdays (e.g. Mon + Wed + Fri, or Sat + Sun). One template instead of three. Stored as a JSON list of integers 0–6 (Mon=0, Sun=6).</li>
                 <li><strong>Monthly (by date)</strong> — fires on a specific day-of-month (e.g. the 15th).</li>
                 <li><strong>Monthly (nth weekday)</strong> — fires on a specific weekday of the month (e.g. first Monday).</li>
             </ul>
@@ -600,7 +647,7 @@ Skip this line (too short)</pre>
             <ul>
                 <li>Capture-bar hint (<code>#daily</code>, <code>#weekdays</code>, <code>#weekly</code>, <code>#monthly</code>) — creates a template matching today's weekday or day-of-month.</li>
                 <li>Task detail panel — add a repeat rule to an existing task.</li>
-                <li>Recurring editor — directly via the /recurring editor.</li>
+                <li><a href="{{ url_for('recurring_page') }}">/recurring</a> page — list view of every template with multi-select bulk-edit (Type / Frequency / Project / Goal / Pause-Resume / Delete).</li>
             </ul>
 
             <h3>When tasks spawn</h3>
@@ -735,11 +782,29 @@ Skip this line (too short)</pre>
             <ul>
                 <li><strong>Type</strong> — set all selected to Work or Personal.</li>
                 <li><strong>Tier</strong> — move all selected to a target tier.</li>
+                <li><strong>Due</strong> — set a due date on all selected (auto-routes the tier per the date → tier rules above).</li>
                 <li><strong>Goal</strong> — link all selected to a goal (or clear the link).</li>
                 <li><strong>Project</strong> — link all selected to a project (or clear).</li>
                 <li><strong>Complete</strong> — archive all selected.</li>
                 <li><strong>Delete</strong> — soft-delete all selected.</li>
             </ul>
+
+            <h3>Staged changes (Apply pattern)</h3>
+            <p>
+                Type / Tier / Due / Goal / Project picks
+                <strong>stage</strong> instead of firing immediately.
+                A "Pending changes" panel inside the toolbar shows
+                each pick as a chip — click a chip to remove it. The
+                <strong>Apply</strong> button commits all staged
+                fields in a single PATCH and then clears the panel.
+                The selection persists across stages so you can pick
+                multiple fields without re-selecting cards every time.
+            </p>
+            <p>
+                Status changes (Complete / Cancel / re-Activate) and
+                Delete are <strong>immediate</strong> — they don't
+                stage. They take effect the moment you click.
+            </p>
 
             <h3>Rules</h3>
             <ul>
@@ -748,6 +813,124 @@ Skip this line (too short)</pre>
                 <li>Cascade rules still apply — if you move a parent to a different tier, nothing forces subtasks to follow (subtasks stay put unless you include them in the selection).</li>
                 <li>Subtask goal/project inheritance still applies when the parent is changed.</li>
             </ul>
+        </section>
+
+        <section id="calendar-day-strip" class="docs-section">
+            <h2>Calendar &amp; day strip</h2>
+            <p>
+                Two surfaces let you set a task's <code>due_date</code>
+                by dragging the card onto a calendar day instead of
+                editing the date field by hand. Both share the same
+                rule: the dropped date sets <code>due_date</code> on
+                the task, which then auto-routes the tier per the
+                <a href="#tiers">date → tier rules</a>.
+            </p>
+
+            <h3>Day strip (above Today on the main board)</h3>
+            <ul>
+                <li>12 cells: this Mon–Sat plus next Mon–Sat. Today is highlighted; past days dimmed.</li>
+                <li>Drop any task card on a cell → the task gets that calendar date as its <code>due_date</code> and auto-routes (e.g. drop on Tue this week → tier becomes <strong>This Week</strong>).</li>
+                <li>Drop on today's cell → tier becomes <strong>Today</strong>.</li>
+            </ul>
+
+            <h3><a href="{{ url_for('calendar_page') }}">/calendar</a> page</h3>
+            <ul>
+                <li>Larger 2-row Mon–Sat grid. Each cell shows its date header + the existing tasks already due that day.</li>
+                <li>Same drag-and-drop semantics as the strip; useful when you want to see what's already on a given day before you drop another task there.</li>
+            </ul>
+
+            <h3>Auto-scroll while dragging</h3>
+            <p>
+                When you drag a card near the top or bottom edge of
+                the viewport (within ~60px), the page scrolls
+                automatically so you can reach an off-screen drop
+                target. Speed scales with proximity (faster the
+                closer your pointer is to the edge), capped at 20px
+                per frame. Stops on drop, drag-end, or pointer-leave.
+            </p>
+
+            <h3>Mon–Sat week semantics</h3>
+            <p>
+                "This week" and "next week" both mean Monday through
+                Saturday. Sunday is intentionally excluded — used as
+                a planning / rest day. On Sunday, "this week" refers
+                to the just-ended Mon–Sat block.
+            </p>
+        </section>
+
+        <section id="projects-feature" class="docs-section">
+            <h2>Projects</h2>
+            <p>
+                Projects group related tasks (work or personal) under
+                a name + color. A project can optionally link to a
+                Goal, in which case any task tied to the project
+                inherits that goal automatically.
+            </p>
+
+            <h3>Fields</h3>
+            <ul>
+                <li><strong>Name</strong> — required.</li>
+                <li><strong>Type</strong> — Work or Personal.</li>
+                <li><strong>Color</strong> — defaults to a per-type color when you don't pick one (Work = blue <code>#2563eb</code>, Personal = green <code>#16a34a</code>). Manual picker still wins. Changing type while still on a recognised default snaps the color to the new default; if you've manually overridden, the override is preserved.</li>
+                <li><strong>Status</strong> — <code>not_started</code>, <code>in_progress</code>, <code>done</code>, <code>on_hold</code>. Mirrors the Goal status field.</li>
+                <li><strong>Priority</strong> — <code>must</code> / <code>should</code> / <code>could</code> / <code>need_more_info</code> (mirrors Goal priorities).</li>
+                <li><strong>Target quarter</strong> — free text (e.g. <code>2026-Q4</code>).</li>
+                <li><strong>Linked goal</strong> — optional. When set, every task assigned to this project inherits the goal automatically (always overwrites the task's existing goal — explicit goal in the same save still wins).</li>
+                <li><strong>Actions</strong> + <strong>Notes</strong> — free-text fields for next-actions and freeform context (mirrors Goals).</li>
+            </ul>
+
+            <h3>Drag to reorder</h3>
+            <p>
+                On the <a href="{{ url_for('projects_page') }}">/projects</a>
+                page, drag project cards within their Work or Personal
+                group to set the manual sort order. The new order
+                persists as <code>priority_order</code> (a per-type
+                ranking; Work and Personal are independent).
+            </p>
+
+            <h3>Goal cascade onto linked tasks</h3>
+            <p>
+                When you save a task with a <code>project_id</code>,
+                the server cascades the project's <code>goal_id</code>
+                onto the task automatically. This includes clearing:
+                if the project's goal is null, the task's goal is set
+                to null too. An explicit <code>goal_id</code> in the
+                same save wins over the cascade.
+            </p>
+        </section>
+
+        <section id="goals-feature" class="docs-section">
+            <h2>Goals</h2>
+            <p>
+                Goals are the long-running outcomes; tasks and
+                projects roll up to them.
+            </p>
+
+            <h3>Categories</h3>
+            <ul>
+                <li><strong>Health</strong></li>
+                <li><strong>Personal Growth</strong></li>
+                <li><strong>Relationships</strong></li>
+                <li><strong>Work</strong></li>
+                <li><strong>BAU</strong> — Business As Usual: operational / maintenance goals that aren't growth or delivery but still need tracking.</li>
+            </ul>
+
+            <h3>Other fields</h3>
+            <ul>
+                <li><strong>Priority</strong> — <code>must</code> / <code>should</code> / <code>could</code> / <code>need_more_info</code>.</li>
+                <li><strong>Status</strong> — <code>not_started</code> / <code>in_progress</code> / <code>done</code> / <code>on_hold</code>.</li>
+                <li><strong>Target quarter</strong> — free text.</li>
+                <li><strong>Actions</strong> + <strong>Notes</strong> — free-text.</li>
+            </ul>
+
+            <h3>Progress</h3>
+            <p>
+                Each goal card shows a progress bar driven by the
+                count of completed vs. total active tasks linked to
+                it (directly or via a linked project — see
+                <a href="#projects-feature">Projects</a> for the
+                cascade rule).
+            </p>
         </section>
 
         <section id="recycle-bin" class="docs-section">
