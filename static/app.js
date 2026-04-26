@@ -351,8 +351,56 @@ async function _openPreviewTemplate(preview) {
     }
 }
 
+// #79 (2026-04-26): date / date-range string for a tier header.
+// "Mon Apr 25" for today/tomorrow; "Apr 21 — Apr 26" for this/next week
+// (Mon-Sat per #72). Year only when crossing a year boundary.
+const _DATE_FMT_DOW_MONTH_DAY = { weekday: "short", month: "short", day: "numeric" };
+const _DATE_FMT_MONTH_DAY = { month: "short", day: "numeric" };
+function _tierHeaderDate(tier) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (tier === "today") {
+        return today.toLocaleDateString(undefined, _DATE_FMT_DOW_MONTH_DAY);
+    }
+    if (tier === "tomorrow") {
+        const t = new Date(today.getTime() + 86400000);
+        return t.toLocaleDateString(undefined, _DATE_FMT_DOW_MONTH_DAY);
+    }
+    const range = _tierDateRange(tier);
+    if (!range) return "";
+    const [start, end] = range;
+    const crossYear = start.getFullYear() !== end.getFullYear();
+    const fmt = crossYear
+        ? { ..._DATE_FMT_MONTH_DAY, year: "numeric" }
+        : _DATE_FMT_MONTH_DAY;
+    return `${start.toLocaleDateString(undefined, fmt)} — ${end.toLocaleDateString(undefined, fmt)}`;
+}
+
+function _updateTierHeaderDate(tier) {
+    const section = document.querySelector(`.tier[data-tier="${tier}"]`);
+    if (!section) return;
+    const header = section.querySelector(".tier-header");
+    if (!header) return;
+    const label = _tierHeaderDate(tier);
+    let dateEl = header.querySelector(".tier-date");
+    if (!label) {
+        if (dateEl) dateEl.remove();
+        return;
+    }
+    if (!dateEl) {
+        dateEl = document.createElement("div");
+        dateEl.className = "tier-date";
+        header.appendChild(dateEl);
+    }
+    dateEl.textContent = label;
+}
+
 function renderBoard() {
     for (const tier of TIER_ORDER) {
+        // #79: refresh the date / date-range below each header on every
+        // board render. Cheap, idempotent.
+        _updateTierHeaderDate(tier);
+
         const list = document.querySelector(`.task-list[data-tier="${tier}"]`);
         if (!list) continue;
         const tasks = filteredTasks().filter((t) => t.tier === tier);
