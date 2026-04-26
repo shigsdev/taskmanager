@@ -413,6 +413,14 @@ def create_app(config: dict | None = None) -> Flask:
     def projects_page(email: str):  # noqa: ARG001
         return render_template("projects.html")
 
+    @app.route("/calendar")
+    @login_required
+    def calendar_page(email: str):  # noqa: ARG001
+        # #73: 2-week Mon-Sat grid with drop targets per day. Tasks
+        # currently due each day list inside the cell. Larger drop
+        # zones than the inline strip on the main board.
+        return render_template("calendar.html")
+
     @app.route("/review")
     @login_required
     def review_page(email: str):  # noqa: ARG001

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% set active_page = 'calendar' %}
+{% block title %}Calendar — Task Manager{% endblock %}
+
+{% block capture %}
+{# Same capture bar as the board so quick-add works on this page too. #}
+<div class="capture-bar" id="captureBar">
+    <input type="text" id="captureInput" placeholder="Add a task… (#today #week @project)" autocomplete="off" spellcheck="true">
+    <select id="captureType" title="Task type">
+        <option value="work">Work</option>
+        <option value="personal">Personal</option>
+    </select>
+    <button type="button" id="captureVoice" class="icon-btn" title="Voice input (real-time dictation)">🎤</button>
+    <a href="{{ url_for('voice_memo_page') }}" class="icon-btn" id="captureVoiceMemo" title="Voice memo (record long-form, parse to tasks)" role="button">🎙️</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="calendar-page">
+    <h1>Calendar</h1>
+    <p class="calendar-hint">Drag tasks from any tier onto a day to set the due date. Tasks already due each day list inside the cell.</p>
+    <div class="calendar-grid" id="calendarGrid"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='task_detail_payload.js') }}"></script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='parse_capture.js') }}"></script>
+<script src="{{ url_for('static', filename='capture.js') }}"></script>
+<script src="{{ url_for('static', filename='calendar.js') }}"></script>
+{% endblock %}

@@ -115,6 +115,7 @@ EXPECTED_STATIC_FILES = (
     "static/voice_memo.js",
     "static/day_group.js",
     "static/projects.js",
+    "static/calendar.js",
     "static/manifest.json",
 )
 

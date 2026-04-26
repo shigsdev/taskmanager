@@ -395,7 +395,71 @@ function _updateTierHeaderDate(tier) {
     dateEl.textContent = label;
 }
 
+// #73 (2026-04-26): inline day strip above Today. 12 cells covering
+// this Mon-Sat + next Mon-Sat (per #72 week boundaries). Each cell is
+// a drop target; dropping a task patches due_date — which then auto-
+// routes the tier per #74.
+function _formatDayCellLabel(d) {
+    return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
+}
+
+function _isoDate(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+}
+
+function renderDayStrip() {
+    const strip = document.getElementById("dayStrip");
+    if (!strip) return;
+    strip.innerHTML = "";
+
+    // Compute Mon-Sat for this week + next week.
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const daysSinceMonday = (today.getDay() + 6) % 7;
+    const thisMonday = new Date(today.getTime() - daysSinceMonday * 86400000);
+
+    const todayIso = _isoDate(today);
+    for (let i = 0; i < 12; i++) {
+        // Skip Sundays — week is Mon-Sat per #72. We have 6 days × 2 = 12 cells.
+        const offset = Math.floor(i / 6) * 7 + (i % 6);
+        const d = new Date(thisMonday.getTime() + offset * 86400000);
+        const cell = document.createElement("div");
+        cell.className = "day-cell";
+        const iso = _isoDate(d);
+        if (iso === todayIso) cell.classList.add("day-cell-today");
+        if (iso < todayIso) cell.classList.add("day-cell-past");
+        cell.dataset.date = iso;
+        cell.title = `Drop a task to set due date to ${d.toLocaleDateString()}`;
+        cell.textContent = _formatDayCellLabel(d);
+        cell.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            cell.classList.add("day-cell-hover");
+        });
+        cell.addEventListener("dragleave", () => cell.classList.remove("day-cell-hover"));
+        cell.addEventListener("drop", async (e) => {
+            e.preventDefault();
+            cell.classList.remove("day-cell-hover");
+            const taskId = e.dataTransfer && e.dataTransfer.getData("text/plain");
+            if (!taskId) return;
+            try {
+                await apiFetch(`${API}/${taskId}`, {
+                    method: "PATCH",
+                    body: JSON.stringify({ due_date: iso }),
+                });
+                await loadTasks();
+            } catch (err) {
+                alert("Failed to set due date: " + err.message);
+            }
+        });
+        strip.appendChild(cell);
+    }
+}
+
 function renderBoard() {
+    renderDayStrip();
     for (const tier of TIER_ORDER) {
         // #79: refresh the date / date-range below each header on every
         // board render. Cheap, idempotent.

@@ -427,6 +427,7 @@ commit — the check will fail otherwise.
 - `/completed` — full-page completed view (#29)
 - `/goals` — goals page
 - `/projects` — projects CRUD page (#24)
+- `/calendar` — 2-week Mon-Sat drag-drop calendar (#73) — drop tasks on a day to set due_date
 - `/review` — weekly review swipe
 - `/scan` — image → tasks
 - `/voice-memo` — audio → tasks

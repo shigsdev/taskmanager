@@ -252,6 +252,111 @@ body {
     50% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
 }
 
+/* === /calendar page (#73) === */
+.calendar-page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 16px;
+}
+.calendar-hint {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-bottom: 16px;
+}
+.calendar-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.calendar-row {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+}
+.calendar-cell {
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    padding: 8px;
+    background: var(--surface-sunk);
+    min-height: 100px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.calendar-cell-today {
+    border-color: var(--accent, #2563eb);
+    border-style: solid;
+}
+.calendar-cell-past { opacity: 0.6; }
+.calendar-cell-hover {
+    background: var(--success, #16a34a) !important;
+    border-style: solid;
+}
+.calendar-cell-header {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text);
+}
+.calendar-cell-tasks {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.calendar-cell-tasks li {
+    font-size: 0.75rem;
+    background: var(--card);
+    padding: 3px 6px;
+    border-radius: 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.calendar-cell-empty {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    font-style: italic;
+}
+@media (max-width: 700px) {
+    .calendar-row { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* === Day strip (#73) === */
+.day-strip {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 4px;
+    padding: 8px 16px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+.day-cell {
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    padding: 6px 4px;
+    text-align: center;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    background: var(--surface-sunk);
+    cursor: default;
+    user-select: none;
+}
+.day-cell-today {
+    background: var(--accent, #2563eb);
+    color: #fff;
+    border-style: solid;
+    font-weight: 600;
+}
+.day-cell-past { opacity: 0.5; }
+.day-cell-hover {
+    background: var(--success, #16a34a) !important;
+    color: #fff !important;
+    border-style: solid;
+    transform: scale(1.05);
+}
+
 /* === Tier Board === */
 .tier-board {
     display: grid;
