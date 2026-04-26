@@ -1242,3 +1242,54 @@ class TestProjectsParseEndpoint:
         body = resp.get_json()
         assert body["created"] == 1
         assert body["projects"][0]["name"] == "API-created"
+
+
+class TestImportTemplateDownload:
+    """#91: GET /api/import/template/<kind>.xlsx serves a workbook with headers."""
+
+    def test_tasks_template_downloads(self, authed_client):
+        import io
+
+        import openpyxl
+        resp = authed_client.get("/api/import/template/tasks.xlsx")
+        assert resp.status_code == 200
+        assert "spreadsheetml" in resp.headers["Content-Type"]
+        assert "tasks_import_template.xlsx" in resp.headers.get("Content-Disposition", "")
+        wb = openpyxl.load_workbook(io.BytesIO(resp.data), read_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        assert rows[0] == (
+            "title", "type", "tier", "due_date",
+            "linked_goal", "linked_project", "notes", "url",
+        )
+        assert len(rows) >= 2  # header + at least 1 example
+
+    def test_goals_template_downloads(self, authed_client):
+        import io
+
+        import openpyxl
+        resp = authed_client.get("/api/import/template/goals.xlsx")
+        assert resp.status_code == 200
+        wb = openpyxl.load_workbook(io.BytesIO(resp.data), read_only=True)
+        rows = list(wb.active.iter_rows(values_only=True))
+        assert rows[0] == (
+            "title", "category", "priority", "actions",
+            "target_quarter", "status", "notes",
+        )
+
+    def test_projects_template_downloads(self, authed_client):
+        import io
+
+        import openpyxl
+        resp = authed_client.get("/api/import/template/projects.xlsx")
+        assert resp.status_code == 200
+        wb = openpyxl.load_workbook(io.BytesIO(resp.data), read_only=True)
+        rows = list(wb.active.iter_rows(values_only=True))
+        assert rows[0] == (
+            "name", "type", "target_quarter", "status",
+            "color", "actions", "notes", "linked_goal",
+        )
+
+    def test_unknown_kind_returns_404(self, authed_client):
+        resp = authed_client.get("/api/import/template/widgets.xlsx")
+        assert resp.status_code == 404

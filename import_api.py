@@ -6,10 +6,14 @@ Endpoints:
     POST /api/import/tasks/confirm  — confirm task candidates, create in Inbox
     POST /api/import/goals/parse    — parse Excel file, return goal candidates
     POST /api/import/goals/confirm  — confirm goal candidates, create goals
+    GET  /api/import/template/<kind>.xlsx — download a pre-built .xlsx
+        template for each import mode (kinds: tasks, goals, projects)
 """
 from __future__ import annotations
 
-from flask import Blueprint, jsonify, request
+import io
+
+from flask import Blueprint, abort, jsonify, request, send_file
 
 from auth import login_required
 from import_service import (
@@ -320,3 +324,91 @@ def confirm_projects(email: str):  # noqa: ARG001
             for p in projects
         ],
     }), 201
+
+
+# --- Downloadable Excel templates (#91) -------------------------------------
+
+# Header rows + 1-2 example rows for each import kind. Headers MUST stay
+# in lockstep with the parsers in import_service.py — the docs section
+# in templates/docs.html cites those source ranges. Update both together
+# if columns ever change.
+_TEMPLATE_SHEETS: dict[str, dict] = {
+    "tasks": {
+        "filename": "tasks_import_template.xlsx",
+        "headers": [
+            "title", "type", "tier", "due_date",
+            "linked_goal", "linked_project", "notes", "url",
+        ],
+        "examples": [
+            ["Draft Q3 plan", "work", "this_week", "2026-05-15",
+             "Ship Q3 release", "Roadmap", "Outline scope first", ""],
+            ["Buy birthday gift", "personal", "tomorrow", "",
+             "", "", "Something handmade", "https://etsy.com"],
+        ],
+    },
+    "goals": {
+        "filename": "goals_import_template.xlsx",
+        "headers": [
+            "title", "category", "priority", "actions",
+            "target_quarter", "status", "notes",
+        ],
+        "examples": [
+            ["Run a half marathon", "health", "should",
+             "Train 4x/week", "2026-Q3", "in_progress", "Knee feels good"],
+            ["Read 20 books", "personal_growth", "could",
+             "Pick from staff picks shelf", "2026-Q4", "not_started", ""],
+        ],
+    },
+    "projects": {
+        "filename": "projects_import_template.xlsx",
+        "headers": [
+            "name", "type", "target_quarter", "status",
+            "color", "actions", "notes", "linked_goal",
+        ],
+        "examples": [
+            ["Roadmap", "work", "2026-Q3", "in_progress",
+             "#2563eb", "Draft + review", "Owner: me", "Ship Q3 release"],
+            ["Garden cleanup", "personal", "2026-Q2", "not_started",
+             "#16a34a", "Pull weeds, mulch beds", "", ""],
+        ],
+    },
+}
+
+
+@bp.get("/template/<kind>.xlsx")
+@login_required
+def download_template(email: str, kind: str):  # noqa: ARG001
+    """#91 (2026-04-26): serve a pre-built .xlsx template for each import mode.
+
+    Generated on the fly with openpyxl so headers always match the
+    parsers in import_service.py. Each sheet has the header row in row 1
+    plus 1-2 example rows the user can overwrite.
+    """
+    spec = _TEMPLATE_SHEETS.get(kind)
+    if spec is None:
+        abort(404)
+
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = kind.capitalize()
+    ws.append(spec["headers"])
+    for row in spec["examples"]:
+        ws.append(row)
+
+    # Best-effort column width — prevent truncation in Excel's preview.
+    for col_idx, header in enumerate(spec["headers"], start=1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = max(
+            14, len(header) + 2
+        )
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=spec["filename"],
+    )

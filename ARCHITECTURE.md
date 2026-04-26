@@ -502,6 +502,7 @@ the code.
 /api/import/projects/parse           # #80 — paste-text project names
 /api/import/projects/upload          # #80 — Excel project rows
 /api/import/projects/confirm         # #80 — commit projects from preview
+/api/import/template/<kind>.xlsx     # #91 — downloadable .xlsx templates (kinds: tasks, goals, projects)
 
 # digest_api.py
 /api/digest/preview

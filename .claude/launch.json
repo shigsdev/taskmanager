@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "taskmanager",
+      "runtimeExecutable": ".venv/Scripts/python",
+      "runtimeArgs": ["-m", "flask", "run", "--port", "5111"],
+      "port": 5111
+    },
+    {
+      "name": "taskmanager-dev-bypass",
+      "runtimeExecutable": ".venv/Scripts/python",
+      "runtimeArgs": ["scripts/run_dev_bypass.py", "--port", "5111"],
+      "port": 5111
+    },
+    {
+      "name": "taskmanager-dev-bypass-mac",
+      "runtimeExecutable": "/usr/local/bin/python3.14",
+      "runtimeArgs": ["scripts/run_dev_bypass.py", "--port", "5111"],
+      "port": 5111
+    }
+  ]
+}
