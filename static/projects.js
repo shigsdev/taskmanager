@@ -31,6 +31,11 @@ function defaultColorForType(t) {
 let projectsData = [];
 let projectsGoals = [];  // for the "Linked goal" dropdown
 let projectTaskCounts = {};  // project_id -> { total, active }
+// #95 (PR33): keep the per-project task arrays so we can render the
+// inline-collapsible list AND the full list in the side panel without
+// re-fetching.
+let projectTasksById = {};  // project_id -> Task[] (active first)
+const PROJECT_TASKS_INLINE_LIMIT = 5;  // collapse threshold
 
 // --- Init --------------------------------------------------------------------
 
@@ -46,17 +51,30 @@ async function projectsLoad() {
     projectsGoals = await apiFetch("/api/goals?is_active=all");
     const tasks = await apiFetch("/api/tasks");
 
-    // Compute task counts per project (total and active-only).
+    // Compute task counts per project (total and active-only) AND keep
+    // the task arrays so we can render them inline (#95).
     projectTaskCounts = {};
+    projectTasksById = {};
     for (const t of tasks) {
         if (!t.project_id) continue;
         if (!projectTaskCounts[t.project_id]) {
             projectTaskCounts[t.project_id] = { total: 0, active: 0 };
+            projectTasksById[t.project_id] = [];
         }
         projectTaskCounts[t.project_id].total += 1;
         if (t.status !== "archived") {
             projectTaskCounts[t.project_id].active += 1;
         }
+        projectTasksById[t.project_id].push(t);
+    }
+    // Sort each project's task list: active first, then by title.
+    for (const pid of Object.keys(projectTasksById)) {
+        projectTasksById[pid].sort((a, b) => {
+            const aActive = a.status !== "archived" ? 0 : 1;
+            const bActive = b.status !== "archived" ? 0 : 1;
+            if (aActive !== bActive) return aActive - bActive;
+            return (a.title || "").localeCompare(b.title || "");
+        });
     }
 
     // Inbox badge (same as other pages — share the widget from base.html).
@@ -82,6 +100,11 @@ function projectsFiltered() {
     if (activeFilter === "active") list = list.filter((p) => p.is_active);
     else if (activeFilter === "archived") list = list.filter((p) => !p.is_active);
     // "all" — no filter
+
+    // #96 (PR33): goal filter. Empty string = "All goals".
+    const goalFilterEl = document.getElementById("projectFilterGoal");
+    const goalFilterVal = goalFilterEl ? goalFilterEl.value : "";
+    if (goalFilterVal) list = list.filter((p) => p.goal_id === goalFilterVal);
 
     // Sort: active first, then by priority_order, then by name.
     list.sort((a, b) => {
@@ -273,6 +296,49 @@ function projectCardEl(project) {
     countRow.appendChild(countLabel);
     card.appendChild(countRow);
 
+    // #95 (PR33): inline list of linked tasks, collapsed past N. Card
+    // click still opens the side panel (the task <li> stops propagation
+    // so clicking a task title doesn't also open the project panel).
+    const tasks = projectTasksById[project.id] || [];
+    if (tasks.length > 0) {
+        const listWrap = document.createElement("div");
+        listWrap.className = "project-card-tasks";
+        const ul = document.createElement("ul");
+        ul.className = "project-card-task-list";
+        const initialShow = tasks.length <= PROJECT_TASKS_INLINE_LIMIT
+            ? tasks.length
+            : PROJECT_TASKS_INLINE_LIMIT;
+        for (let i = 0; i < tasks.length; i++) {
+            const t = tasks[i];
+            const li = document.createElement("li");
+            li.className = "project-card-task" + (t.status === "archived" ? " done" : "");
+            if (i >= initialShow) li.style.display = "none";
+            li.textContent = t.title;
+            li.title = t.title;
+            li.addEventListener("click", (e) => e.stopPropagation());
+            ul.appendChild(li);
+        }
+        listWrap.appendChild(ul);
+        if (tasks.length > PROJECT_TASKS_INLINE_LIMIT) {
+            const toggle = document.createElement("button");
+            toggle.type = "button";
+            toggle.className = "btn-sm project-card-toggle";
+            const hidden = tasks.length - initialShow;
+            toggle.textContent = `Show all (${tasks.length})`;
+            let expanded = false;
+            toggle.addEventListener("click", (e) => {
+                e.stopPropagation();
+                expanded = !expanded;
+                Array.from(ul.children).forEach((li, idx) => {
+                    li.style.display = (expanded || idx < initialShow) ? "" : "none";
+                });
+                toggle.textContent = expanded ? "Hide" : `Show all (${tasks.length})`;
+            });
+            listWrap.appendChild(toggle);
+        }
+        card.appendChild(listWrap);
+    }
+
     return card;
 }
 
@@ -285,6 +351,18 @@ function projectsSetupFilters() {
     document
         .getElementById("projectFilterActive")
         .addEventListener("change", projectsRender);
+    // #96 (PR33): goal filter dropdown — populate from active goals,
+    // re-render on change.
+    const goalSel = document.getElementById("projectFilterGoal");
+    if (goalSel) {
+        for (const g of projectsGoals.filter((x) => x.is_active)) {
+            const opt = document.createElement("option");
+            opt.value = g.id;
+            opt.textContent = g.title;
+            goalSel.appendChild(opt);
+        }
+        goalSel.addEventListener("change", projectsRender);
+    }
     document
         .getElementById("addProjectBtn")
         .addEventListener("click", projectDetailNew);
@@ -376,6 +454,26 @@ function projectDetailOpen(project) {
     document.getElementById("projectTaskCount").textContent = counts.total;
     document.getElementById("projectTaskPlural").textContent = counts.total === 1 ? "" : "s";
     summary.style.display = counts.total > 0 ? "" : "none";
+
+    // #95 (PR33): full task list in the side panel — no collapse, since
+    // the panel scrolls anyway and the user opened it specifically to
+    // see project detail.
+    const taskListWrap = document.getElementById("projectTaskListWrap");
+    const taskList = document.getElementById("projectTaskList");
+    const tasks = projectTasksById[project.id] || [];
+    taskList.innerHTML = "";
+    if (tasks.length > 0) {
+        for (const t of tasks) {
+            const li = document.createElement("li");
+            li.className = "project-side-task" + (t.status === "archived" ? " done" : "");
+            li.textContent = t.title;
+            li.title = t.title;
+            taskList.appendChild(li);
+        }
+        taskListWrap.style.display = "";
+    } else {
+        taskListWrap.style.display = "none";
+    }
 
     // Archive toggle label flips based on current state.
     const archiveBtn = document.getElementById("projectArchiveToggle");

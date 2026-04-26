@@ -30,6 +30,10 @@
                 <option value="archived">Archived only</option>
                 <option value="all">All (active + archived)</option>
             </select>
+            {# #96 (PR33): filter projects by linked goal. Populated by JS. #}
+            <select id="projectFilterGoal" title="Filter by linked goal">
+                <option value="">All goals</option>
+            </select>
         </div>
         <button class="btn" id="addProjectBtn">+ New Project</button>
     </div>
@@ -115,6 +119,13 @@
             <div class="project-task-summary" id="projectTaskSummary" style="display:none">
                 <span id="projectTaskCount">0</span> task<span id="projectTaskPlural">s</span>
                 linked to this project.
+            </div>
+
+            {# #95 (PR33): full task list for the open project. Each item
+               links back to the main board's detail view. #}
+            <div class="project-task-list-wrap" id="projectTaskListWrap" style="display:none">
+                <h4>Linked tasks</h4>
+                <ul class="project-task-list" id="projectTaskList"></ul>
             </div>
 
             <div class="detail-actions">

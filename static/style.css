@@ -1020,6 +1020,77 @@ body {
     border-color: var(--accent);
 }
 
+/* === #95 (PR33): inline task list on project cards === */
+.project-card-tasks {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border, #eee);
+}
+.project-card-task-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.project-card-task {
+    font-size: 0.8rem;
+    padding: 2px 6px;
+    background: var(--surface-sunk, #f7f7f7);
+    border-radius: 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.project-card-task.done {
+    text-decoration: line-through;
+    color: var(--text-muted, #999);
+}
+.project-card-toggle {
+    margin-top: 4px;
+    background: none;
+    border: none;
+    color: var(--accent, #2563eb);
+    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 2px 0;
+}
+.project-card-toggle:hover {
+    text-decoration: underline;
+}
+
+/* === #95 (PR33): full task list in the project side panel === */
+.project-task-list-wrap {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border, #eee);
+}
+.project-task-list-wrap h4 {
+    font-size: 0.9rem;
+    margin: 0 0 8px;
+}
+.project-task-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 320px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.project-side-task {
+    font-size: 0.85rem;
+    padding: 4px 8px;
+    background: var(--surface-sunk, #f7f7f7);
+    border-radius: 3px;
+}
+.project-side-task.done {
+    text-decoration: line-through;
+    color: var(--text-muted, #999);
+}
+
 /* === Project group headers in tier === */
 .project-group-header {
     display: flex;
