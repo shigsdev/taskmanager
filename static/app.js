@@ -103,6 +103,27 @@ async function loadTasks() {
 // loadTasks pattern. Without this, a network blip or 401 on /api/goals
 // would leave allGoals = [] silently, and the bulk-edit + detail-panel
 // dropdowns would render empty with no feedback to the user.
+// PR36 audit BUG-2: when a project/goal is archived or deleted on the
+// server, its UUID can linger forever in the localStorage filter Set
+// — silently hiding all tasks because no task matches the dead id.
+// After every load, sweep stale ids out of the filter Sets and persist.
+function _sweepStaleFilterIds() {
+    let dirty = false;
+    if (allProjects && allProjects.length) {
+        const live = new Set(allProjects.map((p) => p.id));
+        for (const id of Array.from(projectFilter)) {
+            if (!live.has(id)) { projectFilter.delete(id); dirty = true; }
+        }
+    }
+    if (allGoals && allGoals.length) {
+        const live = new Set(allGoals.map((g) => g.id));
+        for (const id of Array.from(goalFilter)) {
+            if (!live.has(id)) { goalFilter.delete(id); dirty = true; }
+        }
+    }
+    if (dirty) _saveFilterPrefs();
+}
+
 async function loadGoals() {
     try {
         allGoals = await apiFetch(GOALS_API);
@@ -111,6 +132,7 @@ async function loadGoals() {
         console.error("Failed to load goals:", err);
         return;
     }
+    _sweepStaleFilterIds();  // PR36 BUG-2
     taskDetailPopulateGoals();
     renderGoalFilter();  // #92
 }
@@ -123,6 +145,7 @@ async function loadProjects() {
         console.error("Failed to load projects:", err);
         return;
     }
+    _sweepStaleFilterIds();  // PR36 BUG-2
     taskDetailPopulateProjects();
     renderProjectFilter();
 }
@@ -242,6 +265,11 @@ function _previewsForTier(tier) {
         if (currentView === "work" && p.type !== "work") return false;
         if (currentView === "personal" && p.type !== "personal") return false;
         if (projectFilter.size && !projectFilter.has(p.project_id)) return false;  // #97
+        // PR36 audit TD-1: also filter previews by goalFilter so the
+        // dashed preview cards stay consistent with the real-task
+        // filter. Otherwise filtering to "Goal X" hides spawned tasks
+        // but leaves their template previews visible — confusing.
+        if (goalFilter.size && !goalFilter.has(p.goal_id)) return false;
         return true;
     });
 }
@@ -490,7 +518,11 @@ function renderDayStrip() {
             e.preventDefault();
             cell.classList.remove("day-cell-hover");
             const taskId = e.dataTransfer && e.dataTransfer.getData("text/plain");
-            if (!taskId) return;
+            // PR36 audit BUG-1: match calendar.js's UUID guard. Without
+            // this, an external-app or cross-tab drag injects garbage
+            // into text/plain and we send PATCH /api/tasks/<garbage>
+            // (server 422s, but the alert dialog fires anyway).
+            if (!taskId || !_UUID_RE.test(taskId)) return;
             try {
                 await apiFetch(`${API}/${taskId}`, {
                     method: "PATCH",
@@ -1754,7 +1786,11 @@ function taskDetailOpen(task) {
     } else {
         urlOpen.style.display = "none";
     }
-    urlInput.addEventListener("input", () => {
+    // PR36 audit TD-2: assignment overwrites, addEventListener accumulates.
+    // Was leaking a fresh handler on every panel open — same listener-
+    // accumulation class as the PR28 calendar fix. .oninput = ...
+    // pattern is also used in _setupParentPicker (line ~1962).
+    urlInput.oninput = () => {
         const v = urlInput.value.trim();
         if (v.startsWith("http://") || v.startsWith("https://")) {
             urlOpen.href = v;
@@ -1762,7 +1798,7 @@ function taskDetailOpen(task) {
         } else {
             urlOpen.style.display = "none";
         }
-    });
+    };
 
     document.getElementById("detailNotes").value = task.notes || "";
 

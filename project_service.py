@@ -264,6 +264,12 @@ def bulk_update_projects(project_ids: list[uuid.UUID], updates: dict) -> dict:
             project = update_project(pid, dict(updates))
         except ValidationError as e:
             errors.append({"id": str(pid), "field": e.field, "message": str(e)})
+            # PR36 audit BUG-3: rollback only undoes pending unflushed
+            # writes from THIS row — prior successfully-committed rows
+            # stay durable. That's intentional ("best-effort" per the
+            # docstring); the rollback is just to clear any partial
+            # state from this row's failed update_project call so the
+            # next iteration starts with a clean session.
             db.session.rollback()
             continue
         if project is None:

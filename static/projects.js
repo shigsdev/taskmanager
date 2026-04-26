@@ -126,6 +126,19 @@ function projectsRender() {
     board.innerHTML = "";
 
     const filtered = projectsFiltered();
+    // PR36 audit TD-3: drop selected ids that no longer match any
+    // currently-visible card. Without this, archiving a project
+    // (which removes it from the active filter) leaves a "ghost"
+    // selection that subsequent bulk actions silently apply to the
+    // hidden row. After re-render, only ids that are still on screen
+    // can stay in the selection.
+    if (projectsBulkMode && projectsBulkSelected.size) {
+        const visible = new Set(filtered.map((p) => p.id));
+        for (const id of Array.from(projectsBulkSelected)) {
+            if (!visible.has(id)) projectsBulkSelected.delete(id);
+        }
+        updateBulkCount();
+    }
     if (filtered.length === 0) {
         board.innerHTML = '<p class="empty-goals">No projects match the current filters.</p>';
         return;
@@ -596,10 +609,24 @@ async function bulkPatchProjects(updates) {
     const ids = bulkSelectedIds();
     if (!ids.length) { alert("Select at least one project."); return; }
     try {
-        await apiFetch("/api/projects/bulk", {
+        const result = await apiFetch("/api/projects/bulk", {
             method: "PATCH",
             body: JSON.stringify({ project_ids: ids, updates }),
         });
+        // PR36 audit SEC-1: server returns HTTP 200 even on partial
+        // per-row failures (errors collected in result.errors). Don't
+        // swallow them — surface so the user knows some rows didn't
+        // apply (esp. for the type/status/priority dropdowns where an
+        // enum mismatch is a real possibility on dirty data).
+        if (result && Array.isArray(result.errors) && result.errors.length) {
+            const summary = result.errors.slice(0, 3).map(
+                (e) => `${e.field || "?"}: ${e.message}`
+            ).join("\n");
+            alert(
+                `Bulk update partially applied: ${result.updated} ok, ` +
+                `${result.errors.length} errors.\n\n${summary}`
+            );
+        }
         await projectsLoad();
     } catch (err) {
         alert("Bulk update failed: " + err.message);
