@@ -624,3 +624,77 @@ class TestClientErrorEndpoint:
             assert "[REDACTED:EMAIL]" in row.message
         finally:
             client_logger.removeHandler(handler)
+
+
+class TestBackfillProjectColors:
+    """#93 (PR27): the project-colors backfill admin endpoint."""
+
+    def test_idempotent_when_no_legacy_blue_personal_projects(
+        self, app, authed_client
+    ):
+        """Endpoint runs cleanly when no projects need updating."""
+        # No projects exist (or all have manual overrides) — empty response.
+        resp = authed_client.post("/api/debug/backfill/project-colors")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert "scanned" in body
+        assert "updated" in body
+        assert isinstance(body["changes"], list)
+
+    def test_personal_project_with_legacy_blue_gets_switched_to_green(
+        self, app, authed_client
+    ):
+        """A Personal project carrying #2563eb (legacy default for all
+        types) should be switched to #16a34a (the per-type default)."""
+        from models import Project, ProjectType, db
+        with app.app_context():
+            p = Project(name="Old Personal", type=ProjectType.PERSONAL,
+                        color="#2563eb", is_active=True)
+            db.session.add(p)
+            db.session.commit()
+            pid = p.id
+
+        resp = authed_client.post("/api/debug/backfill/project-colors")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["updated"] >= 1
+        ids_changed = [c["id"] for c in body["changes"]]
+        assert str(pid) in ids_changed
+        with app.app_context():
+            p2 = db.session.get(Project, pid)
+            assert p2.color == "#16a34a"
+
+    def test_work_project_with_legacy_blue_is_unchanged(
+        self, app, authed_client
+    ):
+        """Work projects keep #2563eb (it IS the per-type default)."""
+        from models import Project, ProjectType, db
+        with app.app_context():
+            p = Project(name="Old Work", type=ProjectType.WORK,
+                        color="#2563eb", is_active=True)
+            db.session.add(p)
+            db.session.commit()
+            pid = p.id
+
+        authed_client.post("/api/debug/backfill/project-colors")
+        with app.app_context():
+            p2 = db.session.get(Project, pid)
+            assert p2.color == "#2563eb"
+
+    def test_manually_overridden_color_is_never_touched(
+        self, app, authed_client
+    ):
+        """A Personal project with a non-legacy color (e.g. user picked
+        #ff0000) must NOT be backfilled."""
+        from models import Project, ProjectType, db
+        with app.app_context():
+            p = Project(name="Custom Color", type=ProjectType.PERSONAL,
+                        color="#ff0000", is_active=True)
+            db.session.add(p)
+            db.session.commit()
+            pid = p.id
+
+        authed_client.post("/api/debug/backfill/project-colors")
+        with app.app_context():
+            p2 = db.session.get(Project, pid)
+            assert p2.color == "#ff0000"

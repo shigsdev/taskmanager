@@ -342,3 +342,50 @@ def backfill_task_goal_from_project(email: str):  # noqa: ARG001
         "updated": updated,
         "orphans": orphans,
     }), 200
+
+
+@bp.post("/backfill/project-colors")
+@debug_auth_required
+def backfill_project_colors(email: str):  # noqa: ARG001
+    """#93 (2026-04-26): apply per-type default color (#66) to legacy
+    projects that were created before PR3 and still carry the old
+    single default color #2563eb.
+
+    Idempotent: only updates projects whose color matches the legacy
+    default AND whose type now has a different default
+    (i.e. Personal projects get switched to #16a34a; Work stays #2563eb).
+    Manually-overridden colors are NEVER touched.
+
+    Auth: X-Debug-Token. Returns: {"scanned": N, "updated": N,
+    "changes": [{"id": ..., "name": ..., "type": ..., "old": ..., "new": ...}]}.
+    """
+    from models import Project, ProjectType, db
+    from project_service import _default_color_for_type
+
+    LEGACY_DEFAULT = "#2563eb"
+    projects = list(db.session.scalars(
+        select(Project).where(Project.is_active.is_(True))
+    ))
+    changes: list[dict] = []
+    for p in projects:
+        if p.color != LEGACY_DEFAULT:
+            continue
+        new_color = _default_color_for_type(p.type)
+        if new_color == LEGACY_DEFAULT:
+            continue
+        type_name = p.type.value if isinstance(p.type, ProjectType) else str(p.type)
+        changes.append({
+            "id": str(p.id), "name": p.name, "type": type_name,
+            "old": p.color, "new": new_color,
+        })
+        p.color = new_color
+    db.session.commit()
+    logger.info(
+        "backfill project_colors: scanned=%d updated=%d",
+        len(projects), len(changes),
+    )
+    return jsonify({
+        "scanned": len(projects),
+        "updated": len(changes),
+        "changes": changes,
+    }), 200

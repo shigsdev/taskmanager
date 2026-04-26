@@ -525,6 +525,7 @@ the code.
 /api/debug/logs
 /api/debug/client-error
 /api/debug/backfill/task-goal-from-project   # #77 — one-shot admin
+/api/debug/backfill/project-colors           # #93 — one-shot admin (per-type default backfill)
 ```
 
 ---
