@@ -292,3 +292,53 @@ def client_error(email: str):  # noqa: ARG001
     logger.handle(record)
 
     return jsonify({"ok": True}), 201
+
+
+# --- One-shot admin backfills (#77 etc.) ------------------------------------
+
+
+@bp.post("/backfill/task-goal-from-project")
+@debug_auth_required
+def backfill_task_goal_from_project(email: str):  # noqa: ARG001
+    """#77 (2026-04-26): one-shot — set every task's goal_id to its
+    project's goal_id (overwriting whatever's there).
+
+    Idempotent: re-running is a no-op when already in sync. Logs an
+    INFO row with the count so the run is auditable in /api/debug/logs.
+
+    Triggers the same logic as scripts/backfill_task_goal_from_project.py
+    but runs INSIDE the Railway environment so postgres.railway.internal
+    resolves. Use when local `railway run` can't reach the internal DB.
+
+    Auth: same X-Debug-Token as the rest of /api/debug/*.
+
+    Returns: {"tasks_with_project": N, "updated": N, "orphans": [uuid, ...]}.
+    """
+    from models import Project, Task, db
+
+    tasks_with_project = list(db.session.scalars(
+        select(Task).where(Task.project_id.is_not(None))
+    ))
+    projects_by_id = {p.id: p for p in db.session.scalars(select(Project))}
+
+    updated = 0
+    orphans: list[str] = []
+    for t in tasks_with_project:
+        proj = projects_by_id.get(t.project_id)
+        if proj is None:
+            orphans.append(str(t.id))
+            continue
+        new_goal_id = proj.goal_id
+        if t.goal_id != new_goal_id:
+            t.goal_id = new_goal_id
+            updated += 1
+    db.session.commit()
+    logger.info(
+        "backfill task_goal_from_project: tasks_with_project=%d updated=%d orphans=%d",
+        len(tasks_with_project), updated, len(orphans),
+    )
+    return jsonify({
+        "tasks_with_project": len(tasks_with_project),
+        "updated": updated,
+        "orphans": orphans,
+    }), 200

@@ -522,6 +522,7 @@ the code.
 # debug_api.py — used by scripts/validate_deploy.py --check-logs
 /api/debug/logs
 /api/debug/client-error
+/api/debug/backfill/task-goal-from-project   # #77 — one-shot admin
 ```
 
 ---
