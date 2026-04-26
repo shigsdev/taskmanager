@@ -1736,6 +1736,12 @@ function taskDetailOpen(task) {
     document.getElementById("detailTitle").value = task.title;
     document.getElementById("detailTier").value = task.tier;
     document.getElementById("detailType").value = task.type;
+    // #98 (PR32): scope the project dropdown to projects matching this
+    // task's type. Repopulating BEFORE setting detailProject's value
+    // ensures the value persists if it's a valid match (and gets
+    // dropped to "" if the task somehow has a cross-type project_id —
+    // which would be a data anomaly, but at least we surface it).
+    taskDetailPopulateProjects(task.type);
     document.getElementById("detailProject").value = task.project_id || "";
     document.getElementById("detailDueDate").value = task.due_date || "";
     document.getElementById("detailGoal").value = task.goal_id || "";
@@ -2515,13 +2521,19 @@ function initBulkSelect() {
 
     const projBtn = document.getElementById("bulkActionProject");
     if (projBtn) projBtn.addEventListener("click", () => {
+        // #98 (PR32): scope to projects matching the active type tab.
+        // In "all" view, show every project so the user isn't blocked
+        // when picking across types.
+        const scoped = (currentView === "all")
+            ? allProjects
+            : allProjects.filter((p) => p.type === currentView);
         const items = [{ label: "(no project)", onClick: () => stageBulkChange("project_id", null) }];
-        for (const p of allProjects) {
+        for (const p of scoped) {
             items.push({ label: p.name, onClick: () => stageBulkChange("project_id", p.id) });
         }
-        if (allProjects.length === 0) {
+        if (scoped.length === 0) {
             const msg = projectsLoaded
-                ? "(no projects available — create one on Projects page)"
+                ? `(no ${currentView === "all" ? "" : currentView + " "}projects available — create one on Projects page)`
                 : "(loading projects… try again in a moment)";
             items.push({ label: msg, onClick: () => {} });
         }
