@@ -1,6 +1,7 @@
 """Business logic for projects. Routes call into this module."""
 from __future__ import annotations
 
+import re
 import uuid
 
 from sqlalchemy import select
@@ -10,6 +11,35 @@ from utils import ValidationError  # noqa: F401 — re-exported for API layer
 from utils import parse_enum as _parse_enum
 from utils import parse_int as _parse_int
 from utils import parse_uuid as _parse_uuid
+
+# PR28 audit fix #3: project.color is rendered into an inline `style=`
+# attribute via innerHTML on the client (#projectFilterBar chip + the
+# project-group header). Without server-side validation, an arbitrary
+# string like `red; } body { display:none ` would inject CSS. Single-
+# user app, so direct XSS risk is low — but CLAUDE.md "All user input
+# sanitized before DB insertion" wasn't being met for this field.
+# Allow #RGB, #RRGGBB, #RRGGBBAA hex (with or without # prefix on
+# input — we always store with #). Reject anything else.
+_HEX_COLOR_RE = re.compile(r"^#?[0-9a-fA-F]{3}([0-9a-fA-F]{3}([0-9a-fA-F]{2})?)?$")
+
+
+def _parse_color(value: str | None) -> str | None:
+    """Validate + normalise a hex color string. Returns the canonical
+    form (with leading #, lowercase) or None for empty input. Raises
+    ValidationError on a non-empty value that isn't a valid hex color."""
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    if not _HEX_COLOR_RE.match(s):
+        raise ValidationError(
+            "color must be a hex value like #2563eb (3, 6, or 8 hex digits)",
+            "color",
+        )
+    if not s.startswith("#"):
+        s = "#" + s
+    return s.lower()
 
 DEFAULT_PROJECTS = [
     "Portal",
@@ -74,7 +104,8 @@ def create_project(data: dict) -> Project:
     project_type = _parse_enum(ProjectType, data.get("type", "work"), "type")
     # #66: when caller doesn't pass a color, fill in the per-type default
     # (Work=blue, Personal=green). Manual overrides still flow through.
-    color = (data.get("color") or "").strip() or _default_color_for_type(project_type)
+    # PR28 audit fix #3: validate hex format on caller-provided color.
+    color = _parse_color(data.get("color")) or _default_color_for_type(project_type)
 
     # #62: priority is optional (nullable enum); priority_order is the
     # drag-set integer position within a type group. Accept the legacy
@@ -163,7 +194,7 @@ def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
         project.type = _parse_enum(ProjectType, data["type"], "type")
 
     if "color" in data:
-        project.color = (data["color"] or "").strip() or None
+        project.color = _parse_color(data["color"])  # PR28 audit fix #3
 
     if "target_quarter" in data:
         project.target_quarter = (data["target_quarter"] or "").strip() or None

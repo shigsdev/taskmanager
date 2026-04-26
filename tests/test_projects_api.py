@@ -498,3 +498,69 @@ def test_seed_does_not_overwrite_existing(authed_client, app):
     assert resp.status_code == 200
     names = [p["name"] for p in resp.get_json()]
     assert names == ["Custom"]
+
+
+# --- PR28 audit fix #3: color hex validation ---------------------------------
+
+
+class TestProjectColorValidation:
+    """PR28: project.color is rendered into an inline style= attribute on
+    the client. Server must reject non-hex strings to close the CSS-injection
+    surface that CLAUDE.md's 'sanitize all user input' rule was missing."""
+
+    def test_create_accepts_valid_hex(self, authed_client):
+        resp = authed_client.post(
+            "/api/projects",
+            json={"name": "Valid Color", "type": "work", "color": "#abc123"},
+        )
+        assert resp.status_code == 201
+        assert resp.get_json()["color"] == "#abc123"
+
+    def test_create_normalises_no_hash_to_hash_lowercase(self, authed_client):
+        resp = authed_client.post(
+            "/api/projects",
+            json={"name": "No Hash", "type": "work", "color": "ABC123"},
+        )
+        assert resp.status_code == 201
+        assert resp.get_json()["color"] == "#abc123"
+
+    def test_create_rejects_css_injection_attempt(self, authed_client):
+        resp = authed_client.post(
+            "/api/projects",
+            json={
+                "name": "Sneaky",
+                "type": "work",
+                "color": "red; } body { display:none } .x {",
+            },
+        )
+        assert resp.status_code == 422
+        body = resp.get_json()
+        assert "color" in str(body).lower()
+
+    def test_create_rejects_named_color(self, authed_client):
+        # Named colors like "red" are not hex — caller should send #ff0000.
+        resp = authed_client.post(
+            "/api/projects",
+            json={"name": "Named", "type": "work", "color": "red"},
+        )
+        assert resp.status_code == 422
+
+    def test_patch_rejects_invalid_hex(self, authed_client):
+        p = authed_client.post(
+            "/api/projects",
+            json={"name": "Patch Me", "type": "work"},
+        ).get_json()
+        resp = authed_client.patch(
+            f"/api/projects/{p['id']}",
+            json={"color": "javascript:alert(1)"},
+        )
+        assert resp.status_code == 422
+
+    def test_create_empty_color_falls_back_to_per_type_default(self, authed_client):
+        """Empty / missing color → per-type default (#66 unchanged)."""
+        resp = authed_client.post(
+            "/api/projects",
+            json={"name": "Default", "type": "personal", "color": ""},
+        )
+        assert resp.status_code == 201
+        assert resp.get_json()["color"] == "#16a34a"  # personal default

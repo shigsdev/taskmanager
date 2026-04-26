@@ -737,7 +737,14 @@ def create_projects_from_import(
         except ValueError:
             status = ProjectStatus.NOT_STARTED
 
-        color = (candidate.get("color") or "").strip()
+        # PR28 audit fix #3: validate hex format same as create_project.
+        # Bad/garbage color in an Excel cell now silently falls back to
+        # the per-type default rather than persisting an injection vector.
+        from project_service import _parse_color
+        try:
+            color = _parse_color(candidate.get("color"))
+        except Exception:
+            color = None
         if not color:
             color = _default_color_for_type(project_type)
 

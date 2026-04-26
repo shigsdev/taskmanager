@@ -195,7 +195,13 @@ def get_logs(email: str):  # noqa: ARG001
         ]
         stmt = stmt.where(AppLog.level.in_(included))
     if route_prefix:
-        stmt = stmt.where(AppLog.route.like(f"{route_prefix}%"))
+        # PR28 audit fix #7: escape LIKE wildcards (% _) so a query
+        # string like ?route=% doesn't expand to a much broader filter
+        # than the user intended ("starts with literal text" semantics).
+        # SQL injection is already blocked by parameterization; this is
+        # about correctness of the prefix match.
+        escaped = route_prefix.replace("\\", r"\\").replace("%", r"\%").replace("_", r"\_")
+        stmt = stmt.where(AppLog.route.like(f"{escaped}%", escape="\\"))
     if source:
         stmt = stmt.where(AppLog.source == source)
     stmt = stmt.order_by(AppLog.timestamp.desc()).limit(limit)

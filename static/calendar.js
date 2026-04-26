@@ -8,6 +8,17 @@
 (function () {
     "use strict";
 
+    // PR28 audit fix #6: drop handlers read e.dataTransfer.getData(
+    // "text/plain") which can be ANY string (cross-tab drag, external
+    // app drag, etc.). Validate it's a UUID before building the PATCH
+    // URL so we never send `/api/tasks/<garbage>` to the server (the
+    // server would 422, but client-side validation cuts the noise +
+    // closes any future URL-injection footgun).
+    function _isValidUuid(s) {
+        return typeof s === "string"
+            && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+    }
+
     function _isoDate(d) {
         const y = d.getFullYear();
         const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -119,7 +130,7 @@
                     e.preventDefault();
                     cell.classList.remove("calendar-cell-hover");
                     const taskId = e.dataTransfer && e.dataTransfer.getData("text/plain");
-                    if (!taskId) return;
+                    if (!_isValidUuid(taskId)) return;  // PR28 audit fix #6
                     try {
                         const r = await fetch(`/api/tasks/${taskId}`, {
                             method: "PATCH",
@@ -178,31 +189,40 @@
         }
         panel.appendChild(list);
 
-        // Drop target: clear due_date.
-        panel.addEventListener("dragover", function (e) {
-            e.preventDefault();
-            panel.classList.add("calendar-unscheduled-hover");
-        });
-        panel.addEventListener("dragleave", function () {
-            panel.classList.remove("calendar-unscheduled-hover");
-        });
-        panel.addEventListener("drop", async function (e) {
-            e.preventDefault();
-            panel.classList.remove("calendar-unscheduled-hover");
-            const taskId = e.dataTransfer && e.dataTransfer.getData("text/plain");
-            if (!taskId) return;
-            try {
-                const r = await fetch(`/api/tasks/${taskId}`, {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ due_date: null }),
-                });
-                if (!r.ok) throw new Error("PATCH failed");
-                await renderCalendar();
-            } catch (err) {
-                alert("Failed to clear due date: " + err.message);
-            }
-        });
+        // PR28 audit fix (high-confidence #1): the panel is a persistent
+        // DOM element — _renderUnscheduled used to attach dragover/
+        // dragleave/drop listeners on EVERY render, doubling the listener
+        // count after every drop. After N drops, a single drop fired
+        // N+1 PATCH requests in parallel. Guard with a one-shot flag
+        // so we attach exactly once. innerHTML clears can't drop the
+        // listeners since they're on the panel itself, not its children.
+        if (!panel.dataset.dropAttached) {
+            panel.dataset.dropAttached = "1";
+            panel.addEventListener("dragover", function (e) {
+                e.preventDefault();
+                panel.classList.add("calendar-unscheduled-hover");
+            });
+            panel.addEventListener("dragleave", function () {
+                panel.classList.remove("calendar-unscheduled-hover");
+            });
+            panel.addEventListener("drop", async function (e) {
+                e.preventDefault();
+                panel.classList.remove("calendar-unscheduled-hover");
+                const taskId = e.dataTransfer && e.dataTransfer.getData("text/plain");
+                if (!_isValidUuid(taskId)) return;  // PR28 audit fix #6
+                try {
+                    const r = await fetch(`/api/tasks/${taskId}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ due_date: null }),
+                    });
+                    if (!r.ok) throw new Error("PATCH failed");
+                    await renderCalendar();
+                } catch (err) {
+                    alert("Failed to clear due date: " + err.message);
+                }
+            });
+        }
     }
 
     function init() {

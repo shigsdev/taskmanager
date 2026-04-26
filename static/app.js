@@ -29,14 +29,18 @@ const _FILTER_LS_KEYS = {
     project: "tm.filter.project",
     goal: "tm.filter.goal",
 };
+// PR28 audit fix #5: validate UUID format on read so a tampered or
+// stale localStorage value can't silently hide all tasks (or worse,
+// flow into a future server-side request as a malformed identifier).
+const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function _loadFilterPrefs() {
     try {
         const v = localStorage.getItem(_FILTER_LS_KEYS.view);
         if (v === "all" || v === "work" || v === "personal") currentView = v;
         const p = localStorage.getItem(_FILTER_LS_KEYS.project);
-        if (p) projectFilter = p;
+        if (p && _UUID_RE.test(p)) projectFilter = p;
         const g = localStorage.getItem(_FILTER_LS_KEYS.goal);
-        if (g) goalFilter = g;
+        if (g && _UUID_RE.test(g)) goalFilter = g;
     } catch (_) { /* private mode etc. — silently use defaults */ }
 }
 function _saveFilterPrefs() {
@@ -1124,7 +1128,13 @@ function tierLabel(tier) {
 // --- Inbox badge & Today warning -------------------------------------------
 
 function updateInboxBadge() {
+    // PR28 audit fix #2: null-guard to match updateTodayWarning's pattern.
+    // CLAUDE.md cascade-check rule: subpages load app.js + can call render
+    // helpers transitively; unguarded getElementById on a board-only element
+    // throws TypeError and stops downstream init. Two prior incidents
+    // already (#87/#78 in CLAUDE.md) — don't let it be three.
     const badge = document.getElementById("inboxBadge");
+    if (!badge) return;
     const count = allTasks.filter((t) => t.tier === "inbox").length;
     badge.textContent = count;
     badge.classList.toggle("empty", count === 0);
@@ -1597,6 +1607,7 @@ async function loadCancelledTasks() {
     const section = document.getElementById("tierCancelled");
     if (!section) return;  // not on the board page
     const list = document.getElementById("cancelledList");
+    if (!list) return;  // PR28 audit fix #4: section exists but list doesn't (template variation)
     list.innerHTML = "<div class='loading-msg'>Loading...</div>";
     section.dataset.loaded = "true";
     allCancelled = await apiFetch(API + "?status=cancelled");
