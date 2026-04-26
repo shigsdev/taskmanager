@@ -76,6 +76,33 @@ def _parse_day_of_week(value: object) -> int | None:
     return v
 
 
+def _parse_days_of_week(value: object) -> list[int] | None:
+    """#75: parse a JSON list of weekday integers (0=Mon … 6=Sun)."""
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise ValidationError("days_of_week must be a list of 0-6", "days_of_week")
+    parsed: list[int] = []
+    for x in value:
+        try:
+            v = int(x)
+        except (TypeError, ValueError) as e:
+            raise ValidationError(
+                "days_of_week entries must be integers 0-6", "days_of_week"
+            ) from e
+        if v < 0 or v > 6:
+            raise ValidationError(
+                "days_of_week entries must be 0 (Mon) to 6 (Sun)", "days_of_week"
+            )
+        if v not in parsed:
+            parsed.append(v)
+    if not parsed:
+        raise ValidationError(
+            "days_of_week must contain at least one weekday", "days_of_week"
+        )
+    return sorted(parsed)
+
+
 def _parse_day_of_month(value: object) -> int | None:
     if value is None:
         return None
@@ -126,6 +153,7 @@ def create_recurring(data: dict) -> RecurringTask:
         raise ValidationError("type is required", "type")
 
     day_of_week = _parse_day_of_week(data.get("day_of_week"))
+    days_of_week = _parse_days_of_week(data.get("days_of_week"))
     day_of_month = _parse_day_of_month(data.get("day_of_month"))
     week_of_month = _parse_week_of_month(data.get("week_of_month"))
 
@@ -135,6 +163,12 @@ def create_recurring(data: dict) -> RecurringTask:
     ):
         raise ValidationError(
             "day_of_week required for weekly/day_of_week frequency", "day_of_week"
+        )
+
+    # #75: MULTI_DAY_OF_WEEK requires the days_of_week list.
+    if frequency == RecurringFrequency.MULTI_DAY_OF_WEEK and not days_of_week:
+        raise ValidationError(
+            "days_of_week required for multi_day_of_week frequency", "days_of_week"
         )
 
     if frequency == RecurringFrequency.MONTHLY_DATE and day_of_month is None:
@@ -156,6 +190,7 @@ def create_recurring(data: dict) -> RecurringTask:
         title=title,
         frequency=frequency,
         day_of_week=day_of_week,
+        days_of_week=days_of_week,
         day_of_month=day_of_month,
         week_of_month=week_of_month,
         type=task_type,
@@ -202,6 +237,9 @@ def update_recurring(rt_id: uuid.UUID, data: dict) -> RecurringTask | None:
 
     if "day_of_week" in data:
         rt.day_of_week = _parse_day_of_week(data["day_of_week"])
+
+    if "days_of_week" in data:
+        rt.days_of_week = _parse_days_of_week(data["days_of_week"])
 
     if "day_of_month" in data:
         rt.day_of_month = _parse_day_of_month(data["day_of_month"])
@@ -262,6 +300,10 @@ def _template_fires_on(rt: RecurringTask, target: date) -> bool:
 
     if rt.frequency in (RecurringFrequency.WEEKLY, RecurringFrequency.DAY_OF_WEEK):
         return rt.day_of_week == weekday
+
+    if rt.frequency == RecurringFrequency.MULTI_DAY_OF_WEEK:
+        # #75: fire if today's weekday is in the days_of_week set.
+        return weekday in (rt.days_of_week or [])
 
     if rt.frequency == RecurringFrequency.MONTHLY_DATE:
         return target.day == rt.day_of_month

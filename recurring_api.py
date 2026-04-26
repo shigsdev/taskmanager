@@ -45,6 +45,7 @@ def _serialize(rt: RecurringTask) -> dict:
         "title": rt.title,
         "frequency": rt.frequency.value,
         "day_of_week": rt.day_of_week,
+        "days_of_week": rt.days_of_week,
         "day_of_month": rt.day_of_month,
         "week_of_month": rt.week_of_month,
         "type": rt.type.value,

@@ -71,6 +71,10 @@ class RecurringFrequency(enum.StrEnum):
     WEEKDAYS = "weekdays"
     WEEKLY = "weekly"
     DAY_OF_WEEK = "day_of_week"
+    # #75 (2026-04-26): fires on a SET of weekdays (e.g. {SAT, SUN} for
+    # workout). Reads the new `days_of_week` JSON column. Replaces the
+    # workflow of "create N templates, one per day."
+    MULTI_DAY_OF_WEEK = "multi_day_of_week"
     MONTHLY_DATE = "monthly_date"
     MONTHLY_NTH_WEEKDAY = "monthly_nth_weekday"
 
@@ -268,6 +272,9 @@ class RecurringTask(db.Model):
         Enum(RecurringFrequency), nullable=False
     )
     day_of_week: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # #75 (2026-04-26): JSON list of integers 0-6 for MULTI_DAY_OF_WEEK
+    # frequency. e.g. [5, 6] for Sat+Sun. NULL for other frequencies.
+    days_of_week: Mapped[list | None] = mapped_column(JSON, nullable=True)
     day_of_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
     week_of_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
     type: Mapped[TaskType] = mapped_column(Enum(TaskType), nullable=False)

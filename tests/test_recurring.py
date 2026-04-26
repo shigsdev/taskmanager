@@ -126,6 +126,50 @@ class TestRecurringCreate:
         )
         assert resp.status_code == 422
 
+    def test_create_multi_day_of_week_via_api(self, authed_client):
+        """#75: POST creates a MULTI_DAY_OF_WEEK template; days_of_week
+        round-trips through the serializer, deduped + sorted."""
+        resp = authed_client.post(
+            "/api/recurring",
+            json={
+                "title": "Workout",
+                "frequency": "multi_day_of_week",
+                "type": "personal",
+                # Out-of-order + duplicate to verify dedup + sort.
+                "days_of_week": [6, 5, 6],
+            },
+        )
+        assert resp.status_code == 201
+        body = resp.get_json()
+        assert body["frequency"] == "multi_day_of_week"
+        assert body["days_of_week"] == [5, 6]
+
+    def test_create_multi_day_of_week_missing_days_422(self, authed_client):
+        """#75: MULTI_DAY_OF_WEEK without days_of_week is rejected."""
+        resp = authed_client.post(
+            "/api/recurring",
+            json={
+                "title": "Workout",
+                "frequency": "multi_day_of_week",
+                "type": "personal",
+            },
+        )
+        assert resp.status_code == 422
+        assert resp.get_json()["field"] == "days_of_week"
+
+    def test_create_multi_day_of_week_bad_day_422(self, authed_client):
+        """#75: out-of-range entry in days_of_week is rejected."""
+        resp = authed_client.post(
+            "/api/recurring",
+            json={
+                "title": "Bad",
+                "frequency": "multi_day_of_week",
+                "type": "personal",
+                "days_of_week": [5, 9],
+            },
+        )
+        assert resp.status_code == 422
+
     def test_create_no_json_400(self, authed_client):
         resp = authed_client.post(
             "/api/recurring",
@@ -904,6 +948,24 @@ class TestPreviewsEndpoint:
         ]
         assert len(fires) == 1
         assert fires[0]["fire_date"] == "2026-04-20"
+
+    def test_multi_day_of_week_fires_on_each_listed_day(self, authed_client, app):
+        """#75: MULTI_DAY_OF_WEEK template fires on every listed weekday
+        within the preview range. Sat+Sun = workout fires Saturday + Sunday."""
+        with app.app_context():
+            _make_recurring(
+                title="Workout",
+                frequency=RecurringFrequency.MULTI_DAY_OF_WEEK,
+                days_of_week=[5, 6],  # Sat=5, Sun=6
+            )
+        # 2026-04-20 Mon … 2026-04-26 Sun. Should fire on Sat (Apr 25) + Sun (Apr 26).
+        resp = authed_client.get(
+            "/api/recurring/previews?start=2026-04-20&end=2026-04-26"
+        )
+        fires = sorted(
+            p["fire_date"] for p in resp.get_json() if p["title"] == "Workout"
+        )
+        assert fires == ["2026-04-25", "2026-04-26"]
 
     def test_inactive_template_not_previewed(self, authed_client, app):
         with app.app_context():

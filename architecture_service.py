@@ -477,8 +477,9 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
         "columns": {
             "title":              {"desc": "What the spawned task will be called", "notes": ""},
             "type":               {"desc": "Work or Personal (inherited by spawned tasks)", "notes": ""},
-            "frequency":          {"desc": "How often it fires", "notes": "daily / weekly / weekdays / monthly_date / monthly_nth_weekday / day_of_week"},
+            "frequency":          {"desc": "How often it fires", "notes": "daily / weekly / weekdays / monthly_date / monthly_nth_weekday / day_of_week / multi_day_of_week"},
             "day_of_week":        {"desc": "For weekly templates: 0=Mon, 6=Sun", "notes": "Optional"},
+            "days_of_week":       {"desc": "For multi_day_of_week: list of weekdays (e.g. [5, 6] = Sat+Sun)", "notes": "JSON list of integers 0-6 (#75)"},
             "day_of_month":       {"desc": "For monthly_date templates: 1-31", "notes": "Optional"},
             "nth_weekday":        {"desc": "For monthly_nth_weekday: 1st Tuesday, etc.", "notes": "Optional"},
             "week_of_month":      {"desc": "For monthly_nth_weekday: 1=first week, 5=last", "notes": "Optional, paired with nth_weekday"},
