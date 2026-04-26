@@ -428,6 +428,7 @@ commit — the check will fail otherwise.
 - `/goals` — goals page
 - `/projects` — projects CRUD page (#24)
 - `/calendar` — 2-week Mon-Sat drag-drop calendar (#73) — drop tasks on a day to set due_date
+- `/recurring` — recurring template list with multi-select bulk-edit toolbar (#63)
 - `/review` — weekly review swipe
 - `/scan` — image → tasks
 - `/voice-memo` — audio → tasks
@@ -474,6 +475,7 @@ the code.
 # recurring_api.py
 /api/recurring
 /api/recurring/<uuid:rt_id>
+/api/recurring/bulk                    # #63 — bulk PATCH + DELETE
 /api/recurring/seed
 /api/recurring/spawn
 /api/recurring/previews                # #32

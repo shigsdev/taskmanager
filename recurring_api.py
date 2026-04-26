@@ -112,6 +112,73 @@ def destroy(email: str, rt_id: uuid.UUID):  # noqa: ARG001
     return "", 204
 
 
+@bp.patch("/bulk")
+@login_required
+def bulk_patch(email: str):  # noqa: ARG001
+    """#63 (2026-04-26): bulk-update multiple recurring templates.
+
+    Body: ``{"template_ids": [uuid, ...], "updates": {field: value, ...}}``
+
+    Allowed updates: type, frequency, project_id, goal_id, is_active,
+    days_of_week (#75). Per-template `update_recurring` enforces the
+    same validation as the single-PATCH endpoint, so a bad value on
+    any template returns the SAME error and aborts the whole batch
+    (caller is making a deliberate same-value-everywhere change).
+
+    Returns ``{"updated": N, "errors": [{"id": uuid, "error": ...}]}``.
+    """
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON body required"}), 400
+    ids = data.get("template_ids")
+    updates = data.get("updates")
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"error": "template_ids must be a non-empty list"}), 422
+    if not isinstance(updates, dict) or not updates:
+        return jsonify({"error": "updates must be a non-empty dict"}), 422
+    try:
+        parsed_ids = [uuid.UUID(s) for s in ids]
+    except (TypeError, ValueError):
+        return jsonify({"error": "every entry in template_ids must be a UUID"}), 422
+
+    updated = 0
+    errors: list[dict] = []
+    for rid in parsed_ids:
+        try:
+            rt = update_recurring(rid, dict(updates))
+            if rt is None:
+                errors.append({"id": str(rid), "error": "not found"})
+            else:
+                updated += 1
+        except ValidationError as e:
+            errors.append({"id": str(rid), "error": str(e), "field": e.field})
+    return jsonify({"updated": updated, "errors": errors}), 200
+
+
+@bp.delete("/bulk")
+@login_required
+def bulk_delete(email: str):  # noqa: ARG001
+    """#63: bulk-delete (soft) recurring templates."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON body required"}), 400
+    ids = data.get("template_ids")
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"error": "template_ids must be a non-empty list"}), 422
+    try:
+        parsed_ids = [uuid.UUID(s) for s in ids]
+    except (TypeError, ValueError):
+        return jsonify({"error": "every entry in template_ids must be a UUID"}), 422
+    deleted = 0
+    not_found = 0
+    for rid in parsed_ids:
+        if delete_recurring(rid):
+            deleted += 1
+        else:
+            not_found += 1
+    return jsonify({"deleted": deleted, "not_found": not_found}), 200
+
+
 @bp.post("/seed")
 @login_required
 def seed(email: str):  # noqa: ARG001

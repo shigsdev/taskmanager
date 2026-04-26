@@ -421,6 +421,12 @@ def create_app(config: dict | None = None) -> Flask:
         # zones than the inline strip on the main board.
         return render_template("calendar.html")
 
+    @app.route("/recurring")
+    @login_required
+    def recurring_page(email: str):  # noqa: ARG001
+        # #63: list + bulk-edit toolbar for recurring templates.
+        return render_template("recurring.html")
+
     @app.route("/review")
     @login_required
     def review_page(email: str):  # noqa: ARG001

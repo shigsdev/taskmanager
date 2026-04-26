@@ -170,6 +170,45 @@ class TestRecurringCreate:
         )
         assert resp.status_code == 422
 
+    def test_bulk_patch_updates_multiple_templates(self, authed_client, app):
+        """#63 (2026-04-26): PATCH /api/recurring/bulk updates a list of
+        templates with one updates dict."""
+        with app.app_context():
+            t1 = _make_recurring(title="A", frequency=RecurringFrequency.DAILY)
+            t2 = _make_recurring(title="B", frequency=RecurringFrequency.DAILY)
+            ids = [str(t1.id), str(t2.id)]
+        resp = authed_client.patch(
+            "/api/recurring/bulk",
+            json={"template_ids": ids, "updates": {"is_active": False}},
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["updated"] == 2
+        assert body["errors"] == []
+        # Verify via GET
+        for tid in ids:
+            assert authed_client.get(f"/api/recurring/{tid}").get_json()["is_active"] is False
+
+    def test_bulk_patch_422_on_bad_input(self, authed_client):
+        """#63: missing template_ids or updates -> 422."""
+        resp = authed_client.patch("/api/recurring/bulk", json={"updates": {"is_active": False}})
+        assert resp.status_code == 422
+        resp = authed_client.patch("/api/recurring/bulk", json={"template_ids": ["not-uuid"]})
+        assert resp.status_code == 422
+
+    def test_bulk_delete_removes_templates(self, authed_client, app):
+        """#63: DELETE /api/recurring/bulk soft-deletes a list."""
+        with app.app_context():
+            t1 = _make_recurring(title="X", frequency=RecurringFrequency.DAILY)
+            t2 = _make_recurring(title="Y", frequency=RecurringFrequency.DAILY)
+            ids = [str(t1.id), str(t2.id)]
+        resp = authed_client.delete(
+            "/api/recurring/bulk", json={"template_ids": ids},
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["deleted"] == 2
+
     def test_create_no_json_400(self, authed_client):
         resp = authed_client.post(
             "/api/recurring",

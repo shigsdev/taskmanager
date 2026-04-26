@@ -116,6 +116,7 @@ EXPECTED_STATIC_FILES = (
     "static/day_group.js",
     "static/projects.js",
     "static/calendar.js",
+    "static/recurring.js",
     "static/manifest.json",
 )
 
