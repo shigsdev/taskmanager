@@ -13,6 +13,7 @@ from project_service import (
     delete_project,
     get_project,
     list_projects,
+    reorder_projects,
     seed_default_projects,
     update_project,
 )
@@ -32,7 +33,8 @@ def _serialize(project: Project) -> dict:
         "status": project.status.value,
         "goal_id": str(project.goal_id) if project.goal_id else None,
         "is_active": project.is_active,
-        "sort_order": project.sort_order,
+        "priority_order": project.priority_order,
+        "priority": project.priority.value if project.priority else None,
         "created_at": project.created_at.isoformat(),
     }
 
@@ -103,6 +105,32 @@ def destroy(email: str, project_id: uuid.UUID):  # noqa: ARG001
     if not delete_project(project_id):
         return jsonify({"error": "not found"}), 404
     return "", 204
+
+
+@bp.post("/reorder")
+@login_required
+def reorder(email: str):  # noqa: ARG001
+    """Bulk-update priority_order from a drag-and-drop reorder.
+
+    Body: {"ordered_ids": ["uuid1", "uuid2", ...]} — full list within a
+    single type group (work or personal), in the new top-to-bottom order.
+    Each id gets `priority_order = index`. Other type's projects untouched.
+    """
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON body required"}), 400
+    ids = data.get("ordered_ids")
+    if not isinstance(ids, list):
+        return jsonify({"error": "ordered_ids must be a list", "field": "ordered_ids"}), 422
+    try:
+        parsed = [uuid.UUID(s) for s in ids]
+    except (TypeError, ValueError):
+        return jsonify({
+            "error": "every entry in ordered_ids must be a UUID",
+            "field": "ordered_ids",
+        }), 422
+    updated = reorder_projects(parsed)
+    return jsonify({"updated": updated}), 200
 
 
 @bp.post("/seed")

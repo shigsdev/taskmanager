@@ -92,6 +92,16 @@ class GoalPriority(enum.StrEnum):
     NEED_MORE_INFO = "need_more_info"
 
 
+# #62 (2026-04-26): mirrors GoalPriority values exactly today, kept as a
+# separate enum so projects can evolve their priority lexicon
+# independently if needed (e.g. add "blocked", "deferred").
+class ProjectPriority(enum.StrEnum):
+    MUST = "must"
+    SHOULD = "should"
+    COULD = "could"
+    NEED_MORE_INFO = "need_more_info"
+
+
 class GoalStatus(enum.StrEnum):
     NOT_STARTED = "not_started"
     IN_PROGRESS = "in_progress"
@@ -171,7 +181,16 @@ class Project(db.Model):
         Uuid, ForeignKey("goals.id"), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # #62 (2026-04-26): renamed from `sort_order`. Drag-and-drop on the
+    # /projects page sets this within a type group (Work or Personal).
+    # Lower number = higher priority (rendered higher on the page).
+    priority_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # #62: independent priority bucket (must/should/could/need_more_info),
+    # mirrors GoalPriority. Optional — projects can have order without
+    # an explicit bucket assignment.
+    priority: Mapped[ProjectPriority | None] = mapped_column(
+        Enum(ProjectPriority), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     goal: Mapped[Goal | None] = relationship(back_populates="projects")

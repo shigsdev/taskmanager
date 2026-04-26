@@ -83,10 +83,10 @@ function projectsFiltered() {
     else if (activeFilter === "archived") list = list.filter((p) => !p.is_active);
     // "all" — no filter
 
-    // Sort: active first, then by sort_order, then by name.
+    // Sort: active first, then by priority_order, then by name.
     list.sort((a, b) => {
         if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
-        if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order;
+        if (a.priority_order !== b.priority_order) return a.priority_order - b.priority_order;
         return a.name.localeCompare(b.name);
     });
 
@@ -117,11 +117,82 @@ function projectsRender() {
         header.innerHTML += ` <span class="tier-count">${group.length}</span>`;
         section.appendChild(header);
 
+        // #62: drag-and-drop reorder within this type group. Each card
+        // is a drop target; on drop, recompute the order and POST to
+        // /api/projects/reorder. Only ACTIVE projects participate
+        // (archived sit at the bottom and aren't draggable).
+        const dropList = document.createElement("div");
+        dropList.className = "project-drop-list";
+        dropList.dataset.type = type;
         for (const project of group) {
-            section.appendChild(projectCardEl(project));
+            const card = projectCardEl(project);
+            if (project.is_active) {
+                card.draggable = true;
+                card.dataset.id = project.id;
+                card.addEventListener("dragstart", onCardDragStart);
+                card.addEventListener("dragover", onCardDragOver);
+                card.addEventListener("drop", onCardDrop);
+                card.addEventListener("dragend", onCardDragEnd);
+            }
+            dropList.appendChild(card);
         }
+        section.appendChild(dropList);
         board.appendChild(section);
     }
+}
+
+// --- Drag-and-drop reorder (#62) ---------------------------------------------
+
+let _dragSrcId = null;
+
+function onCardDragStart(e) {
+    _dragSrcId = e.currentTarget.dataset.id;
+    e.currentTarget.classList.add("dragging");
+    if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", _dragSrcId);
+    }
+}
+
+function onCardDragOver(e) {
+    if (!_dragSrcId) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    const target = e.currentTarget;
+    const srcCard = document.querySelector(`.project-card.dragging`);
+    if (!srcCard || srcCard === target) return;
+    const list = target.parentElement;
+    if (!list || list !== srcCard.parentElement) return;  // can't cross type groups
+    // Insert before or after based on cursor position relative to midpoint.
+    const rect = target.getBoundingClientRect();
+    const before = e.clientY < rect.top + rect.height / 2;
+    list.insertBefore(srcCard, before ? target : target.nextSibling);
+}
+
+async function onCardDrop(e) {
+    e.preventDefault();
+    const list = e.currentTarget.parentElement;
+    if (!list) return;
+    const ids = Array.from(list.querySelectorAll(".project-card[data-id]"))
+        .map((el) => el.dataset.id);
+    try {
+        await fetch("/api/projects/reorder", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ordered_ids: ids }),
+        });
+        // Reload to pick up new priority_order values from the server.
+        await projectsLoad();
+        projectsRender();
+    } catch (err) {
+        console.error("Reorder failed:", err);
+        alert("Reorder failed: " + err.message);
+    }
+}
+
+function onCardDragEnd(e) {
+    e.currentTarget.classList.remove("dragging");
+    _dragSrcId = null;
 }
 
 function projectCardEl(project) {
@@ -152,6 +223,14 @@ function projectCardEl(project) {
     }
 
     card.appendChild(titleRow);
+
+    // Priority badge (#62) — Must/Should/Could/NMI; null = no badge.
+    if (project.priority) {
+        const pBadge = document.createElement("span");
+        pBadge.className = "badge badge-priority-" + project.priority;
+        pBadge.textContent = project.priority.replace("_", " ");
+        titleRow.appendChild(pBadge);
+    }
 
     // Status badge (#69) — shown unless not_started (default; reduces noise).
     if (project.status && project.status !== "not_started") {
@@ -265,10 +344,11 @@ function projectDetailNew() {
     document.getElementById("projectType").value = "work";
     document.getElementById("projectColor").value = defaultColorForType("work");
     document.getElementById("projectTargetQuarter").value = "";
-    document.getElementById("projectSortOrder").value = "0";
+    document.getElementById("projectPriorityOrder").value = "0";
     document.getElementById("projectActions").value = "";
     document.getElementById("projectNotes").value = "";
     document.getElementById("projectStatus").value = "not_started";
+    document.getElementById("projectPriority").value = "";
     populateGoalDropdown(null);
     document.getElementById("projectTaskSummary").style.display = "none";
     // No archive on a project that doesn't exist yet.
@@ -283,10 +363,11 @@ function projectDetailOpen(project) {
     document.getElementById("projectType").value = project.type;
     document.getElementById("projectColor").value = project.color || DEFAULT_PROJECT_COLOR;
     document.getElementById("projectTargetQuarter").value = project.target_quarter || "";
-    document.getElementById("projectSortOrder").value = String(project.sort_order || 0);
+    document.getElementById("projectPriorityOrder").value = String(project.priority_order || 0);
     document.getElementById("projectActions").value = project.actions || "";
     document.getElementById("projectNotes").value = project.notes || "";
     document.getElementById("projectStatus").value = project.status || "not_started";
+    document.getElementById("projectPriority").value = project.priority || "";
     populateGoalDropdown(project.goal_id);
 
     // Task summary.
@@ -312,7 +393,8 @@ async function projectDetailSave(e) {
     e.preventDefault();
     const id = document.getElementById("projectId").value;
     const goalSel = document.getElementById("projectGoalId").value;
-    const sortRaw = document.getElementById("projectSortOrder").value;
+    const orderRaw = document.getElementById("projectPriorityOrder").value;
+    const prioRaw = document.getElementById("projectPriority").value;
     const data = {
         name: document.getElementById("projectName").value.trim(),
         type: document.getElementById("projectType").value,
@@ -321,8 +403,9 @@ async function projectDetailSave(e) {
         actions: document.getElementById("projectActions").value.trim() || null,
         notes: document.getElementById("projectNotes").value.trim() || null,
         status: document.getElementById("projectStatus").value,
+        priority: prioRaw || null,
         goal_id: goalSel || null,
-        sort_order: sortRaw === "" ? 0 : parseInt(sortRaw, 10) || 0,
+        priority_order: orderRaw === "" ? 0 : parseInt(orderRaw, 10) || 0,
     };
 
     if (!data.name) {

@@ -5,7 +5,7 @@ import uuid
 
 from sqlalchemy import select
 
-from models import Project, ProjectStatus, ProjectType, db
+from models import Project, ProjectPriority, ProjectStatus, ProjectType, db
 from utils import ValidationError  # noqa: F401 — re-exported for API layer
 from utils import parse_enum as _parse_enum
 from utils import parse_int as _parse_int
@@ -51,14 +51,14 @@ def seed_default_projects() -> list[Project]:
     """Create default work projects if none exist. Safe to call multiple times."""
     existing = db.session.scalar(select(Project).limit(1))
     if existing is not None:
-        return list(db.session.scalars(select(Project).order_by(Project.sort_order)))
+        return list(db.session.scalars(select(Project).order_by(Project.priority_order)))
 
     projects = []
     for i, name in enumerate(DEFAULT_PROJECTS):
         p = Project(
             name=name,
             color=DEFAULT_COLORS[i % len(DEFAULT_COLORS)],
-            sort_order=i,
+            priority_order=i,
         )
         db.session.add(p)
         projects.append(p)
@@ -75,6 +75,15 @@ def create_project(data: dict) -> Project:
     # #66: when caller doesn't pass a color, fill in the per-type default
     # (Work=blue, Personal=green). Manual overrides still flow through.
     color = (data.get("color") or "").strip() or _default_color_for_type(project_type)
+
+    # #62: priority is optional (nullable enum); priority_order is the
+    # drag-set integer position within a type group. Accept the legacy
+    # `sort_order` key too for backwards-compat with any caller that
+    # hasn't been updated yet (will be removed once all callers cycle).
+    priority = None
+    if data.get("priority"):
+        priority = _parse_enum(ProjectPriority, data["priority"], "priority")
+    order_raw = data.get("priority_order", data.get("sort_order", 0))
     project = Project(
         name=name,
         type=project_type,
@@ -83,8 +92,9 @@ def create_project(data: dict) -> Project:
         actions=(data.get("actions") or "").strip() or None,
         notes=(data.get("notes") or "").strip() or None,
         status=_parse_enum(ProjectStatus, data.get("status", "not_started"), "status"),
+        priority=priority,
         goal_id=_parse_uuid(data.get("goal_id"), "goal_id"),
-        sort_order=_parse_int(data.get("sort_order", 0), "sort_order"),
+        priority_order=_parse_int(order_raw, "priority_order"),
     )
     db.session.add(project)
     db.session.commit()
@@ -103,14 +113,38 @@ def list_projects(
         stmt = stmt.where(Project.is_active == is_active)
     if project_type is not None:
         stmt = stmt.where(Project.type == project_type)
-    stmt = stmt.order_by(Project.sort_order.asc(), Project.name.asc())
+    stmt = stmt.order_by(Project.priority_order.asc(), Project.name.asc())
     return list(db.session.scalars(stmt))
+
+
+def reorder_projects(ordered_ids: list[uuid.UUID]) -> int:
+    """Bulk-set priority_order for a list of project ids in display order.
+
+    Each id at position i gets priority_order = i. Returns the number of
+    projects updated. Ids that don't resolve are silently skipped.
+    """
+    by_id = {
+        p.id: p for p in db.session.scalars(
+            select(Project).where(Project.id.in_(ordered_ids))
+        )
+    }
+    updated = 0
+    for i, pid in enumerate(ordered_ids):
+        p = by_id.get(pid)
+        if p is None:
+            continue
+        p.priority_order = i
+        updated += 1
+    db.session.commit()
+    return updated
 
 
 _UPDATABLE_FIELDS = {
     "name", "type", "color", "target_quarter",
-    "actions", "notes", "status",
-    "goal_id", "is_active", "sort_order",
+    "actions", "notes", "status", "priority",
+    "goal_id", "is_active", "priority_order",
+    # Legacy alias accepted for in-flight clients; mapped to priority_order.
+    "sort_order",
 }
 
 
@@ -143,6 +177,12 @@ def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
     if "status" in data:
         project.status = _parse_enum(ProjectStatus, data["status"], "status")
 
+    if "priority" in data:
+        if data["priority"] in (None, ""):
+            project.priority = None
+        else:
+            project.priority = _parse_enum(ProjectPriority, data["priority"], "priority")
+
     if "goal_id" in data:
         project.goal_id = _parse_uuid(data["goal_id"], "goal_id")
 
@@ -151,11 +191,13 @@ def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
             raise ValidationError("is_active must be a boolean", "is_active")
         project.is_active = data["is_active"]
 
-    if "sort_order" in data:
+    # Accept either name; both write to priority_order.
+    if "priority_order" in data or "sort_order" in data:
+        raw = data.get("priority_order", data.get("sort_order"))
         try:
-            project.sort_order = int(data["sort_order"])
+            project.priority_order = int(raw)
         except (TypeError, ValueError) as e:
-            raise ValidationError("sort_order must be integer", "sort_order") from e
+            raise ValidationError("priority_order must be integer", "priority_order") from e
 
     unknown = set(data) - _UPDATABLE_FIELDS
     if unknown:

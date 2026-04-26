@@ -467,6 +467,7 @@ the code.
 # projects_api.py
 /api/projects
 /api/projects/<uuid:project_id>
+/api/projects/reorder                  # #62 — drag-and-drop reorder
 /api/projects/seed                     # #24
 
 # recurring_api.py

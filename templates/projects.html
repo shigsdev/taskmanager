@@ -88,8 +88,21 @@
                     </select>
                 </div>
                 <div class="form-field">
-                    <label for="projectSortOrder">Sort order</label>
-                    <input type="number" id="projectSortOrder" min="0" placeholder="0">
+                    <label for="projectPriority">Priority</label>
+                    <select id="projectPriority">
+                        <option value="">—</option>
+                        <option value="must">Must</option>
+                        <option value="should">Should</option>
+                        <option value="could">Could</option>
+                        <option value="need_more_info">Need More Info</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="projectPriorityOrder">Priority order</label>
+                    <input type="number" id="projectPriorityOrder" min="0" placeholder="0">
                 </div>
             </div>
 

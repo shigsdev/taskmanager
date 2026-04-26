@@ -2042,6 +2042,13 @@ body.bulk-select-mode .task-card .bulk-select-check { display: block; }
     background: var(--bg);
     font-size: 0.9rem;
 }
+/* #62: drag-and-drop reorder list. Cards inside become draggable
+   targets; the list container scopes the drop zone per type group. */
+.project-drop-list { display: flex; flex-direction: column; gap: 8px; }
+.project-card[draggable="true"] { cursor: grab; }
+.project-card[draggable="true"]:active { cursor: grabbing; }
+.project-card.dragging { opacity: 0.5; }
+
 .project-title-row {
     display: flex;
     align-items: center;

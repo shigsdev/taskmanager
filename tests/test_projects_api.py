@@ -252,8 +252,8 @@ def test_list_projects_all(authed_client, app):
 
 def test_list_projects_sorted_by_order(authed_client, app):
     with app.app_context():
-        _make_project(name="B", sort_order=2)
-        _make_project(name="A", sort_order=1)
+        _make_project(name="B", priority_order=2)
+        _make_project(name="A", priority_order=1)
     resp = authed_client.get("/api/projects")
     names = [p["name"] for p in resp.get_json()]
     assert names == ["A", "B"]
@@ -331,7 +331,7 @@ def test_patch_update_all(authed_client, app):
             "name": "Updated",
             "color": "#123456",
             "is_active": False,
-            "sort_order": 9,
+            "priority_order": 9,
             "goal_id": None,
         },
     )
@@ -339,7 +339,7 @@ def test_patch_update_all(authed_client, app):
     body = resp.get_json()
     assert body["color"] == "#123456"
     assert body["is_active"] is False
-    assert body["sort_order"] == 9
+    assert body["priority_order"] == 9
 
 
 def test_patch_change_type(authed_client, app):
@@ -375,11 +375,57 @@ def test_patch_422_bad_is_active(authed_client, app):
     assert resp.status_code == 422
 
 
-def test_patch_422_bad_sort_order(authed_client, app):
+def test_patch_422_bad_priority_order(authed_client, app):
     with app.app_context():
         p = _make_project(name="X")
         pid = p.id
-    resp = authed_client.patch(f"/api/projects/{pid}", json={"sort_order": "abc"})
+    resp = authed_client.patch(f"/api/projects/{pid}", json={"priority_order": "abc"})
+    assert resp.status_code == 422
+
+
+def test_patch_legacy_sort_order_alias_still_works(authed_client, app):
+    """#62 backwards-compat: PATCH with old sort_order key still updates priority_order."""
+    with app.app_context():
+        p = _make_project(name="X")
+        pid = p.id
+    resp = authed_client.patch(f"/api/projects/{pid}", json={"sort_order": 7})
+    assert resp.status_code == 200
+    assert resp.get_json()["priority_order"] == 7
+
+
+def test_patch_priority_round_trip(authed_client, app):
+    """#62: ProjectPriority enum round-trips through PATCH."""
+    with app.app_context():
+        p = _make_project(name="X")
+        pid = p.id
+    for v in ("must", "should", "could", "need_more_info"):
+        resp = authed_client.patch(f"/api/projects/{pid}", json={"priority": v})
+        assert resp.status_code == 200, resp.get_json()
+        assert resp.get_json()["priority"] == v
+    # Clear back to null
+    resp = authed_client.patch(f"/api/projects/{pid}", json={"priority": None})
+    assert resp.get_json()["priority"] is None
+
+
+def test_reorder_endpoint(authed_client, app):
+    """#62: POST /api/projects/reorder bulk-sets priority_order from a list."""
+    with app.app_context():
+        a = _make_project(name="A", priority_order=10)
+        b = _make_project(name="B", priority_order=20)
+        c = _make_project(name="C", priority_order=30)
+        ids = [str(c.id), str(a.id), str(b.id)]
+    resp = authed_client.post("/api/projects/reorder", json={"ordered_ids": ids})
+    assert resp.status_code == 200
+    assert resp.get_json()["updated"] == 3
+    listed = authed_client.get("/api/projects").get_json()
+    by_name = {p["name"]: p["priority_order"] for p in listed}
+    assert by_name == {"C": 0, "A": 1, "B": 2}
+
+
+def test_reorder_endpoint_422_on_bad_input(authed_client):
+    resp = authed_client.post("/api/projects/reorder", json={"ordered_ids": "nope"})
+    assert resp.status_code == 422
+    resp = authed_client.post("/api/projects/reorder", json={"ordered_ids": ["not-a-uuid"]})
     assert resp.status_code == 422
 
 
