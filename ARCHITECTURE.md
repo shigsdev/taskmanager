@@ -526,6 +526,7 @@ the code.
 /api/debug/client-error
 /api/debug/backfill/task-goal-from-project   # #77 — one-shot admin
 /api/debug/backfill/project-colors           # #93 — one-shot admin (per-type default backfill)
+/api/debug/backfill/today-tomorrow-due-date  # #100 — one-shot admin (set due_date on legacy TODAY/TOMORROW rows)
 ```
 
 ---

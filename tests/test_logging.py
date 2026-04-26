@@ -698,3 +698,76 @@ class TestBackfillProjectColors:
         with app.app_context():
             p2 = db.session.get(Project, pid)
             assert p2.color == "#ff0000"
+
+
+class TestBackfillTodayTomorrowDueDate:
+    """#100 (PR29): backfill due_date on legacy TODAY/TOMORROW rows."""
+
+    def test_today_tier_without_due_date_gets_today(self, app, authed_client):
+        from datetime import date
+
+        from models import Task, TaskStatus, TaskType, Tier, db
+        with app.app_context():
+            t = Task(title="Legacy today", type=TaskType.WORK,
+                     tier=Tier.TODAY, status=TaskStatus.ACTIVE)
+            db.session.add(t)
+            db.session.commit()
+            tid = t.id
+
+        resp = authed_client.post(
+            "/api/debug/backfill/today-tomorrow-due-date"
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["updated_today"] >= 1
+        with app.app_context():
+            t2 = db.session.get(Task, tid)
+            assert t2.due_date == date.today()
+
+    def test_tomorrow_tier_without_due_date_gets_tomorrow(self, app, authed_client):
+        from datetime import date, timedelta
+
+        from models import Task, TaskStatus, TaskType, Tier, db
+        with app.app_context():
+            t = Task(title="Legacy tomorrow", type=TaskType.WORK,
+                     tier=Tier.TOMORROW, status=TaskStatus.ACTIVE)
+            db.session.add(t)
+            db.session.commit()
+            tid = t.id
+
+        authed_client.post("/api/debug/backfill/today-tomorrow-due-date")
+        with app.app_context():
+            t2 = db.session.get(Task, tid)
+            assert t2.due_date == date.today() + timedelta(days=1)
+
+    def test_already_set_due_date_is_left_alone(self, app, authed_client):
+        from datetime import date
+
+        from models import Task, TaskStatus, TaskType, Tier, db
+        explicit = date(2026, 12, 31)
+        with app.app_context():
+            t = Task(title="Has explicit date", type=TaskType.WORK,
+                     tier=Tier.TODAY, status=TaskStatus.ACTIVE,
+                     due_date=explicit)
+            db.session.add(t)
+            db.session.commit()
+            tid = t.id
+
+        authed_client.post("/api/debug/backfill/today-tomorrow-due-date")
+        with app.app_context():
+            t2 = db.session.get(Task, tid)
+            assert t2.due_date == explicit, "explicit date must not be overwritten"
+
+    def test_inbox_tier_is_not_touched(self, app, authed_client):
+        from models import Task, TaskStatus, TaskType, Tier, db
+        with app.app_context():
+            t = Task(title="Inbox no date", type=TaskType.WORK,
+                     tier=Tier.INBOX, status=TaskStatus.ACTIVE)
+            db.session.add(t)
+            db.session.commit()
+            tid = t.id
+
+        authed_client.post("/api/debug/backfill/today-tomorrow-due-date")
+        with app.app_context():
+            t2 = db.session.get(Task, tid)
+            assert t2.due_date is None

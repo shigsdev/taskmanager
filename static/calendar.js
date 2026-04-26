@@ -51,12 +51,26 @@
         } catch (err) {
             console.error("Failed to load tasks for calendar:", err);
         }
+        // PR29 (#100): tasks in tier=TODAY/TOMORROW without an explicit
+        // due_date used to fall through to "Unscheduled" even though
+        // they obviously belong on today/tomorrow's cell. Caused the
+        // user-reported mismatch ("Update position paper" was on the
+        // main board's Tomorrow tier but invisible on /calendar 4/27).
+        // Use the tier as a fallback date assignment for the unambiguous
+        // tiers; THIS_WEEK / NEXT_WEEK span 6 days so we can't pin them
+        // to a single cell — those still go to Unscheduled.
+        const tomorrowIso = _isoDate(new Date(today.getTime() + 86400000));
         const byDate = {};
         const unscheduled = [];
         for (const t of tasks) {
-            if (t.due_date) {
-                if (!byDate[t.due_date]) byDate[t.due_date] = [];
-                byDate[t.due_date].push(t);
+            let cellDate = t.due_date;
+            if (!cellDate) {
+                if (t.tier === "today") cellDate = todayIso;
+                else if (t.tier === "tomorrow") cellDate = tomorrowIso;
+            }
+            if (cellDate) {
+                if (!byDate[cellDate]) byDate[cellDate] = [];
+                byDate[cellDate].push(t);
             } else {
                 unscheduled.push(t);
             }

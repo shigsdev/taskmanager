@@ -350,6 +350,60 @@ def backfill_task_goal_from_project(email: str):  # noqa: ARG001
     }), 200
 
 
+@bp.post("/backfill/today-tomorrow-due-date")
+@debug_auth_required
+def backfill_today_tomorrow_due_date(email: str):  # noqa: ARG001
+    """#100 (2026-04-26 PR29): set due_date on every active TODAY /
+    TOMORROW task that's missing one. The same as the per-save auto-
+    fill in `_today_auto_fill` (#46), but applied retroactively to
+    legacy rows that pre-date that rule.
+
+    Without this, /calendar grouped purely by due_date and silently
+    dropped legacy TOMORROW-tier tasks from tomorrow's cell — exactly
+    the user-reported mismatch ("Update position paper..." invisible).
+    PR29 also added a tier-fallback in calendar.js for the visual
+    side; this endpoint closes the data drift so any future surface
+    that filters by date stays consistent.
+
+    Idempotent: re-running is a no-op once everything's in sync.
+    Auth: X-Debug-Token. Returns: {"updated_today": N, "updated_tomorrow": N}.
+    """
+    from datetime import date, timedelta
+
+    from models import Task, TaskStatus, Tier, db
+
+    today = date.today()  # local server tz; matches _local_today_date used elsewhere
+    tomorrow = today + timedelta(days=1)
+
+    today_rows = list(db.session.scalars(
+        select(Task).where(
+            Task.tier == Tier.TODAY,
+            Task.due_date.is_(None),
+            Task.status == TaskStatus.ACTIVE,
+        )
+    ))
+    tomorrow_rows = list(db.session.scalars(
+        select(Task).where(
+            Task.tier == Tier.TOMORROW,
+            Task.due_date.is_(None),
+            Task.status == TaskStatus.ACTIVE,
+        )
+    ))
+    for t in today_rows:
+        t.due_date = today
+    for t in tomorrow_rows:
+        t.due_date = tomorrow
+    db.session.commit()
+    logger.info(
+        "backfill today_tomorrow_due_date: today=%d tomorrow=%d",
+        len(today_rows), len(tomorrow_rows),
+    )
+    return jsonify({
+        "updated_today": len(today_rows),
+        "updated_tomorrow": len(tomorrow_rows),
+    }), 200
+
+
 @bp.post("/backfill/project-colors")
 @debug_auth_required
 def backfill_project_colors(email: str):  # noqa: ARG001
