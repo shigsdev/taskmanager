@@ -245,3 +245,45 @@ def delete_project(project_id: uuid.UUID) -> bool:
     project.is_active = False
     db.session.commit()
     return True
+
+
+# #90 (PR35, 2026-04-26): bulk-update toolbar on /projects. Mirrors
+# task_service.bulk_update_tasks pattern — reuses update_project per
+# row so cascade rules + validation behave identically to single-row
+# PATCH. Errors on one row don't roll back the others (best-effort).
+def bulk_update_projects(project_ids: list[uuid.UUID], updates: dict) -> dict:
+    """Apply the same `updates` dict to every project in `project_ids`.
+
+    Returns ``{"updated": int, "not_found": [ids], "errors": [{"id", "field", "message"}]}``.
+    """
+    updated = 0
+    not_found: list[str] = []
+    errors: list[dict] = []
+    for pid in project_ids:
+        try:
+            project = update_project(pid, dict(updates))
+        except ValidationError as e:
+            errors.append({"id": str(pid), "field": e.field, "message": str(e)})
+            db.session.rollback()
+            continue
+        if project is None:
+            not_found.append(str(pid))
+            continue
+        updated += 1
+    return {
+        "updated": updated,
+        "not_found": not_found,
+        "errors": errors,
+    }
+
+
+def bulk_delete_projects(project_ids: list[uuid.UUID]) -> dict:
+    """Soft-delete (archive) every project in the list. Returns counts."""
+    archived = 0
+    not_found: list[str] = []
+    for pid in project_ids:
+        if delete_project(pid):
+            archived += 1
+        else:
+            not_found.append(str(pid))
+    return {"archived": archived, "not_found": not_found}

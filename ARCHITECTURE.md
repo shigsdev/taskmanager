@@ -470,6 +470,7 @@ the code.
 /api/projects
 /api/projects/<uuid:project_id>
 /api/projects/reorder                  # #62 — drag-and-drop reorder
+/api/projects/bulk                     # #90 — bulk PATCH/DELETE projects
 /api/projects/seed                     # #24
 
 # recurring_api.py

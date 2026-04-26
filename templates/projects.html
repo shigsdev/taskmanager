@@ -36,9 +36,24 @@
             </select>
         </div>
         <button class="btn" id="addProjectBtn">+ New Project</button>
+        {# #90 (PR35): bulk-edit toggle. When active, each project card
+           shows a checkbox and the bulk toolbar appears at the bottom. #}
+        <button class="btn btn-sm" id="projectsBulkToggle" type="button">Select</button>
     </div>
 
     <div id="projectsBoard"></div>
+
+    {# #90 bulk-action toolbar (sticky bottom, hidden until toggled). #}
+    <div class="bulk-toolbar" id="projectsBulkToolbar" style="display:none">
+        <span class="bulk-count" id="projectsBulkCount">0 selected</span>
+        <button type="button" class="btn-sm" id="projectsBulkType">Type ▾</button>
+        <button type="button" class="btn-sm" id="projectsBulkStatus">Status ▾</button>
+        <button type="button" class="btn-sm" id="projectsBulkPriority">Priority ▾</button>
+        <button type="button" class="btn-sm" id="projectsBulkGoal">Goal ▾</button>
+        <button type="button" class="btn-sm" id="projectsBulkArchive">Archive</button>
+        <button type="button" class="btn-sm" id="projectsBulkDelete" style="color:#c00">Delete</button>
+        <button type="button" class="btn-sm" id="projectsBulkCancel">Cancel</button>
+    </div>
 </div>
 
 <!-- Project detail / edit panel -->

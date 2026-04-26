@@ -14,6 +14,10 @@
 
 const PROJECT_TYPE_LABELS = { work: "Work", personal: "Personal" };
 
+// #90 (PR35): bulk-edit selection state.
+let projectsBulkMode = false;
+let projectsBulkSelected = new Set();  // Set<UUID>
+
 // Fallback color when a project has none set — matches the theme blue.
 const DEFAULT_PROJECT_COLOR = "#2563eb";
 
@@ -43,6 +47,7 @@ async function projectsInit() {
     await projectsLoad();
     projectsSetupFilters();
     projectsSetupDetailPanel();
+    projectsSetupBulk();  // #90 (PR35)
 }
 
 async function projectsLoad() {
@@ -222,7 +227,35 @@ function projectCardEl(project) {
     const card = document.createElement("div");
     card.className = "goal-card project-card";
     if (!project.is_active) card.classList.add("goal-inactive");
-    card.addEventListener("click", () => projectDetailOpen(project));
+    // #90 (PR35): in bulk mode, click toggles selection (no detail panel).
+    card.addEventListener("click", (e) => {
+        if (projectsBulkMode) {
+            e.stopPropagation();
+            if (projectsBulkSelected.has(project.id)) projectsBulkSelected.delete(project.id);
+            else projectsBulkSelected.add(project.id);
+            card.classList.toggle("bulk-selected", projectsBulkSelected.has(project.id));
+            const cb = card.querySelector(".project-bulk-cb");
+            if (cb) cb.checked = projectsBulkSelected.has(project.id);
+            updateBulkCount();
+        } else {
+            projectDetailOpen(project);
+        }
+    });
+    if (projectsBulkMode) {
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.className = "project-bulk-cb";
+        cb.checked = projectsBulkSelected.has(project.id);
+        if (cb.checked) card.classList.add("bulk-selected");
+        cb.addEventListener("click", (e) => e.stopPropagation());
+        cb.addEventListener("change", () => {
+            if (cb.checked) projectsBulkSelected.add(project.id);
+            else projectsBulkSelected.delete(project.id);
+            card.classList.toggle("bulk-selected", cb.checked);
+            updateBulkCount();
+        });
+        card.appendChild(cb);
+    }
 
     // Color swatch + name on the same row.
     const titleRow = document.createElement("div");
@@ -546,6 +579,144 @@ async function projectDetailToggleArchive() {
     } catch (err) {
         alert((newState ? "Unarchive" : "Archive") + " failed: " + err.message);
     }
+}
+
+// --- Bulk edit (#90 PR35) ----------------------------------------------------
+
+function updateBulkCount() {
+    const count = document.getElementById("projectsBulkCount");
+    if (count) count.textContent = `${projectsBulkSelected.size} selected`;
+}
+
+function bulkSelectedIds() {
+    return Array.from(projectsBulkSelected);
+}
+
+async function bulkPatchProjects(updates) {
+    const ids = bulkSelectedIds();
+    if (!ids.length) { alert("Select at least one project."); return; }
+    try {
+        await apiFetch("/api/projects/bulk", {
+            method: "PATCH",
+            body: JSON.stringify({ project_ids: ids, updates }),
+        });
+        await projectsLoad();
+    } catch (err) {
+        alert("Bulk update failed: " + err.message);
+    }
+}
+
+function showProjectsBulkDropdown(anchorBtn, items) {
+    // Reuse the same simple dropdown affordance pattern as app.js
+    // showBulkDropdown — render as an inline popover under the button.
+    document.querySelectorAll(".bulk-dropdown-popover").forEach((el) => el.remove());
+    const pop = document.createElement("div");
+    pop.className = "bulk-dropdown-popover";
+    for (const item of items) {
+        const a = document.createElement("button");
+        a.type = "button";
+        a.className = "bulk-dropdown-item";
+        a.textContent = item.label;
+        a.addEventListener("click", (e) => {
+            e.stopPropagation();
+            pop.remove();
+            item.onClick();
+        });
+        pop.appendChild(a);
+    }
+    document.body.appendChild(pop);
+    const r = anchorBtn.getBoundingClientRect();
+    pop.style.position = "absolute";
+    pop.style.left = `${r.left + window.scrollX}px`;
+    pop.style.top = `${r.bottom + window.scrollY + 4}px`;
+    setTimeout(() => {
+        const dismiss = (e) => {
+            if (!pop.contains(e.target)) {
+                pop.remove();
+                document.removeEventListener("click", dismiss);
+            }
+        };
+        document.addEventListener("click", dismiss);
+    }, 0);
+}
+
+function projectsSetupBulk() {
+    const toggleBtn = document.getElementById("projectsBulkToggle");
+    const toolbar = document.getElementById("projectsBulkToolbar");
+    if (!toggleBtn || !toolbar) return;
+
+    toggleBtn.addEventListener("click", () => {
+        projectsBulkMode = !projectsBulkMode;
+        if (!projectsBulkMode) projectsBulkSelected.clear();
+        toggleBtn.classList.toggle("active", projectsBulkMode);
+        toolbar.style.display = projectsBulkMode ? "" : "none";
+        projectsRender();
+        updateBulkCount();
+    });
+
+    document.getElementById("projectsBulkCancel").addEventListener("click", () => {
+        projectsBulkMode = false;
+        projectsBulkSelected.clear();
+        toggleBtn.classList.remove("active");
+        toolbar.style.display = "none";
+        projectsRender();
+    });
+
+    document.getElementById("projectsBulkType").addEventListener("click", (e) => {
+        showProjectsBulkDropdown(e.currentTarget, [
+            { label: "Work", onClick: () => bulkPatchProjects({ type: "work" }) },
+            { label: "Personal", onClick: () => bulkPatchProjects({ type: "personal" }) },
+        ]);
+    });
+
+    document.getElementById("projectsBulkStatus").addEventListener("click", (e) => {
+        showProjectsBulkDropdown(e.currentTarget, [
+            { label: "Not started", onClick: () => bulkPatchProjects({ status: "not_started" }) },
+            { label: "In progress", onClick: () => bulkPatchProjects({ status: "in_progress" }) },
+            { label: "Done", onClick: () => bulkPatchProjects({ status: "done" }) },
+            { label: "On hold", onClick: () => bulkPatchProjects({ status: "on_hold" }) },
+        ]);
+    });
+
+    document.getElementById("projectsBulkPriority").addEventListener("click", (e) => {
+        showProjectsBulkDropdown(e.currentTarget, [
+            { label: "(none)", onClick: () => bulkPatchProjects({ priority: null }) },
+            { label: "Must", onClick: () => bulkPatchProjects({ priority: "must" }) },
+            { label: "Should", onClick: () => bulkPatchProjects({ priority: "should" }) },
+            { label: "Could", onClick: () => bulkPatchProjects({ priority: "could" }) },
+            { label: "Need more info", onClick: () => bulkPatchProjects({ priority: "need_more_info" }) },
+        ]);
+    });
+
+    document.getElementById("projectsBulkGoal").addEventListener("click", (e) => {
+        const items = [{ label: "(no goal)", onClick: () => bulkPatchProjects({ goal_id: null }) }];
+        for (const g of projectsGoals.filter((x) => x.is_active)) {
+            items.push({ label: g.title, onClick: () => bulkPatchProjects({ goal_id: g.id }) });
+        }
+        showProjectsBulkDropdown(e.currentTarget, items);
+    });
+
+    document.getElementById("projectsBulkArchive").addEventListener("click", () => {
+        const ids = bulkSelectedIds();
+        if (!ids.length) return;
+        if (!confirm(`Archive ${ids.length} project(s)?`)) return;
+        bulkPatchProjects({ is_active: false });
+    });
+
+    document.getElementById("projectsBulkDelete").addEventListener("click", async () => {
+        const ids = bulkSelectedIds();
+        if (!ids.length) return;
+        if (!confirm(`Soft-delete (archive) ${ids.length} project(s)? They can be restored from the Projects archived filter.`)) return;
+        try {
+            await apiFetch("/api/projects/bulk", {
+                method: "DELETE",
+                body: JSON.stringify({ project_ids: ids }),
+            });
+            await projectsLoad();
+        } catch (err) {
+            alert("Bulk delete failed: " + err.message);
+        }
+    });
 }
 
 // --- Boot --------------------------------------------------------------------

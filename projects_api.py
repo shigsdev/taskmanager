@@ -9,6 +9,8 @@ from auth import login_required
 from models import Project, ProjectStatus, ProjectType  # noqa: F401
 from project_service import (
     ValidationError,
+    bulk_delete_projects,
+    bulk_update_projects,
     create_project,
     delete_project,
     get_project,
@@ -131,6 +133,60 @@ def reorder(email: str):  # noqa: ARG001
         }), 422
     updated = reorder_projects(parsed)
     return jsonify({"updated": updated}), 200
+
+
+@bp.patch("/bulk")
+@login_required
+def bulk_update(email: str):  # noqa: ARG001
+    """#90 (PR35): apply the same `updates` to multiple projects in
+    one call. Mirrors /api/tasks/bulk semantics.
+
+    Body: ``{"project_ids": [uuid, ...], "updates": {...}}``.
+    Returns ``{"updated": N, "not_found": [...], "errors": [...]}``.
+    """
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON body required"}), 400
+    ids_raw = data.get("project_ids")
+    updates = data.get("updates")
+    if not isinstance(ids_raw, list) or not ids_raw:
+        return jsonify({"error": "project_ids must be a non-empty list"}), 422
+    if not isinstance(updates, dict) or not updates:
+        return jsonify({"error": "updates must be a non-empty dict"}), 422
+    if len(ids_raw) > 200:
+        return jsonify({
+            "error": f"too many project_ids ({len(ids_raw)}); max 200 per call",
+        }), 422
+    parsed: list[uuid.UUID] = []
+    for raw in ids_raw:
+        try:
+            parsed.append(uuid.UUID(str(raw)))
+        except (ValueError, AttributeError):
+            return jsonify({"error": f"invalid project_id: {raw!r}"}), 422
+    return jsonify(bulk_update_projects(parsed, updates))
+
+
+@bp.delete("/bulk")
+@login_required
+def bulk_delete(email: str):  # noqa: ARG001
+    """#90 (PR35): bulk-archive (soft-delete) projects."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON body required"}), 400
+    ids_raw = data.get("project_ids")
+    if not isinstance(ids_raw, list) or not ids_raw:
+        return jsonify({"error": "project_ids must be a non-empty list"}), 422
+    if len(ids_raw) > 200:
+        return jsonify({
+            "error": f"too many project_ids ({len(ids_raw)}); max 200 per call",
+        }), 422
+    parsed: list[uuid.UUID] = []
+    for raw in ids_raw:
+        try:
+            parsed.append(uuid.UUID(str(raw)))
+        except (ValueError, AttributeError):
+            return jsonify({"error": f"invalid project_id: {raw!r}"}), 422
+    return jsonify(bulk_delete_projects(parsed))
 
 
 @bp.post("/seed")

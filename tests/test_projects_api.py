@@ -564,3 +564,60 @@ class TestProjectColorValidation:
         )
         assert resp.status_code == 201
         assert resp.get_json()["color"] == "#16a34a"  # personal default
+
+
+# --- #90 (PR35): bulk PATCH/DELETE -------------------------------------------
+
+
+class TestProjectsBulk:
+    """Bulk endpoints mirror /api/tasks/bulk semantics."""
+
+    def test_bulk_patch_changes_status(self, authed_client):
+        a = authed_client.post("/api/projects", json={"name": "A", "type": "work"}).get_json()
+        b = authed_client.post("/api/projects", json={"name": "B", "type": "work"}).get_json()
+        resp = authed_client.patch("/api/projects/bulk", json={
+            "project_ids": [a["id"], b["id"]],
+            "updates": {"status": "in_progress"},
+        })
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["updated"] == 2
+        # Confirm
+        a2 = authed_client.get(f"/api/projects/{a['id']}").get_json()
+        assert a2["status"] == "in_progress"
+
+    def test_bulk_patch_rejects_empty_list(self, authed_client):
+        resp = authed_client.patch("/api/projects/bulk", json={
+            "project_ids": [], "updates": {"status": "done"},
+        })
+        assert resp.status_code == 422
+
+    def test_bulk_patch_rejects_too_many(self, authed_client):
+        resp = authed_client.patch("/api/projects/bulk", json={
+            "project_ids": [str(uuid.uuid4()) for _ in range(201)],
+            "updates": {"status": "done"},
+        })
+        assert resp.status_code == 422
+        assert "max 200" in resp.get_json()["error"]
+
+    def test_bulk_patch_invalid_uuid(self, authed_client):
+        resp = authed_client.patch("/api/projects/bulk", json={
+            "project_ids": ["not-a-uuid"], "updates": {"status": "done"},
+        })
+        assert resp.status_code == 422
+
+    def test_bulk_delete_archives(self, authed_client):
+        a = authed_client.post(
+            "/api/projects",
+            json={"name": "ToArchive", "type": "personal"},
+        ).get_json()
+        resp = authed_client.delete(
+            "/api/projects/bulk",
+            json={"project_ids": [a["id"]]},
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["archived"] == 1
+        # Verify is_active=false
+        a2 = authed_client.get(f"/api/projects/{a['id']}").get_json()
+        assert a2["is_active"] is False
