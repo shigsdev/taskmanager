@@ -1037,6 +1037,36 @@ function taskCardEl(task) {
         });
         actions.appendChild(btn);
     }
+
+    // #78 followup (2026-04-26): + Subtask button on parent-eligible cards.
+    // Subtasks can't have subtasks (1-level-deep model rule), so hide on
+    // tasks that already have a parent.
+    if (!task.parent_id) {
+        const subBtn = document.createElement("button");
+        subBtn.textContent = "+ Subtask";
+        subBtn.title = "Add a subtask under this task";
+        subBtn.className = "quick-subtask-btn";
+        subBtn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            const title = prompt("Subtask title:");
+            if (!title || !title.trim()) return;
+            try {
+                await apiFetch(API, {
+                    method: "POST",
+                    body: JSON.stringify({
+                        title: title.trim(),
+                        type: task.type,
+                        parent_id: task.id,
+                    }),
+                });
+                await loadTasks();
+            } catch (err) {
+                alert("Failed to add subtask: " + err.message);
+            }
+        });
+        actions.appendChild(subBtn);
+    }
+
     card.appendChild(actions);
 
     // Click to open detail
