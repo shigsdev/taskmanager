@@ -99,64 +99,73 @@ def _auto_fill_tier_due_date(task: Task, data: dict) -> None:
         task.due_date = _local_today_date() + timedelta(days=1)
 
 
-# Tiers that should auto-promote to TODAY when a task in them gets a
-# `due_date` of today. Mirrors the inverse direction of #28's auto-fill:
-# - #28: tier=TODAY → fill due_date=today
-# - #46: due_date=today AND tier in this set → promote tier=TODAY
-# Excluded: TODAY (already there), TOMORROW (covered by #27 cron),
-# INBOX (needs triage first), FREEZER (user explicitly parked it; respect
-# their freeze decision over the date).
-_PROMOTABLE_TIERS_ON_DUE_TODAY = frozenset({
-    Tier.THIS_WEEK,
-    Tier.NEXT_WEEK,
-    Tier.BACKLOG,
-})
+# #74 (2026-04-26): when a task's `due_date` is set, route the tier to
+# match the date by default. Per scoping: ALWAYS overwrite, except
+# - FREEZER (user explicitly parked it; treat the date as a reminder,
+#   not a commitment to do it that day)
+# - status != ACTIVE (completed/cancelled/deleted are immutable)
+# - caller explicitly set both `tier` AND `due_date` in same payload
+#   (intentional combo like "plan for today but track in this_week")
+#
+# Subsumes the older _auto_promote_tier_on_due_today (#46) which only
+# handled the today case.
+_FROZEN_TIERS = frozenset({Tier.FREEZER})
+
+
+def _tier_for_due_date(due_date: date) -> Tier:
+    """Map a due_date to its natural tier per #72 Mon-Sat week boundaries.
+
+    today               → TODAY
+    tomorrow            → TOMORROW
+    within this Mon-Sat → THIS_WEEK
+    within next Mon-Sat → NEXT_WEEK
+    anything later      → BACKLOG
+    Sunday handling: a Sunday today maps to "this week = just-ended
+    Mon-Sat" (consistent with the JS _tierDateRange helper).
+    """
+    today = _local_today_date()
+    tomorrow = today + timedelta(days=1)
+    if due_date == today:
+        return Tier.TODAY
+    if due_date == tomorrow:
+        return Tier.TOMORROW
+    # JS weekday: Mon=0, Sun=6. Same convention as Python's date.weekday().
+    days_since_monday = today.weekday()
+    this_monday = today - timedelta(days=days_since_monday)
+    this_saturday = this_monday + timedelta(days=5)
+    next_monday = this_monday + timedelta(days=7)
+    next_saturday = this_monday + timedelta(days=12)
+    if this_monday <= due_date <= this_saturday:
+        return Tier.THIS_WEEK
+    if next_monday <= due_date <= next_saturday:
+        return Tier.NEXT_WEEK
+    return Tier.BACKLOG
 
 
 def _auto_promote_tier_on_due_today(task: Task, data: dict) -> None:
-    """Backlog #46: when a task's ``due_date`` becomes today AND its
-    current tier is THIS_WEEK / NEXT_WEEK / BACKLOG, auto-promote the
-    tier to TODAY.
+    """#74 (2026-04-26): when due_date changes, auto-route the tier to
+    match the date's natural bucket. Always overwrites unless the
+    caller is also explicit about tier, the task is FREEZER, or the
+    task is non-ACTIVE.
 
-    Symmetric with #28's tier→due_date auto-fill — that one fills the
-    date from the tier; this one bumps the tier from the date. Both
-    converge on "Today panel = today's actual workload".
-
-    Only fires when:
-    - ``due_date`` was explicitly mentioned in this request (the user
-      OR the cron is intentionally setting it; we don't second-guess
-      a no-op update)
-    - The new ``due_date`` equals today in DIGEST_TZ
-    - The current tier is in the promotable set (THIS_WEEK / NEXT_WEEK
-      / BACKLOG)
-    - The caller did NOT also explicitly set ``tier`` in this same
-      request (if they did, respect their explicit choice — they might
-      want to plan a task for today but track it in This Week).
-
-    Excludes:
-    - TODAY (already there — no-op)
-    - TOMORROW (would be promoted by the morning #27 cron the next day —
-      promoting today would surprise the user who set tier=tomorrow
-      with due_date=today as a "do this in the morning" pattern)
-    - INBOX (still needs triage; auto-promoting bypasses that step)
-    - FREEZER (the user explicitly parked it; due_date might be a
-      reminder, not a commitment)
-    - Status != ACTIVE (don't promote completed/cancelled/deleted tasks)
+    Function name kept for backwards-compat with call sites; the body
+    now covers ALL date-to-tier mappings, not just today.
     """
     if "due_date" not in data:
         return
-    # If user explicitly set tier in this same payload, respect that
-    # — they may want due_date=today + tier=this_week as a deliberate
-    # "plan for today, track in this week" pattern.
+    # Caller explicit about both: respect the combination.
     if "tier" in data:
         return
-    if task.due_date != _local_today_date():
+    if task.due_date is None:
         return
-    if task.tier not in _PROMOTABLE_TIERS_ON_DUE_TODAY:
+    if task.tier in _FROZEN_TIERS:
         return
-    if task.status != TaskStatus.ACTIVE:
+    # task.status is None on freshly-constructed Task() before flush —
+    # treat that as ACTIVE (model default). Only skip when explicitly
+    # not ACTIVE (archived/cancelled/deleted).
+    if task.status is not None and task.status != TaskStatus.ACTIVE:
         return
-    task.tier = Tier.TODAY
+    task.tier = _tier_for_due_date(task.due_date)
 
 
 # --- Repeat helpers ----------------------------------------------------------

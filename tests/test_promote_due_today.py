@@ -160,25 +160,32 @@ class TestOnWriteHookPromotion:
             assert updated.tier == Tier.THIS_WEEK
             assert updated.due_date == _today()
 
-    def test_update_due_date_in_inbox_does_not_promote(self, app):
-        """INBOX is excluded — needs triage first."""
+    def test_update_due_date_in_inbox_now_promotes_under_74(self, app):
+        """#74 (2026-04-26): semantics changed — INBOX with due_date=today
+        now auto-routes to TODAY. Was previously skipped (#46 era). Per
+        scoping decision (b) "always overwrite"."""
         from task_service import update_task
         with app.app_context():
             t = _make_task(title="thing", tier=Tier.INBOX, due_date=None)
             updated = update_task(t.id, {"due_date": _today().isoformat()})
             assert updated is not None
-            assert updated.tier == Tier.INBOX
+            assert updated.tier == Tier.TODAY
 
-    def test_update_due_date_to_future_does_not_promote(self, app):
+    def test_update_due_date_to_future_routes_to_appropriate_tier(self, app):
+        """#74: future date routes to THIS_WEEK / NEXT_WEEK / BACKLOG
+        based on the date — not just promote-to-today. The exact bucket
+        depends on day-of-week; assert the date is consistent with the
+        chosen tier."""
         from task_service import update_task
         with app.app_context():
-            t = _make_task(title="thing", tier=Tier.THIS_WEEK, due_date=None)
+            t = _make_task(title="thing", tier=Tier.TODAY, due_date=None)
             updated = update_task(
                 t.id,
-                {"due_date": (_today() + timedelta(days=3)).isoformat()},
+                {"due_date": (_today() + timedelta(days=20)).isoformat()},
             )
             assert updated is not None
-            assert updated.tier == Tier.THIS_WEEK
+            # 20 days out is past next week — should land in BACKLOG.
+            assert updated.tier == Tier.BACKLOG
 
     def test_create_task_with_due_today_promotes_from_planning_tier(self, app):
         """create_task uses the same hook — creating a backlog task
@@ -195,11 +202,10 @@ class TestOnWriteHookPromotion:
             # as update_task). This documents the symmetric behavior.
             assert t.tier == Tier.BACKLOG
 
-    def test_create_task_no_explicit_tier_with_due_today(self, app):
-        """If create_task is called without an explicit tier (defaults
-        to INBOX), the auto-promote does NOT fire because INBOX is
-        excluded. Documents that the default-tier path doesn't quietly
-        skip triage."""
+    def test_create_task_no_explicit_tier_with_due_today_now_promotes(self, app):
+        """#74: changed from #46. Default tier is INBOX, but now the
+        date-routing hook promotes to TODAY since INBOX no longer guards
+        against the auto-route."""
         from task_service import create_task
         with app.app_context():
             t = create_task({
@@ -207,8 +213,17 @@ class TestOnWriteHookPromotion:
                 "type": "work",
                 "due_date": _today().isoformat(),
             })
-            # Default tier is INBOX; INBOX is excluded from promotion.
-            assert t.tier == Tier.INBOX
+            assert t.tier == Tier.TODAY
+
+    def test_freezer_task_not_routed_by_due_date(self, app):
+        """#74: FREEZER is the only tier that survives an auto-route.
+        User explicitly parked it; treat the date as a reminder."""
+        from task_service import update_task
+        with app.app_context():
+            t = _make_task(title="frozen", tier=Tier.FREEZER, due_date=None)
+            updated = update_task(t.id, {"due_date": _today().isoformat()})
+            assert updated is not None
+            assert updated.tier == Tier.FREEZER
 
     def test_completed_task_not_promoted_by_hook(self, app):
         """Resurrecting a completed task by changing its due_date should
