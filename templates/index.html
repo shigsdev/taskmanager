@@ -25,7 +25,11 @@
     <a href="#" class="nav-tab view-filter-btn" data-view="personal">Personal</a>
     <button type="button" id="bulkSelectToggle" class="nav-tab bulk-select-toggle" title="Select multiple tasks for batch operations">Select</button>
 </div>
-<div class="project-filter-bar" id="projectFilterBar" style="display:none"></div>
+<div class="project-filter-bar" id="projectFilterBar"></div>
+{# #92 (PR25): always-visible objective/goal filter dropdown. Sits below
+   the work/personal tabs + project filter so the three filter dimensions
+   stack cleanly. Persists across page loads via localStorage. #}
+<div class="goal-filter-bar" id="goalFilterBar"></div>
 {# #73: drag-and-drop day strip above Today. 12 cells = this Mon-Sat
    + next Mon-Sat. Drop a task on a cell to set due_date (which then
    auto-routes the tier per #74). Cells render via static/app.js

@@ -45,6 +45,7 @@
         <h3 class="docs-toc-group">Workflows</h3>
         <ul>
             <li><a href="#bulk-ops">Bulk operations</a></li>
+            <li><a href="#filters">Filters</a></li>
             <li><a href="#calendar-day-strip">Calendar &amp; day strip</a></li>
             <li><a href="#projects-feature">Projects</a></li>
             <li><a href="#goals-feature">Goals</a></li>
@@ -813,6 +814,46 @@ Skip this line (too short)</pre>
                 <li>Cascade rules still apply — if you move a parent to a different tier, nothing forces subtasks to follow (subtasks stay put unless you include them in the selection).</li>
                 <li>Subtask goal/project inheritance still applies when the parent is changed.</li>
             </ul>
+        </section>
+
+        <section id="filters" class="docs-section">
+            <h2>Filters (board, /completed, /tier/&lt;name&gt;)</h2>
+            <p>
+                Three filter dimensions narrow what's visible on the
+                board (and the dedicated /completed and /tier pages).
+                All three persist across page loads via
+                <code>localStorage</code>, so the filter you set on the
+                main board still applies when you click into a tier
+                detail page.
+            </p>
+
+            <h3>1. Type — All / Work / Personal</h3>
+            <p>
+                Tabs at the top of every task page. Selecting Work or
+                Personal also reveals the project filter (next).
+            </p>
+
+            <h3>2. Project</h3>
+            <p>
+                A button row of project chips, visible when Work or
+                Personal is active. Click a chip to filter to that
+                project; click "All projects" to clear.
+            </p>
+
+            <h3>3. Objective (goal)</h3>
+            <p>
+                Always-visible dropdown below the project filter.
+                Filters the visible tasks to those linked to the
+                chosen goal (directly via <code>goal_id</code>; the
+                project-cascade rule still applies upstream — see
+                <a href="#projects-feature">Projects</a>). Click the
+                ✕ to clear.
+            </p>
+            <p>
+                All three filters compose with AND semantics — e.g.
+                Type=Work + Project=Roadmap + Objective="Ship Q3"
+                shows only tasks matching all three.
+            </p>
         </section>
 
         <section id="calendar-day-strip" class="docs-section">

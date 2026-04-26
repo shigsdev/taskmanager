@@ -941,6 +941,35 @@ body {
     flex-shrink: 0;
 }
 
+/* #92 (PR25): goal/objective filter bar — always visible, sits below the
+   project filter bar. Chip-style buttons matching the project-filter-btn
+   pattern so all three filter dimensions look consistent. */
+.goal-filter-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 16px 8px;
+    max-width: 1200px;
+    margin: 4px auto 0;
+}
+.goal-filter-bar:empty { padding: 0; margin: 0; }
+.goal-filter-label {
+    font-size: 0.85rem;
+    color: var(--muted, #666);
+    margin-right: 4px;
+    white-space: nowrap;
+}
+.goal-filter-btn {
+    display: inline-flex;
+    align-items: center;
+}
+.goal-filter-btn.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+
 /* === Project group headers in tier === */
 .project-group-header {
     display: flex;

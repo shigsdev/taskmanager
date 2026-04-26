@@ -21,6 +21,34 @@ let allPreviews = [];  // recurring-template previews (#32). Each item:
 //  fire_date: "YYYY-MM-DD", notes, url}
 let currentView = "all"; // "all" | "work" | "personal"
 let projectFilter = null; // UUID string or null
+// #92 (PR25, 2026-04-26): goal/objective filter, parallel to projectFilter.
+// Persisted to localStorage so it survives page reloads + cross-page nav.
+let goalFilter = null; // UUID string or null
+const _FILTER_LS_KEYS = {
+    view: "tm.filter.view",
+    project: "tm.filter.project",
+    goal: "tm.filter.goal",
+};
+function _loadFilterPrefs() {
+    try {
+        const v = localStorage.getItem(_FILTER_LS_KEYS.view);
+        if (v === "all" || v === "work" || v === "personal") currentView = v;
+        const p = localStorage.getItem(_FILTER_LS_KEYS.project);
+        if (p) projectFilter = p;
+        const g = localStorage.getItem(_FILTER_LS_KEYS.goal);
+        if (g) goalFilter = g;
+    } catch (_) { /* private mode etc. — silently use defaults */ }
+}
+function _saveFilterPrefs() {
+    try {
+        localStorage.setItem(_FILTER_LS_KEYS.view, currentView);
+        if (projectFilter) localStorage.setItem(_FILTER_LS_KEYS.project, projectFilter);
+        else localStorage.removeItem(_FILTER_LS_KEYS.project);
+        if (goalFilter) localStorage.setItem(_FILTER_LS_KEYS.goal, goalFilter);
+        else localStorage.removeItem(_FILTER_LS_KEYS.goal);
+    } catch (_) { /* ignore */ }
+}
+_loadFilterPrefs();
 
 // --- API helpers -------------------------------------------------------------
 
@@ -66,6 +94,7 @@ async function loadGoals() {
         return;
     }
     taskDetailPopulateGoals();
+    renderGoalFilter();  // #92
 }
 
 async function loadProjects() {
@@ -792,6 +821,7 @@ function filteredTasks() {
     if (currentView === "work") tasks = tasks.filter((t) => t.type === "work");
     if (currentView === "personal") tasks = tasks.filter((t) => t.type === "personal");
     if (projectFilter) tasks = tasks.filter((t) => t.project_id === projectFilter);
+    if (goalFilter) tasks = tasks.filter((t) => t.goal_id === goalFilter);  // #92
     return tasks;
 }
 
@@ -1114,20 +1144,75 @@ function renderProjectFilter() {
     if (!container) return;
     container.innerHTML = "";
 
-    // Filter projects to match the current view (work or personal)
-    const viewProjects = allProjects.filter((p) => p.type === currentView);
+    // #92 (PR25): always show projects (was: only when work/personal active).
+    // When a view filter is set, scope to that type; otherwise show all.
+    const viewProjects = (currentView === "all")
+        ? allProjects.slice()
+        : allProjects.filter((p) => p.type === currentView);
+
+    const label = document.createElement("span");
+    label.className = "goal-filter-label";  // reuse the label style
+    label.textContent = "Project:";
+    container.appendChild(label);
 
     const allBtn = document.createElement("button");
+    allBtn.type = "button";
     allBtn.className = "btn-sm project-filter-btn" + (!projectFilter ? " active" : "");
-    allBtn.textContent = "All projects";
-    allBtn.addEventListener("click", () => { projectFilter = null; renderBoard(); renderCompletedList(); renderProjectFilter(); });
+    allBtn.textContent = "All";
+    allBtn.addEventListener("click", () => { projectFilter = null; _saveFilterPrefs(); renderBoard(); renderCompletedList(); renderProjectFilter(); });
     container.appendChild(allBtn);
 
     for (const p of viewProjects) {
         const btn = document.createElement("button");
+        btn.type = "button";
         btn.className = "btn-sm project-filter-btn" + (projectFilter === p.id ? " active" : "");
         btn.innerHTML = `<span class="project-dot" style="background:${p.color || '#999'}"></span> ${escapeHtml(p.name)}`;
-        btn.addEventListener("click", () => { projectFilter = p.id; renderBoard(); renderCompletedList(); renderProjectFilter(); });
+        btn.addEventListener("click", () => { projectFilter = p.id; _saveFilterPrefs(); renderBoard(); renderCompletedList(); renderProjectFilter(); });
+        container.appendChild(btn);
+    }
+}
+
+// #92 (PR25): goal/objective filter — chip-style tabs matching the
+// existing All/Work/Personal pattern so all three filter dimensions
+// look consistent. Long lists wrap onto multiple rows.
+function renderGoalFilter() {
+    const container = document.getElementById("goalFilterBar");
+    if (!container) return;
+    container.innerHTML = "";
+
+    const label = document.createElement("span");
+    label.className = "goal-filter-label";
+    label.textContent = "Objective:";
+    container.appendChild(label);
+
+    const allBtn = document.createElement("button");
+    allBtn.type = "button";
+    allBtn.className = "btn-sm goal-filter-btn" + (!goalFilter ? " active" : "");
+    allBtn.textContent = "All";
+    allBtn.addEventListener("click", () => {
+        goalFilter = null; _saveFilterPrefs();
+        renderBoard(); renderCompletedList(); renderCancelledList();
+        renderGoalFilter();
+    });
+    container.appendChild(allBtn);
+
+    // Sort goals by category then title for stable scanning.
+    const sorted = (allGoals || []).slice().sort((a, b) => {
+        const ac = a.category || ""; const bc = b.category || "";
+        if (ac !== bc) return ac.localeCompare(bc);
+        return (a.title || "").localeCompare(b.title || "");
+    });
+    for (const g of sorted) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn-sm goal-filter-btn" + (goalFilter === g.id ? " active" : "");
+        btn.textContent = g.title;
+        btn.title = g.title + (g.category ? ` — ${g.category}` : "");
+        btn.addEventListener("click", () => {
+            goalFilter = g.id; _saveFilterPrefs();
+            renderBoard(); renderCompletedList(); renderCancelledList();
+            renderGoalFilter();
+        });
         container.appendChild(btn);
     }
 }
@@ -1252,16 +1337,14 @@ function setupNavTabs() {
             document.querySelectorAll(".view-filter-btn").forEach((t) => t.classList.remove("active"));
             tab.classList.add("active");
             currentView = tab.dataset.view;
-            projectFilter = null;
+            projectFilter = null;  // resetting type clears project to avoid empty results
+            _saveFilterPrefs();  // #92: persist view + clear stale project filter
             renderBoard();
             renderCompletedList();
             renderCancelledList();
-            // Show/hide project filter bar (visible in work + personal views)
-            const bar = document.getElementById("projectFilterBar");
-            if (bar) {
-                bar.style.display = (currentView === "work" || currentView === "personal") ? "" : "none";
-                renderProjectFilter();
-            }
+            // #92: project filter bar is now always visible — just re-render
+            // so the project list reflects the new view's type filter.
+            renderProjectFilter();
         });
     });
 }
@@ -1347,6 +1430,7 @@ function filteredCompleted() {
     if (currentView === "work") tasks = tasks.filter((t) => t.type === "work");
     if (currentView === "personal") tasks = tasks.filter((t) => t.type === "personal");
     if (projectFilter) tasks = tasks.filter((t) => t.project_id === projectFilter);
+    if (goalFilter) tasks = tasks.filter((t) => t.goal_id === goalFilter);  // #92
     return tasks;
 }
 
@@ -1524,6 +1608,7 @@ function filteredCancelled() {
     if (currentView === "work") tasks = tasks.filter((t) => t.type === "work");
     if (currentView === "personal") tasks = tasks.filter((t) => t.type === "personal");
     if (projectFilter) tasks = tasks.filter((t) => t.project_id === projectFilter);
+    if (goalFilter) tasks = tasks.filter((t) => t.goal_id === goalFilter);  // #92
     return tasks;
 }
 
@@ -2571,4 +2656,23 @@ document.addEventListener("DOMContentLoaded", () => {
     init();
     initBulkSelect();
     _setupDragAutoScroll();
+    // #92 (PR25): filter bars are page-agnostic. The main board pulls
+    // allGoals + allProjects via init(); other pages that host the
+    // filter bars (#completed, /tier/<name>) need their own load.
+    const goalBar = document.getElementById("goalFilterBar");
+    const projBar = document.getElementById("projectFilterBar");
+    const isTasksPage = !!document.getElementById("detailOverlay");
+    if ((goalBar || projBar) && !isTasksPage) {
+        // init() already loaded these on the tasks page; avoid a double-fetch.
+        if (goalBar) loadGoals();
+        if (projBar) loadProjects();
+    } else {
+        if (goalBar) renderGoalFilter();
+        if (projBar) renderProjectFilter();
+    }
+    // Also reflect the persisted view tab as active on whichever page hosts it.
+    document.querySelectorAll(".view-filter-btn").forEach((tab) => {
+        if (tab.dataset.view === currentView) tab.classList.add("active");
+        else tab.classList.remove("active");
+    });
 });
