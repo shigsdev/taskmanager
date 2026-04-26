@@ -4,7 +4,7 @@
 
 {% block capture %}
 <div class="capture-bar" id="captureBar">
-    <input type="text" id="captureInput" placeholder="Add a task… (#today #week @project)" autocomplete="off">
+    <input type="text" id="captureInput" placeholder="Add a task… (#today #week @project)" autocomplete="off" spellcheck="true">
     <select id="captureType" title="Task type">
         <option value="work">Work</option>
         <option value="personal">Personal</option>
@@ -25,6 +25,7 @@
                 <option value="personal_growth">Personal Growth</option>
                 <option value="relationships">Relationships</option>
                 <option value="work">Work</option>
+                <option value="bau">BAU</option>
             </select>
             <select id="filterPriority" title="Filter by priority">
                 <option value="">All priorities</option>
@@ -65,7 +66,7 @@
             <input type="hidden" id="goalId">
 
             <label for="goalTitle">Title</label>
-            <input type="text" id="goalTitle" required>
+            <input type="text" id="goalTitle" required spellcheck="true">
 
             <div class="form-row">
                 <div class="form-field">
@@ -75,6 +76,7 @@
                         <option value="personal_growth">Personal Growth</option>
                         <option value="relationships">Relationships</option>
                         <option value="work">Work</option>
+                        <option value="bau">BAU</option>
                     </select>
                 </div>
                 <div class="form-field">
@@ -112,10 +114,10 @@
             </div>
 
             <label for="goalActions">Actions</label>
-            <textarea id="goalActions" rows="3" placeholder="What needs to happen…"></textarea>
+            <textarea id="goalActions" rows="3" placeholder="What needs to happen…" spellcheck="true"></textarea>
 
             <label for="goalNotes">Notes</label>
-            <textarea id="goalNotes" rows="2"></textarea>
+            <textarea id="goalNotes" rows="2" spellcheck="true"></textarea>
 
             <div class="detail-actions">
                 <button type="submit" class="btn">Save</button>

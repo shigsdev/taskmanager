@@ -434,7 +434,13 @@ body {
 
 .task-card .task-title {
     font-size: 0.9rem;
-    word-break: break-word;
+    /* #85 (2026-04-25): truncate long titles to a single line with ellipsis
+       to keep cards compact. The full title is set on the element's `title`
+       attribute (renderer-side) for hover, and the detail panel always
+       shows the full text. */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .task-card .task-meta {

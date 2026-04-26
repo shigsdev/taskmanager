@@ -80,6 +80,9 @@ class GoalCategory(enum.StrEnum):
     PERSONAL_GROWTH = "personal_growth"
     RELATIONSHIPS = "relationships"
     WORK = "work"
+    # #68 (2026-04-25): BAU = Business As Usual — operational/maintenance
+    # goals that aren't growth or delivery but still need tracking.
+    BAU = "bau"
 
 
 class GoalPriority(enum.StrEnum):

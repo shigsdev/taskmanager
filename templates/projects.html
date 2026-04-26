@@ -5,7 +5,7 @@
 {% block capture %}
 {# Same capture bar as the board so quick-add works on this page too. #}
 <div class="capture-bar" id="captureBar">
-    <input type="text" id="captureInput" placeholder="Add a task… (#today #week @project)" autocomplete="off">
+    <input type="text" id="captureInput" placeholder="Add a task… (#today #week @project)" autocomplete="off" spellcheck="true">
     <select id="captureType" title="Task type">
         <option value="work">Work</option>
         <option value="personal">Personal</option>
@@ -48,7 +48,7 @@
             <input type="hidden" id="projectId">
 
             <label for="projectName">Name</label>
-            <input type="text" id="projectName" required maxlength="200">
+            <input type="text" id="projectName" required maxlength="200" spellcheck="true">
 
             <div class="form-row">
                 <div class="form-field">
@@ -94,10 +94,10 @@
             </div>
 
             <label for="projectActions">Actions</label>
-            <textarea id="projectActions" rows="3" placeholder="Concrete next-actions that move this project forward"></textarea>
+            <textarea id="projectActions" rows="3" placeholder="Concrete next-actions that move this project forward" spellcheck="true"></textarea>
 
             <label for="projectNotes">Notes</label>
-            <textarea id="projectNotes" rows="3" placeholder="Background, context, links, anything useful"></textarea>
+            <textarea id="projectNotes" rows="3" placeholder="Background, context, links, anything useful" spellcheck="true"></textarea>
 
             <div class="project-task-summary" id="projectTaskSummary" style="display:none">
                 <span id="projectTaskCount">0</span> task<span id="projectTaskPlural">s</span>

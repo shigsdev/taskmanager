@@ -8,7 +8,7 @@
             <input type="hidden" id="detailId">
 
             <label for="detailTitle">Title</label>
-            <input type="text" id="detailTitle" required>
+            <input type="text" id="detailTitle" required spellcheck="true">
 
             <div class="form-row">
                 <div class="form-field">
@@ -16,7 +16,9 @@
                     <select id="detailTier">
                         <option value="inbox">Inbox</option>
                         <option value="today">Today</option>
+                        <option value="tomorrow">Tomorrow</option>
                         <option value="this_week">This Week</option>
+                        <option value="next_week">Next Week</option>
                         <option value="backlog">Backlog</option>
                         <option value="freezer">Freezer</option>
                     </select>
@@ -124,7 +126,7 @@
             </div>
 
             <label for="detailNotes">Notes</label>
-            <textarea id="detailNotes" rows="3"></textarea>
+            <textarea id="detailNotes" rows="3" spellcheck="true"></textarea>
 
             <div class="checklist-section">
                 <label>Checklist</label>
@@ -144,7 +146,7 @@
                 <label>Subtasks</label>
                 <div id="subtaskItems"></div>
                 <div style="display:flex;gap:4px;margin-top:4px">
-                    <input type="text" id="subtaskInput" placeholder="Add subtask…" style="flex:1">
+                    <input type="text" id="subtaskInput" placeholder="Add subtask…" style="flex:1" spellcheck="true">
                     <button type="button" class="btn-sm" id="addSubtaskBtn">+ Add</button>
                 </div>
             </div>

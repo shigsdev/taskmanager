@@ -275,6 +275,7 @@ function _previewCardEl(preview) {
     const title = document.createElement("div");
     title.className = "task-title";
     title.textContent = preview.title;
+    title.title = preview.title;  // #85: full text on hover when truncated
     body.appendChild(title);
     const meta = document.createElement("div");
     meta.className = "task-meta";
@@ -778,6 +779,7 @@ function taskCardEl(task) {
     const title = document.createElement("div");
     title.className = "task-title";
     title.textContent = task.title;
+    title.title = task.title;  // #85: full text on hover when truncated
     body.appendChild(title);
 
     const meta = document.createElement("div");
@@ -926,9 +928,14 @@ function taskCardEl(task) {
 }
 
 function tierLabel(tier) {
+    // #81 (2026-04-25): map missed `tomorrow` + `next_week` so badges,
+    // hover titles, and tier-button labels render the proper Title-Case
+    // form instead of the raw enum value (`next_week` → "Next Week").
     const labels = {
         today: "Today",
-        this_week: "Week",
+        tomorrow: "Tomorrow",
+        this_week: "This Week",
+        next_week: "Next Week",
         backlog: "Backlog",
         freezer: "Freezer",
         inbox: "Inbox",
@@ -1271,6 +1278,7 @@ function renderCompletedList() {
         const title = document.createElement("div");
         title.className = "task-title completed-title";
         title.textContent = task.title;
+        title.title = task.title;  // #85
         card.appendChild(title);
 
         const meta = document.createElement("div");
@@ -1394,6 +1402,7 @@ function renderCancelledList() {
         const title = document.createElement("div");
         title.className = "task-title";
         title.textContent = task.title;
+        title.title = task.title;  // #85
         card.appendChild(title);
 
         if (task.cancellation_reason) {
