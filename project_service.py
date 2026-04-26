@@ -35,6 +35,17 @@ DEFAULT_COLORS = [
     "#a855f7",  # purple
 ]
 
+# #66 (2026-04-25): per-type default color when caller doesn't specify
+# one. Manual override via the color picker still wins.
+DEFAULT_TYPE_COLORS = {
+    ProjectType.WORK: "#2563eb",       # blue
+    ProjectType.PERSONAL: "#16a34a",   # green
+}
+
+
+def _default_color_for_type(project_type: ProjectType) -> str:
+    return DEFAULT_TYPE_COLORS.get(project_type, "#2563eb")
+
 
 def seed_default_projects() -> list[Project]:
     """Create default work projects if none exist. Safe to call multiple times."""
@@ -60,10 +71,14 @@ def create_project(data: dict) -> Project:
     if not name:
         raise ValidationError("name is required", "name")
 
+    project_type = _parse_enum(ProjectType, data.get("type", "work"), "type")
+    # #66: when caller doesn't pass a color, fill in the per-type default
+    # (Work=blue, Personal=green). Manual overrides still flow through.
+    color = (data.get("color") or "").strip() or _default_color_for_type(project_type)
     project = Project(
         name=name,
-        type=_parse_enum(ProjectType, data.get("type", "work"), "type"),
-        color=(data.get("color") or "").strip() or None,
+        type=project_type,
+        color=color,
         target_quarter=(data.get("target_quarter") or "").strip() or None,
         actions=(data.get("actions") or "").strip() or None,
         notes=(data.get("notes") or "").strip() or None,

@@ -51,8 +51,34 @@ def test_create_project_minimal(authed_client):
     resp = authed_client.post("/api/projects", json={"name": "Minimal"})
     assert resp.status_code == 201
     body = resp.get_json()
-    assert body["color"] is None
+    # #66 (2026-04-25): no color now defaults to per-type (work=blue).
+    # Was previously None — semantics changed when auto-color shipped.
+    assert body["color"] == "#2563eb"
     assert body["target_quarter"] is None
+
+
+def test_create_project_no_color_defaults_to_blue_for_work(authed_client):
+    """#66 (2026-04-25): work projects without explicit color get the per-type default."""
+    resp = authed_client.post("/api/projects", json={"name": "AutoColor W", "type": "work"})
+    assert resp.status_code == 201
+    assert resp.get_json()["color"] == "#2563eb"
+
+
+def test_create_project_no_color_defaults_to_green_for_personal(authed_client):
+    """#66: personal projects default to green."""
+    resp = authed_client.post("/api/projects", json={"name": "AutoColor P", "type": "personal"})
+    assert resp.status_code == 201
+    assert resp.get_json()["color"] == "#16a34a"
+
+
+def test_create_project_explicit_color_wins_over_type_default(authed_client):
+    """#66: manual color override is preserved."""
+    resp = authed_client.post(
+        "/api/projects",
+        json={"name": "AutoColor M", "type": "personal", "color": "#ff8800"},
+    )
+    assert resp.status_code == 201
+    assert resp.get_json()["color"] == "#ff8800"
 
 
 def test_create_project_with_actions_and_notes(authed_client):

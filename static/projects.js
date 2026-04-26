@@ -17,6 +17,17 @@ const PROJECT_TYPE_LABELS = { work: "Work", personal: "Personal" };
 // Fallback color when a project has none set — matches the theme blue.
 const DEFAULT_PROJECT_COLOR = "#2563eb";
 
+// #66 (2026-04-25): per-type default color (Work=blue, Personal=green).
+// Mirrors backend project_service.DEFAULT_TYPE_COLORS so the form picker
+// reflects what the API would assign if the user didn't touch the picker.
+const DEFAULT_TYPE_COLORS = {
+    work: "#2563eb",
+    personal: "#16a34a",
+};
+function defaultColorForType(t) {
+    return DEFAULT_TYPE_COLORS[t] || DEFAULT_PROJECT_COLOR;
+}
+
 let projectsData = [];
 let projectsGoals = [];  // for the "Linked goal" dropdown
 let projectTaskCounts = {};  // project_id -> { total, active }
@@ -214,6 +225,20 @@ function projectsSetupDetailPanel() {
     document
         .getElementById("projectDetailForm")
         .addEventListener("submit", projectDetailSave);
+    // #66: when type changes, snap the color picker to the per-type
+    // default ONLY if the picker still holds a known default (i.e., the
+    // user hasn't manually picked a custom color). Manual overrides win.
+    document
+        .getElementById("projectType")
+        .addEventListener("change", (e) => {
+            const colorInput = document.getElementById("projectColor");
+            const isAtKnownDefault = Object.values(DEFAULT_TYPE_COLORS)
+                .concat([DEFAULT_PROJECT_COLOR])
+                .includes(colorInput.value.toLowerCase());
+            if (isAtKnownDefault) {
+                colorInput.value = defaultColorForType(e.target.value);
+            }
+        });
     document
         .getElementById("projectArchiveToggle")
         .addEventListener("click", projectDetailToggleArchive);
@@ -238,7 +263,7 @@ function projectDetailNew() {
     document.getElementById("projectDetailHeading").textContent = "New Project";
     document.getElementById("projectName").value = "";
     document.getElementById("projectType").value = "work";
-    document.getElementById("projectColor").value = DEFAULT_PROJECT_COLOR;
+    document.getElementById("projectColor").value = defaultColorForType("work");
     document.getElementById("projectTargetQuarter").value = "";
     document.getElementById("projectSortOrder").value = "0";
     document.getElementById("projectActions").value = "";
