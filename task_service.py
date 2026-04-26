@@ -275,6 +275,16 @@ def create_task(data: dict) -> Task:
             goal_id = parent.goal_id
         if project_id is None:
             project_id = parent.project_id
+    # #77 (2026-04-26): if a project is set and the caller did NOT also
+    # specify goal_id explicitly, cascade the project's goal onto the new
+    # task. Always overwrite path is enforced via update_task; here we
+    # only fill the gap when goal_id wasn't passed (so explicit caller
+    # intent wins). Subtask parent-inherit above already ran.
+    if project_id is not None and "goal_id" not in data:
+        from models import Project
+        proj = db.session.get(Project, project_id)
+        if proj is not None and proj.goal_id is not None:
+            goal_id = proj.goal_id
 
     task = Task(
         title=title,
@@ -401,6 +411,17 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
 
     if "project_id" in data:
         task.project_id = _parse_uuid(data["project_id"], "project_id")
+        # #77 (2026-04-26): cascade the project's goal onto the task. Per
+        # scoping (b) "always overwrite" — every project change forces the
+        # goal to match the project's goal (or NULL if project has none).
+        # If the caller ALSO sets goal_id explicitly in this same payload,
+        # respect that — handled by the next branch which writes after.
+        if task.project_id is not None:
+            from models import Project
+            proj = db.session.get(Project, task.project_id)
+            task.goal_id = proj.goal_id if proj else None
+        else:
+            task.goal_id = None
 
     if "goal_id" in data:
         task.goal_id = _parse_uuid(data["goal_id"], "goal_id")

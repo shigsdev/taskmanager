@@ -1753,3 +1753,81 @@ class TestTierDueDateAutoFill:
         for tid in ids:
             body = authed_client.get(f"/api/tasks/{tid}").get_json()
             assert body["due_date"] == expected
+
+
+# --- #77: project goal cascade ----------------------------------------------
+
+
+class TestProjectGoalCascade:
+    """#77: setting project_id on a task cascades the project's goal_id."""
+
+    def _make_goal_and_project(self, authed_client):
+        g = authed_client.post(
+            "/api/goals",
+            json={"title": "G1", "category": "work", "priority": "must"},
+        ).get_json()
+        p = authed_client.post(
+            "/api/projects",
+            json={"name": "P1", "goal_id": g["id"]},
+        ).get_json()
+        return g["id"], p["id"]
+
+    def test_patch_project_overwrites_existing_task_goal(self, authed_client):
+        """Per scoping (b): every project change overwrites the goal."""
+        gid, pid = self._make_goal_and_project(authed_client)
+        # Create task with NO project, but a different goal pre-set.
+        other = authed_client.post(
+            "/api/goals",
+            json={"title": "Other", "category": "work", "priority": "should"},
+        ).get_json()
+        t = authed_client.post(
+            "/api/tasks",
+            json={"title": "X", "type": "work", "goal_id": other["id"]},
+        ).get_json()
+        # Patch project_id — goal should now MATCH project's goal (not "other").
+        resp = authed_client.patch(
+            f"/api/tasks/{t['id']}", json={"project_id": pid}
+        )
+        body = resp.get_json()
+        assert body["project_id"] == pid
+        assert body["goal_id"] == gid
+
+    def test_patch_project_to_null_clears_goal(self, authed_client):
+        """Setting project_id back to null also clears the cascaded goal."""
+        gid, pid = self._make_goal_and_project(authed_client)
+        t = authed_client.post(
+            "/api/tasks",
+            json={"title": "X", "type": "work", "project_id": pid},
+        ).get_json()
+        assert t["goal_id"] == gid  # cascaded on create
+        resp = authed_client.patch(
+            f"/api/tasks/{t['id']}", json={"project_id": None}
+        )
+        assert resp.get_json()["goal_id"] is None
+
+    def test_explicit_goal_in_same_payload_wins(self, authed_client):
+        """If the caller sends BOTH project_id and goal_id, the explicit
+        goal_id wins (caller intent over cascade)."""
+        gid, pid = self._make_goal_and_project(authed_client)
+        other = authed_client.post(
+            "/api/goals",
+            json={"title": "Other", "category": "work", "priority": "should"},
+        ).get_json()
+        t = authed_client.post("/api/tasks", json={"title": "X", "type": "work"}).get_json()
+        resp = authed_client.patch(
+            f"/api/tasks/{t['id']}",
+            json={"project_id": pid, "goal_id": other["id"]},
+        )
+        body = resp.get_json()
+        assert body["project_id"] == pid
+        # Explicit goal beats cascade.
+        assert body["goal_id"] == other["id"]
+
+    def test_create_task_with_project_cascades_goal(self, authed_client):
+        """Same cascade fires on create_task path."""
+        gid, pid = self._make_goal_and_project(authed_client)
+        t = authed_client.post(
+            "/api/tasks",
+            json={"title": "X", "type": "work", "project_id": pid},
+        ).get_json()
+        assert t["goal_id"] == gid
