@@ -1834,6 +1834,27 @@ body.bulk-select-mode .task-card .bulk-select-check { display: block; }
     flex-wrap: wrap;
 }
 .bulk-toolbar-actions .btn-sm { white-space: nowrap; }
+
+/* #71: staged-changes panel */
+.bulk-pending {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 8px; border-left: 1px solid var(--border);
+    flex-wrap: wrap;
+}
+.bulk-pending-list { display: flex; gap: 6px; flex-wrap: wrap; }
+.bulk-pending-chip {
+    background: var(--accent, #2563eb); color: #fff;
+    padding: 3px 8px; border-radius: 12px; font-size: 12px;
+    cursor: pointer; user-select: none;
+}
+.bulk-pending-chip:hover { background: #1d4ed8; }
+#bulkApplyChanges {
+    background: var(--success, #16a34a); color: #fff; border-color: transparent;
+}
+#bulkApplyChanges:hover { background: #15803d; }
+#bulkClearPending {
+    background: transparent; border: 1px solid var(--border); color: var(--text);
+}
 #bulkClearSelection {
     background: transparent;
     border: 1px solid var(--border);

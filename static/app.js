@@ -1889,6 +1889,8 @@ function clearBulkSelection() {
         cb.closest(".task-card").classList.remove("bulk-selected");
     });
     updateBulkToolbar();
+    // #71: clearing selection also drops any staged-but-unapplied changes.
+    if (typeof clearBulkPending === "function") clearBulkPending();
 }
 
 // Helper: build an absolutely-positioned dropdown anchored under a button.
@@ -1978,6 +1980,83 @@ async function bulkDelete() {
     await loadTasks();
 }
 
+// #71 (2026-04-26): staged bulk-edit. Type/Tier/Due/Goal/Project
+// dropdown picks STAGE the change in `bulkPending` instead of firing
+// a PATCH immediately. The user can stage multiple fields, then click
+// Apply to send a single multi-field PATCH. Selection persists between
+// stage operations. Status (archive/cancel/active) + Delete remain
+// immediate (commit-style; no clear value in staging them).
+
+const _BULK_PENDING_LABELS = {
+    type:                 "Type",
+    tier:                 "Tier",
+    due_date:             "Due",
+    goal_id:              "Goal",
+    project_id:           "Project",
+};
+
+let bulkPending = {};
+
+function _displayValueForBulk(field, value) {
+    if (value === null || value === "") return "(none)";
+    if (field === "tier" && typeof tierLabel === "function") return tierLabel(value);
+    if (field === "type") return value === "work" ? "Work" : "Personal";
+    if (field === "goal_id") {
+        const g = (typeof allGoals !== "undefined" ? allGoals : []).find((x) => x.id === value);
+        return g ? g.title : "(unknown)";
+    }
+    if (field === "project_id") {
+        const p = (typeof allProjects !== "undefined" ? allProjects : []).find((x) => x.id === value);
+        return p ? p.name : "(unknown)";
+    }
+    return String(value);
+}
+
+function stageBulkChange(field, value) {
+    bulkPending[field] = value;
+    renderBulkPending();
+}
+
+function clearBulkPending() {
+    bulkPending = {};
+    renderBulkPending();
+}
+
+function renderBulkPending() {
+    const wrap = document.getElementById("bulkPending");
+    const list = document.getElementById("bulkPendingList");
+    if (!wrap || !list) return;
+    const keys = Object.keys(bulkPending);
+    if (keys.length === 0) {
+        wrap.style.display = "none";
+        list.innerHTML = "";
+        return;
+    }
+    wrap.style.display = "";
+    list.innerHTML = "";
+    for (const k of keys) {
+        const chip = document.createElement("span");
+        chip.className = "bulk-pending-chip";
+        const label = _BULK_PENDING_LABELS[k] || k;
+        chip.textContent = `${label}: ${_displayValueForBulk(k, bulkPending[k])}`;
+        // Click chip to remove that staged change.
+        chip.title = "Click to remove";
+        chip.addEventListener("click", () => {
+            delete bulkPending[k];
+            renderBulkPending();
+        });
+        list.appendChild(chip);
+    }
+}
+
+async function applyStagedChanges() {
+    if (Object.keys(bulkPending).length === 0) return;
+    const updates = { ...bulkPending };
+    bulkPending = {};
+    renderBulkPending();
+    await bulkPatch(updates);
+}
+
 // Wire up the toggle + toolbar buttons (deferred to DOMContentLoaded
 // because the static HTML elements need to exist when listeners attach)
 function initBulkSelect() {
@@ -1994,27 +2073,29 @@ function initBulkSelect() {
     const typeBtn = document.getElementById("bulkActionType");
     if (typeBtn) typeBtn.addEventListener("click", () => {
         showBulkDropdown(typeBtn, [
-            { label: "Work", onClick: () => bulkPatch({ type: "work" }) },
-            { label: "Personal", onClick: () => bulkPatch({ type: "personal" }) },
+            { label: "Work", onClick: () => stageBulkChange("type", "work") },
+            { label: "Personal", onClick: () => stageBulkChange("type", "personal") },
         ]);
     });
 
     const tierBtn = document.getElementById("bulkActionTier");
     if (tierBtn) tierBtn.addEventListener("click", () => {
         showBulkDropdown(tierBtn, [
-            { label: "Today", onClick: () => bulkPatch({ tier: "today" }) },
-            { label: "This Week", onClick: () => bulkPatch({ tier: "this_week" }) },
-            { label: "Backlog", onClick: () => bulkPatch({ tier: "backlog" }) },
-            { label: "Freezer", onClick: () => bulkPatch({ tier: "freezer" }) },
-            { label: "Inbox", onClick: () => bulkPatch({ tier: "inbox" }) },
+            { label: "Today", onClick: () => stageBulkChange("tier", "today") },
+            { label: "Tomorrow", onClick: () => stageBulkChange("tier", "tomorrow") },
+            { label: "This Week", onClick: () => stageBulkChange("tier", "this_week") },
+            { label: "Next Week", onClick: () => stageBulkChange("tier", "next_week") },
+            { label: "Backlog", onClick: () => stageBulkChange("tier", "backlog") },
+            { label: "Freezer", onClick: () => stageBulkChange("tier", "freezer") },
+            { label: "Inbox", onClick: () => stageBulkChange("tier", "inbox") },
         ]);
     });
 
     const goalBtn = document.getElementById("bulkActionGoal");
     if (goalBtn) goalBtn.addEventListener("click", () => {
-        const items = [{ label: "(no goal)", onClick: () => bulkPatch({ goal_id: null }) }];
+        const items = [{ label: "(no goal)", onClick: () => stageBulkChange("goal_id", null) }];
         for (const g of allGoals) {
-            items.push({ label: g.title, onClick: () => bulkPatch({ goal_id: g.id }) });
+            items.push({ label: g.title, onClick: () => stageBulkChange("goal_id", g.id) });
         }
         // #59 (2026-04-25): if there are no goals, distinguish "still
         // loading" from "truly empty." User reported a delay where the
@@ -2031,9 +2112,9 @@ function initBulkSelect() {
 
     const projBtn = document.getElementById("bulkActionProject");
     if (projBtn) projBtn.addEventListener("click", () => {
-        const items = [{ label: "(no project)", onClick: () => bulkPatch({ project_id: null }) }];
+        const items = [{ label: "(no project)", onClick: () => stageBulkChange("project_id", null) }];
         for (const p of allProjects) {
-            items.push({ label: p.name, onClick: () => bulkPatch({ project_id: p.id }) });
+            items.push({ label: p.name, onClick: () => stageBulkChange("project_id", p.id) });
         }
         if (allProjects.length === 0) {
             const msg = projectsLoaded
@@ -2097,16 +2178,22 @@ function initBulkSelect() {
         const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
         const inAWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
         showBulkDropdown(dueDateBtn, [
-            { label: "Today", onClick: () => bulkPatch({ due_date: fmt(today) }) },
-            { label: "Tomorrow", onClick: () => bulkPatch({ due_date: fmt(tomorrow) }) },
-            { label: "In 1 week", onClick: () => bulkPatch({ due_date: fmt(inAWeek) }) },
+            { label: "Today", onClick: () => stageBulkChange("due_date", fmt(today)) },
+            { label: "Tomorrow", onClick: () => stageBulkChange("due_date", fmt(tomorrow)) },
+            { label: "In 1 week", onClick: () => stageBulkChange("due_date", fmt(inAWeek)) },
             { label: "Pick a date…", onClick: () => promptCustomDate(dueDateBtn) },
-            { label: "Clear (no due date)", onClick: () => bulkPatch({ due_date: null }) },
+            { label: "Clear (no due date)", onClick: () => stageBulkChange("due_date", null) },
         ]);
     });
 
     const deleteBtn = document.getElementById("bulkActionDelete");
     if (deleteBtn) deleteBtn.addEventListener("click", bulkDelete);
+
+    // #71: Apply / Clear-pending wiring
+    const applyBtn = document.getElementById("bulkApplyChanges");
+    if (applyBtn) applyBtn.addEventListener("click", applyStagedChanges);
+    const clearPendingBtn = document.getElementById("bulkClearPending");
+    if (clearPendingBtn) clearPendingBtn.addEventListener("click", clearBulkPending);
 }
 
 // "Pick a date…" — show an inline native date input near the Due-date
@@ -2132,7 +2219,7 @@ function promptCustomDate(anchor) {
     ok.addEventListener("click", () => {
         if (!input.value) return;
         wrap.remove();
-        bulkPatch({ due_date: input.value });
+        stageBulkChange("due_date", input.value);  // #71: stage instead of fire
     });
     wrap.appendChild(ok);
 

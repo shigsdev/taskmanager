@@ -113,6 +113,14 @@
         <button type="button" id="bulkActionStatus" class="btn-sm">Status ▾</button>
         <button type="button" id="bulkActionDelete" class="btn-sm btn-danger">Delete</button>
     </div>
+    {# #71: Pending-changes panel — Type/Tier/Due/Goal/Project STAGE here
+       (don't fire immediately). Apply commits all in one PATCH. Status
+       and Delete remain immediate (commit-style actions). #}
+    <div class="bulk-pending" id="bulkPending" style="display:none">
+        <div class="bulk-pending-list" id="bulkPendingList"></div>
+        <button type="button" id="bulkApplyChanges" class="btn-sm btn-primary">Apply changes</button>
+        <button type="button" id="bulkClearPending" class="btn-sm" title="Clear staged changes">↺</button>
+    </div>
     <button type="button" id="bulkClearSelection" class="btn-sm" title="Clear selection">✕</button>
 </div>
 
