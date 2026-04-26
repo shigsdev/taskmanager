@@ -100,6 +100,11 @@
         reviewSection.style.display = "none";
         confirmSection.style.display = "none";
         doneSection.style.display = "none";
+        // #80: project mode sections.
+        var pti = document.getElementById("importProjectsTextInput");
+        var pei = document.getElementById("importProjectsExcelInput");
+        if (pti) pti.style.display = "none";
+        if (pei) pei.style.display = "none";
         section.style.display = "";
     }
 
@@ -145,6 +150,111 @@
     backFromTasks.addEventListener("click", resetAll);
     backFromDocx.addEventListener("click", resetAll);
     backFromGoals.addEventListener("click", resetAll);
+
+    // #80 (2026-04-26): Projects bulk-upload — paste-text + Excel modes.
+    var projectsTextBtn = document.getElementById("importProjectsTextBtn");
+    var projectsExcelBtn = document.getElementById("importProjectsExcelBtn");
+    var projectsTextInput = document.getElementById("importProjectsTextInput");
+    var projectsExcelInput = document.getElementById("importProjectsExcelInput");
+    var projectsText = document.getElementById("importProjectsText");
+    var parseProjectsTextBtn = document.getElementById("importParseProjectsTextBtn");
+    var backFromProjectsText = document.getElementById("importBackFromProjectsText");
+    var projectsTextStatus = document.getElementById("importProjectsTextStatus");
+    var projectsExcelFile = document.getElementById("importProjectsExcelFile");
+    var projectsExcelFileLabel = document.getElementById("importProjectsExcelFileLabel");
+    var projectsExcelFileName = document.getElementById("importProjectsExcelFileName");
+    var parseProjectsExcelBtn = document.getElementById("importParseProjectsExcelBtn");
+    var backFromProjectsExcel = document.getElementById("importBackFromProjectsExcel");
+    var projectsExcelStatus = document.getElementById("importProjectsExcelStatus");
+
+    if (projectsTextBtn) projectsTextBtn.addEventListener("click", function () {
+        currentMode = "projects";
+        showSection(projectsTextInput);
+    });
+    if (projectsExcelBtn) projectsExcelBtn.addEventListener("click", function () {
+        currentMode = "projects";
+        showSection(projectsExcelInput);
+    });
+    if (backFromProjectsText) backFromProjectsText.addEventListener("click", resetAll);
+    if (backFromProjectsExcel) backFromProjectsExcel.addEventListener("click", resetAll);
+    if (projectsExcelFileLabel) projectsExcelFileLabel.addEventListener("click", function () {
+        projectsExcelFile.click();
+    });
+    if (projectsExcelFile) projectsExcelFile.addEventListener("change", function () {
+        var file = projectsExcelFile.files[0];
+        if (!file) return;
+        projectsExcelFileName.textContent = file.name;
+        parseProjectsExcelBtn.disabled = false;
+    });
+
+    if (parseProjectsTextBtn) parseProjectsTextBtn.addEventListener("click", async function () {
+        var text = projectsText.value;
+        if (!text.trim()) {
+            setStatus(projectsTextStatus, "Paste at least one project name.", true);
+            return;
+        }
+        parseProjectsTextBtn.disabled = true;
+        setStatus(projectsTextStatus, "Parsing projects…", false);
+        try {
+            var resp = await fetch("/api/import/projects/parse", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: text }),
+            });
+            var data = await resp.json();
+            if (!resp.ok) {
+                setStatus(projectsTextStatus, "Error: " + (data.error || "Parse failed"), true);
+                parseProjectsTextBtn.disabled = false;
+                return;
+            }
+            if (data.candidates && data.candidates.length > 0) {
+                currentCandidates = data.candidates;
+                reviewTitle.textContent = "Review Project Candidates";
+                reviewDesc.textContent = data.total + " project(s) found. Edit any field before importing.";
+                renderProjectCandidates();
+                showSection(reviewSection);
+            } else {
+                setStatus(projectsTextStatus, "No project names parsed.", true);
+                parseProjectsTextBtn.disabled = false;
+            }
+        } catch (err) {
+            setStatus(projectsTextStatus, "Parse failed: " + err.message, true);
+            parseProjectsTextBtn.disabled = false;
+        }
+    });
+
+    if (parseProjectsExcelBtn) parseProjectsExcelBtn.addEventListener("click", async function () {
+        var file = projectsExcelFile.files[0];
+        if (!file) return;
+        parseProjectsExcelBtn.disabled = true;
+        setStatus(projectsExcelStatus, "Parsing projects from Excel…", false);
+        var formData = new FormData();
+        formData.append("file", file);
+        try {
+            var resp = await fetch("/api/import/projects/upload", {
+                method: "POST", body: formData,
+            });
+            var data = await resp.json();
+            if (!resp.ok) {
+                setStatus(projectsExcelStatus, "Error: " + (data.error || "Parse failed"), true);
+                parseProjectsExcelBtn.disabled = false;
+                return;
+            }
+            if (data.candidates && data.candidates.length > 0) {
+                currentCandidates = data.candidates;
+                reviewTitle.textContent = "Review Project Candidates";
+                reviewDesc.textContent = data.total + " project(s) found. Edit any field before importing.";
+                renderProjectCandidates();
+                showSection(reviewSection);
+            } else {
+                setStatus(projectsExcelStatus, "No projects found in the Excel file.", true);
+                parseProjectsExcelBtn.disabled = false;
+            }
+        } catch (err) {
+            setStatus(projectsExcelStatus, "Parse failed: " + err.message, true);
+            parseProjectsExcelBtn.disabled = false;
+        }
+    });
 
     // --- File input ----------------------------------------------------------
 
@@ -576,6 +686,122 @@
         });
     }
 
+    // #80 (2026-04-26): renderer for project candidates. Mirrors the
+    // tasks/goals always-expanded layout (#84). Per-row fields:
+    // include checkbox, name input, type select, target_quarter,
+    // status, color, actions, notes, linked_goal text input (free
+    // string matched at create time).
+    function renderProjectCandidates() {
+        candidatesEl.innerHTML = "";
+        currentCandidates.forEach(function (c, i) {
+            var row = document.createElement("div");
+            row.className = "import-candidate" + (c.duplicate ? " import-duplicate" : "");
+
+            var head = document.createElement("div");
+            head.className = "import-candidate-head";
+
+            var cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = c.included !== false && !c.duplicate;
+            cb.addEventListener("change", function () {
+                currentCandidates[i].included = cb.checked;
+            });
+            if (c.duplicate) currentCandidates[i].included = false;
+            head.appendChild(cb);
+
+            var input = document.createElement("input");
+            input.type = "text";
+            input.value = c.name || "";
+            input.className = "import-candidate-title";
+            input.addEventListener("input", function () {
+                currentCandidates[i].name = input.value;
+            });
+            head.appendChild(input);
+
+            var typeSel = document.createElement("select");
+            typeSel.className = "import-candidate-type";
+            ["work", "personal"].forEach(function (val) {
+                var opt = document.createElement("option");
+                opt.value = val;
+                opt.textContent = val.charAt(0).toUpperCase() + val.slice(1);
+                typeSel.appendChild(opt);
+            });
+            typeSel.value = c.type || "work";
+            typeSel.addEventListener("change", function () {
+                currentCandidates[i].type = typeSel.value;
+            });
+            head.appendChild(typeSel);
+
+            if (c.duplicate) {
+                var badge = document.createElement("span");
+                badge.className = "import-dup-badge";
+                badge.textContent = "duplicate";
+                head.appendChild(badge);
+            }
+            row.appendChild(head);
+
+            var expanded = document.createElement("div");
+            expanded.className = "import-candidate-expanded";
+
+            var fieldsRow = document.createElement("div");
+            fieldsRow.className = "import-fields-row";
+
+            var tqInput = document.createElement("input");
+            tqInput.type = "text";
+            tqInput.value = c.target_quarter || "";
+            tqInput.placeholder = "e.g. 2026-Q4";
+            tqInput.addEventListener("input", function () {
+                currentCandidates[i].target_quarter = tqInput.value;
+            });
+            fieldsRow.appendChild(_labeledField("Target quarter", tqInput));
+
+            var statusSel = document.createElement("select");
+            ["not_started", "in_progress", "done", "on_hold"].forEach(function (s) {
+                var opt = document.createElement("option");
+                opt.value = s;
+                opt.textContent = s.replace("_", " ").replace(/\b\w/g, function (l) { return l.toUpperCase(); });
+                statusSel.appendChild(opt);
+            });
+            statusSel.value = c.status || "not_started";
+            statusSel.addEventListener("change", function () {
+                currentCandidates[i].status = statusSel.value;
+            });
+            fieldsRow.appendChild(_labeledField("Status", statusSel));
+
+            expanded.appendChild(fieldsRow);
+
+            var linkedGoalInput = document.createElement("input");
+            linkedGoalInput.type = "text";
+            linkedGoalInput.value = c.linked_goal || "";
+            linkedGoalInput.placeholder = "Goal title (case-insensitive match)";
+            linkedGoalInput.addEventListener("input", function () {
+                currentCandidates[i].linked_goal = linkedGoalInput.value;
+            });
+            expanded.appendChild(_labeledField("Linked goal (optional)", linkedGoalInput));
+
+            var actionsInput = document.createElement("textarea");
+            actionsInput.rows = 2;
+            actionsInput.value = c.actions || "";
+            actionsInput.placeholder = "Concrete next-actions";
+            actionsInput.addEventListener("input", function () {
+                currentCandidates[i].actions = actionsInput.value;
+            });
+            expanded.appendChild(_labeledField("Actions", actionsInput));
+
+            var notesInput = document.createElement("textarea");
+            notesInput.rows = 2;
+            notesInput.value = c.notes || "";
+            notesInput.placeholder = "Background, context, links…";
+            notesInput.addEventListener("input", function () {
+                currentCandidates[i].notes = notesInput.value;
+            });
+            expanded.appendChild(_labeledField("Notes", notesInput));
+
+            row.appendChild(expanded);
+            candidatesEl.appendChild(row);
+        });
+    }
+
     // --- Confirm summary (preview before DB commit) ---------------------------
 
     var pendingImport = []; // candidates staged for final confirm
@@ -587,9 +813,23 @@
                 return allIncluded ? true : c.included;
             })
             .filter(function (c) {
+                // Projects use "name", tasks/goals use "title".
+                if (currentMode === "projects") return (c.name || "").trim().length > 0;
                 return (c.title || "").trim().length > 0;
             })
             .map(function (c) {
+                if (currentMode === "projects") {
+                    return {
+                        name: c.name,
+                        type: c.type || "work",
+                        target_quarter: c.target_quarter || "",
+                        status: c.status || "not_started",
+                        actions: c.actions || "",
+                        notes: c.notes || "",
+                        linked_goal: c.linked_goal || "",
+                        included: true,
+                    };
+                }
                 var item = { title: c.title, included: true };
                 if (currentMode === "tasks") {
                     item.type = c.type || "work";
@@ -616,7 +856,8 @@
             return;
         }
 
-        var noun = currentMode === "tasks" ? "task(s)" : "goal(s)";
+        var noun = currentMode === "tasks" ? "task(s)"
+                 : (currentMode === "projects" ? "project(s)" : "goal(s)");
         confirmDesc.textContent =
             "You are about to import " +
             pendingImport.length +
@@ -628,8 +869,10 @@
         confirmList.innerHTML = "";
         pendingImport.forEach(function (c) {
             var li = document.createElement("li");
-            var label = c.title;
+            var label = currentMode === "projects" ? c.name : c.title;
             if (currentMode === "tasks") {
+                label += " (" + (c.type || "work") + ")";
+            } else if (currentMode === "projects") {
                 label += " (" + (c.type || "work") + ")";
             } else {
                 label += " (" + (c.category || "work") + ")";
@@ -645,10 +888,10 @@
         finalConfirmBtn.disabled = true;
         finalConfirmBtn.textContent = "Importing...";
 
-        var url =
-            currentMode === "tasks"
-                ? "/api/import/tasks/confirm"
-                : "/api/import/goals/confirm";
+        var url;
+        if (currentMode === "tasks") url = "/api/import/tasks/confirm";
+        else if (currentMode === "projects") url = "/api/import/projects/confirm";
+        else url = "/api/import/goals/confirm";
 
         try {
             var resp = await fetch(url, {
@@ -662,7 +905,8 @@
             var data = await resp.json();
 
             if (resp.ok) {
-                var noun = currentMode === "tasks" ? "task(s)" : "goal(s)";
+                var noun = currentMode === "tasks" ? "task(s)"
+                         : (currentMode === "projects" ? "project(s)" : "goal(s)");
                 doneMessage.textContent =
                     data.created + " " + noun + " imported successfully.";
                 showSection(doneSection);

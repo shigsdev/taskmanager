@@ -14,12 +14,16 @@ from flask import Blueprint, jsonify, request
 from auth import login_required
 from import_service import (
     create_goals_from_import,
+    create_projects_from_import,
     create_tasks_from_import,
     find_duplicate_goals,
+    find_duplicate_projects,
     find_duplicate_tasks,
     parse_excel_goals,
+    parse_excel_projects,
     parse_onenote_docx,
     parse_onenote_text,
+    parse_project_names_text,
 )
 
 bp = Blueprint("import_api", __name__, url_prefix="/api/import")
@@ -198,5 +202,84 @@ def confirm_goals(email: str):  # noqa: ARG001
         "goals": [
             {"id": str(g.id), "title": g.title, "category": g.category.value}
             for g in goals
+        ],
+    }), 201
+
+
+# --- #80 (2026-04-26): Projects bulk-upload ---------------------------------
+
+
+@bp.post("/projects/parse")
+@login_required
+def parse_projects(email: str):  # noqa: ARG001
+    """Parse pasted text (one name per line) into project candidates."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or "text" not in data:
+        return jsonify({"error": "JSON body with 'text' required"}), 400
+
+    text = data.get("text", "")
+    if not isinstance(text, str):
+        return jsonify({"error": "'text' must be a string"}), 422
+
+    candidates = parse_project_names_text(text)
+
+    names = [c["name"] for c in candidates]
+    duplicates = {n.lower() for n in find_duplicate_projects(names)}
+    for c in candidates:
+        c["duplicate"] = c["name"].lower() in duplicates
+
+    return jsonify({"candidates": candidates, "total": len(candidates)})
+
+
+@bp.post("/projects/upload")
+@login_required
+def upload_projects(email: str):  # noqa: ARG001
+    """Parse uploaded Excel file (.xlsx) into project candidates."""
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    file = request.files["file"]
+    if not file.filename:
+        return jsonify({"error": "No filename"}), 400
+    if not file.filename.lower().endswith(".xlsx"):
+        return jsonify({"error": "Only .xlsx files are supported"}), 422
+    file_bytes = file.read()
+    if len(file_bytes) > MAX_FILE_SIZE:
+        return jsonify({"error": "File too large (max 5MB)"}), 413
+    if not file_bytes:
+        return jsonify({"error": "Empty file"}), 400
+
+    try:
+        candidates = parse_excel_projects(file_bytes)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 422
+
+    names = [c["name"] for c in candidates]
+    duplicates = {n.lower() for n in find_duplicate_projects(names)}
+    for c in candidates:
+        c["duplicate"] = c["name"].lower() in duplicates
+
+    return jsonify({"candidates": candidates, "total": len(candidates)})
+
+
+@bp.post("/projects/confirm")
+@login_required
+def confirm_projects(email: str):  # noqa: ARG001
+    """Confirm project candidates and create them."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON body required"}), 400
+
+    candidates = data.get("candidates", [])
+    if not isinstance(candidates, list):
+        return jsonify({"error": "candidates must be a list"}), 422
+
+    source = data.get("source", "projects_import")
+    projects = create_projects_from_import(candidates, source=source)
+
+    return jsonify({
+        "created": len(projects),
+        "projects": [
+            {"id": str(p.id), "name": p.name, "type": p.type.value}
+            for p in projects
         ],
     }), 201

@@ -496,6 +496,9 @@ the code.
 /api/import/tasks/confirm
 /api/import/goals/parse
 /api/import/goals/confirm
+/api/import/projects/parse           # #80 — paste-text project names
+/api/import/projects/upload          # #80 — Excel project rows
+/api/import/projects/confirm         # #80 — commit projects from preview
 
 # digest_api.py
 /api/digest/preview

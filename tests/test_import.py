@@ -1047,3 +1047,136 @@ class TestImportBlueprint:
         assert "/api/import/goals/parse" in rules
         assert "/api/import/tasks/upload" in rules
         assert "/api/import/goals/confirm" in rules
+        # #80
+        assert "/api/import/projects/parse" in rules
+        assert "/api/import/projects/upload" in rules
+        assert "/api/import/projects/confirm" in rules
+
+
+# --- #80: Projects bulk-upload -----------------------------------------------
+
+
+class TestParseProjectNamesText:
+    """One name per line; bullets stripped; dedup case-insensitive."""
+
+    def test_basic_one_per_line(self):
+        from import_service import parse_project_names_text
+        result = parse_project_names_text("Roadmap\nQ3 Planning\nHiring")
+        assert [c["name"] for c in result] == ["Roadmap", "Q3 Planning", "Hiring"]
+        assert all(c["type"] == "work" for c in result)
+        assert all(c["included"] is True for c in result)
+
+    def test_strips_bullet_markers(self):
+        from import_service import parse_project_names_text
+        text = "- Portal\n* Roadmaps\n1. Q3 Planning\n[ ] Onboarding"
+        names = [c["name"] for c in parse_project_names_text(text)]
+        assert names == ["Portal", "Roadmaps", "Q3 Planning", "Onboarding"]
+
+    def test_dedupes_case_insensitive(self):
+        from import_service import parse_project_names_text
+        result = parse_project_names_text("Roadmap\nROADMAP\nroadmap")
+        assert len(result) == 1
+
+    def test_empty_returns_empty(self):
+        from import_service import parse_project_names_text
+        assert parse_project_names_text("") == []
+        assert parse_project_names_text("   \n  ") == []
+
+
+class TestCreateProjectsFromImport:
+    """Verify create_projects_from_import + linked_goal resolution."""
+
+    def test_creates_included_projects(self, app):
+        from import_service import create_projects_from_import
+        from models import Project
+        with app.app_context():
+            projects = create_projects_from_import(
+                [
+                    {"name": "P1", "type": "work", "included": True},
+                    {"name": "P2", "type": "personal", "included": True},
+                    {"name": "Skip", "type": "work", "included": False},
+                ],
+                source="test",
+            )
+            assert len(projects) == 2
+            stored = {p.name: p for p in db.session.scalars(db.select(Project))}
+            assert "P1" in stored and "P2" in stored
+            assert stored["P2"].type.value == "personal"
+            # #66 default color filled when not provided.
+            assert stored["P1"].color == "#2563eb"
+            assert stored["P2"].color == "#16a34a"
+
+    def test_linked_goal_resolves_case_insensitive(self, app):
+        from import_service import create_projects_from_import
+        with app.app_context():
+            g = Goal(
+                title="Ship Calendar",
+                category=GoalCategory.WORK,
+                priority=GoalPriority.MUST,
+            )
+            db.session.add(g)
+            db.session.commit()
+            goal_id = g.id
+            projects = create_projects_from_import(
+                [{
+                    "name": "Linked", "type": "work",
+                    "linked_goal": "ship calendar", "included": True,
+                }],
+                source="test",
+            )
+            assert projects[0].goal_id == goal_id
+
+    def test_linked_goal_miss_skips_silently(self, app):
+        from import_service import create_projects_from_import
+        with app.app_context():
+            projects = create_projects_from_import(
+                [{
+                    "name": "Orphan", "type": "work",
+                    "linked_goal": "no such goal", "included": True,
+                }],
+                source="test",
+            )
+            assert projects[0].goal_id is None
+
+    def test_logs_import(self, app):
+        from import_service import create_projects_from_import
+        with app.app_context():
+            create_projects_from_import(
+                [{"name": "Logged", "included": True}],
+                source="projects_test_import",
+            )
+            log = db.session.scalars(
+                db.select(ImportLog).where(ImportLog.source == "projects_test_import")
+            ).first()
+            assert log is not None
+            assert log.task_count == 1
+
+
+class TestProjectsParseEndpoint:
+    """API: POST /api/import/projects/parse."""
+
+    def test_text_parse_returns_candidates(self, authed_client):
+        resp = authed_client.post(
+            "/api/import/projects/parse",
+            json={"text": "- Portal\n- Roadmaps"},
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["total"] == 2
+        names = [c["name"] for c in body["candidates"]]
+        assert "Portal" in names
+
+    def test_confirm_creates_projects(self, authed_client):
+        resp = authed_client.post(
+            "/api/import/projects/confirm",
+            json={
+                "candidates": [
+                    {"name": "API-created", "type": "work", "included": True},
+                ],
+                "source": "projects_api_test",
+            },
+        )
+        assert resp.status_code == 201
+        body = resp.get_json()
+        assert body["created"] == 1
+        assert body["projects"][0]["name"] == "API-created"

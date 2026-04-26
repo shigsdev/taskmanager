@@ -26,6 +26,9 @@ from models import (
     GoalPriority,
     GoalStatus,
     ImportLog,
+    Project,
+    ProjectStatus,
+    ProjectType,
     Task,
     TaskStatus,
     TaskType,
@@ -309,6 +312,111 @@ def find_duplicate_tasks(titles: list[str]) -> list[str]:
     return [t for t in titles if t.lower() in existing_lower]
 
 
+def parse_project_names_text(text: str) -> list[dict[str, Any]]:
+    """#80 (2026-04-26): parse one project name per line from raw text.
+
+    Strips bullet/numbered list markers (- *, 1., etc.) so a copy-pasted
+    list works without manual cleanup. Skips empty lines and obvious
+    headers. Returns the same candidate shape the UI consumes.
+    """
+    if not text or not text.strip():
+        return []
+
+    candidates: list[dict[str, Any]] = []
+    seen_lower: set[str] = set()
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        # Strip bullet / numbered prefixes (mirrors parse_onenote_text logic).
+        cleaned = _clean_task_line(line)
+        if not cleaned:
+            continue
+        if _is_header_line(cleaned):
+            continue
+        if len(cleaned) < 2:
+            continue
+        lo = cleaned.lower()
+        if lo in seen_lower:
+            continue
+        seen_lower.add(lo)
+        candidates.append({
+            "name": cleaned,
+            "type": "work",
+            "included": True,
+        })
+    return candidates
+
+
+def parse_excel_projects(file_bytes: bytes) -> list[dict[str, Any]]:
+    """#80 (2026-04-26): parse a .xlsx of project rows.
+
+    Expected columns (case-insensitive header row):
+      - name (required)
+      - type: work, personal
+      - target_quarter: free string e.g. "2026-Q4"
+      - status: not_started, in_progress, done, on_hold
+      - color: hex e.g. "#2563eb" — if absent, per-type default fills (#66)
+      - actions, notes: free text
+      - linked_goal: free-text title; matched case-insensitively against
+        existing goals at create time. No exact-id requirement.
+
+    Rows with no name are skipped.
+    """
+    import openpyxl
+
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True)
+    except Exception as e:
+        raise ValueError(f"Cannot read Excel file: {e}") from e
+
+    ws = wb.active
+    if ws is None:
+        raise ValueError("Excel file has no active worksheet")
+
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return []
+
+    headers = [str(h).strip().lower() if h else "" for h in rows[0]]
+    col_map = {name: idx for idx, name in enumerate(headers) if name}
+
+    candidates: list[dict[str, Any]] = []
+    for row in rows[1:]:
+        name = _cell_str(row, col_map.get("name"))
+        if not name:
+            continue
+        type_str = _cell_str(row, col_map.get("type")).lower()
+        if not _valid_enum(ProjectType, type_str):
+            type_str = "work"
+        status_str = _cell_str(row, col_map.get("status")).lower()
+        if not _valid_enum(ProjectStatus, status_str):
+            status_str = "not_started"
+        candidates.append({
+            "name": name,
+            "type": type_str,
+            "target_quarter": _cell_str(row, col_map.get("target_quarter")),
+            "status": status_str,
+            "color": _cell_str(row, col_map.get("color")),
+            "actions": _cell_str(row, col_map.get("actions")),
+            "notes": _cell_str(row, col_map.get("notes")),
+            "linked_goal": _cell_str(row, col_map.get("linked_goal")),
+            "included": True,
+        })
+    return candidates
+
+
+def find_duplicate_projects(names: list[str]) -> list[str]:
+    """#80: return project names that already exist (case-insensitive)."""
+    if not names:
+        return []
+    existing = db.session.scalars(
+        select(Project.name).where(Project.is_active.is_(True))
+    ).all()
+    existing_lower = {n.lower() for n in existing}
+    return [n for n in names if n.lower() in existing_lower]
+
+
 def find_duplicate_goals(titles: list[str]) -> list[str]:
     """Return titles that already exist as active goals (case-insensitive)."""
     if not titles:
@@ -476,6 +584,84 @@ def create_goals_from_import(
         )
         db.session.add(goal)
         created.append(goal)
+
+    if created:
+        log = ImportLog(
+            source=source, task_count=len(created), batch_id=batch_id
+        )
+        db.session.add(log)
+        db.session.commit()
+
+    return created
+
+
+def create_projects_from_import(
+    candidates: list[dict[str, Any]],
+    source: str,
+) -> list[Project]:
+    """#80 (2026-04-26): create Project records from confirmed candidates.
+
+    Mirrors create_goals_from_import: only included candidates create
+    rows, batch_id stamps every row for recycle-bin batch undo, ImportLog
+    captures the import. linked_goal is matched case-insensitively to an
+    existing active goal title; misses are silently skipped (project
+    still created with goal_id=None).
+    """
+    from project_service import _default_color_for_type
+
+    if not candidates:
+        return []
+
+    # Pre-load active goals into a case-insensitive title -> id lookup
+    # so per-row linked_goal resolution is O(1) instead of N queries.
+    goal_index: dict[str, Any] = {}
+    for g in db.session.scalars(
+        select(Goal).where(Goal.is_active.is_(True))
+    ):
+        goal_index[g.title.strip().lower()] = g.id
+
+    batch_id = uuid.uuid4()
+    created: list[Project] = []
+    for candidate in candidates:
+        if not candidate.get("included", True):
+            continue
+        name = (candidate.get("name") or "").strip()
+        if not name:
+            continue
+
+        type_str = candidate.get("type", "work")
+        try:
+            project_type = ProjectType(type_str)
+        except ValueError:
+            project_type = ProjectType.WORK
+
+        status_str = candidate.get("status", "not_started")
+        try:
+            status = ProjectStatus(status_str)
+        except ValueError:
+            status = ProjectStatus.NOT_STARTED
+
+        color = (candidate.get("color") or "").strip()
+        if not color:
+            color = _default_color_for_type(project_type)
+
+        goal_id = None
+        linked_raw = (candidate.get("linked_goal") or "").strip()
+        if linked_raw:
+            goal_id = goal_index.get(linked_raw.lower())
+
+        project = Project(
+            name=name,
+            type=project_type,
+            color=color,
+            target_quarter=(candidate.get("target_quarter") or "").strip() or None,
+            actions=(candidate.get("actions") or "").strip() or None,
+            notes=(candidate.get("notes") or "").strip() or None,
+            status=status,
+            goal_id=goal_id,
+        )
+        db.session.add(project)
+        created.append(project)
 
     if created:
         log = ImportLog(

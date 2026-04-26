@@ -14,7 +14,45 @@
             <button class="btn" id="importTasksBtn">Paste OneNote Tasks</button>
             <button class="btn" id="importDocxBtn">Upload OneNote .docx</button>
             <button class="btn" id="importGoalsBtn">Upload Excel Goals</button>
+            <button class="btn" id="importProjectsTextBtn">Paste Project Names</button>
+            <button class="btn" id="importProjectsExcelBtn">Upload Excel Projects</button>
         </div>
+    </div>
+
+    {# #80 (2026-04-26): paste project names — one per line. #}
+    <div class="import-input" id="importProjectsTextInput" style="display:none">
+        <h2>Paste Project Names</h2>
+        <p>One project name per line. All defaults (type=Work, etc.) editable in
+           the preview. Bullets are stripped automatically.</p>
+        <textarea id="importProjectsText" class="import-textarea"
+                  placeholder="Roadmap&#10;Q3 Planning&#10;Hiring"
+                  rows="10" spellcheck="true"></textarea>
+        <div class="import-input-actions">
+            <button class="btn" id="importParseProjectsTextBtn">Parse Projects</button>
+            <button class="btn btn-sm" id="importBackFromProjectsText">Back</button>
+        </div>
+        <div class="import-status" id="importProjectsTextStatus" style="display:none"></div>
+    </div>
+
+    {# #80: Excel projects upload. Header row required: name (other
+       columns optional — type, target_quarter, status, color, actions,
+       notes, linked_goal). #}
+    <div class="import-input" id="importProjectsExcelInput" style="display:none">
+        <h2>Upload Excel Projects</h2>
+        <p>Upload an .xlsx file with a header row. Required column: <strong>name</strong>.
+           Optional: type, target_quarter, status, color, actions, notes, linked_goal.</p>
+        <div class="import-file-area">
+            <label for="importProjectsExcelFile" class="scan-file-label" id="importProjectsExcelFileLabel">
+                Choose .xlsx file
+            </label>
+            <input type="file" id="importProjectsExcelFile" accept=".xlsx" style="display:none">
+            <span id="importProjectsExcelFileName" class="import-file-name"></span>
+        </div>
+        <div class="import-input-actions">
+            <button class="btn" id="importParseProjectsExcelBtn" disabled>Parse Projects</button>
+            <button class="btn btn-sm" id="importBackFromProjectsExcel">Back</button>
+        </div>
+        <div class="import-status" id="importProjectsExcelStatus" style="display:none"></div>
     </div>
 
     <!-- OneNote tasks input -->
