@@ -29,7 +29,9 @@
             <li><a href="#voice-input">Voice memo vs. voice dictation</a></li>
             <li><a href="#image-scan">Image scan</a></li>
             <li><a href="#import-onenote">Pasting from OneNote</a></li>
+            <li><a href="#import-excel-tasks">Importing tasks from Excel</a></li>
             <li><a href="#import-excel-goals">Importing goals from Excel</a></li>
+            <li><a href="#import-excel-projects">Importing projects from Excel</a></li>
         </ul>
 
         <h3 class="docs-toc-group">Task lifecycle</h3>
@@ -353,6 +355,54 @@ Skip this line (too short)</pre>
         {# =============================================================
            Section: Importing goals from Excel
            ============================================================= #}
+        <section id="import-excel-tasks" class="docs-section">
+            <h2>Importing tasks from Excel</h2>
+            <p>
+                The Excel tasks importer accepts <code>.xlsx</code> files
+                from the /import page (mode: <strong>Upload Excel
+                Tasks</strong>). The first row is treated as the header;
+                column names are matched case-insensitively. Rows with no
+                <code>title</code> are skipped.
+            </p>
+
+            <h3>Required column</h3>
+            <ul>
+                <li><code>title</code> — text. Empty rows skipped.</li>
+            </ul>
+
+            <h3>Optional columns</h3>
+            <p>
+                Each accepts a predefined value or free text as noted.
+                Invalid enum values silently fall back to the default
+                rather than aborting the import.
+            </p>
+            <ul>
+                <li><code>type</code>: <code>work</code>, <code>personal</code>. Default: <code>work</code>.</li>
+                <li><code>tier</code>: <code>inbox</code>, <code>today</code>, <code>tomorrow</code>, <code>this_week</code>, <code>next_week</code>, <code>backlog</code>, <code>freezer</code>. Default: <code>inbox</code>.</li>
+                <li><code>due_date</code>: ISO <code>YYYY-MM-DD</code>. Excel date cells are normalised automatically. Setting a due_date will auto-route the task to the matching tier on save (e.g. today → Today).</li>
+                <li><code>linked_goal</code>: free-text goal title; matched case-insensitively against your active goals at create time. No exact-id needed. Misses are silently dropped (task created without a goal).</li>
+                <li><code>linked_project</code>: free-text project name; same matching as <code>linked_goal</code>. If the linked project has a <code>goal_id</code>, that cascades onto the task automatically.</li>
+                <li><code>notes</code>: free text.</li>
+                <li><code>url</code>: free text (rendered as a clickable link on the task card).</li>
+            </ul>
+
+            <h3>Review screen</h3>
+            <p>
+                After upload, every row appears in the always-visible
+                expanded preview where you can edit any field, untick
+                rows you don't want, or fix typos before committing.
+                Duplicate titles against existing active tasks are
+                flagged.
+            </p>
+
+            <h3>Undo</h3>
+            <p>
+                Same <code>batch_id</code> mechanic as the OneNote text
+                import — undo the whole batch from the
+                <a href="{{ url_for('recycle_bin_page') }}">Recycle Bin</a>.
+            </p>
+        </section>
+
         <section id="import-excel-goals" class="docs-section">
             <h2>Importing goals from Excel</h2>
             <p>
@@ -393,6 +443,46 @@ Skip this line (too short)</pre>
                 Same <code>batch_id</code> mechanic as the text
                 import. Undo the whole batch from the
                 <a href="{{ url_for('recycle_bin_page') }}">Recycle Bin</a>.
+            </p>
+        </section>
+
+        <section id="import-excel-projects" class="docs-section">
+            <h2>Importing projects from Excel</h2>
+            <p>
+                The Excel projects importer accepts <code>.xlsx</code>
+                files from the /import page (mode: <strong>Upload Excel
+                Projects</strong>). Header-row driven, case-insensitive
+                column names. Rows with no <code>name</code> are skipped.
+                Paste-text mode is also available for quick name-only
+                bulk creation.
+            </p>
+
+            <h3>Required column</h3>
+            <ul>
+                <li><code>name</code> — text. Empty rows skipped.</li>
+            </ul>
+
+            <h3>Optional columns</h3>
+            <ul>
+                <li><code>type</code>: <code>work</code>, <code>personal</code>. Default: <code>work</code>.</li>
+                <li><code>target_quarter</code>: free text (e.g. <code>2026-Q4</code>).</li>
+                <li><code>status</code>: <code>not_started</code>, <code>in_progress</code>, <code>done</code>, <code>on_hold</code>. Default: <code>not_started</code>.</li>
+                <li><code>color</code>: hex value (e.g. <code>#2563eb</code>). If absent, the per-type default applies (Work blue / Personal green).</li>
+                <li><code>actions</code>: free text.</li>
+                <li><code>notes</code>: free text.</li>
+                <li><code>linked_goal</code>: free-text goal title; matched case-insensitive at create time. Miss = no goal linked.</li>
+            </ul>
+
+            <h3>De-duplication</h3>
+            <p>
+                Duplicate names against existing active projects are
+                flagged on the review screen. Always-visible expanded
+                rows let you edit any field before commit.
+            </p>
+
+            <h3>Undo</h3>
+            <p>
+                Same recycle-bin batch undo as the other import modes.
             </p>
         </section>
 

@@ -7,23 +7,49 @@ work and personal life, with a regulated (air-gapped) work environment.
 
 ## Features
 
-- **Task board** — tier-based organization (Today, This Week, Backlog, Freezer, Inbox)
-  with drag-and-drop, quick capture bar, detail panel, and voice input
-- **Goals** — grouped by category (Health, Work, Personal Growth, Relationships)
-  with priority ranking, progress tracking, and linked tasks
-- **Projects** — work task grouping with color coding and goal linkage
+- **Task board** — tier-based organization (Today, Tomorrow, This Week, Next Week,
+  Backlog, Freezer, Inbox) with drag-and-drop between tiers, tier-header date
+  labels, long-title ellipsis, quick capture bar, detail panel, and voice input
+- **Day-strip + Calendar** — Mon-Sat day strip above Today + dedicated `/calendar`
+  page; drop a task on a day cell to set its `due_date` (tier auto-routes to
+  match). Auto-scrolls the page when dragging near the viewport edge.
+- **Due-date → tier auto-route** — setting a `due_date` automatically moves the
+  task to the matching tier (today → Today, this week → This Week, etc.)
+- **Goals** — grouped by category (Health, Work, Personal Growth, Relationships,
+  BAU) with priority ranking, progress tracking, and linked tasks
+- **Projects** — task grouping with auto-color by type (Work blue / Personal green),
+  goal linkage that cascades onto linked tasks, `priority` + `priority_order` with
+  drag-to-reorder within type group, `target_quarter`, lifecycle `status` mirroring
+  Goals, plus Actions and Notes fields
 - **Inbox triage** — single and bulk triage flow for new tasks
 - **Subtasks** — one-level-deep child tasks with progress badge on parent,
-  goal/project inheritance, cascade on parent update, force-complete option
+  goal/project inheritance, cascade on parent update, force-complete option,
+  parent picker in the detail panel, and a `+ Subtask` quick button on every
+  parent-eligible card
 - **URL save** — paste a URL in quick capture, server fetches page title
   (SSRF-protected), saves as task with clickable link
 - **Checklists** — checklist items on tasks with progress tracking
 - **Weekly review** — step-through stale task review (keep/freeze/delete/snooze)
-- **Recurring tasks** — 16 system defaults plus custom templates, daily/weekly/day-of-week
+- **Recurring tasks** — 16 system defaults plus custom templates; daily, weekly,
+  single-day-of-week, or **multi-day-of-week** (e.g. Mon+Wed+Fri); dedicated
+  `/recurring` page with multi-select bulk-edit (type / frequency / project /
+  goal / pause-resume / delete)
 - **Print view** — printer-friendly Today + This Week + Overdue layout
 - **Email digest** — daily summary via SendGrid with goals, overdue alerts
-- **Image scan** — Google Vision OCR + Claude AI parsing of photos into tasks
-- **Import** — paste OneNote text or upload Excel goals with duplicate detection
+- **Image scan** — Google Vision OCR + Claude AI parsing of photos; routes
+  candidates to **Tasks, Goals, or Projects** via a target picker
+- **Voice memo** — record long-form audio, transcribed via Whisper, parsed into
+  candidates by Claude; keyword router classifies each candidate as
+  **task / goal / project** (clickable badge to override before commit)
+- **Import** — three modes: OneNote tasks (paste-text or .docx), Excel goals
+  (.xlsx), Excel/paste-text projects, plus **Excel tasks (.xlsx)** with full
+  column set (title, type, tier, due_date, linked_goal, linked_project, notes,
+  url) — `linked_goal` / `linked_project` resolved case-insensitive at create time.
+  Always-visible expanded preview rows let you edit every field before commit;
+  duplicate detection + recycle-bin batch undo.
+- **Bulk-edit toolbar** — multi-select on the task board stages multiple
+  attribute changes (Type, Tier, Due, Goal, Project) and applies them in a
+  single PATCH on Apply — selection persists across stages
 - **Settings** — dashboard with service status, app stats, import history
 - **Mobile responsive** — 44px touch targets, swipe gestures, iOS zoom prevention
 - **Security** — Google OAuth single-user lockdown, Fernet encryption, CSP headers,
