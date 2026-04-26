@@ -48,20 +48,8 @@
     var confirmAllBtn = document.getElementById("importConfirmAll");
     var confirmSelectedBtn = document.getElementById("importConfirmSelected");
     var startOverBtn = document.getElementById("importStartOver");
-    var expandAllBtn = document.getElementById("importExpandAll");
-    var collapseAllBtn = document.getElementById("importCollapseAll");
-
-    function setAllExpanded(open) {
-        document.querySelectorAll(".import-candidate").forEach(function (row) {
-            var expanded = row.querySelector(".import-candidate-expanded");
-            var toggle = row.querySelector(".import-expand-toggle");
-            if (!expanded || !toggle) return;
-            expanded.style.display = open ? "" : "none";
-            toggle.textContent = open ? "Hide fields ▴" : "Edit all fields ▾";
-        });
-    }
-    if (expandAllBtn) expandAllBtn.addEventListener("click", function () { setAllExpanded(true); });
-    if (collapseAllBtn) collapseAllBtn.addEventListener("click", function () { setAllExpanded(false); });
+    // (#84 2026-04-25) Expand all / Collapse all controls removed — every
+    // field is now always visible per row, no toggle needed.
 
     // DOM refs — confirm summary
     var confirmSection = document.getElementById("importConfirm");
@@ -387,16 +375,6 @@
             });
             head.appendChild(typeSelect);
 
-            // Expand/collapse toggle (#76). Bug followup 2026-04-25: the
-            // bare ▾ glyph wasn't discoverable — promote to a labeled
-            // button so users know it does something.
-            var toggleBtn = document.createElement("button");
-            toggleBtn.type = "button";
-            toggleBtn.className = "import-expand-toggle";
-            toggleBtn.textContent = "Edit all fields ▾";
-            toggleBtn.title = "Edit tier, due date, goal, project, URL, and notes";
-            head.appendChild(toggleBtn);
-
             if (c.duplicate) {
                 var badge = document.createElement("span");
                 badge.className = "import-dup-badge";
@@ -406,10 +384,9 @@
 
             row.appendChild(head);
 
-            // Expanded editor (hidden by default).
+            // #84 (2026-04-25): always-visible full editor — no expand toggle.
             var expanded = document.createElement("div");
             expanded.className = "import-candidate-expanded";
-            expanded.style.display = "none";
 
             var fieldsRow1 = document.createElement("div");
             fieldsRow1.className = "import-fields-row";
@@ -474,12 +451,6 @@
 
             row.appendChild(expanded);
 
-            toggleBtn.addEventListener("click", function () {
-                var isOpen = expanded.style.display !== "none";
-                expanded.style.display = isOpen ? "none" : "";
-                toggleBtn.textContent = isOpen ? "Edit all fields ▾" : "Hide fields ▴";
-            });
-
             candidatesEl.appendChild(row);
         });
     }
@@ -528,14 +499,6 @@
             });
             head.appendChild(catSelect);
 
-            // Expand toggle (#76).
-            var toggleBtn = document.createElement("button");
-            toggleBtn.type = "button";
-            toggleBtn.className = "import-expand-toggle";
-            toggleBtn.textContent = "▾";
-            toggleBtn.title = "Edit all fields";
-            head.appendChild(toggleBtn);
-
             if (c.duplicate) {
                 var badge = document.createElement("span");
                 badge.className = "import-dup-badge";
@@ -545,10 +508,9 @@
 
             row.appendChild(head);
 
-            // Expanded editor (hidden by default).
+            // #84 (2026-04-25): always-visible full editor — no expand toggle.
             var expanded = document.createElement("div");
             expanded.className = "import-candidate-expanded";
-            expanded.style.display = "none";
 
             var fieldsRow1 = document.createElement("div");
             fieldsRow1.className = "import-fields-row";
@@ -609,12 +571,6 @@
             expanded.appendChild(_labeledField("Notes", notesInput));
 
             row.appendChild(expanded);
-
-            toggleBtn.addEventListener("click", function () {
-                var isOpen = expanded.style.display !== "none";
-                expanded.style.display = isOpen ? "none" : "";
-                toggleBtn.textContent = isOpen ? "Edit all fields ▾" : "Hide fields ▴";
-            });
 
             candidatesEl.appendChild(row);
         });
