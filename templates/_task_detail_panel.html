@@ -142,6 +142,18 @@
                 <div id="parentLinkBody"></div>
             </div>
 
+            {# #78 (2026-04-26): typeahead for picking a parent task at
+               create time OR retroactively linking a regular task as a
+               subtask. Hidden when this task ALREADY has subtasks of
+               its own (subtasks can't have subtasks per the model). #}
+            <div class="parent-picker-section" id="parentPickerSection">
+                <label for="parentPickerInput">Parent task (optional)</label>
+                <input type="text" id="parentPickerInput" placeholder="Type to search…" autocomplete="off">
+                <input type="hidden" id="parentPickerId">
+                <div class="parent-picker-results" id="parentPickerResults" style="display:none"></div>
+                <div class="parent-picker-current" id="parentPickerCurrent" style="display:none"></div>
+            </div>
+
             <div class="subtask-section" id="subtaskSection">
                 <label>Subtasks</label>
                 <div id="subtaskItems"></div>

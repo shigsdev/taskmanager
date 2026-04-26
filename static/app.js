@@ -1642,6 +1642,10 @@ function taskDetailOpen(task) {
         taskDetailLoadSubtasks(task.id);
     }
 
+    // #78 (2026-04-26): parent picker — visible unless this task has its
+    // own subtasks (one-level-deep model rule).
+    _setupParentPicker(task);
+
     // Meta
     document.getElementById("detailMeta").innerHTML =
         `Created: ${new Date(task.created_at).toLocaleDateString()}<br>` +
@@ -1682,6 +1686,104 @@ function taskDetailAddChecklistRow(text, checked) {
     row.appendChild(rm);
 
     container.appendChild(row);
+}
+
+// #78 (2026-04-26): parent task typeahead picker. Populates from
+// allTasks (already loaded). Excludes: this task itself, this task's
+// existing subtasks, and tasks that already have a parent (the model
+// is one-level-deep — subtasks can't be parents).
+function _setupParentPicker(task) {
+    const section = document.getElementById("parentPickerSection");
+    const input = document.getElementById("parentPickerInput");
+    const hidden = document.getElementById("parentPickerId");
+    const results = document.getElementById("parentPickerResults");
+    const current = document.getElementById("parentPickerCurrent");
+    if (!section || !input) return;
+
+    // Hide if this task has subtasks (can't be a child of anything).
+    // taskDetailLoadSubtasks renders into #subtaskItems async, so check
+    // the cheaper proxy: this task has no parent_id but might have
+    // children. Treat "has children" as "this is itself a parent" and
+    // hide the picker — preserves the one-level-deep model rule.
+    const hasChildren = (typeof allTasks !== "undefined") && allTasks.some(
+        (t) => t.parent_id === task.id,
+    );
+    if (hasChildren) {
+        section.style.display = "none";
+        return;
+    }
+    section.style.display = "";
+
+    // Reset state.
+    input.value = "";
+    hidden.value = task.parent_id || "";
+    results.style.display = "none";
+    results.innerHTML = "";
+
+    // Show current parent (if any) as a chip with a Clear button.
+    function renderCurrent() {
+        if (!hidden.value) {
+            current.style.display = "none";
+            current.innerHTML = "";
+            return;
+        }
+        const parent = (typeof allTasks !== "undefined")
+            && allTasks.find((t) => t.id === hidden.value);
+        const label = parent ? parent.title : "(unknown)";
+        current.innerHTML = "";
+        const chip = document.createElement("span");
+        chip.className = "parent-picker-chip";
+        chip.textContent = "Parent: " + label;
+        const clear = document.createElement("button");
+        clear.type = "button";
+        clear.className = "parent-picker-clear";
+        clear.textContent = "✕";
+        clear.title = "Remove parent";
+        clear.addEventListener("click", () => {
+            hidden.value = "";
+            renderCurrent();
+        });
+        current.appendChild(chip);
+        current.appendChild(clear);
+        current.style.display = "";
+    }
+    renderCurrent();
+
+    // Typeahead: as user types, filter allTasks by title contains.
+    function searchAndShow() {
+        const q = input.value.trim().toLowerCase();
+        results.innerHTML = "";
+        if (q.length < 2) {
+            results.style.display = "none";
+            return;
+        }
+        const matches = (typeof allTasks !== "undefined" ? allTasks : [])
+            .filter((t) => t.id !== task.id
+                && !t.parent_id
+                && t.title.toLowerCase().includes(q))
+            .slice(0, 10);
+        if (matches.length === 0) {
+            results.style.display = "none";
+            return;
+        }
+        for (const m of matches) {
+            const item = document.createElement("div");
+            item.className = "parent-picker-result";
+            item.textContent = m.title;
+            item.title = m.title;
+            item.addEventListener("click", () => {
+                hidden.value = m.id;
+                input.value = "";
+                results.style.display = "none";
+                renderCurrent();
+            });
+            results.appendChild(item);
+        }
+        results.style.display = "";
+    }
+    input.oninput = searchAndShow;
+    input.onfocus = searchAndShow;
+    input.onblur = () => setTimeout(() => { results.style.display = "none"; }, 200);
 }
 
 function taskDetailPopulateGoals() {
@@ -1803,6 +1905,15 @@ async function taskDetailSave(e) {
         checklist: clItems,
         repeat: taskDetailCollectRepeat(),
     });
+    // #78: parent_id from the typeahead picker (separate field — payload
+    // builder doesn't know about parent yet, so wire it in directly).
+    const parentPickerEl = document.getElementById("parentPickerId");
+    if (parentPickerEl) {
+        const pid = parentPickerEl.value || null;
+        // Only send when present or when explicitly cleared on a task that
+        // had a parent before; the API treats absence as no-change.
+        data.parent_id = pid;
+    }
 
     try {
         await apiFetch(`${API}/${id}`, {
