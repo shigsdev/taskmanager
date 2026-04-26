@@ -6,7 +6,7 @@ import uuid
 from flask import Blueprint, jsonify, request
 
 from auth import login_required
-from models import Project, ProjectType
+from models import Project, ProjectStatus, ProjectType  # noqa: F401
 from project_service import (
     ValidationError,
     create_project,
@@ -29,6 +29,7 @@ def _serialize(project: Project) -> dict:
         "target_quarter": project.target_quarter,
         "actions": project.actions,
         "notes": project.notes,
+        "status": project.status.value,
         "goal_id": str(project.goal_id) if project.goal_id else None,
         "is_active": project.is_active,
         "sort_order": project.sort_order,

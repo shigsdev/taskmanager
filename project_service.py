@@ -5,7 +5,7 @@ import uuid
 
 from sqlalchemy import select
 
-from models import Project, ProjectType, db
+from models import Project, ProjectStatus, ProjectType, db
 from utils import ValidationError  # noqa: F401 — re-exported for API layer
 from utils import parse_enum as _parse_enum
 from utils import parse_int as _parse_int
@@ -67,6 +67,7 @@ def create_project(data: dict) -> Project:
         target_quarter=(data.get("target_quarter") or "").strip() or None,
         actions=(data.get("actions") or "").strip() or None,
         notes=(data.get("notes") or "").strip() or None,
+        status=_parse_enum(ProjectStatus, data.get("status", "not_started"), "status"),
         goal_id=_parse_uuid(data.get("goal_id"), "goal_id"),
         sort_order=_parse_int(data.get("sort_order", 0), "sort_order"),
     )
@@ -93,7 +94,7 @@ def list_projects(
 
 _UPDATABLE_FIELDS = {
     "name", "type", "color", "target_quarter",
-    "actions", "notes",
+    "actions", "notes", "status",
     "goal_id", "is_active", "sort_order",
 }
 
@@ -123,6 +124,9 @@ def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
 
     if "notes" in data:
         project.notes = (data["notes"] or "").strip() or None
+
+    if "status" in data:
+        project.status = _parse_enum(ProjectStatus, data["status"], "status")
 
     if "goal_id" in data:
         project.goal_id = _parse_uuid(data["goal_id"], "goal_id")

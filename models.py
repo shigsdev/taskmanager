@@ -96,6 +96,16 @@ class GoalStatus(enum.StrEnum):
     ON_HOLD = "on_hold"
 
 
+# Mirrors GoalStatus values today (#69, 2026-04-25). Kept as a separate
+# enum so projects can evolve their lifecycle states independently of
+# goals (e.g. "blocked", "shipped") without coupling.
+class ProjectStatus(enum.StrEnum):
+    NOT_STARTED = "not_started"
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
+    ON_HOLD = "on_hold"
+
+
 # --- Helpers -----------------------------------------------------------------
 
 
@@ -151,6 +161,9 @@ class Project(db.Model):
     target_quarter: Mapped[str | None] = mapped_column(String(20), nullable=True)
     actions: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[ProjectStatus] = mapped_column(
+        Enum(ProjectStatus), nullable=False, default=ProjectStatus.NOT_STARTED
+    )
     goal_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("goals.id"), nullable=True
     )

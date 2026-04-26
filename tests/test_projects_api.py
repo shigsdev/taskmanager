@@ -82,6 +82,36 @@ def test_patch_project_actions_notes_round_trip(authed_client):
     assert resp.get_json()["notes"] is None
 
 
+def test_create_project_default_status_is_not_started(authed_client):
+    """#69 (2026-04-25): new projects start at not_started."""
+    resp = authed_client.post("/api/projects", json={"name": "S1"})
+    assert resp.status_code == 201
+    assert resp.get_json()["status"] == "not_started"
+
+
+def test_create_project_with_explicit_status(authed_client):
+    resp = authed_client.post(
+        "/api/projects", json={"name": "S2", "status": "in_progress"}
+    )
+    assert resp.status_code == 201
+    assert resp.get_json()["status"] == "in_progress"
+
+
+def test_create_project_invalid_status_422(authed_client):
+    resp = authed_client.post(
+        "/api/projects", json={"name": "S3", "status": "bogus"}
+    )
+    assert resp.status_code == 422
+
+
+def test_patch_project_status_round_trip(authed_client):
+    pid = authed_client.post("/api/projects", json={"name": "S4"}).get_json()["id"]
+    for s in ("in_progress", "on_hold", "done", "not_started"):
+        resp = authed_client.patch(f"/api/projects/{pid}", json={"status": s})
+        assert resp.status_code == 200
+        assert resp.get_json()["status"] == s
+
+
 def test_create_project_with_target_quarter(authed_client):
     """Bug #61 (2026-04-25): projects can carry a target_quarter for planning."""
     resp = authed_client.post(

@@ -461,6 +461,7 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "target_quarter": {"desc": "Target quarter for completion (e.g. 2026-Q4)", "notes": "Optional, free-form string"},
             "actions":    {"desc": "Concrete next-actions that move this project forward", "notes": "Optional freeform text"},
             "notes":      {"desc": "Background, context, links, anything useful", "notes": "Optional freeform text"},
+            "status":     {"desc": "Lifecycle state of the project", "notes": "not_started / in_progress / done / on_hold (mirrors goals.status)"},
             "sort_order": {"desc": "Manual sort order in the project list", "notes": ""},
             "is_active":  {"desc": "Active or archived", "notes": "Archived projects don't appear in capture-bar dropdowns"},
             "goal_id":    {"desc": "Goal this project supports", "fk_target": "goals.id", "notes": "Optional"},

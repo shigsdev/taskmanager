@@ -142,6 +142,14 @@ function projectCardEl(project) {
 
     card.appendChild(titleRow);
 
+    // Status badge (#69) — shown unless not_started (default; reduces noise).
+    if (project.status && project.status !== "not_started") {
+        const sBadge = document.createElement("span");
+        sBadge.className = "badge";
+        sBadge.textContent = project.status.replace("_", " ");
+        titleRow.appendChild(sBadge);
+    }
+
     // Target quarter (if set).
     if (project.target_quarter) {
         const tqBadge = document.createElement("span");
@@ -235,6 +243,7 @@ function projectDetailNew() {
     document.getElementById("projectSortOrder").value = "0";
     document.getElementById("projectActions").value = "";
     document.getElementById("projectNotes").value = "";
+    document.getElementById("projectStatus").value = "not_started";
     populateGoalDropdown(null);
     document.getElementById("projectTaskSummary").style.display = "none";
     // No archive on a project that doesn't exist yet.
@@ -252,6 +261,7 @@ function projectDetailOpen(project) {
     document.getElementById("projectSortOrder").value = String(project.sort_order || 0);
     document.getElementById("projectActions").value = project.actions || "";
     document.getElementById("projectNotes").value = project.notes || "";
+    document.getElementById("projectStatus").value = project.status || "not_started";
     populateGoalDropdown(project.goal_id);
 
     // Task summary.
@@ -285,6 +295,7 @@ async function projectDetailSave(e) {
         target_quarter: document.getElementById("projectTargetQuarter").value.trim() || null,
         actions: document.getElementById("projectActions").value.trim() || null,
         notes: document.getElementById("projectNotes").value.trim() || null,
+        status: document.getElementById("projectStatus").value,
         goal_id: goalSel || null,
         sort_order: sortRaw === "" ? 0 : parseInt(sortRaw, 10) || 0,
     };
