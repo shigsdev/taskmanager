@@ -157,6 +157,12 @@ const _DAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday",
 // Backlog #32: given a tier name, return the [start, end] inclusive
 // date range that tier covers, for filtering previews. Returns null if
 // the tier isn't a preview-eligible one.
+//
+// #72 (2026-04-26): "this week" = Mon-Sat (Sunday excluded — used as
+// rest/planning day). "Next week" = next Mon-Sat. If today is Sunday,
+// "this week" is the week JUST ENDING (Mon-Sat ending yesterday) so
+// you still see the Saturday/Sunday-prep view; "next week" is the
+// upcoming Mon-Sat.
 function _tierDateRange(tier) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -164,11 +170,11 @@ function _tierDateRange(tier) {
     const jsDay = today.getDay();
     const daysSinceMonday = (jsDay + 6) % 7;  // Mon=0, Sun=6
     const thisMonday = new Date(today.getTime() - daysSinceMonday * 86400000);
-    const thisSunday = new Date(thisMonday.getTime() + 6 * 86400000);
+    const thisSaturday = new Date(thisMonday.getTime() + 5 * 86400000);  // Mon+5 = Sat
     const nextMonday = new Date(thisMonday.getTime() + 7 * 86400000);
-    const nextSunday = new Date(thisMonday.getTime() + 13 * 86400000);
-    if (tier === "this_week") return [thisMonday, thisSunday];
-    if (tier === "next_week") return [nextMonday, nextSunday];
+    const nextSaturday = new Date(thisMonday.getTime() + 12 * 86400000);  // next Mon+5
+    if (tier === "this_week") return [thisMonday, thisSaturday];
+    if (tier === "next_week") return [nextMonday, nextSaturday];
     return null;
 }
 
