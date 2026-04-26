@@ -204,6 +204,7 @@ def _apply_repeat(task: Task, repeat: dict) -> None:
         "checklist": task.checklist,
         "url": task.url,
         "subtasks_snapshot": _snapshot_subtasks(task),
+        "end_date": repeat.get("end_date"),  # #101 (PR30)
     }
     rt = create_recurring(rt_data)
     task.recurring_task_id = rt.id
@@ -238,6 +239,7 @@ def _update_repeat(task: Task, repeat: dict | None) -> None:
             "url": task.url,
             "subtasks_snapshot": _snapshot_subtasks(task),
             "is_active": True,
+            "end_date": repeat.get("end_date"),  # #101 (PR30)
         }
         update_recurring(task.recurring_task_id, update_data)
     else:

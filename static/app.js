@@ -1964,12 +1964,17 @@ function taskDetailRepeatChanged() {
         freq === "monthly_date" ? "" : "none";
     document.getElementById("repeatMonthlyNthField").style.display =
         freq === "monthly_nth_weekday" ? "" : "none";
+    // #101 (PR30): end_date applies to ANY repeat frequency.
+    const endField = document.getElementById("repeatEndDateField");
+    if (endField) endField.style.display = freq ? "" : "none";
 }
 
 function taskDetailPopulateRepeat(task) {
     taskDetailInitRepeat();
     const repeat = task.repeat;
     const sel = document.getElementById("detailRepeat");
+    const endInput = document.getElementById("detailRepeatEndDate");
+    if (endInput) endInput.value = "";
     if (!repeat) {
         sel.value = "";
     } else {
@@ -1984,6 +1989,8 @@ function taskDetailPopulateRepeat(task) {
         if (repeat.week_of_month != null) {
             document.getElementById("detailRepeatWeekOfMonth").value = String(repeat.week_of_month);
         }
+        // #101 (PR30): existing template's sunset date.
+        if (endInput && repeat.end_date) endInput.value = repeat.end_date;
     }
     taskDetailRepeatChanged();
 }
@@ -1999,6 +2006,12 @@ function taskDetailCollectRepeat() {
     } else if (freq === "monthly_nth_weekday") {
         repeat.week_of_month = parseInt(document.getElementById("detailRepeatWeekOfMonth").value);
         repeat.day_of_week = parseInt(document.getElementById("detailRepeatNthDay").value);
+    }
+    // #101 (PR30): include the optional sunset date. Empty string → null
+    // (clear an existing end_date).
+    const endInput = document.getElementById("detailRepeatEndDate");
+    if (endInput) {
+        repeat.end_date = endInput.value || null;
     }
     return repeat;
 }

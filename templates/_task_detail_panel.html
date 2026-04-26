@@ -101,6 +101,16 @@
                 </div>
             </div>
 
+            {# #101 (PR30): optional sunset date for the recurring template.
+               Visible whenever any repeat frequency is selected. NULL = forever. #}
+            <div class="form-row" id="repeatEndDateField" style="display:none">
+                <div class="form-field">
+                    <label for="detailRepeatEndDate">Stop after (optional)</label>
+                    <input type="date" id="detailRepeatEndDate">
+                    <small class="form-hint">Leave blank to repeat forever.</small>
+                </div>
+            </div>
+
             <div class="form-row" id="repeatMonthlyNthField" style="display:none">
                 <div class="form-field">
                     <label for="detailRepeatWeekOfMonth">Which week</label>

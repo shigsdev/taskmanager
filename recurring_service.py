@@ -127,6 +127,27 @@ def _parse_week_of_month(value: object) -> int | None:
     return v
 
 
+def _parse_end_date(value: object) -> date | None:
+    """#101 (PR30): parse the optional end_date sunset field.
+
+    Accepts None / empty string (= no end date), a date instance, or
+    an ISO-8601 YYYY-MM-DD string. Raises ValidationError on garbage.
+    """
+    if value is None:
+        return None
+    if isinstance(value, date):
+        return value
+    s = str(value).strip()
+    if not s:
+        return None
+    try:
+        return date.fromisoformat(s)
+    except ValueError as e:
+        raise ValidationError(
+            "end_date must be ISO date YYYY-MM-DD", "end_date",
+        ) from e
+
+
 def _nth_weekday_of_month(target_date: date) -> int:
     """Return which occurrence of this weekday it is within the month (1-based).
 
@@ -200,6 +221,7 @@ def create_recurring(data: dict) -> RecurringTask:
         checklist=data.get("checklist") if isinstance(data.get("checklist"), list) else None,
         url=data.get("url") or None,
         subtasks_snapshot=_clean_subtasks_snapshot(data.get("subtasks_snapshot")),
+        end_date=_parse_end_date(data.get("end_date")),  # #101
     )
     db.session.add(rt)
     db.session.commit()
@@ -271,6 +293,9 @@ def update_recurring(rt_id: uuid.UUID, data: dict) -> RecurringTask | None:
     if "is_active" in data:
         rt.is_active = bool(data["is_active"])
 
+    if "end_date" in data:  # #101 (PR30)
+        rt.end_date = _parse_end_date(data["end_date"])
+
     db.session.commit()
     return rt
 
@@ -290,6 +315,11 @@ def delete_recurring(rt_id: uuid.UUID) -> bool:
 
 def _template_fires_on(rt: RecurringTask, target: date) -> bool:
     """Return True if the recurring template should fire on the given date."""
+    # #101 (PR30): respect optional sunset date — once we're past it,
+    # the template never fires again (preview generation also uses
+    # this same fn, so the dashed previews go away once expired).
+    if rt.end_date is not None and target > rt.end_date:
+        return False
     weekday = target.weekday()
 
     if rt.frequency == RecurringFrequency.DAILY:

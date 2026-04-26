@@ -1096,3 +1096,71 @@ class TestPreviewsEndpoint:
         ]
         assert date.today().isoformat() not in dup_dates
         assert len(dup_dates) == 2
+
+
+class TestRecurringEndDate:
+    """#101 (PR30): optional sunset date on recurring templates."""
+
+    def test_create_with_end_date(self, authed_client):
+        resp = authed_client.post("/api/recurring", json={
+            "title": "Stretch", "type": "personal",
+            "frequency": "daily", "end_date": "2026-09-30",
+        })
+        assert resp.status_code == 201
+        body = resp.get_json()
+        assert body["end_date"] == "2026-09-30"
+
+    def test_create_invalid_end_date_422(self, authed_client):
+        resp = authed_client.post("/api/recurring", json={
+            "title": "Bad", "type": "work",
+            "frequency": "daily", "end_date": "not-a-date",
+        })
+        assert resp.status_code == 422
+
+    def test_patch_clears_end_date(self, authed_client):
+        c = authed_client.post("/api/recurring", json={
+            "title": "Sunsetting", "type": "work",
+            "frequency": "daily", "end_date": "2027-01-01",
+        }).get_json()
+        resp = authed_client.patch(f"/api/recurring/{c['id']}", json={
+            "end_date": None,
+        })
+        assert resp.status_code == 200
+        assert resp.get_json()["end_date"] is None
+
+    def test_template_does_not_fire_after_end_date(self, app):
+        """Spawn gate: target > end_date → _template_fires_on returns False."""
+        from datetime import date
+
+        from models import RecurringFrequency, RecurringTask, TaskType, db
+        from recurring_service import _template_fires_on
+        with app.app_context():
+            rt = RecurringTask(
+                title="Done after Q3", type=TaskType.WORK,
+                frequency=RecurringFrequency.DAILY,
+                end_date=date(2026, 9, 30),
+                is_active=True,
+            )
+            db.session.add(rt)
+            db.session.commit()
+            assert _template_fires_on(rt, date(2026, 9, 30)) is True
+            assert _template_fires_on(rt, date(2026, 10, 1)) is False
+            # Still fires before end date
+            assert _template_fires_on(rt, date(2026, 9, 1)) is True
+
+    def test_null_end_date_runs_forever(self, app):
+        """Backwards compat: NULL end_date keeps the existing 'forever' behavior."""
+        from datetime import date
+
+        from models import RecurringFrequency, RecurringTask, TaskType, db
+        from recurring_service import _template_fires_on
+        with app.app_context():
+            rt = RecurringTask(
+                title="Forever", type=TaskType.WORK,
+                frequency=RecurringFrequency.DAILY,
+                end_date=None,
+                is_active=True,
+            )
+            db.session.add(rt)
+            db.session.commit()
+            assert _template_fires_on(rt, date(2099, 12, 31)) is True

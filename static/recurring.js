@@ -24,18 +24,24 @@
         return g ? g.title : "(none)";
     }
     function _freqSummary(rt) {
+        var base;
         if (rt.frequency === "weekly" || rt.frequency === "day_of_week") {
             var days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-            return rt.frequency.replace("_", " ") + " — " + (days[rt.day_of_week] || "?");
-        }
-        if (rt.frequency === "multi_day_of_week") {
+            base = rt.frequency.replace("_", " ") + " — " + (days[rt.day_of_week] || "?");
+        } else if (rt.frequency === "multi_day_of_week") {
             var dnames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
             var picked = (rt.days_of_week || []).map(function (i) { return dnames[i] || "?"; });
-            return "multi day — " + picked.join(", ");
+            base = "multi day — " + picked.join(", ");
+        } else if (rt.frequency === "monthly_date") {
+            base = "monthly — day " + rt.day_of_month;
+        } else if (rt.frequency === "monthly_nth_weekday") {
+            base = "monthly — wk " + rt.week_of_month + " day " + rt.day_of_week;
+        } else {
+            base = rt.frequency;
         }
-        if (rt.frequency === "monthly_date") return "monthly — day " + rt.day_of_month;
-        if (rt.frequency === "monthly_nth_weekday") return "monthly — wk " + rt.week_of_month + " day " + rt.day_of_week;
-        return rt.frequency;
+        // #101 (PR30): show sunset date when set.
+        if (rt.end_date) base += " (until " + rt.end_date + ")";
+        return base;
     }
 
     function getSelectedIds() {

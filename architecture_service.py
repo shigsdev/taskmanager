@@ -488,6 +488,7 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "url":                {"desc": "Inherited verbatim by every spawned task", "notes": "Optional"},
             "subtasks_snapshot":  {"desc": "List of subtasks to also spawn each cycle", "notes": "JSON; captured at template create/update (#26)"},
             "is_active":          {"desc": "Inactive templates don't spawn", "notes": ""},
+            "end_date":           {"desc": "Optional sunset date — spawn cron skips once today > end_date", "notes": "NULL = run forever (#101)"},
             "goal_id":            {"desc": "Goal these spawned tasks support", "fk_target": "goals.id", "notes": "Optional"},
             "project_id":         {"desc": "Project these spawned tasks belong to", "fk_target": "projects.id", "notes": "Optional"},
         },

@@ -41,6 +41,10 @@ def _serialize_repeat(task: Task) -> dict | None:
         result["day_of_month"] = rt.day_of_month
     if rt.week_of_month is not None:
         result["week_of_month"] = rt.week_of_month
+    # #101 (PR30): expose the optional sunset date on the task payload
+    # so the detail-panel form can pre-populate it.
+    if rt.end_date is not None:
+        result["end_date"] = rt.end_date.isoformat()
     return result
 
 

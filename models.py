@@ -296,6 +296,11 @@ class RecurringTask(db.Model):
         JSONType, nullable=True, default=list
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # #101 (PR30, 2026-04-26): optional sunset date. When set, the
+    # spawn cron skips this template once today > end_date. Lets the
+    # user set up a finite recurring (e.g. "stretch every morning
+    # until end of Q3") without having to remember to deactivate.
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 

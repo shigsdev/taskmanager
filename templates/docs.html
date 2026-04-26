@@ -640,6 +640,7 @@ Skip this line (too short)</pre>
                 <li><strong>Weekly</strong> — fires on one specific day-of-week.</li>
                 <li><strong>Day of week</strong> — same as weekly; used internally for templates with a specific weekday.</li>
                 <li><strong>Multi day of week</strong> — fires on a <em>set</em> of weekdays (e.g. Mon + Wed + Fri, or Sat + Sun). One template instead of three. Stored as a JSON list of integers 0–6 (Mon=0, Sun=6).</li>
+                <li><strong>End date (optional, all frequencies)</strong> — set <code>end_date</code> on any template and the spawn cron stops firing once the calendar date passes it. Leave blank for "forever" (the existing default). Edit on the task detail panel under the Repeat section.</li>
                 <li><strong>Monthly (by date)</strong> — fires on a specific day-of-month (e.g. the 15th).</li>
                 <li><strong>Monthly (nth weekday)</strong> — fires on a specific weekday of the month (e.g. first Monday).</li>
             </ul>
