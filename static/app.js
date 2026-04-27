@@ -2840,4 +2840,30 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     // #107 (PR42): wire the search bar wherever it appears.
     renderSearchBar();
+
+    // #109 (PR44): multi-device stale state. allTasks is loaded ONCE on
+    // page boot — if the user changes a task on mobile, desktop has no
+    // idea until they manually reload. Refresh whenever the tab becomes
+    // visible again (visibilitychange fires when switching tabs/apps).
+    // Throttled to once every 10s so the cron / autosave path doesn't
+    // hammer /api/tasks if the user wiggles between tabs.
+    let _lastVisibleRefresh = 0;
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState !== "visible") return;
+        const now = Date.now();
+        if (now - _lastVisibleRefresh < 10_000) return;
+        _lastVisibleRefresh = now;
+        // loadTasks is the entry point on the main board / tier-detail
+        // pages. loadCompletedTasks + loadCancelledTasks pages have their
+        // own boot path; they call loadX directly. Defensive: only call
+        // these if they're defined on this page (subpages don't all
+        // export them via the global scope).
+        if (typeof loadTasks === "function") loadTasks();
+        if (typeof loadCompletedTasks === "function") loadCompletedTasks();
+        if (typeof loadCancelledTasks === "function") loadCancelledTasks();
+        // Also re-pull goals + projects so a goal/project added on
+        // another device shows up in the dropdowns.
+        if (typeof loadGoals === "function") loadGoals();
+        if (typeof loadProjects === "function") loadProjects();
+    });
 });
