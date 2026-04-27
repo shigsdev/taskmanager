@@ -621,3 +621,71 @@ class TestProjectsBulk:
         # Verify is_active=false
         a2 = authed_client.get(f"/api/projects/{a['id']}").get_json()
         assert a2["is_active"] is False
+
+
+# --- PR38 audit C5: linked-tasks count + content per project ---------------
+
+
+class TestProjectLinkedTasksData:
+    """The /projects page shows linked tasks under each project (#95).
+    The render path is JS, but the underlying fact — `task.project_id ==
+    project.id` returned by the API — must be guaranteed. This is the
+    same pattern as the goals task-count test."""
+
+    def test_active_tasks_linked_to_project_appear_in_api(self, app, authed_client):
+        """A task with project_id set must come back via /api/tasks
+        and be findable by the project's id."""
+        from models import Task, TaskStatus, TaskType, Tier, db
+        # Create the project
+        proj = authed_client.post(
+            "/api/projects",
+            json={"name": "DataTest", "type": "work"},
+        ).get_json()
+        # Three tasks: 2 active linked, 1 active unlinked, 1 archived linked.
+        with app.app_context():
+            from uuid import UUID
+            pid = UUID(proj["id"])
+            db.session.add_all([
+                Task(title="L1", type=TaskType.WORK, tier=Tier.INBOX,
+                     status=TaskStatus.ACTIVE, project_id=pid),
+                Task(title="L2", type=TaskType.WORK, tier=Tier.TODAY,
+                     status=TaskStatus.ACTIVE, project_id=pid),
+                Task(title="UnlinkedX", type=TaskType.WORK, tier=Tier.INBOX,
+                     status=TaskStatus.ACTIVE),
+                Task(title="ArchivedL", type=TaskType.WORK, tier=Tier.INBOX,
+                     status=TaskStatus.ARCHIVED, project_id=pid),
+            ])
+            db.session.commit()
+
+        # The frontend computes per-project counts client-side from
+        # /api/tasks. Mirror that contract and assert correctness.
+        all_tasks = authed_client.get("/api/tasks").get_json()
+        linked_active = [
+            t for t in all_tasks
+            if t.get("project_id") == proj["id"] and t.get("status") == "active"
+        ]
+        assert len(linked_active) == 2
+        titles = {t["title"] for t in linked_active}
+        assert titles == {"L1", "L2"}, (
+            "Active linked tasks must be exactly the 2 we created — "
+            "ArchivedL must NOT appear in active filter, UnlinkedX must "
+            "NOT appear when filtered by project_id."
+        )
+
+    def test_unlinked_tasks_have_null_project_id_in_api(self, app, authed_client):
+        """Defensive: a task created without project_id must return
+        project_id=None. A regression that auto-fills project_id on
+        create would silently link tasks to the wrong project on
+        the /projects page. The /projects page filter logic relies
+        on null != any-real-uuid, so this test guards that assumption."""
+        from models import Task, TaskStatus, TaskType, Tier, db
+        with app.app_context():
+            db.session.add(Task(
+                title="NoProj", type=TaskType.WORK, tier=Tier.INBOX,
+                status=TaskStatus.ACTIVE,
+            ))
+            db.session.commit()
+        all_tasks = authed_client.get("/api/tasks").get_json()
+        no_proj = [t for t in all_tasks if t["title"] == "NoProj"]
+        assert len(no_proj) == 1
+        assert no_proj[0]["project_id"] is None

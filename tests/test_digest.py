@@ -365,3 +365,87 @@ class TestDigestBlueprint:
         rules = [r.rule for r in app.url_map.iter_rules()]
         assert "/api/digest/preview" in rules
         assert "/api/digest/send" in rules
+
+
+# --- PR38 audit C4: digest cron callback direct test -----------------------
+
+
+class TestDigestCronCallback:
+    """The daily_digest scheduler job is registered in app.py via
+    `scheduler.add_job(_send_scheduled_digest, ...)`. Existing tests
+    cover `send_digest` in isolation. The CALLBACK that the scheduler
+    actually invokes — including the env-var read, the app.app_context
+    push, and the exception-swallow on EgressError — has no direct test.
+
+    A refactor to the callback (e.g. forgetting to push app context, or
+    accidentally inverting the to_email truthy check) would pass every
+    other digest test and only surface in prod when the cron fires.
+    These tests trigger the registered job by id, the same way the
+    APScheduler thread would at 07:00."""
+
+    @staticmethod
+    def _job_func(app):
+        """Boot the scheduler ourselves (TESTING mode skips it in
+        create_app) and return the daily_digest job's callback.
+
+        Important: we MUST tear down the scheduler + heartbeat or
+        the next test that asserts "scheduler not registered" sees
+        our leftover heartbeat file and fails."""
+        import health
+        from app import _start_digest_scheduler
+        _start_digest_scheduler(app)
+        try:
+            job = health._scheduler.get_job("daily_digest")
+            assert job is not None, "daily_digest job not registered"
+            return job.func
+        finally:
+            # Stop the bg thread immediately — we only need the
+            # callback reference, not actual scheduling.
+            health._scheduler.shutdown(wait=False)
+            health._scheduler = None
+            # Wipe the heartbeat file so the next test that looks at
+            # `check_digest()` doesn't see our stale "running":True row.
+            try:
+                if health.HEARTBEAT_PATH.exists():
+                    health.HEARTBEAT_PATH.unlink()
+            except OSError:
+                pass
+
+    def test_callback_runs_send_digest_when_to_email_set(self, app, monkeypatch):
+        """Job-by-id trigger calls send_digest with the configured to_email."""
+        monkeypatch.setenv("DIGEST_TO_EMAIL", "test-recipient@example.com")
+        sent = []
+        def _stub_send(to_email, **kwargs):  # noqa: ARG001
+            sent.append(to_email)
+        monkeypatch.setattr("digest_service.send_digest", _stub_send)
+        callback = self._job_func(app)
+        callback()
+        assert sent == ["test-recipient@example.com"], (
+            f"Expected callback to call send_digest with env DIGEST_TO_EMAIL; got {sent}."
+        )
+
+    def test_callback_no_op_when_to_email_unset(self, app, monkeypatch):
+        """Without DIGEST_TO_EMAIL the callback returns early — no send."""
+        monkeypatch.delenv("DIGEST_TO_EMAIL", raising=False)
+        sent = []
+        monkeypatch.setattr(
+            "digest_service.send_digest",
+            lambda *a, **kw: sent.append(a),
+        )
+        callback = self._job_func(app)
+        callback()
+        assert sent == [], "Callback should NOT call send_digest when DIGEST_TO_EMAIL is unset."
+
+    def test_callback_swallows_send_failure(self, app, monkeypatch):
+        """An EgressError (or any Exception) in send_digest must be
+        logged + swallowed, not re-raised — the scheduler thread must
+        survive so future jobs still run."""
+        monkeypatch.setenv("DIGEST_TO_EMAIL", "test-recipient@example.com")
+        def _boom(*a, **kw):
+            raise RuntimeError("simulated SendGrid 500")
+        monkeypatch.setattr("digest_service.send_digest", _boom)
+        callback = self._job_func(app)
+        # Should NOT raise — if it did, the scheduler thread would die
+        # and every subsequent job (recurring spawn, tomorrow roll,
+        # heartbeat) would silently stop.
+        callback()

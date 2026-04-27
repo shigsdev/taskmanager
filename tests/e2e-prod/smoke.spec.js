@@ -273,26 +273,33 @@ test.describe("Prod smoke — feature surfaces", () => {
 });
 
 test.describe("Prod smoke — admin endpoints (read-only checks)", () => {
-    test("backfill endpoints exist and return 401/302 without auth", async ({ page }) => {
-        // Using request without the cookie isn't possible via the cookied
-        // context — but we can confirm POST-without-token returns
-        // a non-200 (the X-Debug-Token gate falls through to OAuth which
-        // returns 302 for an unauthenticated POST, OR 401, OR — with
-        // the validator cookie attached — 405-class responses since
-        // validator only authenticates GET).
-        for (const path of [
-            "/api/debug/backfill/project-colors",
-            "/api/debug/backfill/today-tomorrow-due-date",
-            "/api/debug/backfill/task-goal-from-project",
-        ]) {
-            const resp = await page.request.post(path);
-            // Validator cookie path: 401/403; OAuth-only POST without
-            // session: 302 to /login/google. Any of those mean the
-            // route exists and is properly guarded.
-            expect([200, 302, 401, 403, 405]).toContain(resp.status());
-            // 404 would mean the route was dropped — that's the failure
-            // we want this test to catch.
-            expect(resp.status()).not.toBe(404);
+    test("backfill endpoints exist and reject unauthenticated POST", async ({ browser }) => {
+        // PR38 audit fix D2: prior version accepted 200 as valid, which
+        // would have masked a bug where the route ran the backfill
+        // against prod data on an un-tokened request. Use a NEW
+        // cookieless context so the validator cookie never attaches —
+        // the only acceptable responses are 302 (OAuth redirect), 401,
+        // 403, or 405. A 200 here means the auth gate is broken.
+        const ctx = await browser.newContext();  // no cookies, no env
+        try {
+            for (const path of [
+                "/api/debug/backfill/project-colors",
+                "/api/debug/backfill/today-tomorrow-due-date",
+                "/api/debug/backfill/task-goal-from-project",
+            ]) {
+                const resp = await ctx.request.post(
+                    `https://web-production-3e3ae.up.railway.app${path}`,
+                );
+                expect(
+                    [302, 401, 403, 405],
+                    `${path} returned ${resp.status()} without auth — gate broken!`,
+                ).toContain(resp.status());
+                // 404 would mean the route was dropped — that's the failure
+                // we want this test to catch.
+                expect(resp.status()).not.toBe(404);
+            }
+        } finally {
+            await ctx.close();
         }
     });
 });

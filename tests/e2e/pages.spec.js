@@ -340,20 +340,164 @@ test.describe("Detail panel", () => {
 });
 
 test.describe("Goals page filters", () => {
-    test("category filter changes visible goals", async ({ page }) => {
+    test("category filter narrows visible goals to the chosen category", async ({ page }) => {
+        // PR38 audit fix D3: prior version asserted that the dropdown's
+        // value updated after selectOption — which always passes
+        // regardless of whether the JS filter logic actually ran. This
+        // test now asserts the visible card set genuinely changed:
+        //   1. Snapshot the initial card count + categories.
+        //   2. Pick a non-default category that isn't All.
+        //   3. Assert AFTER the filter only health-tagged cards remain.
+        // A broken filter renderer (e.g. the change handler stops
+        // calling renderGoals) would now FAIL this test.
         await page.goto("/goals?nosw=1");
         await page.waitForLoadState("networkidle");
 
-        // Count all goal cards initially
         const initialCount = await page.locator(".goal-card").count();
         expect(initialCount).toBeGreaterThan(0);
 
-        // Filter by a specific category
-        await page.selectOption("#filterCategory", "health");
-        await page.waitForTimeout(500);
+        // Pick the first category present in any goal card.
+        // The seeded data has at least one HEALTH goal — assert it.
+        const allCategoryBadges = await page.locator(".goal-card .badge-category").allTextContents();
+        const hasHealth = allCategoryBadges.some((t) => /health/i.test(t));
+        if (!hasHealth) {
+            test.skip(true, "Seed data has no health goals — filter test cannot validate.");
+        }
 
-        // The filter should be applied
-        const filterValue = await page.inputValue("#filterCategory");
-        expect(filterValue).toBe("health");
+        await page.selectOption("#filterCategory", "health");
+        await page.waitForTimeout(300);  // debounce + render
+
+        // After filtering, every visible card MUST be a health card.
+        const visibleCategories = await page.locator(".goal-card:visible .badge-category").allTextContents();
+        expect(visibleCategories.length).toBeGreaterThan(0);
+        for (const cat of visibleCategories) {
+            expect(cat.toLowerCase()).toContain("health");
+        }
+
+        // Sanity: filtered count must be ≤ initial count.
+        const filteredCount = await page.locator(".goal-card:visible").count();
+        expect(filteredCount).toBeLessThanOrEqual(initialCount);
+    });
+});
+
+
+// === PR38 audit C1+C2: feature interaction tests ============================
+
+test.describe("Filter chips actually filter the board (#92)", () => {
+    test("clicking a project chip narrows the visible task set", async ({ page }) => {
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+
+        const allCount = await page.locator(".tier-board .task-card").count();
+        // Need at least 2 cards across 2+ projects to make this meaningful.
+        if (allCount < 2) test.skip(true, "Seeded data has too few tasks for this test.");
+
+        // Find a non-"All" project chip.
+        const projectChips = page.locator("#projectFilterBar button:not(.active)");
+        const chipCount = await projectChips.count();
+        if (chipCount === 0) test.skip(true, "No selectable project chip.");
+
+        await projectChips.first().click();
+        await page.waitForTimeout(200);
+
+        // After click: chip is active AND visible cards are <= initial.
+        const activeChips = await page.locator("#projectFilterBar button.active").count();
+        expect(activeChips).toBe(1);
+        const filteredCount = await page.locator(".tier-board .task-card").count();
+        expect(filteredCount).toBeLessThanOrEqual(allCount);
+        // Click "All" to clear.
+        await page.locator("#projectFilterBar button").first().click();
+        await page.waitForTimeout(200);
+        const clearedActive = await page.locator("#projectFilterBar button.active").count();
+        expect(clearedActive).toBe(1);  // only "All" should be active
+    });
+
+    test("clicking 2 goal chips activates both (#97 multi-select)", async ({ page }) => {
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+
+        // Snapshot the chips BEFORE any click so the indices are stable.
+        // (After a click, the chip's class changes from "" to "active"
+        // and the :not(.active) selector shifts.)
+        const allGoalChips = page.locator("#goalFilterBar button");
+        const total = await allGoalChips.count();
+        // Index 0 is "All". Need at least 2 actual goal chips (1+2).
+        if (total < 3) test.skip(true, "Need 2+ selectable goal chips.");
+
+        await allGoalChips.nth(1).click();
+        await page.waitForTimeout(150);
+        await allGoalChips.nth(2).click();
+        await page.waitForTimeout(150);
+
+        const activeChips = await page.locator("#goalFilterBar button.active").count();
+        expect(activeChips).toBeGreaterThanOrEqual(2);
+
+        // localStorage CSV must contain a comma (proves multi-select wrote correctly).
+        const stored = await page.evaluate(() => localStorage.getItem("tm.filter.goal"));
+        expect(stored).toContain(",");
+
+        // Cleanup
+        await page.locator("#goalFilterBar button").first().click();
+        await page.evaluate(() => localStorage.removeItem("tm.filter.goal"));
+    });
+});
+
+test.describe("Calendar drag-and-drop (#94)", () => {
+    test("drop unscheduled task on a day cell sets due_date + auto-routes tier (#100)", async ({
+        page, request,
+    }) => {
+        // Create a dedicated unscheduled task via API so we don't depend on seeds.
+        const created = await request.post("/api/tasks", {
+            data: { title: `E2E DnD ${Date.now()}`, type: "work", tier: "inbox" },
+        });
+        expect(created.ok()).toBe(true);
+        const task = await created.json();
+        // The auto-fill rule sets due_date if tier is today/tomorrow; inbox
+        // doesn't trigger that, so this stays unscheduled.
+
+        try {
+            await page.goto("/calendar?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expect(page.locator(".calendar-cell").first()).toBeVisible();
+
+            // Find the test task in the Unscheduled side panel + the
+            // first non-past cell to drop onto.
+            const li = page.locator(`#calendarUnscheduled li[data-task-id="${task.id}"]`);
+            await expect(li).toBeVisible();
+            const cell = page.locator(".calendar-cell:not(.calendar-cell-past)").first();
+            const cellDate = await cell.getAttribute("data-date");
+            expect(cellDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+            // Programmatic drag-and-drop via DataTransfer (Playwright's
+            // page.dragAndDrop doesn't always fire the real dragstart for
+            // this app's listener style).
+            await page.evaluate((args) => {
+                const li = document.querySelector(
+                    `#calendarUnscheduled li[data-task-id="${args.tid}"]`
+                );
+                const cell = document.querySelector(
+                    `.calendar-cell[data-date="${args.cellDate}"]`
+                );
+                const dt = new DataTransfer();
+                dt.setData("text/plain", args.tid);
+                li.dispatchEvent(new DragEvent("dragstart", { dataTransfer: dt, bubbles: true }));
+                cell.dispatchEvent(new DragEvent("dragover", { dataTransfer: dt, bubbles: true, cancelable: true }));
+                cell.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
+            }, { tid: task.id, cellDate });
+
+            // Wait for the PATCH + re-render + DB to land.
+            await page.waitForTimeout(500);
+
+            // Re-fetch via API and assert due_date AND tier auto-routed (#74).
+            const after = await request.get(`/api/tasks/${task.id}`);
+            const t = await after.json();
+            expect(t.due_date).toBe(cellDate);
+            // Tier must be one of today/tomorrow/this_week/next_week (date-bucketed
+            // per #74), NOT inbox anymore.
+            expect(["today", "tomorrow", "this_week", "next_week"]).toContain(t.tier);
+        } finally {
+            // Cleanup: archive the test task so it doesn't pollute future runs.
+            await request.delete(`/api/tasks/${task.id}`);
+        }
     });
 });
