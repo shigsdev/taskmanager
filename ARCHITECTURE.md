@@ -414,6 +414,8 @@ commit — the check will fail otherwise.
 ### Scheduler cron jobs (app.py `_start_digest_scheduler`)
 - `daily_digest` — DIGEST_TIME, builds plain-text digest
 - `tomorrow_roll` — 00:01 local, TOMORROW → TODAY (#27)
+- `promote_due_today` — 00:02 local, planning tasks with due=today → TODAY (#46)
+- `realign_tiers_with_due_dates` — 00:03 local, walk active non-frozen non-inbox tasks with due_date and run _tier_for_due_date; correct any drift (#108)
 - `recurring_spawn` — 00:05 local, materialises today's
   RecurringTask templates into TODAY (#35)
 - `scheduler_heartbeat` — every 45s, proves scheduler is alive
@@ -527,7 +529,8 @@ the code.
 /api/debug/client-error
 /api/debug/backfill/task-goal-from-project   # #77 — one-shot admin
 /api/debug/backfill/project-colors           # #93 — one-shot admin (per-type default backfill)
-/api/debug/backfill/today-tomorrow-due-date  # #100 — one-shot admin (set due_date on legacy TODAY/TOMORROW rows)
+/api/debug/backfill/today-tomorrow-due-date
+/api/debug/realign-tiers                     # #108 — one-shot: re-route active tasks whose tier != _tier_for_due_date(due_date)  # #100 — one-shot admin (set due_date on legacy TODAY/TOMORROW rows)
 ```
 
 ---

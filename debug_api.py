@@ -350,6 +350,26 @@ def backfill_task_goal_from_project(email: str):  # noqa: ARG001
     }), 200
 
 
+@bp.post("/realign-tiers")
+@debug_auth_required
+def realign_tiers(email: str):  # noqa: ARG001
+    """#108 (PR43, 2026-04-27): one-shot — re-route every active task
+    whose tier no longer matches its due_date.
+
+    Same logic as the new 00:03 cron, but available on-demand for
+    immediate cleanup of existing drifted state. User-reported bug:
+    a recurring task spawned days ago with due=Apr 28 sat in
+    THIS_WEEK; today (Apr 27) Apr 28 is "tomorrow" but the tier
+    didn't auto-update.
+
+    Idempotent. Auth: X-Debug-Token. Returns: {"updated": N}.
+    """
+    from task_service import realign_tiers_with_due_dates
+    n = realign_tiers_with_due_dates()
+    logger.info("realign_tiers ad-hoc: updated=%d", n)
+    return jsonify({"updated": n}), 200
+
+
 @bp.post("/backfill/today-tomorrow-due-date")
 @debug_auth_required
 def backfill_today_tomorrow_due_date(email: str):  # noqa: ARG001

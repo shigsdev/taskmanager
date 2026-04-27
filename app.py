@@ -716,6 +716,27 @@ def _start_digest_scheduler(app: Flask) -> None:
         replace_existing=True,
     )
 
+    # #108 (PR43, 2026-04-27): nightly tier-vs-due-date realignment.
+    # The 00:01 + 00:02 jobs above only handle "due today" — they
+    # don't address the broader drift where a task set days ago with
+    # due_date=tomorrow now has tier=this_week (because it was IN
+    # this_week relative to that day). Runs at 00:03 — after the two
+    # specific-tier jobs but before recurring_spawn, so any drift is
+    # corrected before spawn-time dedup looks at the board.
+    def _realign_tiers():
+        with app.app_context():
+            from task_service import realign_tiers_with_due_dates
+            realign_tiers_with_due_dates()
+
+    scheduler.add_job(
+        _realign_tiers,
+        "cron",
+        hour=0,
+        minute=3,
+        id="realign_tiers_with_due_dates",
+        replace_existing=True,
+    )
+
     # Backlog #35: auto-spawn recurring task instances on their fire
     # day. Paired with #32's preview cards — previews show "this is
     # coming Friday," and this cron materialises them on Friday

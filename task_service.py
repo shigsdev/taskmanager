@@ -638,6 +638,59 @@ def roll_tomorrow_to_today() -> int:
         return result.rowcount or 0
 
 
+def realign_tiers_with_due_dates() -> int:
+    """#108 (PR43, 2026-04-27): re-route every active task whose tier
+    no longer matches its due_date.
+
+    The bug this closes: setting a due_date on a planning-tier task
+    runs `_tier_for_due_date` at write-time, but the calendar advances
+    every day. A task you set 3 days ago with due_date=Apr 28 landed
+    in THIS_WEEK because Apr 28 was 3 days out. Today (Apr 27) Apr 28
+    is "tomorrow" — but no job re-runs the mapping, so the task sticks
+    in This Week. User sees a "tomorrow" task under This Week's
+    Tuesday day-group, never in the Tomorrow panel.
+
+    Called by APScheduler at the user's local 00:03, AFTER the 00:01
+    `roll_tomorrow_to_today` and 00:02 `promote_due_today_tasks`.
+    Together: 00:01 moves yesterday's Tomorrow → Today; 00:02 promotes
+    due-today planning tasks → Today; 00:03 re-aligns everything else
+    so This_Week / Next_Week / Backlog tasks slide into the right
+    bucket as the calendar advances.
+
+    Excluded:
+    - INBOX: still needs triage; auto-route would skip the user
+    - FREEZER: explicit user park; outranks the date
+    - non-ACTIVE: archived/cancelled stay where they ended
+
+    Returns the number of rows updated. Idempotent — re-running
+    when nothing has drifted is a no-op.
+    """
+    from sqlalchemy.orm import Session
+
+    skip_tiers = _FROZEN_TIERS | {Tier.INBOX}
+    updated = 0
+    with Session(db.engine) as session:
+        rows = session.scalars(
+            select(Task).where(
+                Task.due_date.is_not(None),
+                Task.status == TaskStatus.ACTIVE,
+            )
+        ).all()
+        for t in rows:
+            if t.tier in skip_tiers:
+                continue
+            # Compute the "right" tier for this due_date as of today.
+            # Inline computation so we don't have to import + monkey-
+            # around with the module-level helpers in a fresh session.
+            new_tier = _tier_for_due_date(t.due_date)
+            if new_tier != t.tier:
+                t.tier = new_tier
+                updated += 1
+        if updated:
+            session.commit()
+        return updated
+
+
 def promote_due_today_tasks() -> int:
     """Move every active task with ``due_date == today`` from a planning
     tier (THIS_WEEK / NEXT_WEEK / BACKLOG) to TODAY.

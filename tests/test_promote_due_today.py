@@ -237,3 +237,130 @@ class TestOnWriteHookPromotion:
             updated = update_task(t.id, {"due_date": _today().isoformat()})
             assert updated is not None
             assert updated.tier == Tier.THIS_WEEK
+
+
+class TestRealignTiersWithDueDates:
+    """#108 (PR43): nightly tier-vs-due-date realignment cron.
+
+    Bug: tasks set days ago land in THIS_WEEK because that was the
+    correct bucket at the time. Calendar advances; the bucket changes
+    but the row doesn't update. This cron re-runs _tier_for_due_date
+    for every active non-frozen non-inbox task with a due_date and
+    corrects drift.
+    """
+
+    def test_drifted_this_week_task_with_due_tomorrow_moves_to_tomorrow(
+        self, app
+    ):
+        from datetime import timedelta
+
+        from models import Task, TaskStatus, TaskType, Tier, db
+        from task_service import _local_today_date, realign_tiers_with_due_dates
+        with app.app_context():
+            tomorrow = _local_today_date() + timedelta(days=1)
+            t = Task(
+                title="Drifted into tomorrow",
+                type=TaskType.WORK,
+                tier=Tier.THIS_WEEK,  # was correct N days ago
+                status=TaskStatus.ACTIVE,
+                due_date=tomorrow,
+            )
+            db.session.add(t)
+            db.session.commit()
+            tid = t.id
+            updated = realign_tiers_with_due_dates()
+            assert updated >= 1
+            db.session.expire_all()  # cross-session: invalidate identity map
+            t2 = db.session.get(Task, tid)
+            assert t2.tier == Tier.TOMORROW
+
+    def test_freezer_tasks_are_left_alone(self, app):
+        """User explicitly parked it; date is just a reminder."""
+        from datetime import timedelta
+
+        from models import Task, TaskStatus, TaskType, Tier, db
+        from task_service import _local_today_date, realign_tiers_with_due_dates
+        with app.app_context():
+            tomorrow = _local_today_date() + timedelta(days=1)
+            t = Task(
+                title="Frozen w/ tomorrow date",
+                type=TaskType.WORK,
+                tier=Tier.FREEZER,
+                status=TaskStatus.ACTIVE,
+                due_date=tomorrow,
+            )
+            db.session.add(t)
+            db.session.commit()
+            tid = t.id
+            realign_tiers_with_due_dates()
+            t2 = db.session.get(Task, tid)
+            assert t2.tier == Tier.FREEZER
+
+    def test_inbox_tasks_are_left_alone(self, app):
+        """Still need triage; auto-route would skip the user's review."""
+        from datetime import timedelta
+
+        from models import Task, TaskStatus, TaskType, Tier, db
+        from task_service import _local_today_date, realign_tiers_with_due_dates
+        with app.app_context():
+            tomorrow = _local_today_date() + timedelta(days=1)
+            t = Task(
+                title="Inbox w/ tomorrow date",
+                type=TaskType.WORK,
+                tier=Tier.INBOX,
+                status=TaskStatus.ACTIVE,
+                due_date=tomorrow,
+            )
+            db.session.add(t)
+            db.session.commit()
+            tid = t.id
+            realign_tiers_with_due_dates()
+            t2 = db.session.get(Task, tid)
+            assert t2.tier == Tier.INBOX
+
+    def test_archived_tasks_are_left_alone(self, app):
+        from datetime import timedelta
+
+        from models import Task, TaskStatus, TaskType, Tier, db
+        from task_service import _local_today_date, realign_tiers_with_due_dates
+        with app.app_context():
+            tomorrow = _local_today_date() + timedelta(days=1)
+            t = Task(
+                title="Archived",
+                type=TaskType.WORK,
+                tier=Tier.THIS_WEEK,
+                status=TaskStatus.ARCHIVED,
+                due_date=tomorrow,
+            )
+            db.session.add(t)
+            db.session.commit()
+            tid = t.id
+            realign_tiers_with_due_dates()
+            t2 = db.session.get(Task, tid)
+            assert t2.tier == Tier.THIS_WEEK
+
+    def test_idempotent(self, app):
+        """Re-run is a no-op when everything's in sync."""
+        from datetime import timedelta
+
+        from models import Task, TaskStatus, TaskType, Tier, db
+        from task_service import _local_today_date, realign_tiers_with_due_dates
+        with app.app_context():
+            tomorrow = _local_today_date() + timedelta(days=1)
+            t = Task(
+                title="Already correct", type=TaskType.WORK,
+                tier=Tier.TOMORROW, status=TaskStatus.ACTIVE,
+                due_date=tomorrow,
+            )
+            db.session.add(t)
+            db.session.commit()
+            realign_tiers_with_due_dates()
+            second = realign_tiers_with_due_dates()
+            # First might pick up other drifted rows from prior tests in same session
+            # (test ordering quirk); second must be 0.
+            assert second == 0
+
+    def test_admin_endpoint_requires_token(self, client):
+        """POST without a debug token = 302/401/403/405."""
+        resp = client.post("/api/debug/realign-tiers")
+        assert resp.status_code in (302, 401, 403, 405)

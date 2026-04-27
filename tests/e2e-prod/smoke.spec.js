@@ -304,6 +304,7 @@ test.describe("Prod smoke — admin endpoints (read-only checks)", () => {
                 "/api/debug/backfill/project-colors",
                 "/api/debug/backfill/today-tomorrow-due-date",
                 "/api/debug/backfill/task-goal-from-project",
+                "/api/debug/realign-tiers",  // PR43 #108
             ]) {
                 // PR38 follow-up: maxRedirects:0 — Playwright auto-
                 // follows redirects by default, so a POST → 302 → GET
