@@ -1377,7 +1377,10 @@ if (_bulkTriageBtn) _bulkTriageBtn.addEventListener("click", (e) => {
     dd.style.top = e.target.offsetTop + e.target.offsetHeight + "px";
     dd.style.right = "14px";
 
-    for (const tier of ["today", "this_week", "backlog", "freezer"]) {
+    // PR45 #110 sweep: was missing tomorrow + next_week. Triage from
+    // Inbox should support every destination tier (inbox excluded —
+    // you're triaging AWAY from it).
+    for (const tier of ["today", "tomorrow", "this_week", "next_week", "backlog", "freezer"]) {
         const btn = document.createElement("button");
         btn.textContent = tierLabel(tier);
         btn.addEventListener("click", () => {
@@ -1678,7 +1681,11 @@ function renderCompletedList() {
             if (existing) { existing.remove(); return; }
             const dd = document.createElement("div");
             dd.className = "reopen-dropdown";
-            ["inbox", "today", "this_week", "backlog", "freezer"].forEach(function (t) {
+            // PR45 #110: was missing 'tomorrow' + 'next_week'. Both are
+            // valid Tier enum values and present in the detail-panel
+            // dropdown — the reopen-dropdown was a stale subset that
+            // pre-dated the Tomorrow tier (#27) and Next Week tier (#82).
+            ["inbox", "today", "tomorrow", "this_week", "next_week", "backlog", "freezer"].forEach(function (t) {
                 const opt = document.createElement("button");
                 opt.textContent = tierLabel(t);
                 opt.addEventListener("click", function (ev) {

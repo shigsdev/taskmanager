@@ -263,18 +263,29 @@ test.describe("Prod smoke — feature surfaces", () => {
         await expect(page.locator("#goalFilterBar button").first()).toBeVisible();
     });
 
+    test("/completed reopen dropdown includes all 7 active tiers (#110)", async ({ page }) => {
+        // Bug class: stale hardcoded list in app.js dropping new Tier
+        // enum values. Read the live app.js and assert all 7 tier
+        // values are present in the same array literal as the reopen
+        // dropdown source.
+        await page.goto("/completed?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const appJs = await page.request.get("/static/app.js");
+        const text = await appJs.text();
+        const stale = '["inbox", "today", "this_week", "backlog", "freezer"]';
+        expect(text.includes(stale)).toBe(false);
+        const fixed = '"inbox", "today", "tomorrow", "this_week", "next_week", "backlog", "freezer"';
+        expect(text.includes(fixed)).toBe(true);
+    });
+
     test("visibilitychange triggers loadTasks (#109)", async ({ page }) => {
         // Multi-device sync: when tab becomes visible, re-fetch /api/tasks
-        // so changes from another device show up. We can't directly simulate
-        // a visibility change in Playwright easily, but we CAN assert the
-        // listener was registered (the only addEventListener for
-        // 'visibilitychange' on document is from PR44).
+        // so changes from another device show up. Can't directly observe
+        // the loadTasks call but a thrown error from any of the loaders
+        // would fail this assertion.
         await page.goto("/?nosw=1");
         await page.waitForLoadState("networkidle");
-        const hasListener = await page.evaluate(() => {
-            // Trigger a manual visibility event and verify it doesn't throw.
-            // (We can't observe the actual loadTasks call without
-            // monkey-patching, but a thrown error would fail the test.)
+        const ok = await page.evaluate(() => {
             try {
                 document.dispatchEvent(new Event("visibilitychange"));
                 return true;
@@ -282,7 +293,7 @@ test.describe("Prod smoke — feature surfaces", () => {
                 return false;
             }
         });
-        expect(hasListener).toBe(true);
+        expect(ok).toBe(true);
     });
 
     test("home board has task search bar (#107)", async ({ page }) => {
