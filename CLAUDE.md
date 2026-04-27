@@ -363,6 +363,15 @@ Report.
 
 - **SOP Compliance Report** (mandatory at the end of every change):
 
+  **Timing rule (PR43 user feedback, 2026-04-27):** print the report
+  ONLY AFTER ALL of Phase 8 is complete — DEPLOY GREEN + monitor
+  window passed + prod smoke green. Do NOT print interim reports
+  with `[⏳] AWAITING` placeholders. One clean checklist per PR,
+  with every phase resolved. The auto-template emitted by
+  `validate_deploy.py` (PR41) is the natural moment — it fires after
+  the deploy + monitor finishes; fill in Phase 1-7 and the smoke
+  result, then print.
+
   After every discrete change — not just the final commit of a session —
   print an **SOP Compliance Report** showing exactly which SOP phases ran
   and their status. This is in addition to the Quality Gate Report and
