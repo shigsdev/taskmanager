@@ -287,8 +287,13 @@ test.describe("Prod smoke — admin endpoints (read-only checks)", () => {
                 "/api/debug/backfill/today-tomorrow-due-date",
                 "/api/debug/backfill/task-goal-from-project",
             ]) {
+                // PR38 follow-up: maxRedirects:0 — Playwright auto-
+                // follows redirects by default, so a POST → 302 → GET
+                // /login/google → 200 came back as 200 (broken assertion).
+                // Stop at the first response.
                 const resp = await ctx.request.post(
                     `https://web-production-3e3ae.up.railway.app${path}`,
+                    { maxRedirects: 0 },
                 );
                 expect(
                     [302, 401, 403, 405],

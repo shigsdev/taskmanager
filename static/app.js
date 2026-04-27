@@ -33,16 +33,13 @@ const _FILTER_LS_KEYS = {
     project: "tm.filter.project",
     goal: "tm.filter.goal",
 };
-// PR28 audit fix #5: validate UUID format on read so a tampered or
-// stale localStorage value can't silently hide all tasks (or worse,
-// flow into a future server-side request as a malformed identifier).
-const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-function _parseUuidCsv(raw) {
-    if (!raw) return new Set();
-    return new Set(
-        raw.split(",").map(s => s.trim()).filter(s => _UUID_RE.test(s))
-    );
-}
+// PR39 (C3+C7): pure helpers extracted to static/filter_helpers.js so
+// they're Jest-importable. window.filterHelpers is populated by that
+// script BEFORE app.js loads (via the template script-tag order).
+// Backwards-compat: re-bind as module-scope identifiers so the rest of
+// app.js doesn't have to change every call site at once.
+const _UUID_RE = window.filterHelpers.FILTER_UUID_RE;
+const _parseUuidCsv = window.filterHelpers.parseUuidCsv;
 function _loadFilterPrefs() {
     try {
         const v = localStorage.getItem(_FILTER_LS_KEYS.view);

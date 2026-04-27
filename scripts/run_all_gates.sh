@@ -158,6 +158,18 @@ else
     exit 1
 fi
 
+# PR39 (audit E2): SW-active suite. The default e2e suite uses ?nosw=1
+# which means the entire service-worker code path was only tested on
+# prod. This runs the same dev bypass server with the SW active so
+# install/activate/cache-strategy/fetch-routing regressions are caught
+# locally before deploy.
+if npm run test:e2e:sw; then
+    pass "local Playwright (SW-active)"
+else
+    fail "local Playwright (SW-active) failed"
+    exit 1
+fi
+
 # --- 5. Bandit (Python security linter) -------------------------------------
 
 banner "5. Bandit (security lint)"
@@ -219,6 +231,16 @@ else
     fail "ARCHITECTURE.md drift — see output above"
     exit 1
 fi
+
+# --- 8c. BACKLOG ✅ vs prod-smoke pairing (PR39 audit E5) -------------------
+banner "8c. BACKLOG ✅ vs prod-smoke pairing"
+# Heuristic: warn if a BACKLOG row was flipped to ✅ DONE/FIXED in this
+# diff but no NEW prod-smoke assertion was added that mentions any of the
+# flipped row's keywords. Exits 0 even on warnings — false-positive risk
+# on heuristic, so it's a soft gate. The warning text is loud enough
+# that a reviewer sees it.
+python scripts/check_backlog_smoke_pairing.py || true
+pass "backlog ✅ ↔ prod-smoke pairing (heuristic)"
 
 # --- 9. Semgrep (security pattern scanner) ----------------------------------
 

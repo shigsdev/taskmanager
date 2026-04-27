@@ -44,6 +44,26 @@ module.exports = defineConfig({
             },
         },
         {
+            // PR39 (audit E2): SW-active suite. Every test in tests/e2e/
+            // uses ?nosw=1 to dodge SW reload loops. That left the entire
+            // service-worker code path (cache strategy, install/activate
+            // handshake, app-shell pre-cache, network-first vs cache-first
+            // routing) only smoked on prod via the 22-test suite. A bug
+            // in sw.js that breaks startup would pass every local gate.
+            // This project runs WITHOUT ?nosw=1 against the same dev
+            // bypass server.
+            name: "chromium-sw",
+            testDir: "./tests/e2e-sw",
+            use: {
+                baseURL: "http://localhost:5111",
+                headless: true,
+                browserName: "chromium",
+                actionTimeout: 15000,  // SW install + first paint takes longer
+                // Each test owns its own browser context so the SW
+                // registration in one doesn't leak to the next.
+            },
+        },
+        {
             name: "chromium-prod",
             testDir: "./tests/e2e-prod",
             // Prod smoke tests MUST be run explicitly, never as part of the
