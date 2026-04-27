@@ -44,23 +44,26 @@ module.exports = defineConfig({
             },
         },
         {
-            // PR39 (audit E2): SW-active suite. Every test in tests/e2e/
-            // uses ?nosw=1 to dodge SW reload loops. That left the entire
-            // service-worker code path (cache strategy, install/activate
-            // handshake, app-shell pre-cache, network-first vs cache-first
-            // routing) only smoked on prod via the 22-test suite. A bug
-            // in sw.js that breaks startup would pass every local gate.
-            // This project runs WITHOUT ?nosw=1 against the same dev
-            // bypass server.
+            // PR39 (audit E2) + PR40 (#106): SW-active suite. Every test
+            // in tests/e2e/ uses ?nosw=1 to dodge SW reload loops. That
+            // left the entire service-worker code path only smoked on
+            // prod via the 22-test suite. A bug in sw.js that breaks
+            // startup would pass every local gate. This project runs
+            // WITHOUT ?nosw=1.
             name: "chromium-sw",
             testDir: "./tests/e2e-sw",
+            // PR40 #106: cold SW install + addAll (13 files) on Windows
+            // with Defender on can take 30s+. Bump the per-test budget.
+            timeout: 90_000,
             use: {
                 baseURL: "http://localhost:5111",
                 headless: true,
                 browserName: "chromium",
-                actionTimeout: 15000,  // SW install + first paint takes longer
-                // Each test owns its own browser context so the SW
-                // registration in one doesn't leak to the next.
+                actionTimeout: 30_000,  // SW install + first paint takes longer
+                // PR40 #106 — explicit SW allow on the context. Default IS
+                // 'allow' but being explicit makes the intent obvious to
+                // future readers + future Playwright defaults.
+                serviceWorkers: "allow",
             },
         },
         {

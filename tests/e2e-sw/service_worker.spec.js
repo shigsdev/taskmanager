@@ -24,19 +24,63 @@
 // @ts-check
 const { test, expect } = require("@playwright/test");
 
+/**
+ * PR40 #106: prime the SW + wait for any controllerchange-triggered
+ * reload to settle. base.html registers an `controllerchange` listener
+ * that calls `window.location.reload()` whenever a new SW takes
+ * control. sw.js's activate handler calls `self.clients.claim()`, so
+ * even the FIRST install triggers a reload mid-test. Without priming,
+ * page.evaluate dies with "Execution context was destroyed".
+ *
+ * Strategy:
+ *   1. First nav with ?nosw=1 to ensure ANY prior SW is unregistered.
+ *      (base.html unregister-on-nosw covers this.)
+ *   2. Second nav WITHOUT ?nosw — SW registers + installs + activates
+ *      + claims → controllerchange → reload.
+ *   3. Wait for that reload to finish: page.waitForURL or just a
+ *      networkidle settle after detecting the SW controller flip.
+ *   4. Now SW is in control + page is stable; tests can safely evaluate.
+ */
+async function primeSw(page) {
+    // Strategy: do TWO real visits. First visit installs/activates SW
+    // and triggers base.html's controllerchange→reload. Second visit
+    // happens AFTER any reload settled — SW is already in control of
+    // the page and no further reload is queued, so page.evaluate calls
+    // are safe.
+    //
+    // The trick: between visits, wait for the SW controller to be
+    // present AND wait for the page to be in a stable state (no
+    // pending navigations). The simplest "stable" signal is to do a
+    // full page.goto a SECOND time. That second goto starts in a state
+    // where SW already controls the page → no controllerchange fires
+    // → no reload → page.evaluate is safe.
+    await page.goto("/?nosw=1");
+    await page.waitForLoadState("networkidle");
+    // First real visit — SW registers, installs, activates, claims,
+    // and base.html reloads. We don't care which navigation lands us;
+    // we just need the SW eventually in control.
+    await page.goto("/");
+    // Wait up to 30s for the SW to be in control. This also outlasts
+    // any controllerchange reload because that reload increments the
+    // navigation count but doesn't unset navigator.serviceWorker.controller.
+    await page.waitForFunction(
+        () => navigator.serviceWorker.controller !== null,
+        null,
+        { timeout: 30_000 },
+    );
+    // Now do a SECOND goto to land in a stable state where SW is
+    // already controlling and no controllerchange is queued. This
+    // second navigation is what makes evaluate safe afterwards.
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+}
+
 test.describe("Service worker — install + activation", () => {
-    test.skip("home page loads + SW registers + activates", async ({ page }) => {
-        // SKIP: navigator.serviceWorker.ready hangs in this Playwright config.
-        // Suspect: serviceWorkers context option or Talisman/CSP off in
-        // dev-bypass strips Service-Worker-Allowed. TODO #106.
+    test("home page loads + SW registers + activates", async ({ page }) => {
+        // PR40 #106: primeSw handles the controllerchange-reload race.
         const errors = [];
         page.on("pageerror", (err) => errors.push(err.message));
-
-        await page.goto("/");
-        await page.waitForLoadState("networkidle");
-
-        // Wait for the SW to install + activate. After page load the
-        // browser registers the SW per the inline <script> in base.html.
+        await primeSw(page);
         const swState = await page.evaluate(async () => {
             const reg = await navigator.serviceWorker.ready;
             return {
@@ -46,18 +90,15 @@ test.describe("Service worker — install + activation", () => {
                 cacheName: reg.active ? reg.active.scriptURL : null,
             };
         });
-
         expect(swState.active).toBe(true);
+        expect(swState.hasController).toBe(true);
         expect(swState.scope).toMatch(/\/$/);
-        expect(swState.cacheName).toContain("/static/sw.js");
+        expect(swState.cacheName).toContain("/sw.js");
         expect(errors).toEqual([]);
     });
 
     test("APP_SHELL static files all return 200 (catches missing files)", async ({ page }) => {
-        await page.goto("/");
-        await page.waitForLoadState("networkidle");
-        // Wait for SW activation so its addAll has completed.
-        await page.evaluate(() => navigator.serviceWorker.ready);
+        await primeSw(page);
 
         // PR24 BUG-1 class: a file in APP_SHELL that 404s makes addAll
         // reject, which makes SW install fail silently. Verify each
@@ -88,32 +129,19 @@ test.describe("Service worker — install + activation", () => {
 });
 
 test.describe("Service worker — fetch handler routing (#56 + #88)", () => {
-    test.skip("HTML requests bypass the SW (no caching)", async ({ page }) => {
-        // SKIP: depends on SW activating; see top of file. TODO #106.
-        await page.goto("/");
-        await page.waitForLoadState("networkidle");
-        await page.evaluate(() => navigator.serviceWorker.ready);
-
-        // Per PR24 sw.js comment: HTML + /api/ requests bare-return,
-        // browser handles natively. The way to assert "SW didn't
-        // intercept" is that a same-origin nav fetch goes through.
-        // We verify by reloading: the response shouldn't come from the
-        // SW cache (would cause stale-HTML problems on deploy).
+    test("HTML requests bypass the SW (no caching)", async ({ page }) => {
+        await primeSw(page);
         const navResp = await page.goto("/?nosw_check=1");
         expect(navResp.status()).toBe(200);
-        // Server-rendered HTML, so the body must contain a Jinja-emitted
-        // string that wouldn't be in any cached response — use the
-        // current SHA from the meta tag if present, else fall back to
-        // confirming basic markup.
         const html = await navResp.text();
-        expect(html).toContain("<!doctype html>");
-        expect(html).toContain('class="task-list"');  // index.html marker
+        // Lower-case match: Flask/Jinja emits "<!DOCTYPE html>".
+        expect(html.toLowerCase()).toContain("<!doctype html>");
+        // Sanity: it's our app, not a generic page.
+        expect(html).toContain("captureBar");
     });
 
     test("API requests bypass the SW (always fresh)", async ({ page }) => {
-        await page.goto("/");
-        await page.waitForLoadState("networkidle");
-        await page.evaluate(() => navigator.serviceWorker.ready);
+        await primeSw(page);
 
         // Per #88: /api/ never goes through SW.fetch. Verify the
         // API responds with current data (not a cached snapshot).
@@ -127,11 +155,8 @@ test.describe("Service worker — fetch handler routing (#56 + #88)", () => {
         // is enough proof the SW didn't serve a stale cached response.)
     });
 
-    test.skip("static asset returns from SW cache on second request", async ({ page }) => {
-        // SKIP: depends on SW activating; see top of file. TODO #106.
-        await page.goto("/");
-        await page.waitForLoadState("networkidle");
-        await page.evaluate(() => navigator.serviceWorker.ready);
+    test("static asset returns from SW cache on second request", async ({ page }) => {
+        await primeSw(page);
 
         // First load fills the cache. Second request should hit it.
         // We can't directly observe "SW served from cache" but we can
@@ -158,35 +183,23 @@ test.describe("Service worker — fetch handler routing (#56 + #88)", () => {
 });
 
 test.describe("Service worker — old-cache cleanup on activate", () => {
-    test.skip("activating a new version deletes prior taskmanager-* caches", async ({ page }) => {
-        // SKIP: depends on SW activating; see top of file. TODO #106.
-        await page.goto("/");
+    test("planting a fake old cache: gets cleaned on next activate", async ({ page }) => {
+        // PR40 #106: simpler version. The SW activate handler deletes
+        // any taskmanager-* cache name that doesn't match the current
+        // CACHE_NAME. Verify by planting a fake one BEFORE the SW
+        // activates, then loading the page so activation runs.
+        // First, get into a state where SW is registered (so we can
+        // open caches), but NOT activated yet — easiest: visit nosw
+        // first so caches API is available without SW interference.
+        await page.goto("/?nosw=1");
         await page.waitForLoadState("networkidle");
-        await page.evaluate(() => navigator.serviceWorker.ready);
-
-        // Plant a fake old cache and re-activate. The activate handler
-        // should delete it (per the activate-event filter in sw.js
-        // that strips any taskmanager-* not matching CACHE_NAME).
-        const result = await page.evaluate(async () => {
-            // Plant
+        await page.evaluate(async () => {
             await caches.open("taskmanager-v0-fake-old");
-            const beforeKeys = await caches.keys();
-            // Re-fire activate by manually telling SW to skipWaiting.
-            // The sw.js install does NOT skipWaiting (the page decides),
-            // but for this test we just want to assert the cleanup
-            // logic ran on the LAST activate. Verify the planted cache
-            // gets cleaned on next register cycle by manually calling
-            // the cleanup routine via a second SW visit.
-            return { beforeKeys };
         });
-
-        // Reload to trigger the SW lifecycle to clean up.
-        await page.reload();
-        await page.waitForLoadState("networkidle");
-        await page.evaluate(() => navigator.serviceWorker.ready);
-
+        // Now prime — SW installs, activates, and the cleanup loop
+        // strips taskmanager-* keys != current CACHE_NAME.
+        await primeSw(page);
         const afterKeys = await page.evaluate(async () => caches.keys());
-        // The fake old cache must be gone, the current cache must remain.
         expect(afterKeys).not.toContain("taskmanager-v0-fake-old");
         expect(afterKeys.some((k) => /^taskmanager-v\d+$/.test(k))).toBe(true);
     });
