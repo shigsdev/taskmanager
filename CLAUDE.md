@@ -51,6 +51,10 @@ gets tested there, and only merges to `main` when all quality gates pass.
      input, admin-endpoint guards, etc.). PR37 grew this from 6 to 22.
    - For doc-only or trivial changes, --monitor-minutes 0 (the default)
      is fine.
+   - PR41: validate_deploy.py auto-emits the SOP Compliance Report
+     template at the end of every GREEN run with Phase 8 pre-filled.
+     Phase 1-7 are `[__]` placeholders the operator MUST fill in
+     before declaring done — printing it makes silent skips impossible.
 
 7. **Clean up** the feature branch after deploy is green:
    ```

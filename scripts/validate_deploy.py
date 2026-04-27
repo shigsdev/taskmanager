@@ -675,7 +675,84 @@ def main() -> int:
             return EXIT_RED
         print("Monitor window clean. DEPLOY MONITOR GREEN.")
 
+    # PR41 — auto-emit the SOP Compliance Report template at the end
+    # of every GREEN run so it's literally impossible to ship without
+    # the template appearing in the terminal scrollback. CLAUDE.md
+    # makes this report mandatory; printing it as a fill-in-the-blanks
+    # template at the moment of deploy completion is the strongest
+    # nudge against the "I'll do it later" silent skip.
+    if green:
+        _print_sop_template(
+            expected,
+            monitor_ran=(args.monitor_minutes > 0 and cookie_value is not None),
+            log_status_label=log_status_label,
+        )
+
     return EXIT_GREEN if green else EXIT_RED
+
+
+def _print_sop_template(expected_sha: str, monitor_ran: bool, log_status_label: str) -> None:
+    """PR41: emit a fill-in-the-blanks SOP Compliance Report. Phase 8
+    is auto-filled from the just-completed validation. Phase 1-7 are
+    `[__]` placeholders the operator MUST fill before declaring done.
+
+    Per CLAUDE.md: a missing report counts as `[❌]`. Printing the
+    template at the moment of deploy completion ensures the operator
+    physically sees it before moving on.
+    """
+    short = (expected_sha or "")[:8]
+    monitor_line = (
+        "[OK] Post-deploy monitor                      MONITOR GREEN"
+        if monitor_ran else
+        "[NA] Post-deploy monitor                      N/A — --monitor-minutes 0"
+    )
+    log_line = f"[OK] Error log scan                          {log_status_label}"
+    print()
+    print("=" * 70)
+    print("SOP COMPLIANCE REPORT -- fill in Phase 1-7 before declaring done")
+    print("=" * 70)
+    print(f"SOP Compliance Report -- <one-line description> ({short})")
+    print("-" * 50)
+    print("Phase 1  Planning")
+    print("  [__] Checked backlog                          <backlog item or reason>")
+    print("  [__] Scoped work                              <brief>")
+    print("  [__] Identified affected files                <file list>")
+    print("Phase 2  Git Workflow")
+    print("  [__] Pulled latest main")
+    print("  [__] Feature branch created                   feature/<name>")
+    print("  [__] Small logical commits                    <N> commits: <SHAs>")
+    print("  [__] Merged to main + pushed")
+    print("  [__] Feature branch cleaned up")
+    print("Phase 3  Coding Standards")
+    print("  [__] Code changes                             <what changed>")
+    print("  [__] Frontend changes                         <or N/A>")
+    print("  [__] Cascade check                            <or N/A>")
+    print("Phase 4  Quality Gates")
+    print("  [__] Ruff                                     PASS")
+    print("  [__] Pytest                                   <n> passed, <coverage>%")
+    print("  [__] Jest                                     <n> passed")
+    print("  [__] Local Playwright + bandit + semgrep + gitleaks + sync ALL PASS")
+    print("Phase 5  Tests")
+    print("  [__] Tests added/updated                      <what was tested>")
+    print("Phase 6  Regression (UI changes only)")
+    print("  [__] Bypass server started                    seed + preview_start")
+    print("  [__] Desktop (1280x800)                       all pages pass")
+    print("  [__] Mobile (375x812)                         all pages pass")
+    print("  [__] Console errors                           0")
+    print("  [__] Bypass torn down                         .env.dev-bypass deleted")
+    print("Phase 7  Documentation")
+    print("  [__] ARCHITECTURE.md                          <updated or N/A>")
+    print("  [__] README.md                                <updated or N/A>")
+    print("  [__] BACKLOG.md                               <updated or N/A>")
+    print("  [__] CLAUDE.md                                <updated or N/A>")
+    print("Phase 8  Deploy")
+    print(f"  [OK] Deploy validation                        GREEN -- {short}, all checks ok")
+    print(f"  {log_line}")
+    print(f"  {monitor_line}")
+    print("  [__] Post-deploy smoke test                   <22/22 PASS / X failures>")
+    print("Summary: <N> done, <N> skipped (N/A), <N> not done")
+    print(f"Commits: {short}")
+    print("=" * 70)
 
 
 if __name__ == "__main__":
