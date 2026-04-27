@@ -204,3 +204,65 @@ describe("applyFilters (#92 + #97 composed semantics)", () => {
         expect(applyFilters(null, "all", new Set(), new Set())).toEqual([]);
     });
 });
+
+
+describe("searchTerm + taskMatchesSearch (#107 task search)", () => {
+    const { searchTerm, taskMatchesSearch } = require("../../../static/filter_helpers");
+
+    test("searchTerm normalises to lowercase trimmed", () => {
+        expect(searchTerm("  Hello WORLD  ")).toBe("hello world");
+    });
+    test("searchTerm rejects null/empty/whitespace", () => {
+        expect(searchTerm(null)).toBe("");
+        expect(searchTerm("")).toBe("");
+        expect(searchTerm("   ")).toBe("");
+        expect(searchTerm(undefined)).toBe("");
+    });
+    test("taskMatchesSearch matches title", () => {
+        const t = { title: "Buy bread", notes: "", url: "" };
+        expect(taskMatchesSearch(t, "bread")).toBe(true);
+        expect(taskMatchesSearch(t, "BREAD")).toBe(false);  // term must be normalised first
+        expect(taskMatchesSearch(t, "milk")).toBe(false);
+    });
+    test("taskMatchesSearch matches notes", () => {
+        const t = { title: "X", notes: "remember the milk", url: "" };
+        expect(taskMatchesSearch(t, "milk")).toBe(true);
+    });
+    test("taskMatchesSearch matches url", () => {
+        const t = { title: "X", notes: "", url: "https://example.com/widgets" };
+        expect(taskMatchesSearch(t, "widgets")).toBe(true);
+    });
+    test("empty term → match (no filter)", () => {
+        expect(taskMatchesSearch({title: "X"}, "")).toBe(true);
+    });
+    test("missing fields don't crash", () => {
+        expect(taskMatchesSearch({title: null, notes: undefined, url: null}, "x")).toBe(false);
+        expect(taskMatchesSearch(null, "x")).toBe(false);
+    });
+});
+
+describe("applyFilters with searchQuery (#107)", () => {
+    const { applyFilters } = require("../../../static/filter_helpers");
+    const tasks = [
+        { id: "1", type: "work", project_id: null, goal_id: null, title: "Build search bar", notes: "", url: "" },
+        { id: "2", type: "work", project_id: null, goal_id: null, title: "Read book", notes: "search history of UX", url: "" },
+        { id: "3", type: "personal", project_id: null, goal_id: null, title: "Walk dog", notes: "", url: "https://example.com/training" },
+    ];
+    test("search across title narrows results", () => {
+        const out = applyFilters(tasks, "all", new Set(), new Set(), "search");
+        expect(out.length).toBe(2);  // title + notes match
+    });
+    test("search across url matches", () => {
+        const out = applyFilters(tasks, "all", new Set(), new Set(), "training");
+        expect(out.length).toBe(1);
+        expect(out[0].id).toBe("3");
+    });
+    test("search composes with type filter (AND)", () => {
+        const out = applyFilters(tasks, "personal", new Set(), new Set(), "training");
+        expect(out.length).toBe(1);
+    });
+    test("empty query returns all (after other filters)", () => {
+        expect(applyFilters(tasks, "all", new Set(), new Set(), "").length).toBe(3);
+        expect(applyFilters(tasks, "all", new Set(), new Set(), null).length).toBe(3);
+    });
+});

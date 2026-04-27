@@ -83,8 +83,13 @@ function filterProjectsByType(allProjects, currentView) {
  * #92 (PR25) compose: AND across dimensions, OR within. Returns the
  * filtered task list per the project + goal Set semantics + the
  * single-select type tab.
+ *
+ * #107 (PR42): optional `searchQuery` adds a 4th dimension —
+ * case-insensitive substring match against title + notes + url. Empty
+ * string = no filter (don't accidentally hide everything on initial
+ * empty input).
  */
-function applyFilters(allTasks, currentView, projectFilter, goalFilter) {
+function applyFilters(allTasks, currentView, projectFilter, goalFilter, searchQuery) {
     if (!Array.isArray(allTasks)) return [];
     let tasks = allTasks;
     if (currentView === "work") {
@@ -98,7 +103,38 @@ function applyFilters(allTasks, currentView, projectFilter, goalFilter) {
     if (goalFilter && goalFilter.size) {
         tasks = tasks.filter((t) => goalFilter.has(t.goal_id));
     }
+    const q = searchTerm(searchQuery);
+    if (q) {
+        tasks = tasks.filter((t) => taskMatchesSearch(t, q));
+    }
     return tasks;
+}
+
+/**
+ * #107 (PR42): normalise a search query — trim + lowercase + reject
+ * empty. Returns "" for null/undefined/whitespace-only input. Caller
+ * uses the truthy check to decide whether to filter.
+ */
+function searchTerm(raw) {
+    if (raw == null) return "";
+    return String(raw).trim().toLowerCase();
+}
+
+/**
+ * #107 (PR42): does task match the (already-normalised) search term?
+ * Searches title + notes + url. Cancellation_reason intentionally
+ * NOT included — that's an admin field, not part of the user's
+ * working knowledge of the task.
+ */
+function taskMatchesSearch(task, normalisedTerm) {
+    if (!normalisedTerm) return true;
+    if (!task) return false;
+    const fields = [
+        task.title || "",
+        task.notes || "",
+        task.url || "",
+    ];
+    return fields.some((f) => String(f).toLowerCase().includes(normalisedTerm));
 }
 
 // Browser: expose individual helpers on the global object so app.js
@@ -112,6 +148,8 @@ if (typeof module !== "undefined" && module.exports) {
         sweepStaleIds,
         filterProjectsByType,
         applyFilters,
+        searchTerm,
+        taskMatchesSearch,
     };
 } else if (typeof window !== "undefined") {
     window.filterHelpers = {
@@ -122,5 +160,7 @@ if (typeof module !== "undefined" && module.exports) {
         sweepStaleIds,
         filterProjectsByType,
         applyFilters,
+        searchTerm,
+        taskMatchesSearch,
     };
 }

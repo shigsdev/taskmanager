@@ -29,6 +29,11 @@
 {# #92 (PR25): always-visible objective/goal filter dropdown. Sits below
    the work/personal tabs + project filter so the three filter dimensions
    stack cleanly. Persists across page loads via localStorage. #}
+<div class="task-search-bar">
+    <input type="search" id="taskSearchInput" placeholder="Search tasks (title, notes, URL)..." autocomplete="off" spellcheck="false" maxlength="200">
+    <button type="button" id="taskSearchClear" class="btn-sm" title="Clear search">Clear</button>
+    <span class="task-search-meta" id="taskSearchMeta"></span>
+</div>
 <div class="goal-filter-bar" id="goalFilterBar"></div>
 {# #73: drag-and-drop day strip above Today. 12 cells = this Mon-Sat
    + next Mon-Sat. Drop a task on a cell to set due_date (which then

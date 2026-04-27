@@ -263,6 +263,24 @@ test.describe("Prod smoke — feature surfaces", () => {
         await expect(page.locator("#goalFilterBar button").first()).toBeVisible();
     });
 
+    test("home board has task search bar (#107)", async ({ page }) => {
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        // Input present + interactive
+        const input = page.locator("#taskSearchInput");
+        await expect(input).toBeVisible();
+        // Type a term unlikely to match anything → meta should appear
+        // showing "0 of N match" (proves the filter logic ran).
+        await input.fill("xyzzy-not-a-real-task-2026");
+        await page.waitForTimeout(250);  // debounce
+        const meta = await page.locator("#taskSearchMeta").textContent();
+        expect(meta).toMatch(/0 of \d+ match/);
+        // Clear to leave a clean state.
+        await page.locator("#taskSearchClear").click();
+        await page.waitForTimeout(200);
+        await expect(input).toHaveValue("");
+    });
+
     test("task detail panel exposes Stop-after end_date input (#101)", async ({ page }) => {
         await page.goto("/?nosw=1");
         await page.waitForLoadState("networkidle");

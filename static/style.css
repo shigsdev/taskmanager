@@ -1009,6 +1009,33 @@ body {
     flex-shrink: 0;
 }
 
+/* #107 (PR42): task search bar. Sits above the goal-filter chip row,
+   below the project filter. Persists via localStorage. Filter logic
+   is in static/filter_helpers.js (Jest-tested). */
+.task-search-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 4px 16px 8px;
+    max-width: 1200px;
+    margin: 4px auto 0;
+}
+.task-search-bar input[type="search"] {
+    flex: 1 1 240px;
+    min-height: 32px;
+    padding: 6px 10px;
+    border: 1px solid var(--border, #ccc);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    background: #fff;
+}
+.task-search-meta {
+    font-size: 0.8rem;
+    color: var(--text-muted, #666);
+    white-space: nowrap;
+}
+
 /* #92 (PR25): goal/objective filter bar — always visible, sits below the
    project filter bar. Chip-style buttons matching the project-filter-btn
    pattern so all three filter dimensions look consistent. */

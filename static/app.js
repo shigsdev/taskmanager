@@ -28,10 +28,14 @@ let currentView = "all"; // "all" | "work" | "personal"
 // PR25 parse cleanly into a Set with one element.
 let projectFilter = new Set();  // Set<UUID>; empty = "All"
 let goalFilter = new Set();     // Set<UUID>; empty = "All"
+// #107 (PR42): free-text search across title/notes/url. Persisted to
+// localStorage like the other filters. Empty string = no filter.
+let searchQuery = "";
 const _FILTER_LS_KEYS = {
     view: "tm.filter.view",
     project: "tm.filter.project",
     goal: "tm.filter.goal",
+    search: "tm.filter.search",
 };
 // PR39 (C3+C7): pure helpers extracted to static/filter_helpers.js so
 // they're Jest-importable. window.filterHelpers is populated by that
@@ -46,6 +50,9 @@ function _loadFilterPrefs() {
         if (v === "all" || v === "work" || v === "personal") currentView = v;
         projectFilter = _parseUuidCsv(localStorage.getItem(_FILTER_LS_KEYS.project));
         goalFilter = _parseUuidCsv(localStorage.getItem(_FILTER_LS_KEYS.goal));
+        // #107 (PR42): restore search query (cap length defensively).
+        const s = localStorage.getItem(_FILTER_LS_KEYS.search);
+        if (typeof s === "string" && s.length <= 200) searchQuery = s;
     } catch (_) { /* private mode etc. — silently use defaults */ }
 }
 function _saveFilterPrefs() {
@@ -60,6 +67,12 @@ function _saveFilterPrefs() {
             localStorage.setItem(_FILTER_LS_KEYS.goal, Array.from(goalFilter).join(","));
         } else {
             localStorage.removeItem(_FILTER_LS_KEYS.goal);
+        }
+        // #107 (PR42)
+        if (searchQuery) {
+            localStorage.setItem(_FILTER_LS_KEYS.search, searchQuery);
+        } else {
+            localStorage.removeItem(_FILTER_LS_KEYS.search);
         }
     } catch (_) { /* ignore */ }
 }
@@ -864,14 +877,12 @@ async function saveReorder(tier, taskIds) {
 }
 
 function filteredTasks() {
-    let tasks = allTasks;
-    if (currentView === "work") tasks = tasks.filter((t) => t.type === "work");
-    if (currentView === "personal") tasks = tasks.filter((t) => t.type === "personal");
-    // #97 (PR31): multi-select — filter passes if task's id is in the
-    // chosen set (OR semantics). Empty set = "All" (no filter applied).
-    if (projectFilter.size) tasks = tasks.filter((t) => projectFilter.has(t.project_id));
-    if (goalFilter.size) tasks = tasks.filter((t) => goalFilter.has(t.goal_id));
-    return tasks;
+    // PR42 (#107): delegate to filter_helpers.js applyFilters so the
+    // logic (incl. search) is unit-testable and shared with the
+    // filteredCompleted / filteredCancelled clones below.
+    return window.filterHelpers.applyFilters(
+        allTasks, currentView, projectFilter, goalFilter, searchQuery,
+    );
 }
 
 function escapeHtml(str) {
@@ -1287,6 +1298,64 @@ function renderGoalFilter() {
     }
 }
 
+// #107 (PR42): task search bar. Free-text input above the filter chips
+// that case-insensitively matches title/notes/url. Persisted via
+// localStorage like the other filter dimensions. Wired into the same
+// re-render trifecta (board / completed / cancelled).
+function renderSearchBar() {
+    const input = document.getElementById("taskSearchInput");
+    if (!input) return;
+    // One-time wiring guard so we don't re-attach the listener on
+    // every render (PR28 BUG-1 listener-accumulation class).
+    if (input.dataset.searchWired) {
+        // Just reflect persisted value if it's stale.
+        if (input.value !== searchQuery) input.value = searchQuery;
+        renderSearchMeta();
+        return;
+    }
+    input.dataset.searchWired = "1";
+    input.value = searchQuery;
+    let debounceId = null;
+    input.addEventListener("input", () => {
+        const next = window.filterHelpers.searchTerm(input.value);
+        clearTimeout(debounceId);
+        debounceId = setTimeout(() => {
+            searchQuery = next;
+            _saveFilterPrefs();
+            renderBoard();
+            renderCompletedList();
+            renderCancelledList();
+            renderSearchMeta();
+        }, 120);
+    });
+    const clearBtn = document.getElementById("taskSearchClear");
+    if (clearBtn) {
+        clearBtn.addEventListener("click", () => {
+            searchQuery = "";
+            input.value = "";
+            _saveFilterPrefs();
+            renderBoard();
+            renderCompletedList();
+            renderCancelledList();
+            renderSearchMeta();
+            input.focus();
+        });
+    }
+    renderSearchMeta();
+}
+
+function renderSearchMeta() {
+    const meta = document.getElementById("taskSearchMeta");
+    if (!meta) return;
+    if (!searchQuery) { meta.textContent = ""; return; }
+    // Show "<n> of <total> match" against allTasks size (active board only).
+    const matched = window.filterHelpers.applyFilters(
+        allTasks, currentView, projectFilter, goalFilter, searchQuery,
+    ).length;
+    const total = (allTasks || []).length;
+    meta.textContent = `${matched} of ${total} match`;
+}
+
 // --- Bulk triage -------------------------------------------------------------
 
 function updateBulkTriageBtn() {
@@ -1496,14 +1565,9 @@ function renderCompletedPage() {
 }
 
 function filteredCompleted() {
-    let tasks = allCompleted;
-    if (currentView === "work") tasks = tasks.filter((t) => t.type === "work");
-    if (currentView === "personal") tasks = tasks.filter((t) => t.type === "personal");
-    // #97 (PR31): multi-select — filter passes if task's id is in the
-    // chosen set (OR semantics). Empty set = "All" (no filter applied).
-    if (projectFilter.size) tasks = tasks.filter((t) => projectFilter.has(t.project_id));
-    if (goalFilter.size) tasks = tasks.filter((t) => goalFilter.has(t.goal_id));
-    return tasks;
+    return window.filterHelpers.applyFilters(  // PR42 #107
+        allCompleted, currentView, projectFilter, goalFilter, searchQuery,
+    );
 }
 
 function renderCompletedList() {
@@ -1677,14 +1741,9 @@ async function loadCancelledTasks() {
 }
 
 function filteredCancelled() {
-    let tasks = allCancelled;
-    if (currentView === "work") tasks = tasks.filter((t) => t.type === "work");
-    if (currentView === "personal") tasks = tasks.filter((t) => t.type === "personal");
-    // #97 (PR31): multi-select — filter passes if task's id is in the
-    // chosen set (OR semantics). Empty set = "All" (no filter applied).
-    if (projectFilter.size) tasks = tasks.filter((t) => projectFilter.has(t.project_id));
-    if (goalFilter.size) tasks = tasks.filter((t) => goalFilter.has(t.goal_id));
-    return tasks;
+    return window.filterHelpers.applyFilters(  // PR42 #107
+        allCancelled, currentView, projectFilter, goalFilter, searchQuery,
+    );
 }
 
 function renderCancelledList() {
@@ -2779,4 +2838,6 @@ document.addEventListener("DOMContentLoaded", () => {
         if (tab.dataset.view === currentView) tab.classList.add("active");
         else tab.classList.remove("active");
     });
+    // #107 (PR42): wire the search bar wherever it appears.
+    renderSearchBar();
 });
