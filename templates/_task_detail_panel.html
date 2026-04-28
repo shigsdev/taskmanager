@@ -35,7 +35,11 @@
             <div class="form-row" id="detailProjectField">
                 <div class="form-field">
                     <label for="detailProject">Project</label>
-                    <select id="detailProject">
+                    {# #117 (PR53): when user picks a project, mirror the
+                       server-side cascade (#77) by auto-setting the Goal
+                       dropdown to the project's linked goal. Pure client-
+                       side preview of what save would do. #}
+                    <select id="detailProject" onchange="taskDetailProjectChanged(this.value)">
                         <option value="">— None —</option>
                     </select>
                 </div>

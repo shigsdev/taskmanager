@@ -2005,6 +2005,30 @@ function taskDetailToggleProject(type) {
     taskDetailPopulateProjects(type);
 }
 
+// #117 (PR53): UI mirror of the server-side #77 cascade. When the user
+// picks a project, look up its goal_id from `allProjects` and pre-set
+// the Goal dropdown to match. Visual preview of what save will do —
+// avoids the previous UX gap where the Goal dropdown stayed empty
+// until the user saved + reloaded.
+//
+// Skipped when:
+// - User picks "— None —" (empty value): leave goal alone (server
+//   doesn't auto-clear in that case either; user can override).
+// - Project has no goal (goal_id null): same reason.
+// - Goal dropdown doesn't have an option for that goal id (goal was
+//   archived or filter mismatch): silent no-op.
+function taskDetailProjectChanged(projectId) {
+    if (!projectId) return;
+    const proj = (allProjects || []).find((p) => p.id === projectId);
+    if (!proj || !proj.goal_id) return;
+    const goalSel = document.getElementById("detailGoal");
+    if (!goalSel) return;
+    // Only set if the option exists (don't introduce stale ids).
+    if (Array.from(goalSel.options).some((o) => o.value === proj.goal_id)) {
+        goalSel.value = proj.goal_id;
+    }
+}
+
 function taskDetailClose() {
     document.getElementById("detailOverlay").style.display = "none";
 }

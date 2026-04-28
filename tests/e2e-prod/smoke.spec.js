@@ -326,6 +326,36 @@ test.describe("Prod smoke — feature surfaces", () => {
         expect(ok).toBe(true);
     });
 
+    test("detail panel: picking a project pre-sets the goal (#117)", async ({ page }) => {
+        // Per PR50 anti-pattern #3: behavioral assertion, not string-match.
+        // Inject a fake project with a goal into allProjects, then call
+        // taskDetailProjectChanged() and verify #detailGoal got set.
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const result = await page.evaluate(() => {
+            // Stage: ensure #detailGoal has the option for our fake goal.
+            const goalSel = document.getElementById("detailGoal");
+            if (!goalSel) return { error: "no detailGoal element on this page" };
+            const fakeGoalId = "ffffffff-ffff-ffff-ffff-fffffffffff1";
+            const fakeProjId = "ffffffff-ffff-ffff-ffff-fffffffffff2";
+            // Add the goal option (so the function won't reject as stale).
+            const opt = document.createElement("option");
+            opt.value = fakeGoalId;
+            opt.textContent = "Fake goal";
+            goalSel.appendChild(opt);
+            // Add a fake project that maps to the fake goal.
+            window.allProjects = (window.allProjects || []).concat([
+                { id: fakeProjId, name: "Fake project", type: "work", goal_id: fakeGoalId },
+            ]);
+            // Goal currently empty.
+            goalSel.value = "";
+            // Call the handler the onchange wires up to.
+            taskDetailProjectChanged(fakeProjId);
+            return { selectedGoal: goalSel.value, expected: fakeGoalId };
+        });
+        expect(result.selectedGoal).toBe(result.expected);
+    });
+
     test("recovery prompt fires once per cycle, not per failure (#115)", async ({ page }) => {
         // Per PR50 anti-pattern #3: actually exercise the path.
         // Force fetch to fail with TypeError + dispatch visibilitychange
