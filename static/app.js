@@ -80,6 +80,26 @@ _loadFilterPrefs();
 
 // --- API helpers -------------------------------------------------------------
 
+// PR52 #115: singleton recovery prompt. Multiple concurrent fetch
+// failures (e.g. visibilitychange fan-out fails 5 loaders at once)
+// would each fire their own confirm() — the user hits 5 OKs in a
+// row. Gate via a module-level flag so only ONE prompt is shown
+// per recovery cycle. Reset the flag after the user dismisses or
+// the page reloads.
+let _recoveryPromptShown = false;
+function _maybePromptRecovery(message) {
+    if (_recoveryPromptShown) return;
+    _recoveryPromptShown = true;
+    // eslint-disable-next-line no-alert
+    const ok = confirm(message);
+    if (ok) {
+        _hardRecover();  // navigation kills _recoveryPromptShown anyway
+    } else {
+        // User dismissed — let them try again; reset after a beat.
+        setTimeout(() => { _recoveryPromptShown = false; }, 5_000);
+    }
+}
+
 // PR49 #113: hard-recover from a stuck SW. location.reload() can hang
 // when the SW controller is in a weird state — its fetch handler may
 // intercept the navigation and never resolve. Unregistering the SW
@@ -127,16 +147,16 @@ async function apiFetch(url, opts = {}) {
             await new Promise((r) => setTimeout(r, 250));
             return apiFetch(url, { ...opts, _retried: true });
         }
-        // Second failure → recovery prompt. Use _hardRecover (unregister
-        // SW + nosw reload) instead of plain location.reload(), which
-        // can hang when the SW is stuck.
-        // eslint-disable-next-line no-alert
-        if (confirm(
+        // PR52 #115: single-prompt during recovery. Without this guard,
+        // the visibilitychange fan-out (loadTasks + loadGoals +
+        // loadProjects + loadCompletedTasks + loadCancelledTasks) can
+        // each fail concurrently and each fire its own prompt — user
+        // hits OK five times. Once one prompt is showing, suppress the
+        // others; once the user accepts ONE recovery, fire it once.
+        _maybePromptRecovery(
             "Network request failed (this can happen on a tab that's " +
             "been idle for a while). Reload the page to recover?"
-        )) {
-            _hardRecover();
-        }
+        );
         throw err;
     }
     if (resp.status === 204) return null;
@@ -144,10 +164,7 @@ async function apiFetch(url, opts = {}) {
     // dumping a JSON parse + raw statusText. Still throw so callers can
     // decide what to do; default UX is the alert in submitCapture etc.
     if (resp.status === 401 || resp.status === 403) {
-        // eslint-disable-next-line no-alert
-        if (confirm("Authentication failed. Reload to sign in again?")) {
-            _hardRecover();
-        }
+        _maybePromptRecovery("Authentication failed. Reload to sign in again?");
         throw new Error("Authentication required");
     }
     if (!resp.ok) {
@@ -2953,4 +2970,34 @@ document.addEventListener("DOMContentLoaded", () => {
             }).catch(() => { /* private mode etc. */ });
         }
     });
+
+    // PR52 #115: proactive polling for freshness. User-flagged: "is
+    // there no way to simply keep the page fresh?" — visibilitychange
+    // only fires on tab switch, doesn't help when the user is actively
+    // looking at the page while another device makes changes. Poll
+    // every 60s while the tab is visible. Skipped while document is
+    // hidden (no point fetching when the user can't see results).
+    // Skipped if the user is mid-input (active typing) so a re-render
+    // doesn't yank focus from the capture bar / detail panel.
+    function _isUserBusy() {
+        const el = document.activeElement;
+        if (!el) return false;
+        const tag = (el.tagName || "").toUpperCase();
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+        if (el.isContentEditable) return true;
+        return false;
+    }
+    let _pollLast = Date.now();
+    setInterval(() => {
+        if (document.visibilityState !== "visible") return;
+        if (_isUserBusy()) return;
+        const now = Date.now();
+        if (now - _pollLast < 55_000) return;  // ~60s with margin for setInterval drift
+        _pollLast = now;
+        if (typeof loadTasks === "function") loadTasks();
+        if (typeof loadCompletedTasks === "function") loadCompletedTasks();
+        if (typeof loadCancelledTasks === "function") loadCancelledTasks();
+        if (typeof loadGoals === "function") loadGoals();
+        if (typeof loadProjects === "function") loadProjects();
+    }, 30_000);  // tick every 30s, gated by 55s throttle inside
 });

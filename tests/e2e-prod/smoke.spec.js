@@ -326,6 +326,38 @@ test.describe("Prod smoke — feature surfaces", () => {
         expect(ok).toBe(true);
     });
 
+    test("recovery prompt fires once per cycle, not per failure (#115)", async ({ page }) => {
+        // Per PR50 anti-pattern #3: actually exercise the path.
+        // Force fetch to fail with TypeError + dispatch visibilitychange
+        // (which fans out 5 loader calls). Only ONE confirm() should
+        // fire — not 5.
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const promptCount = await page.evaluate(async () => {
+            // Replace fetch so every call throws TypeError (the "Failed
+            // to fetch" class). The auto-retry will fire too; we expect
+            // it to ALSO fail and trigger the prompt path.
+            const origFetch = window.fetch;
+            window.fetch = () => Promise.reject(new TypeError("Failed to fetch"));
+            // Replace confirm so we count + dismiss without UI.
+            let count = 0;
+            const origConfirm = window.confirm;
+            window.confirm = (_msg) => { count += 1; return false; };
+            // Fire visibilitychange — kicks off the loader fan-out.
+            document.dispatchEvent(new Event("visibilitychange"));
+            // Let all 5 promises settle.
+            await new Promise((r) => setTimeout(r, 800));
+            // Restore.
+            window.fetch = origFetch;
+            window.confirm = origConfirm;
+            return count;
+        });
+        // Some loaders may early-return without fetch (e.g. element not
+        // present), so count may be < 5 even without the singleton fix.
+        // Strict invariant: at most ONE prompt regardless of fan-out.
+        expect(promptCount).toBeLessThanOrEqual(1);
+    });
+
     test("/calendar refreshes on visibilitychange (#114)", async ({ page }) => {
         // Per PR50 anti-pattern #3: actually exercise the path, not
         // just string-match. Load /calendar, instrument fetch, dispatch
