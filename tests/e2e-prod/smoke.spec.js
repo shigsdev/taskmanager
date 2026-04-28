@@ -326,6 +326,35 @@ test.describe("Prod smoke — feature surfaces", () => {
         expect(ok).toBe(true);
     });
 
+    test("detail panel: voice button wired to text fields (#116)", async ({ page }) => {
+        // Per PR50 anti-pattern #3: behavioral. Load home, find voice
+        // buttons in the detail panel markup, assert they exist + each
+        // has data-voice-target pointing at a real element.
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const result = await page.evaluate(() => {
+            const buttons = Array.from(document.querySelectorAll(".voice-btn[data-voice-target]"));
+            return buttons.map((b) => {
+                const targetId = b.dataset.voiceTarget;
+                const target = document.getElementById(targetId);
+                return {
+                    targetId,
+                    targetExists: !!target,
+                    targetTag: target ? target.tagName.toLowerCase() : null,
+                };
+            });
+        });
+        expect(result.length).toBeGreaterThanOrEqual(2);  // at minimum: title + notes
+        // Every button's data-voice-target must point at a real INPUT/TEXTAREA.
+        for (const b of result) {
+            expect(b.targetExists, `voice-btn target #${b.targetId} not found`).toBe(true);
+            expect(["input", "textarea"]).toContain(b.targetTag);
+        }
+        // voice_input.js itself is served + 200.
+        const r = await page.request.get("/static/voice_input.js");
+        expect(r.status()).toBe(200);
+    });
+
     test("detail panel: picking a project pre-sets the goal (#117)", async ({ page }) => {
         // Per PR50 anti-pattern #3: behavioral assertion, not string-match.
         // Inject a fake project with a goal into allProjects, then call

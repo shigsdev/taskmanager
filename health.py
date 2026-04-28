@@ -114,6 +114,7 @@ EXPECTED_STATIC_FILES = (
     "static/capture.js",
     "static/filter_helpers.js",  # PR39 — Jest-importable filter helpers
     "static/api_helpers.js",     # PR49 — Jest-importable apiFetch error-path helpers
+    "static/voice_input.js",     # PR54 — voice-to-text helper for any text field
     "static/import.js",  # PR24 BUG-1: was missing — sw.js APP_SHELL caches it
     "static/voice_memo.js",
     "static/day_group.js",

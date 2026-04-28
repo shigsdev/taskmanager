@@ -8,7 +8,12 @@
             <input type="hidden" id="detailId">
 
             <label for="detailTitle">Title</label>
-            <input type="text" id="detailTitle" required spellcheck="true">
+            {# #116 (PR54): voice-to-text. Click 🎤 to dictate into the
+               adjacent field. Hidden if Speech API is unavailable. #}
+            <div class="field-with-voice">
+                <input type="text" id="detailTitle" required spellcheck="true">
+                <button type="button" class="icon-btn voice-btn" data-voice-target="detailTitle" title="Voice input">🎤</button>
+            </div>
 
             <div class="form-row">
                 <div class="form-field">
@@ -140,7 +145,10 @@
             </div>
 
             <label for="detailNotes">Notes</label>
-            <textarea id="detailNotes" rows="3" spellcheck="true"></textarea>
+            <div class="field-with-voice">
+                <textarea id="detailNotes" rows="3" spellcheck="true"></textarea>
+                <button type="button" class="icon-btn voice-btn" data-voice-target="detailNotes" title="Voice input">🎤</button>
+            </div>
 
             <div class="checklist-section">
                 <label>Checklist</label>

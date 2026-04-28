@@ -2953,6 +2953,17 @@ document.addEventListener("DOMContentLoaded", () => {
     // #107 (PR42): wire the search bar wherever it appears.
     renderSearchBar();
 
+    // #116 (PR54): voice-to-text on any field with a sibling
+    // .voice-btn[data-voice-target]. attachVoiceButton handles the
+    // Speech API wiring + falls back to hiding the button when the
+    // API isn't available (Firefox, older browsers).
+    if (window.voiceInput) {
+        document.querySelectorAll(".voice-btn[data-voice-target]").forEach((btn) => {
+            const target = document.getElementById(btn.dataset.voiceTarget);
+            if (target) window.voiceInput.attachVoiceButton(btn, target);
+        });
+    }
+
     // #109 (PR44): multi-device stale state. allTasks is loaded ONCE on
     // page boot — if the user changes a task on mobile, desktop has no
     // idea until they manually reload. Refresh whenever the tab becomes

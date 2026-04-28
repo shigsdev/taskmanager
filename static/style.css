@@ -1009,6 +1009,34 @@ body {
     flex-shrink: 0;
 }
 
+/* #116 (PR54): voice-input button next to text inputs/textareas in
+   detail panels. Hidden when the Speech API is unavailable (set via
+   JS in voice_input.js). */
+.field-with-voice {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+}
+.field-with-voice > input,
+.field-with-voice > textarea {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.field-with-voice > .voice-btn {
+    flex: 0 0 auto;
+    align-self: flex-start;
+    margin-top: 2px;
+}
+.voice-btn.voice-listening {
+    background: #fee2e2;
+    color: #dc2626;
+    animation: voice-pulse 1.2s ease-in-out infinite;
+}
+@keyframes voice-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
 /* #107 (PR42): task search bar. Sits above the goal-filter chip row,
    below the project filter. Persists via localStorage. Filter logic
    is in static/filter_helpers.js (Jest-tested). */
