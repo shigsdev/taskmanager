@@ -278,15 +278,23 @@ test.describe("Prod smoke — feature surfaces", () => {
         expect(text.includes(fixed)).toBe(true);
     });
 
-    test("apiFetch handles stale-tab fetch failure (#112)", async ({ page }) => {
-        // Stale-tab "Failed to fetch" recovery: assert apiFetch uses
-        // redirect:"manual" + auto-retries on TypeError. Regression
-        // catches a future revert of the recovery wiring.
+    test("apiFetch wires hard-recovery via api_helpers (#112 + #113)", async ({ page }) => {
+        // Stale-tab "Failed to fetch" recovery — PR47 added retry +
+        // prompt; PR49 dropped the opaqueredirect check (false-positive)
+        // and routed the recovery path through _hardRecover() which
+        // unregisters the SW first. Regression catches a future revert.
         const appJs = await page.request.get("/static/app.js");
         const text = await appJs.text();
-        expect(text).toContain('redirect: "manual"');
-        expect(text).toContain("opaqueredirect");
+        // PR49: recovery path uses _hardRecover (SW-unregister-then-reload)
+        expect(text).toContain("_hardRecover");
+        // Auto-retry-once flag still present
         expect(text).toContain("_retried");
+        // PR49 invariant: opaqueredirect prompt was REMOVED (was firing
+        // false-positives). If this comes back, something regressed.
+        expect(text).not.toContain('redirect: "manual"');
+        // api_helpers.js (PR49) also served + cached
+        const apiH = await page.request.get("/static/api_helpers.js");
+        expect(apiH.status()).toBe(200);
     });
 
     test("visibilitychange handler also triggers SW update check (#111)", async ({ page }) => {

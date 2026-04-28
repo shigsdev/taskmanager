@@ -80,63 +80,76 @@ _loadFilterPrefs();
 
 // --- API helpers -------------------------------------------------------------
 
+// PR49 #113: hard-recover from a stuck SW. location.reload() can hang
+// when the SW controller is in a weird state — its fetch handler may
+// intercept the navigation and never resolve. Unregistering the SW
+// first guarantees the next navigation goes straight to the network.
+// URL builder + retry/classify logic lives in api_helpers.js (Jest-tested).
+async function _hardRecover() {
+    try {
+        if ("serviceWorker" in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map((r) => r.unregister().catch(() => {})));
+        }
+    } catch (_) { /* never block recovery on unregister failure */ }
+    window.location.href = window.apiHelpers.buildRecoveryUrl(window.location);
+}
+
 async function apiFetch(url, opts = {}) {
-    // PR47 #112: stale-tab fetch failure recovery. Several causes can
-    // make the FIRST fetch on a long-idle tab throw "TypeError:
-    // Failed to fetch":
+    // PR47 #112 + PR49 #113: stale-tab fetch failure recovery.
+    // Causes for "TypeError: Failed to fetch" on a long-idle tab:
     //  (a) Mobile browser killed the page's network connection during
-    //      tab suspension; first wake-up fetch dies before the
-    //      connection is re-established.
-    //  (b) Service worker controller went stale during sleep; first
-    //      fetch through the SW rejects before the SW rebinds.
+    //      tab suspension; first wake-up fetch dies before reconnect.
+    //  (b) Service worker controller went stale during sleep.
     //  (c) Flask OAuth session expired (24h sliding) — redirect to
     //      /login/google → cross-origin → browser blocks.
-    // We can't reliably distinguish them from JS, so the recovery is
-    // the same: prompt to retry once, then auto-retry. If that also
-    // fails, offer to reload the page (which re-establishes auth +
-    // SW + network in one shot).
+    // Recovery: auto-retry once on TypeError. If retry also fails,
+    // prompt to reload via _hardRecover() (unregisters SW first so
+    // the reload can't hang on a stuck SW).
+    //
+    // PR47 originally added redirect:"manual" + opaqueredirect detection
+    // for case (c). PR49 dropped that branch — it false-positived on
+    // legitimate sessions (some 3xx in normal flow gets read as opaque
+    // redirect). Use the default redirect behavior; if a session 302
+    // genuinely surfaces, the cross-origin block falls through to the
+    // TypeError path which has the same recovery prompt.
     let resp;
     try {
         resp = await fetch(url, {
             headers: { "Content-Type": "application/json", ...opts.headers },
-            // redirect:"manual" so a session-expiry 302 returns an
-            // opaqueredirect we can see, instead of the browser
-            // following it cross-origin and throwing.
-            redirect: "manual",
             ...opts,
         });
     } catch (err) {
-        // Auto-retry once before bothering the user — covers the (a)
-        // and (b) "stale-tab first-wake" classes, which usually
-        // succeed on the second attempt because the connection /
-        // SW rebound by then.
+        // Auto-retry once before bothering the user — covers the
+        // "stale-tab first-wake" class, which usually succeeds on
+        // retry once the connection / SW rebinds.
         if (err && err.name === "TypeError" && !opts._retried) {
             await new Promise((r) => setTimeout(r, 250));
             return apiFetch(url, { ...opts, _retried: true });
         }
-        // Second failure → ask the user to reload (re-runs OAuth +
-        // re-registers SW + opens fresh connections).
+        // Second failure → recovery prompt. Use _hardRecover (unregister
+        // SW + nosw reload) instead of plain location.reload(), which
+        // can hang when the SW is stuck.
         // eslint-disable-next-line no-alert
         if (confirm(
-            "Network request failed (this can happen on a tab that's been " +
-            "idle for a while). Reload the page?"
+            "Network request failed (this can happen on a tab that's " +
+            "been idle for a while). Reload the page to recover?"
         )) {
-            location.reload();
+            _hardRecover();
         }
         throw err;
     }
-    // redirect:"manual" returns opaqueredirect when the server 302s
-    // (most often: expired OAuth session redirecting to /login/google).
-    if (resp.type === "opaqueredirect" || resp.status === 0) {
-        // eslint-disable-next-line no-alert
-        if (confirm(
-            "Your session may have expired. Reload to sign in again?"
-        )) {
-            location.reload();
-        }
-        throw new Error("Session expired — please reload");
-    }
     if (resp.status === 204) return null;
+    // 401/403 — actual auth failure. Surface a clean message instead of
+    // dumping a JSON parse + raw statusText. Still throw so callers can
+    // decide what to do; default UX is the alert in submitCapture etc.
+    if (resp.status === 401 || resp.status === 403) {
+        // eslint-disable-next-line no-alert
+        if (confirm("Authentication failed. Reload to sign in again?")) {
+            _hardRecover();
+        }
+        throw new Error("Authentication required");
+    }
     if (!resp.ok) {
         const body = await resp.json().catch(() => ({}));
         throw new Error(body.error || resp.statusText);
