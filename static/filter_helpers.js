@@ -137,6 +137,33 @@ function taskMatchesSearch(task, normalisedTerm) {
     return fields.some((f) => String(f).toLowerCase().includes(normalisedTerm));
 }
 
+/**
+ * #117 (PR53/PR56): given a project id, return the goal id that the
+ * UI should auto-select. Mirrors the server-side cascade in
+ * task_service.update_task — when assigning a project that has a
+ * goal, the goal cascades onto the task.
+ *
+ * Returns null when:
+ *  - projectId is falsy (caller picked "— None —")
+ *  - project not found in allProjects
+ *  - project has no linked goal (goal_id null)
+ *  - resolved goal_id isn't in allowedGoalIds (caller's whitelist —
+ *    typically the goal-dropdown's option set, so we don't suggest
+ *    an archived goal that isn't selectable)
+ *
+ * Pure: takes everything as args, returns a value, no side effects.
+ */
+function projectCascadeGoalId(projectId, allProjects, allowedGoalIds) {
+    if (!projectId) return null;
+    if (!Array.isArray(allProjects)) return null;
+    const proj = allProjects.find((p) => p && p.id === projectId);
+    if (!proj || !proj.goal_id) return null;
+    if (allowedGoalIds && allowedGoalIds.size && !allowedGoalIds.has(proj.goal_id)) {
+        return null;
+    }
+    return proj.goal_id;
+}
+
 // Browser: expose individual helpers on the global object so app.js
 // can use them without a bundler. Node (Jest): export via module.exports.
 if (typeof module !== "undefined" && module.exports) {
@@ -150,6 +177,7 @@ if (typeof module !== "undefined" && module.exports) {
         applyFilters,
         searchTerm,
         taskMatchesSearch,
+        projectCascadeGoalId,
     };
 } else if (typeof window !== "undefined") {
     window.filterHelpers = {
@@ -162,5 +190,6 @@ if (typeof module !== "undefined" && module.exports) {
         applyFilters,
         searchTerm,
         taskMatchesSearch,
+        projectCascadeGoalId,
     };
 }

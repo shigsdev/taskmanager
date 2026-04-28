@@ -206,6 +206,41 @@ describe("applyFilters (#92 + #97 composed semantics)", () => {
 });
 
 
+describe("projectCascadeGoalId (#117 task picker auto-set goal)", () => {
+    const { projectCascadeGoalId } = require("../../../static/filter_helpers");
+    const projects = [
+        { id: "p-roadmap", goal_id: "g-shipq3", type: "work", name: "Roadmap" },
+        { id: "p-no-goal", goal_id: null, type: "work", name: "No goal" },
+        { id: "p-archived-goal", goal_id: "g-archived", type: "work", name: "Archived goal" },
+    ];
+    const allowed = new Set(["g-shipq3", "g-other"]);  // g-archived NOT in allowed
+
+    test("project with goal in allowed → returns goal id", () => {
+        expect(projectCascadeGoalId("p-roadmap", projects, allowed)).toBe("g-shipq3");
+    });
+    test("falsy projectId → null (user picked None)", () => {
+        expect(projectCascadeGoalId("", projects, allowed)).toBeNull();
+        expect(projectCascadeGoalId(null, projects, allowed)).toBeNull();
+        expect(projectCascadeGoalId(undefined, projects, allowed)).toBeNull();
+    });
+    test("project not found → null", () => {
+        expect(projectCascadeGoalId("p-missing", projects, allowed)).toBeNull();
+    });
+    test("project with no goal → null (don't suggest empty)", () => {
+        expect(projectCascadeGoalId("p-no-goal", projects, allowed)).toBeNull();
+    });
+    test("project's goal NOT in allowed set → null (don't introduce stale id)", () => {
+        expect(projectCascadeGoalId("p-archived-goal", projects, allowed)).toBeNull();
+    });
+    test("empty allowed Set → still cascades (caller didn't supply whitelist)", () => {
+        expect(projectCascadeGoalId("p-roadmap", projects, new Set())).toBe("g-shipq3");
+    });
+    test("non-array allProjects → null (defensive)", () => {
+        expect(projectCascadeGoalId("p-roadmap", null, allowed)).toBeNull();
+        expect(projectCascadeGoalId("p-roadmap", undefined, allowed)).toBeNull();
+    });
+});
+
 describe("searchTerm + taskMatchesSearch (#107 task search)", () => {
     const { searchTerm, taskMatchesSearch } = require("../../../static/filter_helpers");
 
