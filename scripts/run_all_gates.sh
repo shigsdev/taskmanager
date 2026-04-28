@@ -242,6 +242,17 @@ banner "8c. BACKLOG ✅ vs prod-smoke pairing"
 python scripts/check_backlog_smoke_pairing.py || true
 pass "backlog ✅ ↔ prod-smoke pairing (heuristic)"
 
+# --- 8d. No-string-match-only prod tests (PR50 anti-pattern #3) -------------
+banner "8d. No-string-match-only prod tests"
+# Heuristic: warn if a NEW prod-smoke test ONLY string-matches against
+# /static/*.js source without any behavioral assertion. Per CLAUDE.md
+# anti-pattern #3, those tests pass against a syntactically-valid but
+# semantically-broken implementation. Real coverage = a Jest test on
+# the extracted helper module. Exits 0 (heuristic, false-positive risk);
+# the warning text is loud enough that a reviewer notices.
+python scripts/check_no_string_match_only_tests.py || true
+pass "no-string-match-only prod tests (heuristic)"
+
 # --- 9. Semgrep (security pattern scanner) ----------------------------------
 
 banner "9. Semgrep (security patterns)"

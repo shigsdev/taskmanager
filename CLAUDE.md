@@ -472,6 +472,41 @@ Report.
 
 ## Testing Requirements
 
+### Anti-pattern #3 — string-matching source instead of exercising the path
+
+**Incident 2026-04-27 (PR47 → PR49):** Shipped client-side error-path
+code with only this prod-smoke "test":
+
+```js
+expect(text).toContain('redirect: "manual"');
+expect(text).toContain("opaqueredirect");
+```
+
+This is THEATER. It asserts the literal characters appear in the
+bundled source. A syntactically-valid but semantically-broken version
+of the same code passes too. The shipped bug (false-positive prompt +
+hung reload) hit the user immediately on the next deploy.
+
+**Rule:** for any new client-side function with non-trivial branches
+(error handling, retry logic, classification, URL building, etc.):
+
+1. Extract the pure logic into `static/<name>_helpers.js` with the
+   dual-export pattern (`window.<name>Helpers` browser-side,
+   `module.exports` Node/Jest-side). Same pattern as
+   `parse_capture.js`, `filter_helpers.js`, `api_helpers.js`.
+2. Write a Jest test that mocks the inputs and asserts the OUTPUTS.
+3. Prod-smoke string-matches are a NICE-TO-HAVE belt-and-braces
+   that catch a future revert dropping the wiring entirely. They are
+   NEVER a substitute for an actual logic test on a non-trivial branch.
+
+**Mechanical gate:** `scripts/check_no_string_match_only_tests.py`
+fails when a test file in `tests/e2e-prod/` adds a new test that ONLY
+does `expect(text).toContain(<JS literal>)` against fetched `/static/*.js`
+without any other behavioral assertion. Wired into `run_all_gates.sh`
+as gate 8d.
+
+### Required test coverage
+
 - **Flask route tests** — 200 / 400 / 422 cases for every endpoint
 - **Database model tests** — CRUD operations, constraint validation, enum
   boundaries, foreign key behavior
