@@ -154,16 +154,23 @@ def create_app(config: dict | None = None) -> Flask:
             os.environ.get("DATABASE_URL", "sqlite:///dev.db")
         ),
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
-        # Backlog #31: Railway's managed Postgres occasionally drops
+        # Backlog #31 + #118 (PR55): Railway's managed Postgres drops
         # connection-pool SSL handshakes ("SSL SYSCALL error: EOF
-        # detected", "decryption failed or bad record mac"). pool_pre_ping
-        # issues a cheap SELECT 1 on every checkout and transparently
-        # reconnects on failure — the user never sees the 500. The cost
-        # is one round-trip per checkout, negligible for a single-user
-        # app. Observed recurring in prod and caused intermittent
-        # Playwright failures until fixed.
+        # detected", "decryption failed or bad record mac", "server
+        # closed the connection unexpectedly"). Mitigations:
+        #   pool_pre_ping (PR31) — cheap SELECT 1 on every checkout;
+        #     transparent reconnect on a dead-but-pooled connection.
+        #   pool_recycle (PR55) — proactively close + recreate any
+        #     connection idle longer than 30 min, BEFORE Railway's
+        #     idle-timeout reaper kills it mid-query. Closes the
+        #     "pre-ping passed, query failed" gap that #118 caught
+        #     during PR53's deploy monitor.
+        # Cost: one extra round-trip per checkout (pre_ping) + one
+        # connection re-establishment per ~30 min per pool slot.
+        # Negligible for a single-user app.
         SQLALCHEMY_ENGINE_OPTIONS={
             "pool_pre_ping": True,
+            "pool_recycle": 1800,
         },
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
