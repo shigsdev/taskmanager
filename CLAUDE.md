@@ -55,6 +55,20 @@ gets tested there, and only merges to `main` when all quality gates pass.
      template at the end of every GREEN run with Phase 8 pre-filled.
      Phase 1-7 are `[__]` placeholders the operator MUST fill in
      before declaring done — printing it makes silent skips impossible.
+   - **PR48 watcher rule (2026-04-27):** when running validate_deploy
+     in a background watcher pattern, do NOT pipe its output through
+     `tail -N` — that swallows the auto-SOP template (~50 lines) which
+     prints AFTER the deploy report. Use `tee` to a file or just keep
+     the full output. The whole point of the auto-template (PR41) is
+     defeated if the watcher truncates it before the operator sees it.
+     Canonical pattern:
+       ```
+       until curl -s <healthz-url> | grep -q "<sha>"; do sleep 30; done
+       python scripts/validate_deploy.py --monitor-minutes 5  # NO | tail
+       npm run test:e2e:prod 2>&1 | tail -5
+       ```
+     Truncating prod-smoke output is fine (it's just N PASS lines);
+     truncating validate_deploy output is not.
 
 7. **Clean up** the feature branch after deploy is green:
    ```
