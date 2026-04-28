@@ -170,7 +170,14 @@
                its own (subtasks can't have subtasks per the model). #}
             <div class="parent-picker-section" id="parentPickerSection">
                 <label for="parentPickerInput">Parent task (optional)</label>
-                <input type="text" id="parentPickerInput" placeholder="Type to search…" autocomplete="off">
+                {# #120 (PR57): voice input on parent typeahead. Voice
+                   appends a transcript fragment that the typeahead's
+                   existing oninput then filters by — same flow as
+                   typing the search text. #}
+                <div class="field-with-voice">
+                    <input type="text" id="parentPickerInput" placeholder="Type to search…" autocomplete="off">
+                    <button type="button" class="icon-btn voice-btn" data-voice-target="parentPickerInput" title="Voice input">🎤</button>
+                </div>
                 <input type="hidden" id="parentPickerId">
                 <div class="parent-picker-results" id="parentPickerResults" style="display:none"></div>
                 <div class="parent-picker-current" id="parentPickerCurrent" style="display:none"></div>
@@ -179,8 +186,11 @@
             <div class="subtask-section" id="subtaskSection">
                 <label>Subtasks</label>
                 <div id="subtaskItems"></div>
+                {# #120 (PR57): voice input on subtask add. Triple-flex
+                   row: input + 🎤 + + Add button. #}
                 <div style="display:flex;gap:4px;margin-top:4px">
                     <input type="text" id="subtaskInput" placeholder="Add subtask…" style="flex:1" spellcheck="true">
+                    <button type="button" class="icon-btn voice-btn" data-voice-target="subtaskInput" title="Voice input">🎤</button>
                     <button type="button" class="btn-sm" id="addSubtaskBtn">+ Add</button>
                 </div>
             </div>
@@ -191,8 +201,11 @@
                is currently cancelled or the user clicks Cancel below. #}
             <div class="detail-cancellation" id="detailCancellation" style="display:none">
                 <label for="detailCancellationReason">Cancellation reason (optional)</label>
-                <input type="text" id="detailCancellationReason" maxlength="500"
-                       placeholder="Why are you dropping this?">
+                <div class="field-with-voice">
+                    <input type="text" id="detailCancellationReason" maxlength="500"
+                           placeholder="Why are you dropping this?">
+                    <button type="button" class="icon-btn voice-btn" data-voice-target="detailCancellationReason" title="Voice input">🎤</button>
+                </div>
             </div>
 
             <div class="detail-actions">

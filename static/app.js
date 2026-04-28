@@ -2039,6 +2039,21 @@ function taskDetailAddChecklistRow(text, checked) {
     input.placeholder = "Checklist item…";
     row.appendChild(input);
 
+    // #120 (PR57): per-row voice input. attachVoiceButton wires the
+    // SpeechRecognition lifecycle and falls back to hiding the button
+    // when the API is unavailable. New rows attach immediately;
+    // existing rows on panel re-render are re-created so they get
+    // the same treatment.
+    const voiceBtn = document.createElement("button");
+    voiceBtn.type = "button";
+    voiceBtn.className = "icon-btn voice-btn";
+    voiceBtn.textContent = "🎤";
+    voiceBtn.title = "Voice input";
+    if (window.voiceInput) {
+        window.voiceInput.attachVoiceButton(voiceBtn, input);
+    }
+    row.appendChild(voiceBtn);
+
     const rm = document.createElement("button");
     rm.type = "button";
     rm.className = "remove-item";

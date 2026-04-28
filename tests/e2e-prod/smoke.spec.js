@@ -326,6 +326,47 @@ test.describe("Prod smoke — feature surfaces", () => {
         expect(ok).toBe(true);
     });
 
+    test("detail panel: voice button on subtask + parent picker (#120)", async ({ page }) => {
+        // Wiring check — both inputs have a sibling .voice-btn pointing
+        // at the right target id.
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const result = await page.evaluate(() => {
+            const targets = ["subtaskInput", "parentPickerInput", "detailCancellationReason"];
+            return targets.map((id) => {
+                const target = document.getElementById(id);
+                const btn = document.querySelector(`.voice-btn[data-voice-target="${id}"]`);
+                return { id, targetExists: !!target, btnExists: !!btn };
+            });
+        });
+        for (const r of result) {
+            expect(r.targetExists, `${r.id} not in DOM`).toBe(true);
+            expect(r.btnExists, `voice button for ${r.id} not in DOM`).toBe(true);
+        }
+    });
+
+    test("detail panel: dynamically-added checklist row gets a voice button (#120)", async ({ page }) => {
+        // Behavioral: call taskDetailAddChecklistRow + assert the new
+        // row contains a .voice-btn that wired up cleanly.
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const result = await page.evaluate(() => {
+            const before = document.querySelectorAll("#checklistItems .checklist-item").length;
+            taskDetailAddChecklistRow("test item", false);
+            const rows = document.querySelectorAll("#checklistItems .checklist-item");
+            const newRow = rows[rows.length - 1];
+            return {
+                rowsBefore: before,
+                rowsAfter: rows.length,
+                newRowHasVoiceBtn: !!newRow.querySelector(".voice-btn"),
+                newRowHasInput: !!newRow.querySelector('input[type="text"]'),
+            };
+        });
+        expect(result.rowsAfter).toBe(result.rowsBefore + 1);
+        expect(result.newRowHasInput).toBe(true);
+        expect(result.newRowHasVoiceBtn).toBe(true);
+    });
+
     test("detail panel: voice button wired to text fields (#116)", async ({ page }) => {
         // Per PR50 anti-pattern #3: behavioral. Load home, find voice
         // buttons in the detail panel markup, assert they exist + each
