@@ -278,6 +278,22 @@
 
     function init() {
         renderCalendar();
+        // PR51 #114: multi-device + multi-window staleness. PR44 added a
+        // visibilitychange refresh in app.js that calls loadTasks() — but
+        // that's the main board's loader. /calendar has its own
+        // renderCalendar() that re-fetches /api/tasks + /api/recurring/
+        // previews; we need a sibling listener here so the calendar
+        // pulls fresh state when the user switches back from another
+        // tab (e.g. the main board where they just moved a task).
+        // Throttled to 10s like the app.js handler.
+        let _lastRefresh = 0;
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState !== "visible") return;
+            const now = Date.now();
+            if (now - _lastRefresh < 10_000) return;
+            _lastRefresh = now;
+            renderCalendar();
+        });
     }
 
     if (document.readyState === "loading") {

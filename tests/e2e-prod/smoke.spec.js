@@ -326,6 +326,37 @@ test.describe("Prod smoke — feature surfaces", () => {
         expect(ok).toBe(true);
     });
 
+    test("/calendar refreshes on visibilitychange (#114)", async ({ page }) => {
+        // Per PR50 anti-pattern #3: actually exercise the path, not
+        // just string-match. Load /calendar, instrument fetch, dispatch
+        // visibilitychange, assert /api/tasks was re-fetched.
+        await page.goto("/calendar?nosw=1");
+        await page.waitForLoadState("networkidle");
+        // Hook fetch and count /api/tasks calls AFTER initial load
+        const tasksBefore = await page.evaluate(() => {
+            window.__tasksFetchCount = 0;
+            const orig = window.fetch;
+            window.fetch = function (url, opts) {
+                if (typeof url === "string" && url.includes("/api/tasks")) {
+                    window.__tasksFetchCount += 1;
+                }
+                return orig.apply(this, arguments);
+            };
+            return 0;
+        });
+        // Dispatch visibilitychange (simulating tab refocus)
+        await page.evaluate(() => {
+            document.dispatchEvent(new Event("visibilitychange"));
+        });
+        // Wait briefly for the async renderCalendar to fire
+        await page.waitForTimeout(800);
+        const tasksAfter = await page.evaluate(() => window.__tasksFetchCount);
+        expect(
+            tasksAfter,
+            "visibilitychange should trigger renderCalendar which re-fetches /api/tasks",
+        ).toBeGreaterThan(tasksBefore);
+    });
+
     test("home board has task search bar (#107)", async ({ page }) => {
         await page.goto("/?nosw=1");
         await page.waitForLoadState("networkidle");
