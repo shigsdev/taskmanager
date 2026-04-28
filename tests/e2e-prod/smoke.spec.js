@@ -278,6 +278,17 @@ test.describe("Prod smoke — feature surfaces", () => {
         expect(text.includes(fixed)).toBe(true);
     });
 
+    test("visibilitychange handler also triggers SW update check (#111)", async ({ page }) => {
+        // Long-lived tabs miss new deploys because browsers re-poll
+        // /sw.js at most every ~24h. PR46 wires reg.update() into the
+        // visibilitychange hook — assert the literal call is present
+        // in the bundled app.js so a regression that drops it is caught.
+        const appJs = await page.request.get("/static/app.js");
+        const text = await appJs.text();
+        expect(text).toContain("navigator.serviceWorker.getRegistration");
+        expect(text).toContain("reg.update()");
+    });
+
     test("visibilitychange triggers loadTasks (#109)", async ({ page }) => {
         // Multi-device sync: when tab becomes visible, re-fetch /api/tasks
         // so changes from another device show up. Can't directly observe

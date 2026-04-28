@@ -2872,5 +2872,21 @@ document.addEventListener("DOMContentLoaded", () => {
         // another device shows up in the dropdowns.
         if (typeof loadGoals === "function") loadGoals();
         if (typeof loadProjects === "function") loadProjects();
+        // PR46 #111: ALSO ask the SW to check for a newer sw.js. The
+        // browser's auto-update poll runs at most once per ~24h, so a
+        // long-lived tab opened yesterday never sees today's deploy
+        // until the user hard-refreshes. Calling reg.update() forces
+        // a fetch of /sw.js — if the bytes changed (CACHE_VERSION
+        // bumped), it installs the new SW. base.html's existing
+        // updatefound + statechange + skipWaiting + reload handshake
+        // then auto-applies it (gated on userIsBusy so the user isn't
+        // yanked mid-edit).
+        if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.getRegistration().then((reg) => {
+                if (reg && typeof reg.update === "function") {
+                    reg.update().catch(() => { /* offline / network blip — silent */ });
+                }
+            }).catch(() => { /* private mode etc. */ });
+        }
     });
 });
