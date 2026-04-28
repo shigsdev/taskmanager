@@ -62,6 +62,42 @@ def register_error_handlers(app: Flask) -> None:
     blueprints are registered so route-specific error handlers (if any)
     take precedence."""
 
+    # PR58 #121: Flask-Dance raises MismatchingStateError when the
+    # OAuth callback's `state` doesn't match the session-stored state.
+    # Common causes: (a) multi-worker race — start went to one Gunicorn
+    # worker, callback went to another with no shared state; (b) the
+    # browser's session cookie was cleared between start + callback
+    # (PR49 _hardRecover unregisters SW + force-navigates with
+    # `?nosw=1` — the OAuth round-trip can land mid-restart); (c)
+    # bookmark from an old auth flow. The user-facing 500 was scary +
+    # uninformative. Catch it specifically + redirect to /login with
+    # a friendly flash so the user can retry cleanly.
+    try:
+        from oauthlib.oauth2.rfc6749.errors import MismatchingStateError
+
+        @app.errorhandler(MismatchingStateError)
+        def handle_oauth_state_mismatch(_e: MismatchingStateError) -> Any:
+            import contextlib
+
+            from flask import flash, redirect, url_for
+            logger.warning(
+                "OAuth state mismatch on %s — redirecting to /login for retry",
+                request.path,
+            )
+            with contextlib.suppress(Exception):
+                flash(
+                    "Sign-in attempt expired (CSRF state mismatch). Please try again.",
+                    "warning",
+                )
+            try:
+                return redirect(url_for("login"))
+            except Exception:  # noqa: BLE001
+                # If url_for fails for any reason, fall back to /login literal.
+                return redirect("/login")
+    except ImportError:
+        # oauthlib not present (test env stub etc.) — skip.
+        pass
+
     @app.errorhandler(HTTPException)
     def handle_http_exception(e: HTTPException) -> Any:
         """Werkzeug's HTTPException covers 4xx/5xx that the framework
