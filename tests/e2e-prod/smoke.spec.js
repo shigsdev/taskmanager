@@ -278,6 +278,17 @@ test.describe("Prod smoke — feature surfaces", () => {
         expect(text.includes(fixed)).toBe(true);
     });
 
+    test("apiFetch handles stale-tab fetch failure (#112)", async ({ page }) => {
+        // Stale-tab "Failed to fetch" recovery: assert apiFetch uses
+        // redirect:"manual" + auto-retries on TypeError. Regression
+        // catches a future revert of the recovery wiring.
+        const appJs = await page.request.get("/static/app.js");
+        const text = await appJs.text();
+        expect(text).toContain('redirect: "manual"');
+        expect(text).toContain("opaqueredirect");
+        expect(text).toContain("_retried");
+    });
+
     test("visibilitychange handler also triggers SW update check (#111)", async ({ page }) => {
         // Long-lived tabs miss new deploys because browsers re-poll
         // /sw.js at most every ~24h. PR46 wires reg.update() into the

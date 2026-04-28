@@ -81,10 +81,61 @@ _loadFilterPrefs();
 // --- API helpers -------------------------------------------------------------
 
 async function apiFetch(url, opts = {}) {
-    const resp = await fetch(url, {
-        headers: { "Content-Type": "application/json", ...opts.headers },
-        ...opts,
-    });
+    // PR47 #112: stale-tab fetch failure recovery. Several causes can
+    // make the FIRST fetch on a long-idle tab throw "TypeError:
+    // Failed to fetch":
+    //  (a) Mobile browser killed the page's network connection during
+    //      tab suspension; first wake-up fetch dies before the
+    //      connection is re-established.
+    //  (b) Service worker controller went stale during sleep; first
+    //      fetch through the SW rejects before the SW rebinds.
+    //  (c) Flask OAuth session expired (24h sliding) — redirect to
+    //      /login/google → cross-origin → browser blocks.
+    // We can't reliably distinguish them from JS, so the recovery is
+    // the same: prompt to retry once, then auto-retry. If that also
+    // fails, offer to reload the page (which re-establishes auth +
+    // SW + network in one shot).
+    let resp;
+    try {
+        resp = await fetch(url, {
+            headers: { "Content-Type": "application/json", ...opts.headers },
+            // redirect:"manual" so a session-expiry 302 returns an
+            // opaqueredirect we can see, instead of the browser
+            // following it cross-origin and throwing.
+            redirect: "manual",
+            ...opts,
+        });
+    } catch (err) {
+        // Auto-retry once before bothering the user — covers the (a)
+        // and (b) "stale-tab first-wake" classes, which usually
+        // succeed on the second attempt because the connection /
+        // SW rebound by then.
+        if (err && err.name === "TypeError" && !opts._retried) {
+            await new Promise((r) => setTimeout(r, 250));
+            return apiFetch(url, { ...opts, _retried: true });
+        }
+        // Second failure → ask the user to reload (re-runs OAuth +
+        // re-registers SW + opens fresh connections).
+        // eslint-disable-next-line no-alert
+        if (confirm(
+            "Network request failed (this can happen on a tab that's been " +
+            "idle for a while). Reload the page?"
+        )) {
+            location.reload();
+        }
+        throw err;
+    }
+    // redirect:"manual" returns opaqueredirect when the server 302s
+    // (most often: expired OAuth session redirecting to /login/google).
+    if (resp.type === "opaqueredirect" || resp.status === 0) {
+        // eslint-disable-next-line no-alert
+        if (confirm(
+            "Your session may have expired. Reload to sign in again?"
+        )) {
+            location.reload();
+        }
+        throw new Error("Session expired — please reload");
+    }
     if (resp.status === 204) return null;
     if (!resp.ok) {
         const body = await resp.json().catch(() => ({}));
