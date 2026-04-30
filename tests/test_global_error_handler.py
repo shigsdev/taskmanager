@@ -154,7 +154,7 @@ class TestDigestSendgridErrorPropagation:
         monkeypatch.setattr("sendgrid.SendGridAPIClient.send", _raise_sg_error)
 
         try:
-            _sendgrid_send("fake-key", "from@x", "to@x", "Subject", "Body")
+            _sendgrid_send("fake-key", "from@x", "to@x", "Subject", "Body", "<p>Body</p>")
         except EgressError as e:
             msg = str(e)
             assert "SendGrid" in msg

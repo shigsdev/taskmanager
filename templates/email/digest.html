@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Task Digest — {{ day_str }}</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,Cantarell,'Helvetica Neue',Arial,sans-serif;color:#1f2937;-webkit-text-size-adjust:100%;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f5;padding:24px 12px;">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;">
+
+        <!-- Header -->
+        <tr>
+          <td style="padding:20px 24px;border-bottom:1px solid #e5e7eb;">
+            <div style="font-size:18px;font-weight:600;color:#111827;line-height:1.2;">Task Digest</div>
+            <div style="font-size:13px;color:#6b7280;margin-top:2px;">{{ day_str }}</div>
+          </td>
+        </tr>
+
+        <!-- Overdue (first; only if any) -->
+        {% if overdue %}
+        <tr>
+          <td style="padding:18px 24px 8px;border-left:4px solid #dc2626;background:#fef2f2;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#b91c1c;">Overdue · {{ overdue|length }}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 24px 16px;border-left:4px solid #dc2626;background:#fef2f2;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              {% for t in overdue %}
+              <tr>
+                <td style="padding:8px 0;border-top:1px solid #fee2e2;font-size:14px;line-height:1.4;color:#1f2937;">
+                  <div style="font-weight:500;">{{ t.title }}</div>
+                  <div style="font-size:12px;color:#991b1b;margin-top:2px;">due {{ t.due_date_pretty }}{% if t.project %} · {{ t.project }}{% endif %}{% if t.goal %} · Goal: {{ t.goal }}{% endif %}</div>
+                </td>
+              </tr>
+              {% endfor %}
+            </table>
+          </td>
+        </tr>
+        {% endif %}
+
+        <!-- Today -->
+        <tr>
+          <td style="padding:18px 24px 8px;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#374151;">Today · {{ today|length }}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 24px 16px;">
+            {% if today %}
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              {% for t in today %}
+              <tr>
+                <td style="padding:8px 0;border-top:1px solid #f3f4f6;font-size:14px;line-height:1.4;color:#1f2937;">
+                  <div style="font-weight:500;">{{ t.title }}{% if t.due_today %} <span style="font-size:11px;font-weight:600;color:#b45309;background:#fef3c7;padding:1px 6px;border-radius:10px;margin-left:4px;">due today</span>{% endif %}</div>
+                  {% if t.project or t.goal %}
+                  <div style="font-size:12px;color:#6b7280;margin-top:2px;">{% if t.project %}{{ t.project }}{% endif %}{% if t.project and t.goal %} · {% endif %}{% if t.goal %}Goal: {{ t.goal }}{% endif %}</div>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </table>
+            {% else %}
+            <div style="font-size:14px;color:#9ca3af;font-style:italic;">No tasks for today.</div>
+            {% endif %}
+          </td>
+        </tr>
+
+        <!-- Also due today (other tiers) -->
+        {% if due_today %}
+        <tr>
+          <td style="padding:18px 24px 8px;border-top:1px solid #e5e7eb;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#374151;">Also due today · {{ due_today|length }}</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:2px;">From other tiers</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 24px 16px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              {% for t in due_today %}
+              <tr>
+                <td style="padding:8px 0;border-top:1px solid #f3f4f6;font-size:14px;line-height:1.4;color:#1f2937;">
+                  <div style="font-weight:500;">{{ t.title }}</div>
+                  {% if t.project or t.goal %}
+                  <div style="font-size:12px;color:#6b7280;margin-top:2px;">{% if t.project %}{{ t.project }}{% endif %}{% if t.project and t.goal %} · {% endif %}{% if t.goal %}Goal: {{ t.goal }}{% endif %}</div>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </table>
+          </td>
+        </tr>
+        {% endif %}
+
+        <!-- Goals active today -->
+        {% if goals_today %}
+        <tr>
+          <td style="padding:18px 24px 8px;border-top:1px solid #e5e7eb;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#374151;">Goals active today</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 24px 16px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              {% for g in goals_today %}
+              <tr>
+                <td style="padding:6px 0;font-size:14px;line-height:1.4;color:#1f2937;">
+                  <span style="font-weight:500;">{{ g.title }}</span>
+                  <span style="font-size:12px;color:#6b7280;"> · {{ g.category }} · {{ g.count }} {% if g.count == 1 %}task{% else %}tasks{% endif %}</span>
+                </td>
+              </tr>
+              {% endfor %}
+            </table>
+          </td>
+        </tr>
+        {% endif %}
+
+        <!-- Stats row -->
+        <tr>
+          <td style="padding:16px 24px;border-top:1px solid #e5e7eb;background:#f9fafb;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="font-size:12px;color:#6b7280;padding:3px 0;">Tomorrow</td>
+                <td style="font-size:13px;color:#111827;font-weight:600;text-align:right;padding:3px 0;">{{ tomorrow_count }} {% if tomorrow_count == 1 %}task{% else %}tasks{% endif %}</td>
+              </tr>
+              <tr>
+                <td style="font-size:12px;color:#6b7280;padding:3px 0;">This week remaining</td>
+                <td style="font-size:13px;color:#111827;font-weight:600;text-align:right;padding:3px 0;">{{ week_count }} {% if week_count == 1 %}task{% else %}tasks{% endif %}</td>
+              </tr>
+              <tr>
+                <td style="font-size:12px;color:#6b7280;padding:3px 0;">Past 7 days</td>
+                <td style="font-size:13px;color:#111827;font-weight:600;text-align:right;padding:3px 0;">{{ completed_recent }} done · {{ cancelled_recent }} cancelled</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- CTA -->
+        {% if app_url %}
+        <tr>
+          <td align="center" style="padding:20px 24px 24px;">
+            <a href="{{ app_url }}" style="display:inline-block;padding:10px 20px;background:#111827;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">Open Task Manager</a>
+          </td>
+        </tr>
+        {% endif %}
+
+        <!-- Footer -->
+        <tr>
+          <td style="padding:16px 24px;border-top:1px solid #e5e7eb;text-align:center;">
+            <div style="font-size:11px;color:#9ca3af;">Sent by your Task Manager.</div>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

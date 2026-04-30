@@ -204,6 +204,143 @@ class TestDigestContent:
         assert "Sent by your Task Manager" in body
 
 
+# --- HTML body ----------------------------------------------------------------
+
+
+class TestDigestHtml:
+    """The digest now ships as multipart HTML + plain text. The HTML body
+    is rendered via Jinja (templates/email/digest.html); these tests
+    check that section data lands in the right places and that user-
+    supplied content is HTML-escaped (Jinja autoescape, not raw)."""
+
+    def test_html_contains_date_header(self, app):
+        from digest_service import build_digest_html
+
+        with app.app_context():
+            html = build_digest_html()
+        assert "Task Digest" in html
+        today_str = date.today().strftime("%A, %B %d, %Y")
+        assert today_str in html
+
+    def test_html_includes_today_task(self, app):
+        from digest_service import build_digest_html
+
+        with app.app_context():
+            _make_task(title="Morning standup", tier=Tier.TODAY)
+            html = build_digest_html()
+        assert "Morning standup" in html
+        assert "<html" in html.lower()
+
+    def test_html_includes_overdue_section(self, app):
+        from digest_service import build_digest_html
+
+        with app.app_context():
+            _make_task(
+                title="Overdue thing",
+                tier=Tier.BACKLOG,
+                due_date=date.today() - timedelta(days=2),
+            )
+            html = build_digest_html()
+        assert "Overdue" in html
+        assert "Overdue thing" in html
+
+    def test_html_escapes_malicious_title(self, app):
+        """Jinja autoescape must convert HTML in task titles to entities,
+        otherwise a crafted title could inject markup into the email."""
+        from digest_service import build_digest_html
+
+        with app.app_context():
+            _make_task(title="<script>evil()</script>", tier=Tier.TODAY)
+            html = build_digest_html()
+        assert "<script>evil" not in html
+        assert "&lt;script&gt;evil" in html
+
+    def test_html_overdue_appears_before_today(self, app):
+        """Reorder per feature design: most urgent items at the top."""
+        from digest_service import build_digest_html
+
+        with app.app_context():
+            _make_task(
+                title="Overdue X",
+                tier=Tier.BACKLOG,
+                due_date=date.today() - timedelta(days=3),
+            )
+            _make_task(title="Today Y", tier=Tier.TODAY)
+            html = build_digest_html()
+        assert html.index("Overdue X") < html.index("Today Y")
+
+    def test_html_cta_uses_app_url_when_set(self, app, monkeypatch):
+        from digest_service import build_digest_html
+
+        monkeypatch.setenv("APP_URL", "https://example.com/app")
+        with app.app_context():
+            html = build_digest_html()
+        assert 'href="https://example.com/app"' in html
+
+    def test_html_cta_omitted_when_app_url_unset(self, app, monkeypatch):
+        from digest_service import build_digest_html
+
+        monkeypatch.delenv("APP_URL", raising=False)
+        with app.app_context():
+            html = build_digest_html()
+        assert "Open Task Manager" not in html
+
+
+class TestDigestPlainTextOrder:
+    """Plain-text digest reorders Overdue ahead of Today (mirrors HTML)."""
+
+    def test_overdue_section_appears_before_today_section(self, app):
+        from digest_service import build_digest
+
+        with app.app_context():
+            _make_task(
+                title="Old report",
+                tier=Tier.BACKLOG,
+                due_date=date.today() - timedelta(days=4),
+            )
+            _make_task(title="Today work", tier=Tier.TODAY)
+            body = build_digest()
+        assert body.index("OVERDUE") < body.index("TODAY'S TASKS")
+
+
+class TestDigestMultipart:
+    """send_digest must attach BOTH text/plain and text/html parts so
+    HTML clients see the styled email and plain-text clients still get
+    a usable digest."""
+
+    def test_send_attaches_both_html_and_plain(self, app, monkeypatch):
+        from digest_service import send_digest
+
+        monkeypatch.setenv("SENDGRID_API_KEY", "fake-key")
+        captured = {}
+
+        def _capture(api_key, from_email, to_email, subject, body_text, body_html):  # noqa: ARG001
+            captured["body_text"] = body_text
+            captured["body_html"] = body_html
+            return True
+
+        with (
+            app.app_context(),
+            patch("digest_service._sendgrid_send", side_effect=_capture),
+        ):
+            send_digest(to_email="test@example.com")
+
+        assert "TASK DIGEST" in captured["body_text"]
+        assert "<html" in captured["body_html"].lower()
+        assert "Task Digest" in captured["body_html"]
+
+
+class TestDigestPreviewHtml:
+    """GET /api/digest/preview?format=html returns rendered HTML."""
+
+    def test_html_preview_returns_text_html(self, authed_client):
+        resp = authed_client.get("/api/digest/preview?format=html")
+        assert resp.status_code == 200
+        assert resp.mimetype == "text/html"
+        assert b"<html" in resp.data.lower()
+        assert b"Task Digest" in resp.data
+
+
 # --- Sanitization -------------------------------------------------------------
 
 
@@ -261,7 +398,7 @@ class TestSendDigest:
             app.app_context(),
             patch("digest_service._sendgrid_send", return_value=True),
         ):
-            result = send_digest(to_email="test@example.com", body="Test")
+            result = send_digest(to_email="test@example.com", body_text="Test")
         assert result is True
 
     def test_send_returns_false_without_api_key(self, app, monkeypatch):
@@ -270,7 +407,7 @@ class TestSendDigest:
         monkeypatch.delenv("SENDGRID_API_KEY", raising=False)
 
         with app.app_context():
-            result = send_digest(to_email="test@example.com", body="Test")
+            result = send_digest(to_email="test@example.com", body_text="Test")
         assert result is False
 
     def test_send_propagates_error_instead_of_returning_false(self, app, monkeypatch):
@@ -291,7 +428,7 @@ class TestSendDigest:
             ),
         ):
             try:
-                send_digest(to_email="test@example.com", body="Test")
+                send_digest(to_email="test@example.com", body_text="Test")
             except Exception as e:
                 assert "Network error" in str(e)
             else:
