@@ -183,14 +183,15 @@ def confirm(email: str):  # noqa: ARG001
         return jsonify({"error": "candidates must be a list"}), 422
 
     # #67 (2026-04-26): split candidates by route. Tasks go to the
-    # existing voice creator; goals route through the import-goals
-    # creator (already supports voice as a source). Projects bulk-
-    # creation is queued for #80 — for now they're created as tasks
-    # with "(project) " prefix so the user doesn't lose data, and a
-    # warning is included in the response.
+    # voice task creator; goals route through create_goals_from_import;
+    # projects route through create_projects_from_import (PR61: previously
+    # this branch crammed projects into task_candidates with a "(project) "
+    # title prefix because #80 hadn't shipped — but #80 has shipped, so
+    # every dictated project was silently becoming a junk task with
+    # "(project)" in the title).
     task_candidates = []
     goal_candidates = []
-    project_fallback_count = 0
+    project_candidates = []
     skipped_empty = 0  # PR24 TD-2: surface silent skips back to the user
     for c in candidates:
         if not isinstance(c, dict):
@@ -214,11 +215,15 @@ def confirm(email: str):  # noqa: ARG001
                 "included": c.get("included", True),
             })
         elif route == "project":
-            # Defer project creation until #80 ships the bulk endpoint.
-            project_fallback_count += 1
-            task_candidates.append({
-                **c,
-                "title": "(project) " + title,
+            # PR61: route through create_projects_from_import. The voice
+            # classify path doesn't surface project type/status/color, so
+            # let create_projects_from_import default everything (work +
+            # not_started + per-type color). The user can edit afterward.
+            project_candidates.append({
+                "name": title,
+                "type": c.get("type") if c.get("type") in ("work", "personal") else "work",
+                "status": "not_started",
+                "included": c.get("included", True),
             })
         else:
             task_candidates.append(c)
@@ -230,8 +235,15 @@ def confirm(email: str):  # noqa: ARG001
         from import_service import create_goals_from_import
         goals_created = create_goals_from_import(goal_candidates, source="voice_goal")
 
+    projects_created = []
+    if project_candidates:
+        from import_service import create_projects_from_import
+        projects_created = create_projects_from_import(
+            project_candidates, source="voice_project"
+        )
+
     response = {
-        "created": len(tasks) + len(goals_created),
+        "created": len(tasks) + len(goals_created) + len(projects_created),
         "tasks": [
             {"id": str(t.id), "title": t.title, "tier": t.tier.value}
             for t in tasks
@@ -240,12 +252,11 @@ def confirm(email: str):  # noqa: ARG001
             {"id": str(g.id), "title": g.title, "category": g.category.value}
             for g in goals_created
         ],
+        "projects": [
+            {"id": str(p.id), "name": p.name, "type": p.type.value}
+            for p in projects_created
+        ],
     }
-    if project_fallback_count > 0:
-        response["warning"] = (
-            f"{project_fallback_count} project candidate(s) created as tasks "
-            f"with '(project) ' prefix — bulk project creation lands with #80."
-        )
     if skipped_empty > 0:
         existing = response.get("warning", "")
         msg = (

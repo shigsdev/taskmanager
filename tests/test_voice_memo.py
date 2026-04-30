@@ -438,6 +438,54 @@ class TestVoiceConfirm:
         )
         assert resp.status_code == 422
 
+    def test_project_route_creates_real_projects(self, client, monkeypatch, app):
+        """PR61 audit fix #1: voice candidates with route=='project' used
+        to be stuffed into task_candidates with a literal '(project) '
+        prefix because #80 hadn't shipped yet. #80 (create_projects_from_import)
+        DID ship, but this branch never got updated — so every dictated
+        project silently became a junk task. Now route=='project' lands
+        through create_projects_from_import, producing real Project rows.
+        """
+        _bypass_auth(monkeypatch)
+
+        resp = client.post(
+            "/api/voice-memo/confirm",
+            json={
+                "candidates": [
+                    {
+                        "title": "Portal redesign",
+                        "route": "project",
+                        "type": "work",
+                        "included": True,
+                    },
+                    {
+                        "title": "Buy milk",
+                        "route": "task",
+                        "type": "work",
+                        "included": True,
+                    },
+                ]
+            },
+        )
+        body = resp.get_json()
+        assert resp.status_code == 201
+        # 1 project + 1 task — no fake "(project) Portal redesign" task.
+        assert body["created"] == 2
+        assert len(body["projects"]) == 1
+        assert body["projects"][0]["name"] == "Portal redesign"
+        assert body["projects"][0]["type"] == "work"
+        assert len(body["tasks"]) == 1
+        assert body["tasks"][0]["title"] == "Buy milk"
+        # No leftover "(project) " warning either.
+        assert "warning" not in body or "(project)" not in body.get("warning", "")
+
+        # Verify a real Project row landed in DB.
+        from models import Project, db
+        with app.app_context():
+            projects = db.session.query(Project).filter_by(name="Portal redesign").all()
+            assert len(projects) == 1
+            assert projects[0].is_active is True
+
     def test_empty_title_is_skipped_and_warned(self, client, monkeypatch):
         """PR24 TD-2: candidates with an empty title (e.g. user said
         "goal:" with nothing after it) used to be silently dropped by
