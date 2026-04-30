@@ -588,25 +588,40 @@ def bulk_update_tasks(
           ops are best-effort by design — a partial failure shouldn't
           undo the successes.
 
+    PR70 perf #8: previously each call to ``update_task`` ran its own
+    ``db.session.commit()`` — 200 task ids = 200 fsync round-trips to
+    Postgres (~2-5 seconds on Railway). Now wrapped in nested
+    SAVEPOINTs so partial failures still roll back per-task without
+    affecting the rest, but the OUTER transaction commits ONCE at the
+    end. Same per-task error reporting + same partial-progress
+    semantics as before, just one fsync instead of N.
+
     Why not run inside a single transaction with rollback-on-any-error:
     a typo in `updates` would invalidate the entire batch with no UI
-    way to know which task triggered it. Per-task try/except gives
+    way to know which task triggered it. Per-task SAVEPOINT gives
     the user a precise error report and keeps the partial progress.
     """
     updated = 0
     not_found: list[str] = []
     errors: list[dict] = []
     for tid in task_ids:
+        # Per-task SAVEPOINT so a failure on one row doesn't poison
+        # the outer transaction. ``update_task`` calls ``db.session.commit()``
+        # on success — that "commit" actually closes the savepoint
+        # because we're inside a begin_nested block; the outer txn is
+        # still open. SQLAlchemy 2.x calls this RELEASE SAVEPOINT semantics.
         try:
-            task = update_task(tid, dict(updates))
+            with db.session.begin_nested():
+                task = update_task(tid, dict(updates))
         except ValidationError as e:
             errors.append({"id": str(tid), "field": e.field, "message": str(e)})
-            db.session.rollback()
             continue
         if task is None:
             not_found.append(str(tid))
             continue
         updated += 1
+    # Single fsync at the end. If everything failed, this is a no-op.
+    db.session.commit()
     return {
         "updated": updated,
         "not_found": not_found,

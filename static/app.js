@@ -630,6 +630,17 @@ function renderDayStrip() {
 
 function renderBoard() {
     renderDayStrip();
+    // PR70 perf #4: was running filteredTasks() once per tier (7 tiers ×
+    // search/project/goal/view filters over allTasks every iteration).
+    // With 500 tasks that was 3500 string comparisons per render. Compute
+    // ONCE here, bucket by tier, look up O(1) inside the loop.
+    const filtered = filteredTasks();
+    const byTier = new Map();
+    for (const t of filtered) {
+        const bucket = byTier.get(t.tier);
+        if (bucket) bucket.push(t);
+        else byTier.set(t.tier, [t]);
+    }
     for (const tier of TIER_ORDER) {
         // #79: refresh the date / date-range below each header on every
         // board render. Cheap, idempotent.
@@ -637,7 +648,7 @@ function renderBoard() {
 
         const list = document.querySelector(`.task-list[data-tier="${tier}"]`);
         if (!list) continue;
-        const tasks = filteredTasks().filter((t) => t.tier === tier);
+        const tasks = byTier.get(tier) || [];
         // For day-grouped tiers (#32), check whether we have previews to
         // render even if there are zero real tasks — otherwise a week
         // with only recurring previews falls through to the empty-state
