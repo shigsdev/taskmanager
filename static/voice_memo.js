@@ -446,8 +446,14 @@
         row.appendChild(typeSel);
 
         // #36: tier dropdown. Options mirror _VOICE_VALID_TIERS on the
-        // backend (inbox / today / tomorrow / this_week). Anything else
-        // would have been coerced to "inbox" server-side.
+        // backend (inbox / today / tomorrow / this_week / next_week /
+        // backlog). Anything else would have been coerced to "inbox"
+        // server-side. #137 Sub-PR B (PR73) added next_week + backlog
+        // — users dictating "put it in next week" or "backlog this"
+        // previously lost the tier choice both at parse time AND in
+        // the review UI dropdown. "freezer" is deliberately omitted —
+        // it's a parking lot the user explicitly opts into via the
+        // detail panel, not something to auto-assign from voice.
         const tierSel = document.createElement("select");
         tierSel.className = "voice-candidate-tier";
         [
@@ -455,6 +461,8 @@
             ["today", "Today"],
             ["tomorrow", "Tomorrow"],
             ["this_week", "This Week"],
+            ["next_week", "Next Week"],
+            ["backlog", "Backlog"],
         ].forEach(([v, label]) => {
             const opt = document.createElement("option");
             opt.value = v;

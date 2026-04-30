@@ -579,12 +579,57 @@ class TestVoiceNormaliser:
 
     def test_coerces_unknown_tier_to_inbox(self):
         from scan_service import _normalise_voice_candidates
+        # #137 Sub-PR B (PR73): "next_week" + "backlog" are now valid;
+        # only truly bogus values + the deliberately-omitted "freezer"
+        # should still coerce to inbox.
         result = _normalise_voice_candidates([
-            {"title": "x", "tier": "next_week"},  # valid enum but not in _VOICE_VALID_TIERS
+            {"title": "x", "tier": "freezer"},  # deliberately omitted
             {"title": "y", "tier": "bogus"},
         ])
         assert result[0]["tier"] == "inbox"
         assert result[1]["tier"] == "inbox"
+
+    def test_accepts_next_week_tier(self):
+        """#137 Sub-PR B: 'next_week' is now a valid voice tier
+        (was previously coerced to inbox, losing the user's intent)."""
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates([
+            {"title": "Plan Q2 review", "tier": "next_week"},
+        ])
+        assert result[0]["tier"] == "next_week"
+
+    def test_accepts_backlog_tier(self):
+        """#137 Sub-PR B: 'backlog' is now a valid voice tier — users
+        dictating 'backlog this' or 'someday' map to backlog instead
+        of being silently demoted to inbox."""
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates([
+            {"title": "Read that book", "tier": "backlog"},
+        ])
+        assert result[0]["tier"] == "backlog"
+
+    def test_freezer_tier_still_coerced(self):
+        """#137 Sub-PR B: 'freezer' is deliberately NOT auto-assignable
+        from voice — it's a parking lot the user explicitly opts into
+        via the detail panel."""
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates([
+            {"title": "x", "tier": "freezer"},
+        ])
+        assert result[0]["tier"] == "inbox"
+
+    def test_voice_valid_tiers_set_membership(self):
+        """#137 Sub-PR B: contract test — guards against accidental
+        widening (e.g. someone adds "freezer" without thinking through
+        the parking-lot UX) or accidental narrowing (a regression that
+        re-removes next_week / backlog)."""
+        from scan_service import _VOICE_VALID_TIERS
+        expected = {
+            "inbox", "today", "tomorrow",
+            "this_week", "next_week", "backlog",
+        }
+        assert expected == _VOICE_VALID_TIERS
+        assert "freezer" not in _VOICE_VALID_TIERS
 
     def test_validates_due_date_format(self):
         from scan_service import _normalise_voice_candidates

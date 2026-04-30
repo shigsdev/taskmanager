@@ -436,11 +436,17 @@ Each item must be a JSON object with these keys:
   (meeting, project, deadline, standup, PR, report, client) → "work";
   personal keywords (family, groceries, dentist, workout, bills,
   chores) → "personal". Default to "personal" if unclear.
-- tier: one of "inbox", "today", "tomorrow", "this_week".
+- tier: one of "inbox", "today", "tomorrow", "this_week",
+  "next_week", "backlog".
   * "today" if the speaker says today / now / ASAP / urgent
   * "tomorrow" if they say tomorrow / next day
   * "this_week" if they mention a specific weekday within the next
     6 days (e.g. "by Friday", "on Thursday") OR say "this week"
+  * "next_week" if they say "next week" / "the week after" / a
+    weekday more than 6 days out (e.g. "next Tuesday", "a week
+    from Thursday")
+  * "backlog" if they say "backlog" / "someday" / "eventually" /
+    "no rush" / "when I get time" / "next month" or further out
   * "inbox" (default) for everything else — no urgency specified
 - due_date: ISO date string "YYYY-MM-DD" if the speaker mentioned a
   specific calendar date, OR null. Resolve relative references
@@ -606,7 +612,12 @@ def _call_claude_api_voice(
 # lists gets coerced to the default — guards against hallucinated
 # tier/type values without crashing the UI downstream.
 _VOICE_VALID_TYPES = {"work", "personal"}
-_VOICE_VALID_TIERS = {"inbox", "today", "tomorrow", "this_week"}
+_VOICE_VALID_TIERS = {"inbox", "today", "tomorrow", "this_week", "next_week", "backlog"}
+# #137 Sub-PR B (PR73): added "next_week" + "backlog" — users dictating
+# "put it in next week" or "backlog this" had the tier silently coerced
+# to "inbox" (matched the user's "missing categories" report). "freezer"
+# is deliberately omitted — it's a parking lot the user explicitly opts
+# into via the detail panel, not something to auto-assign from voice.
 
 
 def _normalise_voice_candidates(
