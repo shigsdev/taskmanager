@@ -47,51 +47,95 @@ _LEVEL_RANK = {
 
 # --- Debug token auth --------------------------------------------------------
 #
-# The /api/debug/* endpoints accept two auth mechanisms:
-#   1. Normal OAuth (login_required) — for the human developer in a browser
-#   2. X-Debug-Token header matching APP_DEBUG_TOKEN env var — for agents or
-#      tooling that need programmatic access to logs without a session cookie
+# Two-tier token model (PR65 / audit fix #126):
 #
-# Scope is intentionally narrow: the token ONLY works on routes guarded by
-# ``debug_auth_required``. Every token-authenticated access is logged as a
-# WARNING so the developer sees it in the same app_logs table that the token
-# is used to read. APP_DEBUG_TOKEN is optional — when unset, the token path
-# is disabled and only OAuth works.
+#   1. Normal OAuth (login_required) — for the human developer in a browser.
+#      Always trusted for everything.
+#
+#   2. X-Debug-Token header matching APP_DEBUG_TOKEN — READ-ONLY token, used
+#      by automation that needs to query /api/debug/logs without a session.
+#      Decorator: ``debug_auth_required``. The READ token explicitly does
+#      NOT authenticate mutating endpoints — if the read token leaks (Slack
+#      paste during a debug session, shell history grep) an attacker still
+#      cannot rewrite tier/goal/project assignments.
+#
+#   3. X-Debug-Token header matching APP_DEBUG_ADMIN_TOKEN — ADMIN token,
+#      required for mutating one-shot endpoints (/backfill/*, /realign-tiers).
+#      Decorator: ``debug_admin_auth_required``. Used rarely (typically once
+#      per migration), so the value can be rotated frequently. OAuth still
+#      passes both decorators — the split only constrains the token path.
+#
+# Both tokens are optional — when an env var is unset, the corresponding
+# token path is disabled and only OAuth works on those routes.
+#
+# Every token-authenticated access is logged as WARNING so the developer
+# sees it in the same app_logs table the read token is used to query.
+
+
+def _check_token_match(env_var: str) -> bool:
+    """Compare X-Debug-Token to ``os.environ[env_var]`` via constant-time.
+
+    Returns True iff the env var is set, the header is present, and the
+    two match exactly. Compared with ``hmac.compare_digest`` to prevent
+    timing attacks.
+    """
+    provided = request.headers.get("X-Debug-Token")
+    expected = os.environ.get(env_var)
+    if not (expected and provided):
+        return False
+    return hmac.compare_digest(
+        provided.encode("utf-8"), expected.encode("utf-8")
+    )
 
 
 def debug_auth_required(view):
-    """Allow either OAuth login OR a matching X-Debug-Token header.
+    """Allow OAuth OR a matching APP_DEBUG_TOKEN header (read-only scope).
 
-    Token is compared with ``hmac.compare_digest`` to prevent timing
-    attacks. When the token path is used, a WARNING log is emitted so
-    the developer can see every programmatic access in /api/debug/logs.
+    Use this for read-only debug endpoints (/api/debug/logs, /summary,
+    /client-error). APP_DEBUG_ADMIN_TOKEN ALSO satisfies this — admin
+    is strictly more privileged than read.
     """
     oauth_guarded = login_required(view)
 
     @wraps(view)
     def wrapped(*args, **kwargs):
-        provided = request.headers.get("X-Debug-Token")
-        expected = os.environ.get("APP_DEBUG_TOKEN")
-        if (
-            expected
-            and provided
-            and hmac.compare_digest(
-                provided.encode("utf-8"), expected.encode("utf-8")
-            )
+        if _check_token_match("APP_DEBUG_TOKEN") or _check_token_match(
+            "APP_DEBUG_ADMIN_TOKEN"
         ):
-            # False positive: the format string just labels the auth
-            # path. The %s args are method + path, NOT the token value.
-            # APP_DEBUG_TOKEN never appears in any log line (and would
-            # be redacted by scrub_sensitive's Bearer/x-api-key patterns
-            # if it did). Phrasing avoids the words "token" / "secret"
-            # in the format string to keep semgrep's logger-credential
-            # rule from misfiring.
             logger.warning(  # nosemgrep
                 "debug endpoint accessed via header-auth path: %s %s",
                 request.method,
                 request.path,
             )
             return view(*args, email="<debug-token>", **kwargs)
+        return oauth_guarded(*args, **kwargs)
+
+    return wrapped
+
+
+def debug_admin_auth_required(view):
+    """Allow OAuth OR a matching APP_DEBUG_ADMIN_TOKEN header.
+
+    Use this for mutating debug endpoints (/api/debug/backfill/*,
+    /api/debug/realign-tiers). The READ token (APP_DEBUG_TOKEN) does
+    NOT pass this gate — that's the whole point of the split.
+
+    PR65 / audit fix #126: prior to this split, APP_DEBUG_TOKEN
+    authenticated EVERY debug endpoint including state-rewriting
+    backfills. A leaked read token (paste into Slack, shell history)
+    would then authorize wholesale tier/goal/project rewrites.
+    """
+    oauth_guarded = login_required(view)
+
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if _check_token_match("APP_DEBUG_ADMIN_TOKEN"):
+            logger.warning(  # nosemgrep
+                "admin debug endpoint accessed via header-auth path: %s %s",
+                request.method,
+                request.path,
+            )
+            return view(*args, email="<admin-debug-token>", **kwargs)
         return oauth_guarded(*args, **kwargs)
 
     return wrapped
@@ -333,7 +377,7 @@ def client_error(email: str):  # noqa: ARG001
 
 
 @bp.post("/backfill/task-goal-from-project")
-@debug_auth_required
+@debug_admin_auth_required  # PR65 #126: write endpoint requires admin token
 def backfill_task_goal_from_project(email: str):  # noqa: ARG001
     """#77 (2026-04-26): one-shot — set every task's goal_id to its
     project's goal_id (overwriting whatever's there).
@@ -380,7 +424,7 @@ def backfill_task_goal_from_project(email: str):  # noqa: ARG001
 
 
 @bp.post("/realign-tiers")
-@debug_auth_required
+@debug_admin_auth_required  # PR65 #126: write endpoint requires admin token
 def realign_tiers(email: str):  # noqa: ARG001
     """#108 (PR43, 2026-04-27): one-shot — re-route every active task
     whose tier no longer matches its due_date.
@@ -400,7 +444,7 @@ def realign_tiers(email: str):  # noqa: ARG001
 
 
 @bp.post("/backfill/today-tomorrow-due-date")
-@debug_auth_required
+@debug_admin_auth_required  # PR65 #126: write endpoint requires admin token
 def backfill_today_tomorrow_due_date(email: str):  # noqa: ARG001
     """#100 (2026-04-26 PR29): set due_date on every active TODAY /
     TOMORROW task that's missing one. The same as the per-save auto-
@@ -454,7 +498,7 @@ def backfill_today_tomorrow_due_date(email: str):  # noqa: ARG001
 
 
 @bp.post("/backfill/project-colors")
-@debug_auth_required
+@debug_admin_auth_required  # PR65 #126: write endpoint requires admin token
 def backfill_project_colors(email: str):  # noqa: ARG001
     """#93 (2026-04-26): apply per-type default color (#66) to legacy
     projects that were created before PR3 and still carry the old

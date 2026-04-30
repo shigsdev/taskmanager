@@ -527,6 +527,69 @@ class TestDebugTokenAuth:
         resp = client.get("/api/debug/logs")
         assert resp.status_code in (302, 401, 403)
 
+
+class TestDebugAdminTokenSplit:
+    """PR65 / audit fix #126: split APP_DEBUG_TOKEN into READ-only and
+    ADMIN-only tokens. The READ token must NOT authenticate mutating
+    backfill / realign endpoints; only APP_DEBUG_ADMIN_TOKEN does."""
+
+    def test_read_token_blocked_on_mutating_backfill(self, client, monkeypatch):
+        """The classic leak scenario: APP_DEBUG_TOKEN is pasted into a
+        chat / shell history. With the split, the leaked read token still
+        cannot rewrite tier/goal/project assignments wholesale."""
+        monkeypatch.setenv("APP_DEBUG_TOKEN", "read-token-leaked")
+        monkeypatch.delenv("APP_DEBUG_ADMIN_TOKEN", raising=False)
+        # Try to use the read token on a mutating endpoint.
+        resp = client.post(
+            "/api/debug/backfill/project-colors",
+            headers={"X-Debug-Token": "read-token-leaked"},
+        )
+        # No OAuth session, read token doesn't gate this endpoint →
+        # should fall through to OAuth and redirect/401.
+        assert resp.status_code in (302, 401, 403)
+
+    def test_admin_token_grants_access_to_backfill(self, app, client, monkeypatch):
+        monkeypatch.setenv("APP_DEBUG_ADMIN_TOKEN", "admin-token-xyz")
+        resp = client.post(
+            "/api/debug/backfill/project-colors",
+            headers={"X-Debug-Token": "admin-token-xyz"},
+        )
+        # Endpoint runs (might be 200 or other success — either way NOT
+        # a 302/401/403 auth failure).
+        assert resp.status_code not in (302, 401, 403)
+
+    def test_admin_token_also_grants_read_access(self, client, monkeypatch):
+        """Admin is strictly more privileged than read — admin token
+        should ALSO satisfy the read-scoped decorator."""
+        monkeypatch.delenv("APP_DEBUG_TOKEN", raising=False)
+        monkeypatch.setenv("APP_DEBUG_ADMIN_TOKEN", "admin-token-xyz")
+        resp = client.get(
+            "/api/debug/logs",
+            headers={"X-Debug-Token": "admin-token-xyz"},
+        )
+        assert resp.status_code == 200
+
+    def test_admin_token_unset_blocks_backfill(self, client, monkeypatch):
+        """If APP_DEBUG_ADMIN_TOKEN is unset, no token can authorize
+        backfills via the header path."""
+        monkeypatch.delenv("APP_DEBUG_ADMIN_TOKEN", raising=False)
+        resp = client.post(
+            "/api/debug/backfill/project-colors",
+            headers={"X-Debug-Token": "anything"},
+        )
+        assert resp.status_code in (302, 401, 403)
+
+    def test_realign_tiers_requires_admin_token(self, client, monkeypatch):
+        """Same gate as the backfill endpoints — realign-tiers is a
+        sweep that re-routes every active task."""
+        monkeypatch.setenv("APP_DEBUG_TOKEN", "read-token-leaked")
+        monkeypatch.delenv("APP_DEBUG_ADMIN_TOKEN", raising=False)
+        resp = client.post(
+            "/api/debug/realign-tiers",
+            headers={"X-Debug-Token": "read-token-leaked"},
+        )
+        assert resp.status_code in (302, 401, 403)
+
     def test_token_access_is_logged(self, app, client, monkeypatch):
         """Every token-auth access should create a WARNING app_logs row."""
         # Install a handler manually (TESTING=True disables configure_logging)

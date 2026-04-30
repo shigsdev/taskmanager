@@ -108,7 +108,8 @@ All secrets live in the Railway dashboard — never committed to git.
 | `OPENAI_API_KEY` | OpenAI API key for Whisper voice-memo transcription. **Optional** — voice memo feature returns a clear error if unset, rest of app works fine. |
 | `APP_LOG_LEVEL` | Minimum level persisted to `app_logs` table (default `WARNING`). Set `INFO` to capture per-request summary rows. |
 | `APP_LOG_DISABLE` | If set to any truthy value, disables the DB log handler entirely. Useful only for debugging the logger itself. |
-| `APP_DEBUG_TOKEN` | Optional shared secret. If set, `/api/debug/logs` and `/api/debug/client-error` accept the `X-Debug-Token: <value>` header in lieu of OAuth — useful for agent / CI tooling that needs log access without a session cookie. Keep secret. Unset = OAuth-only access (default). |
+| `APP_DEBUG_TOKEN` | Optional shared secret — **READ-ONLY scope**. If set, `/api/debug/logs`, `/api/debug/summary`, and `/api/debug/client-error` accept the `X-Debug-Token: <value>` header in lieu of OAuth — useful for agent / CI tooling that needs log access without a session cookie. Does NOT authenticate mutating endpoints (see `APP_DEBUG_ADMIN_TOKEN`). Keep secret. Unset = OAuth-only access (default). |
+| `APP_DEBUG_ADMIN_TOKEN` | Optional shared secret — **ADMIN scope**. Required to authenticate mutating one-shot endpoints `/api/debug/backfill/*` and `/api/debug/realign-tiers` via the header path. The READ token does NOT pass this gate, so a leaked read token cannot rewrite tier/goal/project assignments. Admin token ALSO satisfies the read-scope decorator (admin ⊇ read). Use rarely — typically once per migration; rotate after each use. Unset = OAuth-only access (default). |
 
 ### Debug / logging endpoints
 
