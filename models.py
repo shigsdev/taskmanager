@@ -270,6 +270,18 @@ class Task(db.Model):
         Index("ix_tasks_batch_id", "batch_id"),
         Index("ix_tasks_parent_id", "parent_id"),
         Index("ix_tasks_recurring_task_id", "recurring_task_id"),
+        # PR68 perf #6: compound index for the cron paths
+        # (promote_due_today, realign_tiers, compute_previews_in_range
+        # collision check) — they all filter `WHERE due_date = X AND
+        # status = ACTIVE`. Pre-empts the long-tail seq-scan as the
+        # task table grows past ~10K rows.
+        Index("ix_tasks_due_date_status", "due_date", "status"),
+        # PR68 perf #7: compound index for review_service.stale_tasks
+        # — `WHERE status = ACTIVE AND (last_reviewed IS NULL OR
+        # last_reviewed <= cutoff)`. The OR-with-NULL defeats the
+        # plain status index for partial-index optimization; this
+        # compound covers both branches.
+        Index("ix_tasks_status_last_reviewed", "status", "last_reviewed"),
     )
 
 

@@ -10,6 +10,7 @@ from datetime import date, timedelta
 from dotenv import load_dotenv
 from flask import Flask, redirect, render_template, session, url_for
 from flask import jsonify as _jsonify
+from flask_compress import Compress
 from flask_dance.contrib.google import make_google_blueprint
 from flask_migrate import Migrate
 from flask_talisman import Talisman
@@ -244,6 +245,15 @@ def create_app(config: dict | None = None) -> Flask:
         # WARNING row from the banner lands in app_logs alongside future
         # bypass-served requests. No-op if the bypass is not active.
         log_bypass_startup_banner()
+
+    # --- Performance: gzip / brotli compression on responses ---
+    # PR68 perf #3: static/app.js is ~120KB uncompressed; cuts to ~35KB
+    # gzipped on every cold visit / cache-bump. Negligible CPU on every
+    # response (single-user app — never the bottleneck). Defaults compress
+    # text/javascript / text/css / application/json. Skipped under TESTING
+    # so test client responses keep their raw bytes.
+    if not app.config.get("TESTING"):
+        Compress(app)
 
     # --- Security: Talisman (HTTPS + headers) ---
     if not app.config.get("TESTING") and os.environ.get("FLASK_ENV") != "development":

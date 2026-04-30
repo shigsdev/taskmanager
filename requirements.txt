@@ -21,3 +21,7 @@ requests==2.33.0
 # triple-backtick ASCII diagrams and the threat-model table already
 # present in ARCHITECTURE.md. ADR-028.
 markdown==3.8.1
+# PR68 perf #3: gzip / brotli compression on responses. ~70% bandwidth
+# reduction on text/javascript + text/css + application/json. Tiny CPU
+# cost on each response (single-user app — never the bottleneck).
+flask-compress==1.24
