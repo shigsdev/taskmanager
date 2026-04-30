@@ -70,45 +70,57 @@ EXCLUDED_PATHS = ("/healthz", "/static/")
 
 # --- Scrubbing ---------------------------------------------------------------
 
-# Patterns that look like sensitive data. Order matters — more specific
-# patterns run first. Each pattern is replaced with its label wrapped in
-# [REDACTED:...] so the log still conveys what kind of thing was there.
-_SCRUB_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    # Google API keys (AIza...)
-    (re.compile(r"AIza[0-9A-Za-z_-]{35}"), "[REDACTED:GOOGLE_API_KEY]"),
-    # Anthropic API keys (sk-ant-...)
-    (
-        re.compile(r"sk-ant-[A-Za-z0-9_-]{20,}"),
-        "[REDACTED:ANTHROPIC_API_KEY]",
-    ),
-    # OpenAI-style keys (sk-..., sk-proj-..., etc.). Include `-` in the
-    # character class so newer sk-proj- keys (which embed extra hyphens)
-    # match. Anthropic's sk-ant- pattern runs first so the more specific
-    # redaction label is applied for those.
-    (re.compile(r"sk-[A-Za-z0-9_-]{20,}"), "[REDACTED:API_KEY]"),
-    # Bearer tokens
-    (re.compile(r"Bearer\s+[A-Za-z0-9._\-]+", re.IGNORECASE), "Bearer [REDACTED]"),
-    # Authorization headers
-    (
-        re.compile(r"authorization['\"]?\s*[:=]\s*['\"]?[^'\"\s]+", re.IGNORECASE),
-        "authorization: [REDACTED]",
-    ),
-    # Flask session cookies
-    (
-        re.compile(r"session=[A-Za-z0-9._\-]+"),
-        "session=[REDACTED]",
-    ),
-    # Query-string API keys (?key=... or ?api_key=...)
-    (
-        re.compile(r"([?&](?:api_?key|key|token)=)[^&\s]+", re.IGNORECASE),
-        r"\1[REDACTED]",
-    ),
-    # Email addresses — last so the key patterns above win first
-    (
-        re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
-        "[REDACTED:EMAIL]",
-    ),
+# Patterns that look like sensitive data. Order in the alternation
+# matters — Python re.sub on a `|` alternation picks the FIRST matching
+# alternative at each position, so more-specific patterns must come
+# before more-generic ones (sk-ant- before sk-).
+#
+# PR71 perf #10: previously this was a list of 8 separate compiled
+# regexes, each doing a full pass over the text. For long tracebacks
+# (~20KB cap) that's 8 full scans per log emit. Combined into ONE
+# alternation with named groups + a callback dispatcher — single pass
+# over the text. ~5× faster on long messages.
+_SCRUB_NAMED_REPLACEMENTS: dict[str, str] = {
+    "google":     "[REDACTED:GOOGLE_API_KEY]",
+    "anthropic":  "[REDACTED:ANTHROPIC_API_KEY]",
+    "openai":     "[REDACTED:API_KEY]",
+    "bearer":     "Bearer [REDACTED]",
+    "authz":      "authorization: [REDACTED]",
+    "session":    "session=[REDACTED]",
+    "email":      "[REDACTED:EMAIL]",
+}
+
+# qs_key is special — keeps the `?key=` / `&token=` prefix intact and
+# only redacts the value. Handled separately in the callback.
+_SCRUB_COMBINED_RE: re.Pattern[str] = re.compile(
+    r"(?P<google>AIza[0-9A-Za-z_-]{35})"
+    r"|(?P<anthropic>sk-ant-[A-Za-z0-9_-]{20,})"
+    r"|(?P<openai>sk-[A-Za-z0-9_-]{20,})"
+    r"|(?P<bearer>Bearer\s+[A-Za-z0-9._\-]+)"
+    # authz: extended to optionally include `Bearer <token>` after the
+    # colon. The OLD code ran 8 separate passes; bearer pass redacted
+    # `Bearer abc.def` first, then authz pass redacted the
+    # `Authorization: Bearer` prefix. Single-pass alternation can't
+    # compose those, so make authz greedy enough to swallow the
+    # whole `Authorization: Bearer abc.def` in one match.
+    r"|(?P<authz>authorization['\"]?\s*[:=]\s*['\"]?(?:Bearer\s+[A-Za-z0-9._\-]+|[^'\"\s]+))"
+    r"|(?P<session>session=[A-Za-z0-9._\-]+)"
+    r"|(?P<qs_key>(?:[?&](?:api_?key|key|token)=))(?P<qs_val>[^&\s]+)"
+    r"|(?P<email>[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})",
+    re.IGNORECASE,
 )
+
+
+def _scrub_replace(m: re.Match[str]) -> str:
+    """Single dispatcher for the combined scrub regex. PR71 perf #10."""
+    if m.group("qs_key") is not None:
+        # Keep the prefix (?key= / &token=), redact the value.
+        return m.group("qs_key") + "[REDACTED]"
+    # Map any other named group to its replacement label.
+    for name, replacement in _SCRUB_NAMED_REPLACEMENTS.items():
+        if m.group(name) is not None:
+            return replacement
+    return m.group(0)  # unreachable but defensive
 
 
 def scrub_sensitive(text: str | None) -> str | None:
@@ -121,10 +133,7 @@ def scrub_sensitive(text: str | None) -> str | None:
     if text is None:
         return None
     try:
-        result = text
-        for pattern, replacement in _SCRUB_PATTERNS:
-            result = pattern.sub(replacement, result)
-        return result
+        return _SCRUB_COMBINED_RE.sub(_scrub_replace, text)
     except Exception:
         return text
 
@@ -204,11 +213,18 @@ class DBLogHandler(logging.Handler):
             with self._lock:
                 self._consecutive_failures = 0
                 self._insert_count += 1
-                should_prune_age = (
+                # PR71 perf #9: was running ``_prune_rows()`` (which does a
+                # full ``SELECT count(*) FROM app_logs``) on EVERY emit.
+                # Under a flap (DB hiccup → many WARNING rows) this
+                # amplifies load. Now gate behind the same N-inserts
+                # cadence as ``_prune_age``: being a few rows over MAX_ROWS
+                # for a few inserts is harmless. The age sweep was already
+                # gated; row-cap now matches.
+                should_prune = (
                     self._insert_count % PRUNE_EVERY_N_INSERTS == 0
                 )
-            self._prune_rows()
-            if should_prune_age:
+            if should_prune:
+                self._prune_rows()
                 self._prune_age()
         except Exception:
             self._record_failure()

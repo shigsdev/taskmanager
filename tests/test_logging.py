@@ -300,8 +300,16 @@ class TestDBLogHandler:
         assert handler.is_disabled is False
 
     def test_row_cap_pruning(self, app, handler, monkeypatch):
-        """After exceeding MAX_ROWS the oldest rows get deleted."""
+        """After exceeding MAX_ROWS the oldest rows get deleted.
+
+        PR71 perf #9: row-cap prune is now gated behind
+        ``PRUNE_EVERY_N_INSERTS`` (was running on every emit, which
+        forced a SELECT count(*) on every WARNING+ row). Force the
+        gate down to 1 here so the test exercises the prune path
+        deterministically; production cadence is 50 inserts.
+        """
         monkeypatch.setattr(logging_service, "MAX_ROWS", 5)
+        monkeypatch.setattr(logging_service, "PRUNE_EVERY_N_INSERTS", 1)
         for i in range(8):
             handler.emit(_make_record(msg=f"msg {i}"))
 
