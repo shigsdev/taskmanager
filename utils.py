@@ -4,11 +4,39 @@ Centralizes common helpers to avoid duplication (per CLAUDE.md).
 """
 from __future__ import annotations
 
+import os
 import re
 import uuid
+from datetime import date, datetime
 from typing import Any
 
 from flask import jsonify
+
+
+def local_today_date() -> date:
+    """Return "today" in the user's configured timezone.
+
+    PR63 audit fix #128: Railway runs UTC, but "today" from the user's
+    POV follows ``DIGEST_TZ`` (default America/New_York). Using server
+    UTC would make late-evening (8pm+ ET) HTTP requests resolve "today"
+    as tomorrow's date, drifting recurring spawn previews, the review
+    queue stale-cutoff, and the ad-hoc digest preview. Same TZ
+    convention as the Tomorrow auto-roll cron (#27).
+
+    Originally lived as a private ``_local_today_date`` in task_service;
+    extracted here so the recurring / review / digest services can
+    share it without an inter-service circular import. task_service
+    still re-exports the old name as a thin alias for callers that
+    imported it directly.
+    """
+    try:
+        from zoneinfo import ZoneInfo
+        tz_name = os.environ.get("DIGEST_TZ", "America/New_York")
+        return datetime.now(ZoneInfo(tz_name)).date()
+    except Exception:  # noqa: BLE001
+        # ZoneInfo / tzdata unavailable → fall back to server local date.
+        # Not ideal on Railway-UTC, but better than crashing.
+        return date.today()
 
 
 class ValidationError(Exception):

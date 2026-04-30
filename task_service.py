@@ -5,9 +5,8 @@ All mutations commit on success. All validation failures raise
 """
 from __future__ import annotations
 
-import os
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -54,23 +53,11 @@ def _parse_checklist(value: Any) -> list:
 # --- Tier auto-fill helpers (#28) --------------------------------------------
 
 
-def _local_today_date() -> date:
-    """Return "today" in the user's configured timezone.
-
-    The server runs in UTC on Railway, but "today" from the user's POV
-    follows ``DIGEST_TZ`` (default America/New_York). Using server UTC
-    would make a 10pm-ET task land in tomorrow's Today-tier. Same TZ
-    convention as the Tomorrow auto-roll cron (#27), so behaviour is
-    self-consistent.
-    """
-    try:
-        from zoneinfo import ZoneInfo
-        tz_name = os.environ.get("DIGEST_TZ", "America/New_York")
-        return datetime.now(ZoneInfo(tz_name)).date()
-    except Exception:  # noqa: BLE001
-        # ZoneInfo / tzdata unavailable → fall back to server local date.
-        # Not ideal on Railway-UTC, but better than crashing.
-        return date.today()
+# PR63 audit fix #128: helper moved to utils.py so recurring/review/
+# digest services can share it without a circular import. Kept as a
+# thin alias here because external callers import the underscored name
+# directly (and removing it would be a churn-y refactor).
+from utils import local_today_date as _local_today_date  # noqa: E402, F401
 
 
 def _auto_fill_tier_due_date(task: Task, data: dict) -> None:

@@ -673,6 +673,54 @@ class TestMonthlyDateFrequency:
             result = tasks_due_today(target_date=date(2026, 5, 14))
             assert not any(rt.title == "Pay rent skip" for rt in result)
 
+    def test_day_of_month_31_clamps_to_last_day_in_short_months(self, app):
+        """PR63 audit fix #127: day_of_month=31 used to silently skip
+        Feb/Apr/Jun/Sep/Nov because no such day exists. Now clamps to
+        the last day of the month so monthly bills/rent reminders fire."""
+        from recurring_service import tasks_due_today
+
+        with app.app_context():
+            _make_recurring(
+                title="End-of-month backup",
+                frequency=RecurringFrequency.MONTHLY_DATE,
+                day_of_month=31,
+            )
+
+            # Feb 28 in 2026 (non-leap year) — last day of Feb
+            result = tasks_due_today(target_date=date(2026, 2, 28))
+            assert any(rt.title == "End-of-month backup" for rt in result), \
+                "day_of_month=31 must fire on Feb 28 (clamped to last day)"
+
+            # Apr 30 — last day of April
+            result = tasks_due_today(target_date=date(2026, 4, 30))
+            assert any(rt.title == "End-of-month backup" for rt in result), \
+                "day_of_month=31 must fire on Apr 30 (clamped to last day)"
+
+            # Earlier in Feb — must NOT fire
+            result = tasks_due_today(target_date=date(2026, 2, 27))
+            assert not any(rt.title == "End-of-month backup" for rt in result)
+
+            # In months that DO have 31, it fires on 31
+            result = tasks_due_today(target_date=date(2026, 5, 31))
+            assert any(rt.title == "End-of-month backup" for rt in result)
+            # And not earlier in those months
+            result = tasks_due_today(target_date=date(2026, 5, 30))
+            assert not any(rt.title == "End-of-month backup" for rt in result)
+
+    def test_day_of_month_29_in_non_leap_february_clamps_to_28(self, app):
+        """day_of_month=29 in non-leap-year Feb should fire on Feb 28."""
+        from recurring_service import tasks_due_today
+
+        with app.app_context():
+            _make_recurring(
+                title="29th of month",
+                frequency=RecurringFrequency.MONTHLY_DATE,
+                day_of_month=29,
+            )
+            # 2026 is not a leap year
+            result = tasks_due_today(target_date=date(2026, 2, 28))
+            assert any(rt.title == "29th of month" for rt in result)
+
     def test_create_monthly_date_via_api(self, authed_client):
         resp = authed_client.post(
             "/api/recurring",

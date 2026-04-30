@@ -69,8 +69,15 @@ def _build_digest_data(target_date: date | None = None) -> dict[str, Any]:
 
     Both the plain-text and HTML renderers consume this dict so they
     stay in lockstep.
+
+    PR63 audit fix #128: ``target_date or date.today()`` resolved to
+    server UTC, drifting late-evening (8pm+ ET) digest previews to
+    "tomorrow's" data. Now uses ``local_today_date`` (DIGEST_TZ) so
+    the ad-hoc /api/digest/preview returns same-wall-clock content
+    as the cron-fired digest.
     """
-    today = target_date or date.today()
+    from utils import local_today_date
+    today = target_date or local_today_date()
     day_str = today.strftime("%A, %B %d, %Y")
 
     all_active = list(db.session.scalars(
@@ -293,7 +300,8 @@ def send_digest(
         is missing. Raises EgressError on SendGrid HTTP failures (#50,
         ADR-031) so the global error handler can surface a useful message.
     """
-    today = target_date or date.today()
+    from utils import local_today_date
+    today = target_date or local_today_date()
     if subject is None:
         subject = f"Task Digest — {today.strftime('%A, %B %d')}"
     if body_text is None:

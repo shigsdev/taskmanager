@@ -6,7 +6,7 @@ import uuid
 
 from sqlalchemy import select
 
-from models import Project, ProjectPriority, ProjectStatus, ProjectType, db
+from models import Project, ProjectPriority, ProjectStatus, ProjectType, Task, db
 from utils import ValidationError  # noqa: F401 — re-exported for API layer
 from utils import parse_enum as _parse_enum
 from utils import parse_int as _parse_int
@@ -239,10 +239,25 @@ def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
 
 
 def delete_project(project_id: uuid.UUID) -> bool:
+    """Soft-delete a project and detach all tasks pointing at it.
+
+    PR63 audit fix #129: previously this only flipped ``is_active=False``,
+    leaving ``Task.project_id`` pointing at the now-inactive project.
+    Joinedload queries returned the dead project; the UI rendered phantom
+    project labels and ghost entries in the project filter dropdown. Now
+    we also null the foreign key on every Task referencing this project.
+    Goal cascade is unchanged (project deletion shouldn't drag a task off
+    its goal — the goal is independent intent).
+    """
     project = get_project(project_id)
     if project is None:
         return False
     project.is_active = False
+    # Detach orphaned tasks. Bulk update so we don't pull every Task into
+    # the session — there can be hundreds linked to a single project.
+    Task.query.filter_by(project_id=project.id).update(
+        {"project_id": None}, synchronize_session=False
+    )
     db.session.commit()
     return True
 

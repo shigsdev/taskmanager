@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import html.parser
-import ipaddress
-import socket
 import uuid
 
 from flask import Blueprint, jsonify, request
@@ -324,40 +322,16 @@ def url_preview(email: str):  # noqa: ARG001
         return jsonify({"error": "invalid url"}), 400
 
     # All SSRF defenses (DNS rebinding, redirect disable, IP allowlist)
-    # live in egress.safe_fetch_user_url — see docs/adr/006-ssrf-defense.md.
-    # safe_fetch_user_url returns None on any failure (including disallowed
-    # IPs), so we propagate that as title=None for the user-facing
-    # "couldn't fetch" path and reject loud-and-clear if the URL was
-    # never permitted to begin with.
-    from egress import safe_fetch_user_url
+    # live in egress — see docs/adr/006-ssrf-defense.md. PR63 audit fix
+    # #125: the route used to duplicate the IP-allowlist resolution loop
+    # to distinguish "private IP → loud 400" from "other failure → null
+    # title". Now both paths share `egress.is_user_url_allowed` for a
+    # single canonical resolution, eliminating the cosmetic TOCTOU
+    # window that existed between the two independent resolutions.
+    from egress import is_user_url_allowed, safe_fetch_user_url
 
-    # Quick pre-check: is the resolved IP allowed at all? We need to
-    # distinguish "URL was a private IP, reject with 400" from "fetch
-    # failed for some other reason, return null title". Re-resolve here
-    # to make that decision; egress.safe_fetch_user_url will resolve
-    # again but DNS responses are cached at the OS level.
-    try:
-        from urllib.parse import urlparse
-
-        hostname = urlparse(url).hostname
-        if not hostname:
-            return jsonify({"error": "invalid url"}), 400
-        resolved = socket.getaddrinfo(hostname, None)
-        if not resolved:
-            return jsonify({"error": "url not allowed"}), 400
-        for _, _, _, _, addr in resolved:
-            ip_obj = ipaddress.ip_address(addr[0])
-            if (
-                ip_obj.is_private
-                or ip_obj.is_loopback
-                or ip_obj.is_link_local
-                or ip_obj.is_reserved
-                or ip_obj.is_multicast
-                or ip_obj.is_unspecified
-            ):
-                return jsonify({"error": "url not allowed"}), 400
-    except (socket.gaierror, ValueError):
-        return jsonify({"title": None, "url": url})
+    if not is_user_url_allowed(url):
+        return jsonify({"error": "url not allowed"}), 400
 
     raw = safe_fetch_user_url(url)
     if raw is None:

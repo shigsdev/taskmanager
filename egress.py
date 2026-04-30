@@ -68,6 +68,43 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None  # disables redirect; caller sees the 3xx as final
 
 
+def is_user_url_allowed(url: str) -> bool:
+    """Return True iff the resolved IP(s) for ``url`` pass the SSRF allowlist.
+
+    PR63 audit fix #125: extracted from safe_fetch_user_url so callers
+    that need to distinguish "URL is in a forbidden network range, reject
+    with 400" from "fetch failed for some other reason, return null title"
+    can do so via a SINGLE canonical resolution path. Previously
+    tasks_api.url_preview duplicated the resolution loop; that left a
+    cosmetic TOCTOU window between the route's pre-check and
+    safe_fetch_user_url's re-resolution, and was a footgun if anyone
+    ever changed safe_fetch_user_url to trust a caller-supplied IP.
+
+    Returns False on:
+      - URL not http(s)
+      - Hostname missing or unresolvable
+      - ANY resolved IP in private/loopback/link-local/reserved/multicast/
+        unspecified ranges (defense against round-robin DNS where one
+        answer is safe and one isn't)
+    """
+    if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+        return False
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        resolved = socket.getaddrinfo(hostname, None)
+        if not resolved:
+            return False
+        for _, _, _, _, addr in resolved:
+            if _is_disallowed_ip(ipaddress.ip_address(addr[0])):
+                return False
+        return True
+    except (socket.gaierror, ValueError):
+        return False
+
+
 def safe_fetch_user_url(
     url: str,
     *,

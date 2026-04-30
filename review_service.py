@@ -12,11 +12,12 @@ chooses an action for each:
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from sqlalchemy import or_, select
 
 from models import Task, TaskStatus, Tier, db
+from utils import local_today_date
 
 
 def stale_tasks(*, stale_days: int = 7) -> list[Task]:
@@ -27,8 +28,12 @@ def stale_tasks(*, stale_days: int = 7) -> list[Task]:
     - It was last reviewed more than ``stale_days`` days ago.
 
     Only active tasks are returned (not deleted/archived).
+
+    PR63 audit fix #128: was ``date.today()`` (server UTC); switched
+    to ``local_today_date()`` (DIGEST_TZ) so the staleness cutoff
+    matches user wall-clock time.
     """
-    cutoff = date.today() - timedelta(days=stale_days)
+    cutoff = local_today_date() - timedelta(days=stale_days)
     stmt = (
         select(Task)
         .where(Task.status == TaskStatus.ACTIVE)
@@ -56,7 +61,7 @@ def review_task(task: Task, action: str) -> str:
     Raises:
         ValueError: If action is not recognized.
     """
-    today = date.today()
+    today = local_today_date()
 
     if action == "keep":
         task.last_reviewed = today

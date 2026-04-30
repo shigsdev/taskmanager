@@ -336,7 +336,17 @@ def _template_fires_on(rt: RecurringTask, target: date) -> bool:
         return weekday in (rt.days_of_week or [])
 
     if rt.frequency == RecurringFrequency.MONTHLY_DATE:
-        return target.day == rt.day_of_month
+        # PR63 audit fix #127: clamp to month-end. A user who picks
+        # day_of_month=31 (or 30, or 29) used to get silently skipped
+        # months — Feb has no 31st, so a "fires on the 31st" template
+        # never fired in February. Same for Apr/Jun/Sep/Nov when
+        # day_of_month=31. Now: if day_of_month exceeds the current
+        # month's last day, fire on the last day instead. Most natural
+        # semantics for monthly bills / rent / "end of month" reminders.
+        import calendar
+        last_day = calendar.monthrange(target.year, target.month)[1]
+        effective_day = min(rt.day_of_month, last_day)
+        return target.day == effective_day
 
     if rt.frequency == RecurringFrequency.MONTHLY_NTH_WEEKDAY:
         return (
@@ -348,8 +358,15 @@ def _template_fires_on(rt: RecurringTask, target: date) -> bool:
 
 
 def tasks_due_today(*, target_date: date | None = None) -> list[RecurringTask]:
-    """Return active recurring templates that should fire on the given date."""
-    today = target_date or date.today()
+    """Return active recurring templates that should fire on the given date.
+
+    PR63 audit fix #128: ``target_date or date.today()`` resolved to UTC
+    on Railway, drifting late-evening preview calls to "tomorrow's"
+    templates. Now uses the same ``local_today_date`` (DIGEST_TZ) helper
+    every other "today" path uses.
+    """
+    from utils import local_today_date
+    today = target_date or local_today_date()
 
     stmt = select(RecurringTask).where(RecurringTask.is_active.is_(True))
     all_active = list(db.session.scalars(stmt))

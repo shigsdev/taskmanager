@@ -471,6 +471,34 @@ def test_delete_404(authed_client):
     assert resp.status_code == 404
 
 
+def test_delete_nulls_task_project_fk(authed_client, app):
+    """PR63 audit fix #129: soft-deleting a project must null
+    Task.project_id on every linked task. Previously the project flipped
+    is_active=False but linked tasks still pointed at the dead project,
+    leaving phantom labels and ghost filter dropdown entries."""
+    from models import Task, TaskType
+
+    with app.app_context():
+        p = _make_project(name="Cascade test")
+        pid = p.id
+        t1 = Task(title="Task A", type=TaskType.WORK, project_id=pid)
+        t2 = Task(title="Task B", type=TaskType.WORK, project_id=pid)
+        db.session.add_all([t1, t2])
+        db.session.commit()
+        t1_id, t2_id = t1.id, t2.id
+
+    resp = authed_client.delete(f"/api/projects/{pid}")
+    assert resp.status_code == 204
+
+    with app.app_context():
+        # Project soft-deleted
+        fetched = db.session.get(Project, pid)
+        assert fetched.is_active is False
+        # Both tasks now have project_id = None
+        assert db.session.get(Task, t1_id).project_id is None
+        assert db.session.get(Task, t2_id).project_id is None
+
+
 # --- Seed defaults -----------------------------------------------------------
 
 
