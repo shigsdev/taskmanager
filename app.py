@@ -11,8 +11,6 @@ from dotenv import load_dotenv
 from flask import Flask, redirect, render_template, session, url_for
 from flask import jsonify as _jsonify
 from flask_dance.contrib.google import make_google_blueprint
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 from flask_migrate import Migrate
 from flask_talisman import Talisman
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -289,16 +287,14 @@ def create_app(config: dict | None = None) -> Flask:
                 return redirect(url, code=301)
 
     # --- Security: rate limiting ---
+    # PR64 (#124): the Limiter instance lives in rate_limit.py so route
+    # blueprints can decorate specific endpoints with `@limiter.limit(...)`.
     # NOTE: memory:// storage is per-worker — with N Gunicorn workers the
-    # effective limit is N × 200 req/min. Acceptable for a single-user app.
+    # effective limit is N × default. Acceptable for a single-user app.
     # Switch to Redis-backed storage if multi-user support is ever added.
     if not app.config.get("TESTING"):
-        Limiter(
-            get_remote_address,
-            app=app,
-            default_limits=["200 per minute"],
-            storage_uri="memory://",
-        )
+        from rate_limit import limiter
+        limiter.init_app(app)
 
     @app.before_request
     def _refresh_session_lifetime():

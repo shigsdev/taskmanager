@@ -17,6 +17,7 @@ import logging
 from flask import Blueprint, jsonify, request
 
 from auth import login_required
+from rate_limit import limiter
 from scan_service import (
     create_tasks_from_candidates,
     parse_tasks_from_text,
@@ -36,6 +37,7 @@ bp = Blueprint("voice_api", __name__, url_prefix="/api/voice-memo")
 
 @bp.post("")
 @login_required
+@limiter.limit("20 per minute")  # PR64 #124: voice-memo calls Whisper (paid)
 def upload(email: str):  # noqa: ARG001
     """Receive an audio file, transcribe it, parse into task candidates.
 

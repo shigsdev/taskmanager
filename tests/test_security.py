@@ -252,15 +252,57 @@ class TestRateLimiterConfig:
         """Rate limiter is not applied in TESTING mode."""
         assert app.config.get("TESTING") is True
 
-    def test_limiter_code_exists(self):
-        """Verify Limiter is instantiated in create_app."""
+    def test_limiter_module_exists(self):
+        """PR64 #124: limiter lives in rate_limit.py so route blueprints
+        can decorate specific endpoints with `@limiter.limit(...)`. The
+        old test asserted "Limiter" appeared in create_app's source —
+        now we check rate_limit.limiter is a Limiter instance and the
+        module source pins the global default."""
+        import inspect
+
+        from flask_limiter import Limiter
+
+        import rate_limit
+
+        assert isinstance(rate_limit.limiter, Limiter)
+        # 200/min default still in effect — assert from the module
+        # source since Limiter doesn't expose the construction
+        # default_limits as a stable attribute across versions.
+        source = inspect.getsource(rate_limit)
+        assert '"200 per minute"' in source
+
+    def test_limiter_init_called_in_create_app(self):
+        """create_app still wires the limiter to the app — just via
+        init_app() now instead of inline construction."""
         import inspect
 
         from app import create_app
 
         source = inspect.getsource(create_app)
-        assert "Limiter" in source
-        assert "default_limits" in source
+        assert "limiter.init_app" in source
+
+    def test_scan_upload_has_per_route_limit(self):
+        """PR64 #124: the scan/upload route is decorated with a tighter
+        per-route limit because each call fans out to Vision + Claude
+        (paid). 20/min is well below the 200/min global default."""
+        import inspect
+
+        import scan_api
+
+        source = inspect.getsource(scan_api.upload)
+        assert "limiter.limit" in source
+        assert "20" in source
+
+    def test_voice_memo_upload_has_per_route_limit(self):
+        """PR64 #124: voice-memo upload calls Whisper (paid) — same
+        rationale as scan/upload."""
+        import inspect
+
+        import voice_api
+
+        source = inspect.getsource(voice_api.upload)
+        assert "limiter.limit" in source
+        assert "20" in source
 
 
 # --- No sensitive data leakage ------------------------------------------------
