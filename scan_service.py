@@ -455,8 +455,30 @@ Each item must be a JSON object with these keys:
 - project_hint: exact title (verbatim) of a user project this task
   clearly belongs to, OR null. Only cite a project from the list
   above — do not invent. If nothing on the list fits, null.
+  * Treat EXPLICIT phrasings as strong signals — match
+    case-insensitively against the project list:
+      - "project: NAME"
+      - "for the NAME project"
+      - "on the NAME project"
+      - "in the NAME project"
+      - "for project NAME"
+    If NAME case-insensitively matches a project on the list above,
+    cite it verbatim (preserving the list's casing) in project_hint.
+    If NAME does NOT match any project on the list, leave
+    project_hint null — do not invent. Topic-match fallback still
+    applies for non-explicit phrasings (e.g. "Q2 OKR deck" implies
+    project "Q2 OKRs" by topic).
 - goal_hint: exact title (verbatim) of a user goal this task
   clearly supports, OR null. Same rule — only cite from the list.
+  * Treat EXPLICIT phrasings as strong signals — match
+    case-insensitively against the goal list:
+      - "goal: NAME"
+      - "for the NAME goal"
+      - "toward the NAME goal"
+      - "for my NAME goal"
+    If NAME case-insensitively matches a goal on the list above,
+    cite it verbatim. Otherwise leave goal_hint null. Topic-match
+    fallback still applies for non-explicit phrasings.
 - is_task: true if this is an actionable task, false if it is pure
   reflection / journaling / venting / status observation without a
   next action. Reflective non-tasks still need a title (summarise
@@ -468,12 +490,13 @@ Rules:
 - Keep filler words / "um" / "like" out of titles.
 - Return ONLY a JSON array of objects, no other text.
 
-Example (if today is 2026-04-20, a Monday; projects = ["Q2 OKRs"];
-goals = ["Run a half marathon"]):
+Example (if today is 2026-04-20, a Monday; projects = ["Q2 OKRs",
+"Launch site"]; goals = ["Run a half marathon"]):
 Input: "Okay so tomorrow I need to pick up prescriptions, and by \
-Friday I have to finish the Q2 OKR deck. Also email Sarah about \
-the meeting. And I should do a 5K run this weekend. I'm feeling \
-scattered today."
+Friday I have to finish the Q2 OKR deck. Also email Sarah for the \
+launch site project. Backlog: redesign the homepage hero. And I \
+should do a 5K run this weekend toward the half marathon goal. I'm \
+feeling scattered today."
 Output:
 [
   {{"title": "Pick up prescriptions", "type": "personal",
@@ -483,8 +506,12 @@ Output:
     "tier": "this_week", "due_date": "2026-04-24",
     "project_hint": "Q2 OKRs", "goal_hint": null,
     "is_task": true}},
-  {{"title": "Email Sarah about the meeting", "type": "work",
+  {{"title": "Email Sarah", "type": "work",
     "tier": "inbox", "due_date": null,
+    "project_hint": "Launch site", "goal_hint": null,
+    "is_task": true}},
+  {{"title": "Redesign the homepage hero", "type": "work",
+    "tier": "backlog", "due_date": null,
     "project_hint": null, "goal_hint": null, "is_task": true}},
   {{"title": "5K run this weekend", "type": "personal",
     "tier": "this_week", "due_date": null,

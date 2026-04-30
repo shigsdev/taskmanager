@@ -713,6 +713,21 @@ class TestVoiceNormaliser:
         )
         assert result[0]["goal_id"] == "goal-1"
 
+    def test_goal_hint_unknown_stays_as_free_text(self):
+        """#137 Sub-PR C: explicit 'for the X goal' phrasing where X
+        doesn't match any user goal must NOT be invented — Claude is
+        instructed to leave goal_hint null in that case, but we also
+        defensively assert here that even if Claude returns the
+        free-text hint, it stays as text (no goal_id resolved)."""
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "x", "goal_hint": "Hallucinated goal"}],
+            projects=[],
+            goals=[("goal-1", "Run a half marathon")],
+        )
+        assert result[0]["goal_id"] is None
+        assert result[0]["goal_hint"] == "Hallucinated goal"
+
     def test_is_task_false_preserved(self):
         from scan_service import _normalise_voice_candidates
         result = _normalise_voice_candidates(
@@ -834,3 +849,129 @@ class TestVoiceCreateTasksFromCandidates:
             )
             assert len(tasks) == 1
             assert tasks[0].project_id is None
+
+
+class TestVoicePromptSelfConsistency:
+    """#137 Sub-PR C: prompt-template self-consistency.
+
+    Sub-PR C is a prompt-engineering change — the rules live in the
+    Claude system prompt, not in code we can directly exercise. These
+    tests guard the prompt itself: that it formats cleanly, that the
+    in-prompt example is valid JSON, and that the example demonstrates
+    the documented rules using only valid enum values.
+
+    This is NOT a substitute for verifying Claude actually follows the
+    rules at runtime (that's a manual prod-smoke confirmation when the
+    user dictates an explicit-mention memo). But it catches the
+    mechanical breakage classes: missing format-vars, malformed JSON
+    in the example, drift between the prompt example's tier values
+    and `_VOICE_VALID_TIERS`, and accidental deletion of the explicit
+    phrasing rules in a future edit.
+    """
+
+    def _format_prompt(self):
+        from scan_service import _VOICE_PARSE_PROMPT
+        return _VOICE_PARSE_PROMPT.format(
+            today="2026-04-20",
+            project_titles="- Q2 OKRs\n- Launch site",
+            goal_titles="- Run a half marathon",
+            transcript="(test transcript)",
+        )
+
+    def test_prompt_formats_without_keyerror(self):
+        """All format-vars are supplied — no surprise placeholders
+        introduced by Sub-PR C edits. _format_prompt() raising
+        KeyError is the failure mode we're guarding against (e.g.
+        a future edit adding `{example}` without supplying it)."""
+        prompt = self._format_prompt()
+        assert "2026-04-20" in prompt
+        assert "Q2 OKRs" in prompt
+        assert "Run a half marathon" in prompt
+
+    def test_prompt_contains_explicit_project_phrasing_rules(self):
+        """Sub-PR C rule must be present — guards against accidental
+        deletion in future edits. Logic test partner is the unknown-
+        hint resolution test above; this confirms Claude is actually
+        instructed to detect those phrasings."""
+        from scan_service import _VOICE_PARSE_PROMPT
+        for phrase in (
+            "for the NAME project",
+            "project: NAME",
+            "for the NAME goal",
+            "goal: NAME",
+        ):
+            assert phrase in _VOICE_PARSE_PROMPT, f"missing rule: {phrase}"
+
+    def test_prompt_contains_no_invent_rule(self):
+        """The 'do not invent' contract is what protects against
+        hallucinated project / goal names. Must stay in the prompt."""
+        from scan_service import _VOICE_PARSE_PROMPT
+        assert "do not invent" in _VOICE_PARSE_PROMPT
+
+    def test_prompt_example_is_valid_json(self):
+        """The in-prompt example must parse — catches JSON syntax
+        breaks introduced by Sub-PR C's reorder."""
+        import json
+        import re
+        prompt = self._format_prompt()
+        # Extract the bracketed JSON array from the Output: section.
+        match = re.search(r"Output:\s*(\[.*?\])\s*Transcript:", prompt, re.DOTALL)
+        assert match is not None, "Could not locate example JSON in prompt"
+        items = json.loads(match.group(1))
+        assert isinstance(items, list)
+        assert len(items) >= 5
+
+    def test_prompt_example_tier_values_are_all_valid(self):
+        """The example must only use tier values that
+        `_normalise_voice_candidates` will accept — otherwise the prompt
+        teaches Claude to use a tier that the server then silently
+        coerces to inbox (the original bug class for 'next_week' /
+        'backlog' before Sub-PR B)."""
+        import json
+        import re
+
+        from scan_service import _VOICE_VALID_TIERS
+        prompt = self._format_prompt()
+        match = re.search(r"Output:\s*(\[.*?\])\s*Transcript:", prompt, re.DOTALL)
+        items = json.loads(match.group(1))
+        for item in items:
+            assert item["tier"] in _VOICE_VALID_TIERS, (
+                f"prompt example uses invalid tier: {item['tier']}"
+            )
+
+    def test_prompt_example_demonstrates_explicit_project_phrasing(self):
+        """The example must SHOW Claude an explicit-phrasing case so
+        the rule is grounded in a concrete instance, not just stated
+        abstractly. Sub-PR C added an 'Email Sarah for the launch
+        site project' line specifically to teach this pattern."""
+        import json
+        import re
+        prompt = self._format_prompt()
+        match = re.search(r"Output:\s*(\[.*?\])\s*Transcript:", prompt, re.DOTALL)
+        items = json.loads(match.group(1))
+        # Find an item with project_hint set whose title doesn't
+        # mention the project name verbatim — that's the explicit-
+        # phrasing case (in contrast to "Q2 OKR deck" which is a
+        # topic match where the project name appears in the title).
+        explicit_cases = [
+            item for item in items
+            if item.get("project_hint")
+            and item["project_hint"].lower() not in item["title"].lower()
+        ]
+        assert len(explicit_cases) >= 1, (
+            "prompt example should include an explicit-phrasing case "
+            "(project_hint set without the project name appearing in title)"
+        )
+
+    def test_prompt_example_demonstrates_backlog_tier(self):
+        """Sub-PR B added 'backlog' as a valid tier; Sub-PR C's example
+        should show Claude an instance so the prompt teaches it."""
+        import json
+        import re
+        prompt = self._format_prompt()
+        match = re.search(r"Output:\s*(\[.*?\])\s*Transcript:", prompt, re.DOTALL)
+        items = json.loads(match.group(1))
+        tiers_used = {item["tier"] for item in items}
+        assert "backlog" in tiers_used, (
+            "Sub-PR C example should demonstrate the backlog tier"
+        )
