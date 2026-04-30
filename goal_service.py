@@ -168,32 +168,56 @@ def goal_progress(goal_id: uuid.UUID) -> dict:
     direction. The user explicitly chose to drop them, so they don't
     count as success OR as a missed opportunity. They're still surfaced
     via the `cancelled` field so the UI can show them separately.
+
+    PR69: prefer ``goal_progress_batch([id, ...])`` for list views — this
+    single-id helper still issues 3 COUNTs which is cheap for one goal
+    but explodes to 3N+1 if called inside a list-rendering loop.
     """
-    total = db.session.scalar(
-        select(func.count()).select_from(Task).where(
-            Task.goal_id == goal_id,
-            Task.status.notin_([TaskStatus.DELETED, TaskStatus.CANCELLED]),
-        )
-    )
-    completed = db.session.scalar(
-        select(func.count()).select_from(Task).where(
-            Task.goal_id == goal_id,
-            Task.status == TaskStatus.ARCHIVED,
-        )
-    )
-    cancelled = db.session.scalar(
-        select(func.count()).select_from(Task).where(
-            Task.goal_id == goal_id,
-            Task.status == TaskStatus.CANCELLED,
-        )
-    )
-    total = total or 0
-    completed = completed or 0
-    cancelled = cancelled or 0
-    pct = round(completed / total * 100) if total > 0 else None
-    return {
-        "total": total,
-        "completed": completed,
-        "cancelled": cancelled,
-        "percent": pct,
-    }
+    return goal_progress_batch([goal_id])[goal_id]
+
+
+def goal_progress_batch(goal_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
+    """Return ``{goal_id: progress_dict}`` for a batch of goal ids.
+
+    PR69 perf #1: ``goals_api._serialize`` used to call ``goal_progress``
+    inside a list comprehension, which fired 3 COUNT queries PER GOAL
+    (3N+1 against ~20 goals = 60 round-trips per /goals page load,
+    repeated on every visibilitychange + 60s poll). This batches them
+    into one ``GROUP BY`` per status bucket; total queries goes from
+    3N+1 to 3 regardless of N.
+
+    The shape returned per id matches the single-goal ``goal_progress``
+    contract — ``{total, completed, cancelled, percent}`` — so callers
+    can swap in without changing serialization.
+    """
+    if not goal_ids:
+        return {}
+
+    # status status-bucketed counts per goal — single query, group-by.
+    rows = db.session.execute(
+        select(Task.goal_id, Task.status, func.count())
+        .where(Task.goal_id.in_(goal_ids))
+        .where(Task.status.notin_([TaskStatus.DELETED]))
+        .group_by(Task.goal_id, Task.status)
+    ).all()
+
+    # bucket: {goal_id: {status: count}}
+    buckets: dict[uuid.UUID, dict[TaskStatus, int]] = {gid: {} for gid in goal_ids}
+    for gid, status, count in rows:
+        buckets[gid][status] = count
+
+    out: dict[uuid.UUID, dict] = {}
+    for gid in goal_ids:
+        b = buckets[gid]
+        completed = b.get(TaskStatus.ARCHIVED, 0)
+        cancelled = b.get(TaskStatus.CANCELLED, 0)
+        # `total` == ARCHIVED + ACTIVE (cancelled excluded from denom).
+        total = completed + b.get(TaskStatus.ACTIVE, 0)
+        pct = round(completed / total * 100) if total > 0 else None
+        out[gid] = {
+            "total": total,
+            "completed": completed,
+            "cancelled": cancelled,
+            "percent": pct,
+        }
+    return out

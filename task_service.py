@@ -10,6 +10,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.orm import joinedload, selectinload
 
 from models import RecurringTask, Task, TaskStatus, TaskType, Tier, db
 from utils import ValidationError  # noqa: F401 — re-exported for API layer
@@ -317,7 +318,24 @@ def list_tasks(
     project_id: uuid.UUID | None = None,
     goal_id: uuid.UUID | None = None,
 ) -> list[Task]:
-    stmt = select(Task)
+    """List tasks. PR69 perf #2: eager-load `subtasks` and `recurring_task`
+    so `tasks_api._serialize` doesn't fire 2N+1 SELECTs (one per task for
+    subtasks, one per task for recurring_task) on the main board load.
+
+    `selectinload` for the one-to-many `subtasks` collection — issues
+    one extra ``WHERE parent_id IN (...)`` rather than a join cartesian.
+    `joinedload` for the one-to-one `recurring_task`. Project + goal
+    are NOT eager-loaded here: most callers don't need them on the
+    list path; the digest, weekly-review, and detail-panel paths join
+    them explicitly when they do.
+    """
+    stmt = (
+        select(Task)
+        .options(
+            selectinload(Task.subtasks),
+            joinedload(Task.recurring_task),
+        )
+    )
     if status is not None:
         stmt = stmt.where(Task.status == status)
     if tier is not None:
@@ -329,6 +347,10 @@ def list_tasks(
     if goal_id is not None:
         stmt = stmt.where(Task.goal_id == goal_id)
     stmt = stmt.order_by(Task.sort_order.asc(), Task.created_at.desc())
+    # `unique()` required by SQLAlchemy when joinedload yields a one-to-one
+    # — the Cartesian product collapses cleanly here since subtasks is
+    # selectinload (separate query), but joinedload(recurring_task) on a
+    # nullable FK is fine.
     return list(db.session.scalars(stmt))
 
 

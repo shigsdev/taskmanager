@@ -12,6 +12,7 @@ from goal_service import (
     delete_goal,
     get_goal,
     goal_progress,
+    goal_progress_batch,
     list_goals,
     update_goal,
 )
@@ -21,7 +22,17 @@ from utils import enum_or_400 as _enum_or_400
 bp = Blueprint("goals_api", __name__, url_prefix="/api/goals")
 
 
-def _serialize(goal: Goal, *, include_progress: bool = True) -> dict:
+def _serialize(
+    goal: Goal,
+    *,
+    include_progress: bool = True,
+    _progress_cache: dict | None = None,
+) -> dict:
+    """Serialize one goal. PR69 perf #1: pass `_progress_cache` (a dict
+    keyed by goal_id) when serializing N goals to avoid the 3N+1
+    pattern. The list path computes one batch progress dict; per-goal
+    routes use the single-goal helper which now delegates to the
+    batch internally."""
     d = {
         "id": str(goal.id),
         "title": goal.title,
@@ -37,7 +48,10 @@ def _serialize(goal: Goal, *, include_progress: bool = True) -> dict:
         "updated_at": goal.updated_at.isoformat(),
     }
     if include_progress:
-        d["progress"] = goal_progress(goal.id)
+        if _progress_cache is not None:
+            d["progress"] = _progress_cache[goal.id]
+        else:
+            d["progress"] = goal_progress(goal.id)
     return d
 
 
@@ -63,7 +77,9 @@ def index(email: str):  # noqa: ARG001
         is_active = True
 
     goals = list_goals(category=category, priority=priority, status=status, is_active=is_active)
-    return jsonify([_serialize(g) for g in goals])
+    # PR69 perf #1: one batch query for progress instead of 3 COUNTs per goal.
+    progress_cache = goal_progress_batch([g.id for g in goals])
+    return jsonify([_serialize(g, _progress_cache=progress_cache) for g in goals])
 
 
 @bp.post("")

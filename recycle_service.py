@@ -117,42 +117,37 @@ def list_bin() -> list[dict]:
         .where(ImportLog.batch_id.is_not(None))
         .order_by(ImportLog.undone_at.desc())
     )
+    logs = list(db.session.scalars(stmt))
+    if not logs:
+        return []
+
+    # PR69 perf #5: was 3 COUNTs per batch (3N+1) — N batches in the bin =
+    # 3N+1 round-trips. Now: one GROUP BY per table covers all batches
+    # at once. Total queries: 1 (logs) + 3 (per-table aggregations) = 4
+    # regardless of N.
+    batch_ids = [log.batch_id for log in logs]
+
+    task_counts = dict(db.session.execute(
+        select(Task.batch_id, db.func.count())
+        .where(Task.batch_id.in_(batch_ids))
+        .where(Task.status == TaskStatus.DELETED)
+        .group_by(Task.batch_id)
+    ).all())
+    goal_counts = dict(db.session.execute(
+        select(Goal.batch_id, db.func.count())
+        .where(Goal.batch_id.in_(batch_ids))
+        .where(Goal.is_active.is_(False))
+        .group_by(Goal.batch_id)
+    ).all())
+    project_counts = dict(db.session.execute(
+        select(Project.batch_id, db.func.count())
+        .where(Project.batch_id.in_(batch_ids))
+        .where(Project.is_active.is_(False))
+        .group_by(Project.batch_id)
+    ).all())
+
     entries = []
-    for log in db.session.scalars(stmt):
-        task_count = (
-            db.session.scalar(
-                select(db.func.count())
-                .select_from(Task)
-                .where(
-                    Task.batch_id == log.batch_id,
-                    Task.status == TaskStatus.DELETED,
-                )
-            )
-            or 0
-        )
-        goal_count = (
-            db.session.scalar(
-                select(db.func.count())
-                .select_from(Goal)
-                .where(
-                    Goal.batch_id == log.batch_id,
-                    Goal.is_active.is_(False),
-                )
-            )
-            or 0
-        )
-        # PR66 audit fix #131: project counts in the bin entry.
-        project_count = (
-            db.session.scalar(
-                select(db.func.count())
-                .select_from(Project)
-                .where(
-                    Project.batch_id == log.batch_id,
-                    Project.is_active.is_(False),
-                )
-            )
-            or 0
-        )
+    for log in logs:
         entries.append(
             {
                 "batch_id": str(log.batch_id),
@@ -163,9 +158,9 @@ def list_bin() -> list[dict]:
                 "undone_at": (
                     log.undone_at.isoformat() if log.undone_at else None
                 ),
-                "task_count": task_count,
-                "goal_count": goal_count,
-                "project_count": project_count,
+                "task_count": task_counts.get(log.batch_id, 0),
+                "goal_count": goal_counts.get(log.batch_id, 0),
+                "project_count": project_counts.get(log.batch_id, 0),
             }
         )
     return entries
