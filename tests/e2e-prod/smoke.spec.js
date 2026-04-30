@@ -21,6 +21,13 @@
  * Playwright's failure output.
  */
 // @ts-check
+
+// macOS no-IPv6 workaround — must be required before @playwright/test so
+// the patched dns.lookup is in place by the time the happy-eyeballs agent
+// resolves a hostname. See tests/playwright-globalSetup.js for the
+// full explanation.
+require("../playwright-globalSetup.js");
+
 const { test, expect } = require("@playwright/test");
 
 const COOKIE_VALUE = process.env.TASKMANAGER_SESSION_COOKIE;

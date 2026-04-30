@@ -32,6 +32,25 @@ module.exports = defineConfig({
     workers: 1, // sequential
     reporter: [["list"]],
 
+    // Workaround for Playwright apiRequestContext hanging on macOS when
+    // the host has no IPv6 routing. macOS's resolver synthesizes
+    // IPv4-mapped IPv6 addresses (`::ffff:1.2.3.4`) when asked for AAAA
+    // records — even when the upstream domain has no real AAAA record
+    // and the network can't route IPv6 anywhere. Playwright's Happy
+    // Eyeballs implementation (node_modules/playwright-core/lib/server/
+    // utils/happyEyeballs.js) interleaves v6 results before v4 results,
+    // tries the synthesized v6 address first, and hangs to the action
+    // timeout. Symptom: any `page.request.get(...)` or `request.get(...)`
+    // call against a Railway / Fastly / Cloudflare URL times out at 15s
+    // even though `curl` and plain Node `https.get` to the same URL
+    // return in <1s.
+    //
+    // Fix: monkey-patch `dns.promises.lookup` BEFORE Playwright loads
+    // its happy-eyeballs agent, so the v6-family lookups return empty
+    // arrays instead of mapped addresses. Plain v4 lookups are
+    // untouched, so production browser navigation still works normally.
+    globalSetup: "./tests/playwright-globalSetup.js",
+
     projects: [
         {
             name: "chromium",
