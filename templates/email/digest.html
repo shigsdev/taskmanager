@@ -142,6 +142,7 @@
         {% if app_url %}
         <tr>
           <td align="center" style="padding:20px 24px 24px;">
+            {# nosemgrep: generic.html-templates.security.var-in-href.var-in-href — app_url is sanitized at runtime by _safe_app_url() in digest_service.py (PR62 #130): only operator-controlled APP_URL values matching ^https:// pass through; javascript:/data:/http: are stripped. Static scanner can't cross the runtime boundary. #}
             <a href="{{ app_url }}" style="display:inline-block;padding:10px 20px;background:#111827;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">Open Task Manager</a>
           </td>
         </tr>
