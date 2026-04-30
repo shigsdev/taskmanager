@@ -124,17 +124,11 @@
         formData.append("parse_as", getSelectedParseAs());
 
         try {
-            var resp = await fetch(UPLOAD_API, {
+            // PR67 #132: window.apiFetch (auto-retry + recovery)
+            var data = await window.apiFetch(UPLOAD_API, {
                 method: "POST",
                 body: formData,
             });
-            var data = await resp.json();
-
-            if (!resp.ok) {
-                setStatus("Error: " + (data.error || "Upload failed"), true);
-                submitBtn.disabled = false;
-                return;
-            }
 
             if (data.candidates && data.candidates.length > 0) {
                 currentCandidates = data.candidates;
@@ -297,28 +291,22 @@
         });
 
         try {
-            var resp = await fetch(CONFIRM_API, {
+            // PR67 #132: window.apiFetch (auto-retry + recovery)
+            var data = await window.apiFetch(CONFIRM_API, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     kind: currentKind,
                     candidates: toSend,
                 }),
             });
-            var data = await resp.json();
-
-            if (resp.ok) {
-                var label = currentKind === "goals" ? "goal(s)"
-                          : (currentKind === "projects" ? "project(s)" : "task(s)");
-                var suffix =
-                    currentKind === "goals" ? " added to your goals."
-                    : (currentKind === "projects" ? " added to your projects."
-                       : " added to your inbox.");
-                doneMessage.textContent = data.created + " " + label + suffix;
-                showSection(doneSection);
-            } else {
-                alert("Error: " + (data.error || "Confirm failed"));
-            }
+            var label = currentKind === "goals" ? "goal(s)"
+                      : (currentKind === "projects" ? "project(s)" : "task(s)");
+            var suffix =
+                currentKind === "goals" ? " added to your goals."
+                : (currentKind === "projects" ? " added to your projects."
+                   : " added to your inbox.");
+            doneMessage.textContent = data.created + " " + label + suffix;
+            showSection(doneSection);
         } catch (err) {
             alert("Confirm failed: " + err.message);
         }

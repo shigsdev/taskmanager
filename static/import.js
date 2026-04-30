@@ -76,9 +76,10 @@
     async function loadImportLookups() {
         if (importLookupsLoaded) return;
         try {
+            // PR67 #132: window.apiFetch (auto-retry + recovery)
             var [g, p] = await Promise.all([
-                fetch("/api/goals").then(function (r) { return r.json(); }),
-                fetch("/api/projects").then(function (r) { return r.json(); }),
+                window.apiFetch("/api/goals"),
+                window.apiFetch("/api/projects"),
             ]);
             importGoals = Array.isArray(g) ? g : [];
             importProjects = Array.isArray(p) ? p : [];
@@ -186,15 +187,10 @@
         var formData = new FormData();
         formData.append("file", file);
         try {
-            var resp = await fetch("/api/import/tasks/upload-xlsx", {
+            // PR67 #132: window.apiFetch (auto-retry + recovery)
+            var data = await window.apiFetch("/api/import/tasks/upload-xlsx", {
                 method: "POST", body: formData,
             });
-            var data = await resp.json();
-            if (!resp.ok) {
-                setStatus(tasksExcelStatus, "Error: " + (data.error || "Parse failed"), true);
-                parseTasksExcelBtn.disabled = false;
-                return;
-            }
             if (data.candidates && data.candidates.length > 0) {
                 currentCandidates = data.candidates;
                 reviewTitle.textContent = "Review Task Candidates";
@@ -257,17 +253,11 @@
         parseProjectsTextBtn.disabled = true;
         setStatus(projectsTextStatus, "Parsing projects…", false);
         try {
-            var resp = await fetch("/api/import/projects/parse", {
+            // PR67 #132: window.apiFetch (auto-retry + recovery)
+            var data = await window.apiFetch("/api/import/projects/parse", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ text: text }),
             });
-            var data = await resp.json();
-            if (!resp.ok) {
-                setStatus(projectsTextStatus, "Error: " + (data.error || "Parse failed"), true);
-                parseProjectsTextBtn.disabled = false;
-                return;
-            }
             if (data.candidates && data.candidates.length > 0) {
                 currentCandidates = data.candidates;
                 reviewTitle.textContent = "Review Project Candidates";
@@ -292,15 +282,10 @@
         var formData = new FormData();
         formData.append("file", file);
         try {
-            var resp = await fetch("/api/import/projects/upload", {
+            // PR67 #132: window.apiFetch (auto-retry + recovery)
+            var data = await window.apiFetch("/api/import/projects/upload", {
                 method: "POST", body: formData,
             });
-            var data = await resp.json();
-            if (!resp.ok) {
-                setStatus(projectsExcelStatus, "Error: " + (data.error || "Parse failed"), true);
-                parseProjectsExcelBtn.disabled = false;
-                return;
-            }
             if (data.candidates && data.candidates.length > 0) {
                 currentCandidates = data.candidates;
                 reviewTitle.textContent = "Review Project Candidates";
@@ -356,17 +341,11 @@
         formData.append("file", file);
 
         try {
-            var resp = await fetch("/api/import/tasks/upload", {
+            // PR67 #132: window.apiFetch (auto-retry + recovery)
+            var data = await window.apiFetch("/api/import/tasks/upload", {
                 method: "POST",
                 body: formData,
             });
-            var data = await resp.json();
-
-            if (!resp.ok) {
-                setStatus(docxStatus, "Error: " + (data.error || "Parse failed"), true);
-                parseDocxBtn.disabled = false;
-                return;
-            }
 
             if (data.candidates && data.candidates.length > 0) {
                 currentCandidates = data.candidates;
@@ -399,18 +378,11 @@
         setStatus(tasksStatus, "Parsing tasks...", false);
 
         try {
-            var resp = await fetch("/api/import/tasks/parse", {
+            // PR67 #132: window.apiFetch (auto-retry + recovery)
+            var data = await window.apiFetch("/api/import/tasks/parse", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ text: text }),
             });
-            var data = await resp.json();
-
-            if (!resp.ok) {
-                setStatus(tasksStatus, "Error: " + (data.error || "Parse failed"), true);
-                parseTasksBtn.disabled = false;
-                return;
-            }
 
             if (data.candidates && data.candidates.length > 0) {
                 currentCandidates = data.candidates;
@@ -443,17 +415,11 @@
         formData.append("file", file);
 
         try {
-            var resp = await fetch("/api/import/goals/parse", {
+            // PR67 #132: window.apiFetch (auto-retry + recovery)
+            var data = await window.apiFetch("/api/import/goals/parse", {
                 method: "POST",
                 body: formData,
             });
-            var data = await resp.json();
-
-            if (!resp.ok) {
-                setStatus(goalsStatus, "Error: " + (data.error || "Parse failed"), true);
-                parseGoalsBtn.disabled = false;
-                return;
-            }
 
             if (data.candidates && data.candidates.length > 0) {
                 currentCandidates = data.candidates;
@@ -960,25 +926,19 @@
         else url = "/api/import/goals/confirm";
 
         try {
-            var resp = await fetch(url, {
+            // PR67 #132: window.apiFetch (auto-retry + recovery)
+            var data = await window.apiFetch(url, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     candidates: pendingImport,
                     source: currentMode + "_import",
                 }),
             });
-            var data = await resp.json();
-
-            if (resp.ok) {
-                var noun = currentMode === "tasks" ? "task(s)"
-                         : (currentMode === "projects" ? "project(s)" : "goal(s)");
-                doneMessage.textContent =
-                    data.created + " " + noun + " imported successfully.";
-                showSection(doneSection);
-            } else {
-                alert("Error: " + (data.error || "Confirm failed"));
-            }
+            var noun = currentMode === "tasks" ? "task(s)"
+                     : (currentMode === "projects" ? "project(s)" : "goal(s)");
+            doneMessage.textContent =
+                data.created + " " + noun + " imported successfully.";
+            showSection(doneSection);
         } catch (err) {
             alert("Confirm failed: " + err.message);
         }

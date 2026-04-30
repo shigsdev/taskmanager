@@ -95,10 +95,11 @@
     }
 
     async function load() {
+        // PR67 #132: window.apiFetch (auto-retry + recovery)
         var [tpls, projs, gls] = await Promise.all([
-            fetch("/api/recurring?active_only=false").then(function (r) { return r.json(); }),
-            fetch("/api/projects").then(function (r) { return r.json(); }),
-            fetch("/api/goals").then(function (r) { return r.json(); }),
+            window.apiFetch("/api/recurring?active_only=false"),
+            window.apiFetch("/api/projects"),
+            window.apiFetch("/api/goals"),
         ]);
         allTemplates = Array.isArray(tpls) ? tpls : [];
         allProjects = Array.isArray(projs) ? projs : [];
@@ -151,15 +152,18 @@
     async function bulkPatch(updates) {
         var ids = getSelectedIds();
         if (!ids.length) return;
-        var resp = await fetch("/api/recurring/bulk", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ template_ids: ids, updates: updates }),
-        });
-        var data = await resp.json();
-        if (data.errors && data.errors.length) {
-            alert("Updated " + data.updated + " — " + data.errors.length + " error(s): " +
-                data.errors.map(function (e) { return e.error; }).join(", "));
+        try {
+            // PR67 #132: window.apiFetch (auto-retry + recovery)
+            var data = await window.apiFetch("/api/recurring/bulk", {
+                method: "PATCH",
+                body: JSON.stringify({ template_ids: ids, updates: updates }),
+            });
+            if (data && data.errors && data.errors.length) {
+                alert("Updated " + data.updated + " — " + data.errors.length + " error(s): " +
+                    data.errors.map(function (e) { return e.error; }).join(", "));
+            }
+        } catch (err) {
+            alert("Bulk update failed: " + err.message);
         }
         await load();
     }
@@ -168,11 +172,15 @@
         var ids = getSelectedIds();
         if (!ids.length) return;
         if (!confirm("Delete " + ids.length + " template(s)? They stop spawning new tasks.")) return;
-        await fetch("/api/recurring/bulk", {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ template_ids: ids }),
-        });
+        try {
+            // PR67 #132: window.apiFetch (auto-retry + recovery)
+            await window.apiFetch("/api/recurring/bulk", {
+                method: "DELETE",
+                body: JSON.stringify({ template_ids: ids }),
+            });
+        } catch (err) {
+            alert("Bulk delete failed: " + err.message);
+        }
         await load();
     }
 

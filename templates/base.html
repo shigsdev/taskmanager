@@ -13,6 +13,15 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Tasks">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+    {# PR67 audit fix #132: load api_helpers.js + api_client.js globally so
+       every page has window.apiFetch with stale-tab retry + recovery-prompt
+       behavior. Order matters — api_client.js uses window.apiHelpers.
+       NOT deferred: body-end scripts (page-specific JS in {% block scripts %})
+       run BEFORE head-deferred scripts, so deferring here would leave
+       window.apiFetch undefined when IIFEs first fire. Both modules are
+       small + don't touch the DOM, so synchronous load is fine. #}
+    <script src="{{ url_for('static', filename='api_helpers.js') }}"></script>
+    <script src="{{ url_for('static', filename='api_client.js') }}"></script>
 </head>
 <body>
     <header class="nav">

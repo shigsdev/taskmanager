@@ -76,9 +76,10 @@
 
     async function loadProjectsAndGoalsForReview() {
         try {
+            // PR67 #132: window.apiFetch (auto-retry + recovery)
             const [projects, goals] = await Promise.all([
-                fetch("/api/projects").then((r) => r.json()),
-                fetch("/api/goals").then((r) => r.json()),
+                window.apiFetch("/api/projects"),
+                window.apiFetch("/api/goals"),
             ]);
             availableProjects = Array.isArray(projects) ? projects : [];
             availableGoals = Array.isArray(goals) ? goals : [];
@@ -270,37 +271,27 @@
         const ext = mimeTypeToExt(mimeType);
         formData.append("audio", blob, "memo." + ext);
 
-        let resp, data;
+        let data;
         try {
             markStep(stepUpload, "running");
-            resp = await fetch(UPLOAD_API, {
+            // PR67 #132: window.apiFetch (auto-retry + recovery).
+            // apiFetch throws on !ok with the server's JSON .error
+            // message — same shape the old `data.error` path used.
+            data = await window.apiFetch(UPLOAD_API, {
                 method: "POST",
                 body: formData,
                 credentials: "same-origin",
             });
         } catch (err) {
-            showError("Upload failed (network error): " + err.message);
+            // Server may have transcribed but failed to parse — old
+            // path returned the transcript on the error body. apiFetch
+            // throws an Error with .message but no transcript access;
+            // surface the message; user can re-record on retry.
+            showError("Upload failed: " + err.message);
             return;
         }
         markStep(stepUpload, "done");
         markStep(stepTranscribe, "running");
-
-        try {
-            data = await resp.json();
-        } catch (err) {
-            showError("Server returned non-JSON response (HTTP " + resp.status + ").");
-            return;
-        }
-
-        if (!resp.ok) {
-            // Server may have transcribed but failed to parse — surface
-            // the transcript if present so user can recover manually.
-            showError(
-                (data && data.error) || ("Upload failed (HTTP " + resp.status + ")"),
-                data && data.transcript,
-            );
-            return;
-        }
 
         markStep(stepTranscribe, "done");
         markStep(stepParse, "done");
@@ -575,28 +566,16 @@
             return;
         }
 
-        let resp, data;
+        let data;
         try {
-            resp = await fetch(CONFIRM_API, {
+            // PR67 #132: window.apiFetch (auto-retry + recovery).
+            data = await window.apiFetch(CONFIRM_API, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ candidates: toSubmit }),
                 credentials: "same-origin",
             });
         } catch (err) {
-            showError("Confirm failed (network error): " + err.message);
-            return;
-        }
-
-        try {
-            data = await resp.json();
-        } catch (err) {
-            showError("Server returned non-JSON on confirm (HTTP " + resp.status + ").");
-            return;
-        }
-
-        if (!resp.ok) {
-            showError((data && data.error) || ("Confirm failed (HTTP " + resp.status + ")"));
+            showError("Confirm failed: " + err.message);
             return;
         }
 

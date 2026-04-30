@@ -44,10 +44,12 @@
         const todayIso = _isoDate(today);
 
         // Pre-fetch all active tasks so we can list them per day.
+        // PR67 #132: use window.apiFetch (stale-tab retry + recovery
+        // prompt). On failure, the caller saw an empty calendar with
+        // no error feedback — apiFetch surfaces a recovery prompt.
         let tasks = [];
         try {
-            const resp = await fetch("/api/tasks");
-            if (resp.ok) tasks = await resp.json();
+            tasks = await window.apiFetch("/api/tasks");
         } catch (err) {
             console.error("Failed to load tasks for calendar:", err);
         }
@@ -59,10 +61,9 @@
         const startIso = _isoDate(thisMonday);
         const endIso = _isoDate(new Date(thisMonday.getTime() + 12 * 86400000));
         try {
-            const resp = await fetch(
+            previews = await window.apiFetch(
                 `/api/recurring/previews?start=${startIso}&end=${endIso}`
             );
-            if (resp.ok) previews = await resp.json();
         } catch (err) {
             console.error("Failed to load recurring previews:", err);
         }
@@ -183,12 +184,11 @@
                     const taskId = e.dataTransfer && e.dataTransfer.getData("text/plain");
                     if (!_isValidUuid(taskId)) return;  // PR28 audit fix #6
                     try {
-                        const r = await fetch(`/api/tasks/${taskId}`, {
+                        // PR67 #132: window.apiFetch (auto-retry + recovery)
+                        await window.apiFetch(`/api/tasks/${taskId}`, {
                             method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ due_date: iso }),
                         });
-                        if (!r.ok) throw new Error("PATCH failed");
                         await renderCalendar();  // refresh after drop
                     } catch (err) {
                         alert("Failed to set due date: " + err.message);
@@ -262,12 +262,11 @@
                 const taskId = e.dataTransfer && e.dataTransfer.getData("text/plain");
                 if (!_isValidUuid(taskId)) return;  // PR28 audit fix #6
                 try {
-                    const r = await fetch(`/api/tasks/${taskId}`, {
+                    // PR67 #132: window.apiFetch (auto-retry + recovery)
+                    await window.apiFetch(`/api/tasks/${taskId}`, {
                         method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ due_date: null }),
                     });
-                    if (!r.ok) throw new Error("PATCH failed");
                     await renderCalendar();
                 } catch (err) {
                     alert("Failed to clear due date: " + err.message);

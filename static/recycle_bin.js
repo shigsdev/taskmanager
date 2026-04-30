@@ -29,12 +29,15 @@
     // --- Loading -------------------------------------------------------------
 
     function load() {
+        // PR67 #132: window.apiFetch (auto-retry + recovery)
         Promise.all([
-            fetch("/api/recycle-bin").then(function (r) { return r.json(); }),
-            fetch("/api/recycle-bin/summary").then(function (r) { return r.json(); }),
+            window.apiFetch("/api/recycle-bin"),
+            window.apiFetch("/api/recycle-bin/summary"),
         ]).then(function (results) {
             renderBatches(results[0].batches || []);
             renderSummary(results[1]);
+        }).catch(function (err) {
+            console.error("Failed to load recycle bin:", err);
         });
     }
 
@@ -139,9 +142,13 @@
             body: body,
             requireConfirmation: false,
             onConfirm: function () {
-                return fetch("/api/recycle-bin/restore/" + batch.batch_id, {
+                // PR67 #132: window.apiFetch (auto-retry + recovery)
+                // apiFetch throws on !ok, so wrap to keep modal's
+                // {ok, body} contract.
+                return window.apiFetch("/api/recycle-bin/restore/" + batch.batch_id, {
                     method: "POST",
-                }).then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); });
+                }).then(function (b) { return { ok: true, body: b }; })
+                  .catch(function (e) { return { ok: false, body: { error: e.message } }; });
             },
         });
     }
@@ -157,18 +164,19 @@
             body: body,
             requireConfirmation: true,
             onConfirm: function (token) {
-                return fetch("/api/recycle-bin/purge/" + batch.batch_id, {
+                // PR67 #132: window.apiFetch (auto-retry + recovery)
+                return window.apiFetch("/api/recycle-bin/purge/" + batch.batch_id, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ confirmation: token }),
-                }).then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); });
+                }).then(function (b) { return { ok: true, body: b }; })
+                  .catch(function (e) { return { ok: false, body: { error: e.message } }; });
             },
         });
     }
 
     emptyBtn.addEventListener("click", function () {
-        fetch("/api/recycle-bin/summary")
-            .then(function (r) { return r.json(); })
+        // PR67 #132: window.apiFetch (auto-retry + recovery)
+        window.apiFetch("/api/recycle-bin/summary")
             .then(function (data) {
                 var body = "Permanently delete everything in the recycle bin?\n" +
                     data.task_count + " task(s) and " + data.goal_count + " goal(s) " +
@@ -179,13 +187,15 @@
                     body: body,
                     requireConfirmation: true,
                     onConfirm: function (token) {
-                        return fetch("/api/recycle-bin/empty", {
+                        return window.apiFetch("/api/recycle-bin/empty", {
                             method: "POST",
-                            headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ confirmation: token }),
-                        }).then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); });
+                        }).then(function (b) { return { ok: true, body: b }; })
+                          .catch(function (e) { return { ok: false, body: { error: e.message } }; });
                     },
                 });
+            }).catch(function (err) {
+                alert("Could not load summary: " + err.message);
             });
     });
 

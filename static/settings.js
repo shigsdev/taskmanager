@@ -7,14 +7,15 @@
 
     // --- Load stats ----------------------------------------------------------
 
-    fetch("/api/settings/stats")
-        .then(function (r) { return r.json(); })
+    // PR67 #132: window.apiFetch (auto-retry + recovery)
+    window.apiFetch("/api/settings/stats")
         .then(function (data) {
             document.getElementById("statActiveTasks").textContent = data.active_tasks;
             document.getElementById("statTotalTasks").textContent = data.total_tasks;
             document.getElementById("statGoals").textContent = data.total_goals;
             document.getElementById("statRecurring").textContent = data.recurring_templates;
-        });
+        })
+        .catch(function (err) { console.error("settings/stats failed:", err); });
 
     // --- Load service status -------------------------------------------------
 
@@ -25,8 +26,8 @@
         sendgrid: "SendGrid (Email)",
     };
 
-    fetch("/api/settings/status")
-        .then(function (r) { return r.json(); })
+    // PR67 #132: window.apiFetch (auto-retry + recovery)
+    window.apiFetch("/api/settings/status")
         .then(function (data) {
             var tbody = document.getElementById("settingsServiceBody");
             tbody.innerHTML = "";
@@ -67,7 +68,8 @@
                 data.digest_email ? "Env var set" : "(not set)";
             document.getElementById("settingsDigestFrom").textContent =
                 data.digest_from ? "Env var set" : "(not set)";
-        });
+        })
+        .catch(function (err) { console.error("settings/status failed:", err); });
 
     /**
      * Build the inline "Test send" button + result chip for the SendGrid
@@ -96,21 +98,13 @@
             result.textContent = "";
             result.className = "sendgrid-test-result";
             try {
-                var resp = await fetch("/api/digest/send", { method: "POST" });
-                var data = await resp.json();
-                if (resp.ok) {
-                    result.textContent = "✓ Sent";
-                    result.classList.add("settings-ok");
-                } else {
-                    // #50: error message is now meaningful
-                    // (e.g. "SendGrid returned HTTP 403: ...")
-                    result.textContent = "✗ " + (data.error || "Send failed");
-                    result.title = data.request_id
-                        ? "request_id: " + data.request_id
-                        : "";
-                    result.classList.add("settings-warn");
-                }
+                // PR67 #132: window.apiFetch (auto-retry + recovery)
+                await window.apiFetch("/api/digest/send", { method: "POST" });
+                result.textContent = "✓ Sent";
+                result.classList.add("settings-ok");
             } catch (err) {
+                // #50 + apiFetch: error message is meaningful from
+                // the global handler (e.g. "SendGrid returned HTTP 403: ...")
                 result.textContent = "✗ " + (err.message || "Network error");
                 result.classList.add("settings-warn");
             }
@@ -126,21 +120,23 @@
     // --- Load import history + recycle bin count ----------------------------
 
     function loadImports() {
-        fetch("/api/settings/imports")
-            .then(function (r) { return r.json(); })
-            .then(function (logs) { renderImports(logs); });
+        // PR67 #132: window.apiFetch (auto-retry + recovery)
+        window.apiFetch("/api/settings/imports")
+            .then(function (logs) { renderImports(logs); })
+            .catch(function (err) { console.error("loadImports failed:", err); });
     }
 
     function loadBinCount() {
-        fetch("/api/recycle-bin/summary")
-            .then(function (r) { return r.json(); })
+        // PR67 #132: window.apiFetch (auto-retry + recovery)
+        window.apiFetch("/api/recycle-bin/summary")
             .then(function (data) {
                 var badge = document.getElementById("settingsBinCount");
                 if (badge) {
                     var total = (data.task_count || 0) + (data.goal_count || 0);
                     badge.textContent = total;
                 }
-            });
+            })
+            .catch(function (err) { console.error("loadBinCount failed:", err); });
     }
 
     function renderImports(logs) {
@@ -211,17 +207,9 @@
         btn.disabled = true;
         btn.textContent = "Undoing…";
 
-        fetch("/api/recycle-bin/undo/" + batchId, { method: "POST" })
-            .then(function (r) {
-                return r.json().then(function (body) { return { ok: r.ok, body: body }; });
-            })
-            .then(function (res) {
-                if (!res.ok) {
-                    alert("Undo failed: " + (res.body.error || "unknown error"));
-                    btn.disabled = false;
-                    btn.textContent = "Undo";
-                    return;
-                }
+        // PR67 #132: window.apiFetch (auto-retry + recovery)
+        window.apiFetch("/api/recycle-bin/undo/" + batchId, { method: "POST" })
+            .then(function () {
                 // Refresh the history table and the bin count.
                 loadImports();
                 loadBinCount();
@@ -247,15 +235,10 @@
         previewBtn.textContent = "Loading...";
 
         try {
-            var resp = await fetch("/api/digest/preview");
-            var data = await resp.json();
-
-            if (resp.ok) {
-                digestText.textContent = data.body;
-                digestText.style.display = "";
-            } else {
-                alert("Error: " + (data.error || "Preview failed"));
-            }
+            // PR67 #132: window.apiFetch (auto-retry + recovery)
+            var data = await window.apiFetch("/api/digest/preview");
+            digestText.textContent = data.body;
+            digestText.style.display = "";
         } catch (err) {
             alert("Preview failed: " + err.message);
         }
@@ -271,14 +254,9 @@
         sendBtn.textContent = "Sending...";
 
         try {
-            var resp = await fetch("/api/digest/send", { method: "POST" });
-            var data = await resp.json();
-
-            if (resp.ok) {
-                alert("Digest sent successfully!");
-            } else {
-                alert("Error: " + (data.error || "Send failed"));
-            }
+            // PR67 #132: window.apiFetch (auto-retry + recovery)
+            await window.apiFetch("/api/digest/send", { method: "POST" });
+            alert("Digest sent successfully!");
         } catch (err) {
             alert("Send failed: " + err.message);
         }
