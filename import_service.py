@@ -762,6 +762,9 @@ def create_projects_from_import(
             notes=(candidate.get("notes") or "").strip() or None,
             status=status,
             goal_id=goal_id,
+            # PR66 audit fix #131: stamp batch_id so recycle_service can
+            # find this project later for undo/restore/purge.
+            batch_id=batch_id,
         )
         db.session.add(project)
         created.append(project)

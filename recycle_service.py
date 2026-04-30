@@ -33,7 +33,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 
-from models import Goal, ImportLog, Task, TaskStatus, db
+from models import Goal, ImportLog, Project, Task, TaskStatus, db
 
 # --- Errors ------------------------------------------------------------------
 
@@ -92,6 +92,16 @@ def _batch_goals(batch_id: uuid.UUID) -> list[Goal]:
     )
 
 
+def _batch_projects(batch_id: uuid.UUID) -> list[Project]:
+    """PR66 audit fix #131: return all projects in a batch.
+
+    Mirrors _batch_tasks / _batch_goals shape — single canonical loader
+    consumed by undo / restore / purge / list / summary."""
+    return list(
+        db.session.scalars(select(Project).where(Project.batch_id == batch_id))
+    )
+
+
 # --- Listing -----------------------------------------------------------------
 
 
@@ -131,6 +141,18 @@ def list_bin() -> list[dict]:
             )
             or 0
         )
+        # PR66 audit fix #131: project counts in the bin entry.
+        project_count = (
+            db.session.scalar(
+                select(db.func.count())
+                .select_from(Project)
+                .where(
+                    Project.batch_id == log.batch_id,
+                    Project.is_active.is_(False),
+                )
+            )
+            or 0
+        )
         entries.append(
             {
                 "batch_id": str(log.batch_id),
@@ -143,6 +165,7 @@ def list_bin() -> list[dict]:
                 ),
                 "task_count": task_count,
                 "goal_count": goal_count,
+                "project_count": project_count,
             }
         )
     return entries
@@ -185,6 +208,23 @@ def bin_summary() -> dict:
         )
         or 0
     )
+    # PR66 audit fix #131
+    project_count = (
+        db.session.scalar(
+            select(db.func.count())
+            .select_from(Project)
+            .join(
+                ImportLog,
+                ImportLog.batch_id == Project.batch_id,  # noqa: E711
+            )
+            .where(
+                Project.is_active.is_(False),
+                Project.batch_id.is_not(None),
+                ImportLog.undone_at.is_not(None),
+            )
+        )
+        or 0
+    )
     batch_count = (
         db.session.scalar(
             select(db.func.count())
@@ -200,6 +240,7 @@ def bin_summary() -> dict:
         "batch_count": batch_count,
         "task_count": task_count,
         "goal_count": goal_count,
+        "project_count": project_count,
     }
 
 
@@ -214,6 +255,7 @@ def undo_batch(batch_id: uuid.UUID) -> dict:
 
     tasks = _batch_tasks(batch_id)
     goals = _batch_goals(batch_id)
+    projects = _batch_projects(batch_id)
 
     for task in tasks:
         if task.status == TaskStatus.ACTIVE or task.status == TaskStatus.ARCHIVED:
@@ -221,6 +263,22 @@ def undo_batch(batch_id: uuid.UUID) -> dict:
     for goal in goals:
         if goal.is_active:
             goal.is_active = False
+    # PR66 audit fix #131: also soft-delete bulk-imported projects.
+    # Same cascade as project_service.delete_project — null Task.project_id
+    # on every linked task so the soft-deleted project doesn't leave
+    # phantom labels on still-active tasks (which can happen if the user
+    # manually created tasks and assigned the imported project to them
+    # before realising they wanted to undo the import).
+    project_ids = [p.id for p in projects]
+    for project in projects:
+        if project.is_active:
+            project.is_active = False
+    if project_ids:
+        db.session.execute(
+            update(Task)
+            .where(Task.project_id.in_(project_ids))
+            .values(project_id=None)
+        )
 
     log.undone_at = datetime.now(UTC)
     db.session.commit()
@@ -229,6 +287,7 @@ def undo_batch(batch_id: uuid.UUID) -> dict:
         "batch_id": str(batch_id),
         "tasks_removed": len(tasks),
         "goals_removed": len(goals),
+        "projects_removed": len(projects),
     }
 
 
@@ -246,6 +305,7 @@ def restore_batch(batch_id: uuid.UUID) -> dict:
 
     tasks = _batch_tasks(batch_id)
     goals = _batch_goals(batch_id)
+    projects = _batch_projects(batch_id)
 
     restored_tasks = 0
     for task in tasks:
@@ -259,6 +319,15 @@ def restore_batch(batch_id: uuid.UUID) -> dict:
             goal.is_active = True
             restored_goals += 1
 
+    # PR66 audit fix #131: restore bulk-imported projects too. We do NOT
+    # re-link tasks to the project — undo nulled Task.project_id, and
+    # the user may have moved on. They can manually re-assign if needed.
+    restored_projects = 0
+    for project in projects:
+        if not project.is_active:
+            project.is_active = True
+            restored_projects += 1
+
     log.undone_at = None
     db.session.commit()
 
@@ -266,6 +335,7 @@ def restore_batch(batch_id: uuid.UUID) -> dict:
         "batch_id": str(batch_id),
         "tasks_restored": restored_tasks,
         "goals_restored": restored_goals,
+        "projects_restored": restored_projects,
     }
 
 
@@ -288,7 +358,9 @@ def purge_batch(batch_id: uuid.UUID, confirmation: str | None) -> dict:
 
     tasks = _batch_tasks(batch_id)
     goals = _batch_goals(batch_id)
+    projects = _batch_projects(batch_id)
     goal_ids = [g.id for g in goals]
+    project_ids = [p.id for p in projects]
 
     # Null out any external references to the goals we're about to purge.
     if goal_ids:
@@ -297,11 +369,22 @@ def purge_batch(batch_id: uuid.UUID, confirmation: str | None) -> dict:
             .where(Task.goal_id.in_(goal_ids))
             .values(goal_id=None)
         )
+    # PR66 audit fix #131: same null-out for project FKs. Tasks that
+    # were re-linked to the soft-deleted project after undo (if the
+    # user manually re-activated it elsewhere) won't dangle on purge.
+    if project_ids:
+        db.session.execute(
+            update(Task)
+            .where(Task.project_id.in_(project_ids))
+            .values(project_id=None)
+        )
 
     for task in tasks:
         db.session.delete(task)
     for goal in goals:
         db.session.delete(goal)
+    for project in projects:
+        db.session.delete(project)
 
     # Retain the ImportLog row as audit, but disassociate it from the now
     # non-existent rows.
@@ -312,6 +395,7 @@ def purge_batch(batch_id: uuid.UUID, confirmation: str | None) -> dict:
         "batch_id": str(batch_id),
         "tasks_purged": len(tasks),
         "goals_purged": len(goals),
+        "projects_purged": len(projects),
     }
 
 
@@ -332,14 +416,17 @@ def empty_bin(confirmation: str | None) -> dict:
 
     total_tasks = 0
     total_goals = 0
+    total_projects = 0
     for bid in batch_ids:
         # Bypass the confirmation check since we already validated it.
         result = purge_batch(bid, _CONFIRMATION_TOKEN)
         total_tasks += result["tasks_purged"]
         total_goals += result["goals_purged"]
+        total_projects += result.get("projects_purged", 0)
 
     return {
         "batches_purged": len(batch_ids),
         "tasks_purged": total_tasks,
         "goals_purged": total_goals,
+        "projects_purged": total_projects,
     }

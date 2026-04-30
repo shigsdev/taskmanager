@@ -38,9 +38,11 @@ from models import (
 def _make_batch(
     task_titles: list[str] | None = None,
     goal_titles: list[str] | None = None,
+    project_names: list[str] | None = None,  # PR66 #131
     source: str = "test_batch",
 ) -> uuid.UUID:
-    """Create an ImportLog plus tasks/goals all sharing one batch_id."""
+    """Create an ImportLog plus tasks / goals / projects sharing one batch_id."""
+    from models import Project, ProjectType
     batch_id = uuid.uuid4()
     for title in task_titles or []:
         db.session.add(
@@ -60,10 +62,22 @@ def _make_batch(
                 batch_id=batch_id,
             )
         )
+    for name in project_names or []:
+        db.session.add(
+            Project(
+                name=name,
+                type=ProjectType.WORK,
+                batch_id=batch_id,
+            )
+        )
     db.session.add(
         ImportLog(
             source=source,
-            task_count=(len(task_titles or []) + len(goal_titles or [])),
+            task_count=(
+                len(task_titles or [])
+                + len(goal_titles or [])
+                + len(project_names or [])
+            ),
             batch_id=batch_id,
         )
     )
@@ -104,6 +118,122 @@ class TestSchema:
         fetched = db.session.get(ImportLog, log.id)
         assert fetched.batch_id == bid
         assert fetched.undone_at is None
+
+    def test_project_batch_id_roundtrips(self, app):
+        """PR66 audit fix #131: Project.batch_id supports the same
+        recycle-bin shape as Task.batch_id and Goal.batch_id."""
+        from models import Project, ProjectType
+        bid = uuid.uuid4()
+        p = Project(name="batch project", type=ProjectType.WORK, batch_id=bid)
+        db.session.add(p)
+        db.session.commit()
+        fetched = db.session.get(Project, p.id)
+        assert fetched.batch_id == bid
+
+
+class TestProjectImportUndoFlow:
+    """PR66 audit fix #131: bulk-imported projects must round-trip
+    through undo → restore → purge the same way tasks and goals do."""
+
+    def test_create_projects_from_import_stamps_batch_id(self, app):
+        from import_service import create_projects_from_import
+        from models import Project
+
+        with app.app_context():
+            created = create_projects_from_import(
+                [
+                    {"name": "P1", "type": "work", "included": True},
+                    {"name": "P2", "type": "work", "included": True},
+                ],
+                source="excel_projects",
+            )
+            # Pull batch_id values inside the session before the
+            # context exits and detaches the instances.
+            batch_ids = [p.batch_id for p in created]
+            assert len(created) == 2
+            assert all(bid is not None for bid in batch_ids)
+            assert batch_ids[0] == batch_ids[1]
+            # And they're queryable via batch_id.
+            from sqlalchemy import select as _select
+            rows = db.session.scalars(
+                _select(Project).where(Project.batch_id == batch_ids[0])
+            ).all()
+            assert len(rows) == 2
+
+    def test_undo_soft_deletes_imported_projects(self, app):
+        bid = _make_batch(project_names=["Proj A", "Proj B"])
+        result = recycle_service.undo_batch(bid)
+        assert result["projects_removed"] == 2
+        # Projects are now is_active=False
+        from models import Project
+        proj_a = db.session.scalar(
+            select(Project).where(Project.name == "Proj A")
+        )
+        assert proj_a.is_active is False
+
+    def test_undo_nulls_task_project_fk_on_imported_projects(self, app):
+        """If a user manually created tasks pointing at the imported
+        project before undoing, those tasks must stay (not be soft-
+        deleted), but their project_id must be nulled to avoid phantom
+        labels on the surviving tasks."""
+        from models import Project
+        bid = _make_batch(project_names=["LinkedProj"])
+        proj = db.session.scalar(
+            select(Project).where(Project.name == "LinkedProj")
+        )
+        # Manually-created task linked to the imported project (no batch_id)
+        manual_task = Task(
+            title="user task",
+            type=TaskType.WORK,
+            project_id=proj.id,
+        )
+        db.session.add(manual_task)
+        db.session.commit()
+        manual_id = manual_task.id
+
+        recycle_service.undo_batch(bid)
+
+        refreshed = db.session.get(Task, manual_id)
+        assert refreshed.project_id is None  # PR66 cascade
+        assert refreshed.status == TaskStatus.ACTIVE  # not in batch, not deleted
+
+    def test_restore_reactivates_imported_projects(self, app):
+        from models import Project
+        bid = _make_batch(project_names=["RestoreMe"])
+        recycle_service.undo_batch(bid)
+        result = recycle_service.restore_batch(bid)
+        assert result["projects_restored"] == 1
+        proj = db.session.scalar(
+            select(Project).where(Project.name == "RestoreMe")
+        )
+        assert proj.is_active is True
+
+    def test_purge_deletes_imported_projects(self, app):
+        from models import Project
+        bid = _make_batch(project_names=["PurgeMe1", "PurgeMe2"])
+        recycle_service.undo_batch(bid)
+        result = recycle_service.purge_batch(bid, "DELETE")
+        assert result["projects_purged"] == 2
+        # Project rows are gone
+        remaining = db.session.scalars(
+            select(Project).where(
+                Project.name.in_(["PurgeMe1", "PurgeMe2"])
+            )
+        ).all()
+        assert remaining == []
+
+    def test_list_bin_includes_project_count(self, app):
+        bid = _make_batch(project_names=["A", "B", "C"])
+        recycle_service.undo_batch(bid)
+        entries = recycle_service.list_bin()
+        assert len(entries) == 1
+        assert entries[0]["project_count"] == 3
+
+    def test_bin_summary_includes_project_count(self, app):
+        bid = _make_batch(project_names=["X", "Y"])
+        recycle_service.undo_batch(bid)
+        summary = recycle_service.bin_summary()
+        assert summary["project_count"] == 2
 
 
 # --- import_service + scan_service stamp batch_id ----------------------------
@@ -372,7 +502,12 @@ class TestUndoRestorePurge:
 
     def test_empty_bin_on_empty_bin_is_noop(self, app):
         result = recycle_service.empty_bin("DELETE")
-        assert result == {"batches_purged": 0, "tasks_purged": 0, "goals_purged": 0}
+        assert result == {
+            "batches_purged": 0,
+            "tasks_purged": 0,
+            "goals_purged": 0,
+            "projects_purged": 0,  # PR66 #131
+        }
 
 
 # --- Listing / summary -------------------------------------------------------
@@ -414,7 +549,12 @@ class TestListing:
 
     def test_bin_summary_empty(self, app):
         summary = recycle_service.bin_summary()
-        assert summary == {"batch_count": 0, "task_count": 0, "goal_count": 0}
+        assert summary == {
+            "batch_count": 0,
+            "task_count": 0,
+            "goal_count": 0,
+            "project_count": 0,  # PR66 #131
+        }
 
 
 # --- Filter correctness: undone items don't leak into normal views -----------

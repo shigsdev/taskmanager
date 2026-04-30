@@ -466,6 +466,7 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "priority_order": {"desc": "Manual order within type group (drag-and-drop on /projects)", "notes": "Lower = higher on the list"},
             "is_active":  {"desc": "Active or archived", "notes": "Archived projects don't appear in capture-bar dropdowns"},
             "goal_id":    {"desc": "Goal this project supports", "fk_target": "goals.id", "notes": "Optional"},
+            "batch_id":   {"desc": "Bulk-import batch (for recycle-bin undo)", "fk_target": "import_log.batch_id", "notes": "Optional"},
         },
     },
     "recurring_tasks": {

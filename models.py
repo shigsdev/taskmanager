@@ -195,10 +195,20 @@ class Project(db.Model):
     priority: Mapped[ProjectPriority | None] = mapped_column(
         Enum(ProjectPriority), nullable=True
     )
+    # PR66 (#131, 2026-04-30): batch_id links this project to a bulk-import
+    # operation (ImportLog.batch_id) — same shape as Goal.batch_id and
+    # Task.batch_id. Without it, recycle-bin undo for project imports
+    # had no way to find the rows it created. Nullable + indexed.
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     goal: Mapped[Goal | None] = relationship(back_populates="projects")
     tasks: Mapped[list[Task]] = relationship(back_populates="project")
+
+    __table_args__ = (
+        # Bulk-import undo path queries `WHERE batch_id = X AND is_active`.
+        Index("ix_projects_batch_id", "batch_id"),
+    )
 
 
 class Task(db.Model):
