@@ -626,6 +626,54 @@ class TestClientErrorEndpoint:
             client_logger.removeHandler(handler)
 
 
+class TestClientErrorControlCharStripAndCaps:
+    """PR62 audit fix #12 + #24: per-field length caps + control-char
+    strip on /api/debug/client-error so embedded \\n can't fake fake log
+    rows and an attacker can't write 50KB+ messages each."""
+
+    def test_newlines_in_message_replaced_with_space(self, app, authed_client):
+        handler = DBLogHandler(app, level=logging.ERROR)
+        handler.addFilter(RequestContextFilter())
+        client_logger = logging.getLogger("taskmanager.client")
+        client_logger.addHandler(handler)
+        client_logger.setLevel(logging.ERROR)
+        try:
+            resp = authed_client.post(
+                "/api/debug/client-error",
+                json={"message": "real error\n2026-01-01 ERROR fake injected"},
+            )
+            assert resp.status_code == 201
+            with app.app_context():
+                row = db.session.scalar(select(AppLog))
+            # Newline must be neutralized so the row is a single line.
+            assert "\n" not in row.message
+            # Both halves still present, separated by space (not newline).
+            assert "real error" in row.message
+            assert "fake injected" in row.message
+        finally:
+            client_logger.removeHandler(handler)
+
+    def test_oversized_message_truncated_at_2k(self, app, authed_client):
+        handler = DBLogHandler(app, level=logging.ERROR)
+        handler.addFilter(RequestContextFilter())
+        client_logger = logging.getLogger("taskmanager.client")
+        client_logger.addHandler(handler)
+        client_logger.setLevel(logging.ERROR)
+        try:
+            resp = authed_client.post(
+                "/api/debug/client-error",
+                json={"message": "A" * 5000},
+            )
+            assert resp.status_code == 201
+            with app.app_context():
+                row = db.session.scalar(select(AppLog))
+            # Cap is 2000 chars + "...[truncated]" suffix; total < 2100.
+            assert len(row.message) < 2100
+            assert "[truncated]" in row.message
+        finally:
+            client_logger.removeHandler(handler)
+
+
 class TestBackfillProjectColors:
     """#93 (PR27): the project-colors backfill admin endpoint."""
 

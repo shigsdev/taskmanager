@@ -286,6 +286,109 @@ class TestDigestHtml:
         assert "Open Task Manager" not in html
 
 
+class TestDigestOverdueLabelCorrectness:
+    """PR62 audit fix #5: future-dated Today-tier tasks were mislabeled
+    as overdue in the plain-text digest."""
+
+    def test_future_dated_today_task_not_labeled_overdue(self, app):
+        from digest_service import build_digest
+
+        with app.app_context():
+            _make_task(
+                title="Future plan",
+                tier=Tier.TODAY,
+                due_date=date.today() + timedelta(days=14),
+            )
+            body = build_digest()
+        assert "Future plan" in body
+        # Must NOT show "(overdue: ...)" for a future date
+        assert "overdue" not in body.split("Future plan")[1].split("\n")[0]
+        # Must show "(due ...)" instead
+        future_pretty = (date.today() + timedelta(days=14)).strftime("%b %d")
+        assert f"(due {future_pretty})" in body
+
+    def test_past_dated_task_still_labeled_overdue(self, app):
+        from digest_service import build_digest
+
+        with app.app_context():
+            _make_task(
+                title="Real overdue",
+                tier=Tier.BACKLOG,
+                due_date=date.today() - timedelta(days=3),
+            )
+            body = build_digest()
+        # OVERDUE section heading is present
+        assert "OVERDUE" in body
+        assert "Real overdue" in body
+
+
+class TestDigestInactiveProjectAndDoneGoalFiltered:
+    """PR62 audit fix #14: per-task lines were exposing inactive project
+    names and DONE goal titles. The goal-section filter didn't reach the
+    per-task `view`."""
+
+    def test_inactive_project_name_not_shown_in_task_line(self, app):
+        from digest_service import build_digest
+        from models import Project, ProjectType
+
+        with app.app_context():
+            proj = Project(name="DEAD-PROJECT", type=ProjectType.WORK, is_active=False)
+            db.session.add(proj)
+            db.session.commit()
+            _make_task(title="Linked task", tier=Tier.TODAY, project_id=proj.id)
+            body = build_digest()
+        assert "Linked task" in body
+        # Inactive project name must NOT appear next to the task line.
+        assert "DEAD-PROJECT" not in body
+
+    def test_done_goal_title_not_shown_in_task_line(self, app):
+        from digest_service import build_digest
+        from models import GoalStatus
+
+        with app.app_context():
+            goal = _make_goal(title="DONE-GOAL")
+            goal.status = GoalStatus.DONE
+            db.session.commit()
+            _make_task(title="Linked task 2", tier=Tier.TODAY, goal_id=goal.id)
+            body = build_digest()
+        assert "Linked task 2" in body
+        # Done goal title must NOT appear in the task line.
+        assert "DONE-GOAL" not in body
+
+
+class TestSafeAppUrl:
+    """PR62 audit fix #22: scheme-allowlist APP_URL before it lands in
+    the email <a href> CTA button."""
+
+    def test_https_app_url_passes_through(self, app, monkeypatch):
+        from digest_service import build_digest_html
+
+        monkeypatch.setenv("APP_URL", "https://example.com/app")
+        with app.app_context():
+            html = build_digest_html()
+        assert 'href="https://example.com/app"' in html
+
+    def test_javascript_scheme_blocked(self, app, monkeypatch):
+        from digest_service import build_digest_html
+
+        monkeypatch.setenv("APP_URL", "javascript:alert(1)")
+        with app.app_context():
+            html = build_digest_html()
+        # CTA must NOT render with a malicious scheme.
+        assert "javascript:" not in html
+        assert "Open Task Manager" not in html
+
+    def test_http_scheme_blocked(self, app, monkeypatch):
+        """Operator-set http:// (e.g. accidental local-dev push) should
+        not produce an unencrypted CTA in shipped emails."""
+        from digest_service import build_digest_html
+
+        monkeypatch.setenv("APP_URL", "http://localhost:5000")
+        with app.app_context():
+            html = build_digest_html()
+        assert "Open Task Manager" not in html
+
+
 class TestDigestPlainTextOrder:
     """Plain-text digest reorders Overdue ahead of Today (mirrors HTML)."""
 

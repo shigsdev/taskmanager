@@ -35,6 +35,24 @@ from models import Goal, GoalStatus, Task, TaskStatus, Tier, db
 logger = logging.getLogger(__name__)
 
 
+def _safe_app_url(raw: str) -> str:
+    """Return ``raw`` only if it looks like an https URL; else empty.
+
+    Defense-in-depth for the email template's CTA button — see callsite
+    comment in _build_digest_data. Local development uses APP_URL=
+    "http://localhost:..." which is fine for the plain-text ``Open app:``
+    line; the HTML template's CTA button only renders when this returns
+    a non-empty value, so https-only is intentional (we don't want a
+    "Click here to open Task Manager" button in a mailbox that points to
+    an unencrypted URL anyway).
+    """
+    if not raw:
+        return ""
+    if raw.startswith("https://"):
+        return raw
+    return ""
+
+
 def _sanitize(text: str) -> str:
     """Remove control characters and excessive whitespace from task content.
 
@@ -101,14 +119,30 @@ def _build_digest_data(target_date: date | None = None) -> dict[str, Any]:
         )
     ) or 0
 
+    today_iso = today.isoformat()
+
     def _task_view(t: Task) -> dict[str, Any]:
+        # PR62 audit fix #14: filter out inactive projects + DONE goals at
+        # the per-task line level too. The goal-section already filters,
+        # but a per-task overdue line would still expose the dead label.
+        proj_name = (
+            _sanitize(t.project.name)
+            if t.project_id and t.project and t.project.is_active
+            else None
+        )
+        goal_title = (
+            _sanitize(t.goal.title)
+            if t.goal_id and t.goal and t.goal.status != GoalStatus.DONE
+            else None
+        )
         return {
             "title": _sanitize(t.title),
-            "project": _sanitize(t.project.name) if t.project_id and t.project else None,
-            "goal": _sanitize(t.goal.title) if t.goal_id and t.goal else None,
+            "project": proj_name,
+            "goal": goal_title,
             "due_today": t.due_date == today,
             "due_date_iso": t.due_date.isoformat() if t.due_date else None,
             "due_date_pretty": t.due_date.strftime("%b %d") if t.due_date else None,
+            "today_iso": today_iso,  # for plain-text overdue-vs-future disambiguation
         }
 
     return {
@@ -125,7 +159,15 @@ def _build_digest_data(target_date: date | None = None) -> dict[str, Any]:
         "week_count": len(week_tasks),
         "completed_recent": completed_recent,
         "cancelled_recent": cancelled_recent,
-        "app_url": os.environ.get("APP_URL", ""),
+        # PR62 audit fix #22: scheme-allowlist APP_URL before it lands in
+        # an <a href> in the email. Operator-controlled today (env var),
+        # but the email template trusts whatever lands in this field.
+        # If APP_URL ever becomes user-mutable (settings table, query
+        # string, etc.) the email's CTA button becomes an XSS sink.
+        # Defense-in-depth: only allow https:// values; anything else
+        # silently degrades to no CTA (existing template branch handles
+        # the empty case).
+        "app_url": _safe_app_url(os.environ.get("APP_URL", "")),
     }
 
 
@@ -204,7 +246,14 @@ def build_digest_html(*, target_date: date | None = None) -> str:
 
 
 def _format_task_line(view: dict[str, Any]) -> str:
-    """Format a single task as a plain-text digest line."""
+    """Format a single task as a plain-text digest line.
+
+    PR62 audit fix #5: previously this branched on `view["due_date_iso"]`
+    being set, which mislabeled future-dated Today-tier tasks as
+    "overdue". A user could move a task into Today while keeping its
+    planned future due_date — the digest would then claim the task was
+    overdue. Now we explicitly compare due_date_iso to today_iso.
+    """
     parts = [f"[ ] {view['title']}"]
     if view["project"]:
         parts.append(f"({view['project']})")
@@ -213,7 +262,12 @@ def _format_task_line(view: dict[str, Any]) -> str:
     if view["due_today"]:
         parts.append("(due today)")
     elif view["due_date_iso"]:
-        parts.append(f"(overdue: {view['due_date_iso']})")
+        # Compare directly to today's iso to disambiguate overdue from future.
+        today_iso = view.get("today_iso")
+        if today_iso and view["due_date_iso"] < today_iso:
+            parts.append(f"(overdue: {view['due_date_iso']})")
+        else:
+            parts.append(f"(due {view['due_date_pretty']})")
     return " ".join(parts)
 
 

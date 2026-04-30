@@ -14,6 +14,7 @@ from __future__ import annotations
 import hmac
 import logging
 import os
+import re
 from datetime import UTC, datetime, timedelta
 from functools import wraps
 
@@ -23,6 +24,15 @@ from sqlalchemy import select
 from auth import login_required
 from logging_service import scrub_sensitive
 from models import AppLog, db
+
+# PR62 audit fix #24: strip C0 control characters (0x00-0x1F) and DEL
+# (0x7F) from user-supplied log fields so an attacker can't inject
+# fake-looking log lines via embedded newlines/CRs into rows visible
+# through /api/debug/logs. Newlines inside `stack` are legitimate and
+# stripping there would corrupt traces — so this regex only applies to
+# fields concatenated into the single-line `combined` log message.
+_CTRL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
+
 
 # Numeric ordering so ?level=WARNING returns WARNING, ERROR, and CRITICAL
 # — matches standard Python logging "this level and above" semantics.
@@ -257,15 +267,34 @@ def client_error(email: str):  # noqa: ARG001
     if not isinstance(data, dict):
         return jsonify({"error": "JSON body required"}), 400
 
-    raw_msg = data.get("message") or "(no message)"
-    raw_stack = data.get("stack")
-    url = data.get("url") or ""
-    user_agent = data.get("userAgent") or ""
+    # PR62 audit fix #12: cap each user-controlled field length BEFORE
+    # any concatenation. The DBLogHandler trims at 10/20 KB but that's
+    # post-truncation of the *combined* message. A 50 KB stack + 50 KB
+    # message + 50 KB url = 150 KB through the log path before truncation,
+    # which is wasted I/O. Each field gets a tight per-field cap here.
+    def _capped(raw, max_len):
+        if raw is None:
+            return ""
+        s = str(raw)
+        return s if len(s) <= max_len else s[:max_len] + "...[truncated]"
+
+    # PR62 audit fix #24: strip control chars from each field before
+    # joining with " | ". Without this, a `\n` in `message` lets the
+    # injected text fake a separate log entry when anyone views logs as
+    # plain text. Newlines are legitimate inside `stack` (which we don't
+    # join), so we only strip from the joined fields.
+    def _no_ctrl(s):
+        return _CTRL_CHARS_RE.sub(" ", s)
+
+    raw_msg = _no_ctrl(_capped(data.get("message") or "(no message)", 2000))
+    raw_stack = _capped(data.get("stack"), 8000) if data.get("stack") else None
+    url = _no_ctrl(_capped(data.get("url"), 1000))
+    user_agent = _no_ctrl(_capped(data.get("userAgent"), 500))
     line = data.get("line")
     column = data.get("column")
 
     # Build a combined message so it's readable in one row.
-    parts = [str(raw_msg)]
+    parts = [raw_msg]
     if line is not None or column is not None:
         parts.append(f"at line={line} col={column}")
     if url:
