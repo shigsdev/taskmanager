@@ -29,7 +29,10 @@ work and personal life, with a regulated (air-gapped) work environment.
 - **URL save** — paste a URL in quick capture, server fetches page title
   (SSRF-protected), saves as task with clickable link
 - **Checklists** — checklist items on tasks with progress tracking
-- **Weekly review** — step-through stale task review (keep/freeze/delete/snooze)
+- **Weekly review** — step-through stale task review (keep/freeze/delete/snooze) plus
+  a **triage suggestions** panel above the review card listing stale tasks with
+  one-click recommended actions (heuristic-based: e.g. inbox >7 days → Backlog,
+  backlog >90 days → delete)
 - **Recurring tasks** — 16 system defaults plus custom templates; daily, weekly,
   single-day-of-week, or **multi-day-of-week** (e.g. Mon+Wed+Fri); dedicated
   `/recurring` page with multi-select bulk-edit (type / frequency / project /

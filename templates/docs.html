@@ -717,6 +717,42 @@ Skip this line (too short)</pre>
                 <li>A progress bar at the top shows how many stale tasks remain.</li>
                 <li>An "All caught up" screen renders when the queue is empty.</li>
             </ul>
+
+            <h3>Triage suggestions panel</h3>
+            <p>
+                Above the Review card, a separate <strong>💡 Triage suggestions</strong>
+                panel surfaces tasks that have gone stale in their
+                current tier with one-click recommended actions. The
+                panel is hidden when no tasks qualify, so it doesn't
+                distract you on light days.
+            </p>
+            <p>The rules are heuristic-only (no AI call) and tuned conservatively:</p>
+            <ul>
+                <li><strong>Inbox</strong> &gt; 7 days untouched → suggest move to Backlog</li>
+                <li><strong>Today</strong> or <strong>Tomorrow</strong> past their <code>due_date</code> by more than 3 days → suggest move to Backlog</li>
+                <li><strong>This Week</strong> &gt; 14 days untouched → suggest move to Backlog</li>
+                <li><strong>Next Week</strong> &gt; 21 days untouched → suggest move to Backlog</li>
+                <li><strong>Backlog</strong> &gt; 90 days untouched → suggest <em>delete</em></li>
+                <li><strong>Freezer</strong> &gt; 60 days untouched → suggest <em>delete</em></li>
+            </ul>
+            <p>
+                "Untouched" means <code>updated_at</code> hasn't changed —
+                touching the task in any way (tier change, field edit,
+                marking it reviewed) resets the staleness clock.
+            </p>
+            <h4>What's excluded</h4>
+            <ul>
+                <li>Subtasks (they ride along with their parent — no duplicate noise).</li>
+                <li>Anything that isn't <code>status = active</code> — completed, cancelled, and deleted tasks never appear.</li>
+            </ul>
+            <h4>Buttons per row</h4>
+            <ul>
+                <li><strong>Apply</strong> — labeled either <code>→ &lt;Tier&gt;</code> or <strong>Delete</strong>. Routes through the same <code>PATCH /api/tasks/&lt;id&gt;</code> or <code>DELETE /api/tasks/&lt;id&gt;</code> endpoint the rest of the app uses, so audit trails stay consistent.</li>
+                <li><strong>Dismiss</strong> — hides the row for this page-load only. Refresh the page and the suggestion comes back. Use it when you've considered a row and decided not to act on it yet, without nagging yourself for the rest of the session.</li>
+            </ul>
+            <p>
+                Suggestions are sorted with the most-stale task at the top.
+            </p>
         </section>
 
         <section id="subtasks" class="docs-section">
