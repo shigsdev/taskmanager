@@ -21,7 +21,11 @@ work and personal life, with a regulated (air-gapped) work environment.
   goal linkage that cascades onto linked tasks, `priority` + `priority_order` with
   drag-to-reorder within type group, `target_quarter`, lifecycle `status` mirroring
   Goals, plus Actions and Notes fields
-- **Inbox triage** — single and bulk triage flow for new tasks
+- **Inbox triage** — single and bulk triage flow for new tasks; plus
+  one-click **AI auto-categorize** that sends every active Inbox task
+  to Claude Haiku in a single batch and surfaces suggested
+  tier / project / goal / due-date / type per task in a review modal
+  (override per row, then Apply)
 - **Subtasks** — one-level-deep child tasks with progress badge on parent,
   goal/project inheritance, cascade on parent update, force-complete option,
   parent picker in the detail panel, and a `+ Subtask` quick button on every

@@ -490,6 +490,9 @@ the code.
 # triage_api.py — #12
 /api/triage/suggestions
 
+# inbox_categorize_api.py — Option A post-#12 brainstorm
+/api/inbox/categorize    # POST — one-call Claude pass over all inbox tasks
+
 # scan_api.py
 /api/scan/upload
 /api/scan/confirm

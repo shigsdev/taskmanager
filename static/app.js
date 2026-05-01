@@ -177,6 +177,9 @@ async function apiFetch(url, opts = {}) {
 // --- Data loading ------------------------------------------------------------
 
 async function loadTasks() {
+    // Exposed on window so non-app.js modules (e.g. inbox_categorize.js)
+    // can refresh the board after a write without a hard reload.
+    window.loadTasks = loadTasks;
     try {
         allTasks = await apiFetch(API);
     } catch (err) {
@@ -698,6 +701,13 @@ function renderBoard() {
     updateInboxBadge();
     updateTodayWarning();
     updateBulkTriageBtn();
+    // Post-#12 brainstorm Option A — toggle the auto-categorize
+    // button's visibility with the inbox cohort. Defined in
+    // static/inbox_categorize.js; null-guarded for pages that don't
+    // load that script (tier-detail / completed / projects / etc.).
+    if (typeof window.updateAutoCategorizeBtn === "function") {
+        window.updateAutoCategorizeBtn();
+    }
     setupDragAndDrop();
 }
 

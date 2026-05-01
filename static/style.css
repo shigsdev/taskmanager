@@ -1438,6 +1438,157 @@ body {
     padding: 0 16px;
 }
 
+/* Auto-categorize Inbox modal (post-#12 Option A). Shown after the
+   user clicks "💡 Auto-categorize" on the Inbox tier header. Modal
+   pattern: full-viewport backdrop + centered panel; tap-outside on
+   backdrop dismisses. Mobile collapse: panel goes full-screen. */
+.auto-categorize-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.auto-categorize-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+}
+.auto-categorize-panel {
+    position: relative;
+    background: var(--card, #fff);
+    border-radius: 8px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+    width: min(900px, 92vw);
+    max-height: 86vh;
+    display: flex;
+    flex-direction: column;
+}
+.auto-categorize-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border, #e5e7eb);
+}
+.auto-categorize-header h2 {
+    margin: 0;
+    font-size: 1.1rem;
+}
+.auto-categorize-close {
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 4px 8px;
+}
+.auto-categorize-hint {
+    margin: 12px 20px 8px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+.auto-categorize-body {
+    flex: 1;
+    overflow: auto;
+    padding: 0 20px;
+}
+.auto-categorize-loading,
+.auto-categorize-error {
+    padding: 24px 0;
+    text-align: center;
+    color: var(--text-muted);
+}
+.auto-categorize-error {
+    color: var(--danger, #dc2626);
+}
+.auto-categorize-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+.auto-categorize-table th,
+.auto-categorize-table td {
+    padding: 6px 8px;
+    text-align: left;
+    border-bottom: 1px solid var(--border, #e5e7eb);
+    vertical-align: middle;
+}
+.auto-categorize-table th {
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: var(--bg-subtle, #f6f8fa);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+.auto-categorize-title {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.auto-categorize-table select,
+.auto-categorize-table input[type="date"] {
+    width: 100%;
+    min-width: 0;
+    font-size: 0.8rem;
+}
+.auto-categorize-row-failed {
+    background: rgba(220, 38, 38, 0.08);
+}
+.auto-categorize-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 20px;
+    border-top: 1px solid var(--border, #e5e7eb);
+}
+@media (max-width: 700px) {
+    .auto-categorize-panel {
+        width: 100%;
+        height: 100%;
+        max-height: 100%;
+        border-radius: 0;
+    }
+    /* Stack table cells vertically per row at mobile width — table
+       layout would force horizontal scroll otherwise. */
+    .auto-categorize-table thead { display: none; }
+    .auto-categorize-table,
+    .auto-categorize-table tbody,
+    .auto-categorize-table tr,
+    .auto-categorize-table td {
+        display: block;
+    }
+    .auto-categorize-table tr {
+        margin-bottom: 12px;
+        padding: 8px;
+        border: 1px solid var(--border, #e5e7eb);
+        border-radius: 4px;
+    }
+    .auto-categorize-table td {
+        border: none;
+        padding: 4px 0;
+    }
+    .auto-categorize-table td::before {
+        content: attr(class);
+        display: inline-block;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        width: 60px;
+    }
+    .auto-categorize-title {
+        max-width: 100%;
+        font-weight: 500;
+    }
+    .auto-categorize-title::before { display: none; }
+}
+
 /* #12 — triage suggestions panel above the weekly-review card. Hidden
    by default; review.js shows it only when the API returns rows. */
 .triage-suggestions {

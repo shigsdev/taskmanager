@@ -44,6 +44,7 @@
 
         <h3 class="docs-toc-group">Workflows</h3>
         <ul>
+            <li><a href="#auto-categorize">Auto-categorize inbox</a></li>
             <li><a href="#bulk-ops">Bulk operations</a></li>
             <li><a href="#filters">Filters</a></li>
             <li><a href="#calendar-day-strip">Calendar &amp; day strip</a></li>
@@ -801,6 +802,43 @@ Skip this line (too short)</pre>
         {# =============================================================
            WORKFLOWS
            ============================================================= #}
+
+        <section id="auto-categorize" class="docs-section">
+            <h2>Auto-categorize inbox</h2>
+            <p>
+                When the Inbox has any tasks, a
+                <strong>💡 Auto-categorize</strong> button appears on
+                the Inbox tier header. One click sends every active
+                Inbox task to Claude in a single batch and opens a
+                review modal where you can accept or override each
+                suggestion before applying.
+            </p>
+            <h3>What it suggests per task</h3>
+            <ul>
+                <li><strong>Tier</strong> — Today, Tomorrow, This Week, Next Week, Backlog, or Freezer. Never "Inbox" (that's the source).</li>
+                <li><strong>Project</strong> — picked from your active projects, or null if nothing fits.</li>
+                <li><strong>Goal</strong> — picked from your in-progress / not-started goals, or null. If a project is suggested, Claude usually mirrors that project's goal.</li>
+                <li><strong>Due date</strong> — only set if the task title implies one (e.g. "Pay rent by 15th"); otherwise null.</li>
+                <li><strong>Type</strong> — Work or Personal.</li>
+                <li><strong>Reason</strong> — one short sentence explaining the most-influential signal.</li>
+            </ul>
+            <h3>Review then apply</h3>
+            <ul>
+                <li>Each suggestion renders as one row in the modal with editable selects + a date input. Override anything before applying.</li>
+                <li><strong>Apply</strong> per row — runs the canonical <code>PATCH /api/tasks/&lt;id&gt;</code> for that one task, removes the row from the modal.</li>
+                <li><strong>Apply all</strong> — patches each remaining row in sequence. Failures keep their row visible (highlighted) so you can retry.</li>
+                <li><strong>Cancel</strong> / tap outside / ✕ — closes without applying anything.</li>
+            </ul>
+            <h3>Cost + safety</h3>
+            <ul>
+                <li>Uses <strong>Claude Haiku</strong> (the cheapest model) — about <strong>$0.001 per call</strong> for a 50-task batch.</li>
+                <li>Capped at <strong>50 tasks per call</strong>. If your inbox is larger, the modal hint explains; apply the first batch, then re-run.</li>
+                <li>Rate-limited to <strong>5 calls / minute</strong> — same per-route cap as voice memo + image scan.</li>
+                <li>Subtasks are excluded (they ride along with their parent).</li>
+                <li>Project + goal IDs are <strong>validated server-side</strong> before they reach the modal — if Claude hallucinates an ID, it's quietly dropped to null rather than letting a bad foreign-key reach the PATCH.</li>
+                <li>If <code>ANTHROPIC_API_KEY</code> isn't set, the endpoint returns 502 with a clear error and no DB writes happen.</li>
+            </ul>
+        </section>
 
         <section id="bulk-ops" class="docs-section">
             <h2>Bulk operations</h2>

@@ -45,11 +45,58 @@
         <div class="tier-header">
             <h2><button class="collapse-toggle" aria-expanded="true">▾</button> <a href="{{ url_for('tier_detail_page', name='inbox') }}" class="tier-heading-link" title="Open Inbox as full page">Inbox</a> <span class="tier-count">0</span></h2>
             <div class="tier-actions">
+                {# Post-#12 brainstorm Option A — one-click LLM categorization
+                   pass over every active inbox task. Server returns
+                   suggested {tier, project, goal, due_date, type} per
+                   task; the UI shows a review modal where the user can
+                   override per-row before applying. Hidden when inbox
+                   is empty (renderBoard sets display:none). #}
                 <button class="btn-sm" id="bulkTriageBtn" title="Triage selected" style="display:none">Triage</button>
+                <button class="btn-sm" id="autoCategorizeBtn" title="Suggest tier / project / goal / date for every inbox task using AI" style="display:none">💡 Auto-categorize</button>
             </div>
         </div>
         <div class="tier-body task-list" data-tier="inbox"></div>
     </section>
+
+    {# Review modal for the auto-categorize flow. Hidden by default;
+       shown after POST /api/inbox/categorize returns. Each row is
+       editable so the user can override Claude's pick before applying. #}
+    <div class="auto-categorize-modal" id="autoCategorizeModal" style="display:none" role="dialog" aria-labelledby="autoCategorizeTitle">
+        <div class="auto-categorize-backdrop"></div>
+        <div class="auto-categorize-panel">
+            <div class="auto-categorize-header">
+                <h2 id="autoCategorizeTitle">💡 Auto-categorize Inbox</h2>
+                <button class="auto-categorize-close" id="autoCategorizeClose" aria-label="Close">✕</button>
+            </div>
+            <p class="auto-categorize-hint" id="autoCategorizeHint">
+                Review each suggestion. Override any field, then click Apply.
+            </p>
+            <div class="auto-categorize-body">
+                <div class="auto-categorize-loading" id="autoCategorizeLoading" style="display:none">
+                    <p>Asking Claude to categorize your inbox…</p>
+                </div>
+                <div class="auto-categorize-error" id="autoCategorizeError" style="display:none"></div>
+                <table class="auto-categorize-table" id="autoCategorizeTable" style="display:none">
+                    <thead>
+                        <tr>
+                            <th>Task</th>
+                            <th>Tier</th>
+                            <th>Project</th>
+                            <th>Goal</th>
+                            <th>Due</th>
+                            <th>Type</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="autoCategorizeRows"></tbody>
+                </table>
+            </div>
+            <div class="auto-categorize-footer">
+                <button class="btn" id="autoCategorizeApplyAll" style="display:none">Apply all</button>
+                <button class="btn btn-sm" id="autoCategorizeCancel">Cancel</button>
+            </div>
+        </div>
+    </div>
 
     <section class="tier" data-tier="today" id="tierToday">
         <div class="tier-header">
@@ -152,4 +199,5 @@
 <script src="{{ url_for('static', filename='parse_capture.js') }}"></script>
 <script src="{{ url_for('static', filename='capture.js') }}"></script>
 <script src="{{ url_for('static', filename='swipe.js') }}"></script>
+<script src="{{ url_for('static', filename='inbox_categorize.js') }}"></script>
 {% endblock %}

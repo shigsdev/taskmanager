@@ -21,6 +21,7 @@ import debug_api
 import digest_api
 import goals_api
 import import_api
+import inbox_categorize_api
 import projects_api
 import recurring_api
 import recycle_api
@@ -216,6 +217,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(projects_api.bp)
     app.register_blueprint(review_api.bp)
     app.register_blueprint(triage_api.bp)
+    app.register_blueprint(inbox_categorize_api.bp)
     app.register_blueprint(recurring_api.bp)
     app.register_blueprint(digest_api.bp)
     app.register_blueprint(scan_api.bp)
