@@ -1892,7 +1892,16 @@ body {
         white-space: nowrap;
     }
     .nav-links::-webkit-scrollbar { display: none; }  /* Chrome/Safari */
-    .nav-tab { font-size: 0.8rem; padding: 6px 8px; white-space: nowrap; }
+    .nav-tab {
+        font-size: 0.8rem;
+        padding: 6px 8px;
+        white-space: nowrap;
+        /* #140 — meet 44px touch-target floor on mobile.
+           Was 31px tall (padding 6+6 + line-height) before. */
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+    }
 
     /* Tier board: single column, tighter spacing */
     .tier-board { padding: 8px; gap: 10px; }
@@ -1922,7 +1931,10 @@ body {
     .task-quick-actions button {
         font-size: 0.8rem;
         padding: 6px 10px;
-        min-height: 36px;
+        /* #140 — meet 44px touch-target floor on mobile.
+           Was 36px before. .task-quick-actions has flex-wrap:wrap
+           so taller buttons reflow cleanly when 7+ don't fit. */
+        min-height: 44px;
     }
 
     /* Buttons: 44px min tap target */
@@ -1996,7 +2008,8 @@ body {
         padding: 0 8px 8px;
         -webkit-overflow-scrolling: touch;
     }
-    .project-filter-btn { white-space: nowrap; min-height: 36px; }
+    /* #140 — bump from 36px to meet 44px touch-target floor. */
+    .project-filter-btn { white-space: nowrap; min-height: 44px; }
 
     /* Swipe card: reveal actions on swipe left */
     .task-card.swiped {

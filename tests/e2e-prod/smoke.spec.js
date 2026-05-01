@@ -304,6 +304,33 @@ test.describe("Prod smoke — feature surfaces", () => {
         }
     });
 
+    test("touch targets meet 44px floor at mobile 375×812 (#140)", async ({ page }) => {
+        // Regression for #140: nav-tab + per-card tier-action buttons +
+        // project-filter chips were 31px / 36px tall on mobile, below the
+        // Apple HIG / Material Design 44px touch-target floor. Bumped via
+        // mobile-only @media (max-width:700px) min-height bumps in
+        // static/style.css. This test asserts the live computed heights.
+        await page.setViewportSize({ width: 375, height: 812 });
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator(".nav-tab").first()).toBeVisible();
+        await expect(page.locator(".task-card").first()).toBeVisible();
+        const heights = await page.evaluate(() => {
+            const h = (sel) => {
+                const e = document.querySelector(sel);
+                return e ? Math.round(e.getBoundingClientRect().height) : null;
+            };
+            return {
+                navTab: h(".nav-tab"),
+                quickBtn: h(".task-quick-actions button"),
+                projFilter: h("#projectFilterBar button"),
+            };
+        });
+        expect(heights.navTab).toBeGreaterThanOrEqual(44);
+        expect(heights.quickBtn).toBeGreaterThanOrEqual(44);
+        expect(heights.projFilter).toBeGreaterThanOrEqual(44);
+    });
+
     test("home board has both filter bars (#92)", async ({ page }) => {
         await page.goto("/?nosw=1");
         await page.waitForLoadState("networkidle");
