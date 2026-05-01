@@ -271,13 +271,37 @@ test.describe("Prod smoke — feature surfaces", () => {
         await page.goto("/calendar?nosw=1");
         await page.waitForLoadState("networkidle");
         await expect(page.locator("#calendarUnscheduled")).toBeVisible();
+        // Re-assert viewport in case async loads triggered any device-emulation
+        // resets between goto and assertion.
+        await page.setViewportSize({ width: 1280, height: 800 });
         const overflow = await page.evaluate(() => {
+            const wide = [];
+            for (const el of document.querySelectorAll("*")) {
+                const r = el.getBoundingClientRect();
+                if (r.right > 1281 && r.width > 50) {
+                    wide.push({
+                        tag: el.tagName,
+                        cls: (el.className + "").slice(0, 50),
+                        id: el.id,
+                        w: Math.round(r.width),
+                        right: Math.round(r.right),
+                    });
+                    if (wide.length >= 5) break;
+                }
+            }
             return {
                 scrollWidth: document.documentElement.scrollWidth,
                 innerWidth: window.innerWidth,
+                wide,
             };
         });
-        expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth);
+        if (overflow.scrollWidth > overflow.innerWidth) {
+            // Surface the offending elements in the failure message.
+            throw new Error(
+                `/calendar overflowed: scrollWidth=${overflow.scrollWidth} > ` +
+                `innerWidth=${overflow.innerWidth}. Wide: ${JSON.stringify(overflow.wide)}`,
+            );
+        }
     });
 
     test("home board has both filter bars (#92)", async ({ page }) => {

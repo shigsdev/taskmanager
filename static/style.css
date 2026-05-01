@@ -270,7 +270,10 @@ body {
 }
 .calendar-row {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    /* repeat(6, minmax(0, 1fr)) so a long task title in any one day
+       cell can't expand the whole row past the calendar's available
+       width — same #138 D-B1 class as `.calendar-layout` above. */
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 8px;
 }
 .calendar-cell {
