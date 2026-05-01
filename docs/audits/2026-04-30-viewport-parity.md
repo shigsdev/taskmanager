@@ -279,3 +279,125 @@ Per the backlog row's "desktop session please double-check" notes:
   template above ("BACKLOG #<new>" placeholder).
 - **(f) Pre/post-PR gates**: this PR ships under
   `bash scripts/run_all_gates.sh` clean. Phase E PRs will too.
+
+---
+
+## Phase B — Desktop walk (1280×800)
+
+**Date:** 2026-04-30
+**Tester:** Claude Code via Claude Preview headless (Windows host)
+**Server:** `taskmanager-dev-bypass` on port 5111, `?nosw=1` on every load
+**Seed:** `python scripts/seed_dev_data.py` →
+24 active, 5 completed, 3 recycled, 4 goals, 5 projects, 5 recurring
+**Console errors across all 22 pages:** 0
+**Pre-flight (a) drift check:** page list at HEAD `dfe4ce0` matches Phase A
+inventory exactly — 15 top-level + 7 tier subpages = 22 page cells,
+no new routes shipped since scoping.
+
+### Per-page results
+
+| # | Path | Load | scrollWidth | Heading | Key affordances confirmed | Result |
+|---|---|---|---|---|---|---|
+| 1 | `/` | OK | 1265 | (board) | nav (12 links), capture bar (text + type select + 🎤 + 🎙️ + ✓), type filter All/Work/Personal, Select multi-select, project chips (5), goal chips (4), search box, day-strip (12 cells), tier groups (Inbox 3, Today 9 incl. capture-test row, etc.), per-card 7 tier buttons + ✓ Done + + Subtask | PASS |
+| 2 | `/goals` | OK | 1265 | Goals | 4 goal cards + 4 progress bars, "New Goal" affordance | PASS |
+| 3 | `/projects` | OK | 1265 | Projects | 5 project rows + bulk-edit toolbar | PASS |
+| 4 | `/calendar` | OK | **1482** | Calendar | 12 day cells + Unscheduled aside (13 items) | **FAIL — overflow** (defect D-B1 below) |
+| 5 | `/recurring` | OK | 1280 | Recurring Templates | 5 templates listed (`#recurringList`), Select toolbar visible | PASS |
+| 6 | `/import` | OK | 1280 | (Import) | textarea + file input present | PASS (no recording-required steps) |
+| 7 | `/scan` | OK | 1280 | (Scan) | 3 radios (tasks/goals/projects, tasks=checked default) + file input | PASS |
+| 8 | `/voice-memo` | OK | 1280 | (Voice memo) | "Start recording" button + tips panel | PASS — recording itself can't be exercised in headless (no mic) |
+| 9 | `/review` | OK | 1280 | (Review) | Keep / Freeze / Snooze / Delete buttons + current card | PASS |
+| 10 | `/completed` | OK | 1280 | Completed 5 | 5 completed cards rendered, "← Board" link present | PASS |
+| 11 | `/recycle-bin` | OK | 1280 | (Recycle Bin) | "Empty Bin" button + 1 batch (`seed_dev_data`, 2 tasks) with Restore/Purge | PASS |
+| 12 | `/settings` | OK | 1265 | (Settings) | stats reflect seeded counts; digest config + SendGrid panel visible | PASS |
+| 13 | `/docs` | OK | 1265 | Task Manager — Documentation | 20 TOC links + 41 H2/section headings | PASS |
+| 14 | `/architecture` | OK | 1265 | Task Manager — Architecture | 10 Mermaid SVGs render (3 sequence + 7 flowcharts/ER), per-table cards visible | PASS — under bypass; cell S9 (no-bypass prod check) deferred |
+| 15 | `/print` | OK | 1265 | Daily Tasks | tier groupings + 13 task list-items | PASS |
+| 16 | `/tier/inbox` | OK | 1280 | Inbox 2 | 2 cards (post-smoke; was 3 before #today move) | PASS |
+| 17 | `/tier/today` | OK | 1265 | Today 9 | 9 real cards, capture-bar default-tier wiring works (smoke task with `#today` landed here) | PASS |
+| 18 | `/tier/tomorrow` | OK | 1280 | Tomorrow 0 | empty state | PASS |
+| 19 | `/tier/this_week` | OK | 1265 | This Week 4 | 4 real + recurring previews | PASS |
+| 20 | `/tier/next_week` | OK | 1265 | Next Week 0 | 12 `preview-card` (recurring previews per #32, no real tasks) | PASS |
+| 21 | `/tier/backlog` | OK | 1280 | Backlog 6 | 6 cards | PASS |
+| 22 | `/tier/freezer` | OK | 1280 | Freezer 3 | 3 cards | PASS |
+
+**Total: 21 PASS, 1 FAIL.**
+
+### Cross-cutting interaction smoke (S1, C1, C2, D1)
+
+Run on `/` board:
+
+| Cell | Description | Result |
+|---|---|---|
+| C1 | Capture bar: type "Phase B walk smoke task #today" → Enter | PASS — task lands in Today, count 8→9 |
+| C2 | Hashtag parser: `#today` token consumed by `parseCapture` (smoke task moved to Today, not Inbox default) | PASS |
+| D1 | Click first card → detail panel (`#detailPanel`) opens with all expected fields: `#detailTitle`, `#detailTier`, `#detailType`, `#detailProject`, `#detailDueDate`, `#detailGoal`, `#detailUrl`, `#detailRepeat` (+ conditional repeat-day / day-of-month / week-of-month / nth-day / end-date), `#detailNotes`, `#parentPickerInput`, `#subtaskInput`, `#detailCancellationReason` | PASS |
+| S1 | Top-nav: 12 links present + "Tasks" highlighted as active page | PASS |
+
+Deeper interactions (D2-D15, T1-T6, F1-F9, R1-R3, S2-S11) NOT exercised
+in this walk — Phase B's primary goal is to find rendering / load-time
+defects across all 22 pages, not exhaustive interaction click-tests
+which are better covered by the Playwright suite + targeted Phase 6
+checks per PR. Mobile walk (Phase C) will repeat the same surface-level
+walk at 375×812 to surface viewport-specific bugs (which is the audit's
+named intent — desktop + mobile parity, not full-coverage interaction
+fuzzing).
+
+### Defect log
+
+#### D-B1 — `/calendar` horizontal overflow at desktop 1280×800
+
+- **Cell:** page #4 / desktop 1280×800
+- **Symptom:** `document.documentElement.scrollWidth` = 1482px on a
+  1280px viewport — 202px of horizontal overflow. The
+  `.calendar-unscheduled` aside renders at `x=1255 → x=1469` (its
+  bounding box `right=1469`), pushing past the viewport's right edge.
+- **Root cause (CSS read):** `.calendar-layout { display: grid;
+  grid-template-columns: 1fr 240px }` (style.css:325). Without
+  `minmax(0, 1fr)` on the first track, the 1fr column refuses to
+  shrink below the intrinsic `min-content` width of its day cells
+  (some task titles are long), so the calendar grid expands past the
+  available width and shoves the 240px aside off-screen. Classic
+  CSS-grid 1fr-vs-min-content gotcha.
+- **Class:** (a) bug
+- **Action:** Phase E quick-win — change to
+  `grid-template-columns: minmax(0, 1fr) 240px;` and add a Phase 6
+  desktop-overflow assertion to the calendar test in
+  `tests/e2e-prod/smoke.spec.js` (or `tests/e2e/`) so a regression
+  reproduces.
+- **BACKLOG row:** to be filed in Phase D.
+- **Regression test sketch:** Playwright at desktop preset on
+  `/calendar`: assert
+  `await page.evaluate(() => document.documentElement.scrollWidth) <= 1280`.
+
+### Open items / coverage gaps for Phase C+
+
+- **C3 (capture-bar 🎤 voice button)** — Web Speech API isn't
+  available in the Claude Preview headless context; permission-denied
+  + unavailable fallback logic deferred to manual real-browser pass.
+- **C4–C6 (voice-memo recording flow)** — needs mic; can only assert
+  the page renders + record button is present.
+- **T2/T3/T4/T5/T6 (drag-drop)** — HTML5 DnD + Pointer Events
+  interaction is hard to fire reliably in headless eval; dedicated
+  Playwright tests already cover the calendar drag (PR51); the board
+  day-strip drag (T3) and projects priority drag (T6) currently rely
+  on Phase 6 manual passes.
+- **S9 (Mermaid render under SW + CSP)** — explicitly deferred to a
+  no-bypass production check post-deploy per audit cell S9 + Bug #55.
+  Already enforced mechanically by the `tests/e2e-prod/smoke.spec.js`
+  "architecture page renders Mermaid diagrams" test added by #55.
+- **S2 (offline / network reconnect prompt)** — needs offline emulation
+  not exercised here.
+
+### Phase B summary
+
+- 22 pages walked at desktop 1280×800.
+- 21 PASS, 1 FAIL (`/calendar` overflow → defect D-B1).
+- 0 console errors across all loads.
+- 0 nav / page-load failures.
+- Capture create + hashtag parse + detail-panel open all work.
+- Defect D-B1 has a clear, low-risk fix queued for Phase E.
+
+Phase C (mobile 375×812 walk) is the natural next step — same page +
+interaction surface at the alternate viewport. Phase D will classify
+both walks' defects together; Phase E will batch the quick-win fixes.
