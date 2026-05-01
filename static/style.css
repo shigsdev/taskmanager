@@ -1437,6 +1437,82 @@ body {
     margin: 32px auto;
     padding: 0 16px;
 }
+
+/* #12 — triage suggestions panel above the weekly-review card. Hidden
+   by default; review.js shows it only when the API returns rows. */
+.triage-suggestions {
+    margin-bottom: 32px;
+    padding: 16px;
+    background: var(--bg-subtle, #f6f8fa);
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 6px;
+}
+.triage-suggestions h2 {
+    margin: 0 0 4px;
+    font-size: 1.05rem;
+}
+.triage-count {
+    color: var(--text-muted);
+    font-weight: normal;
+    font-size: 0.9rem;
+}
+.triage-hint {
+    margin: 0 0 12px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+.triage-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.triage-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--card, #fff);
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 4px;
+}
+.triage-row-main {
+    flex: 1;
+    min-width: 0;  /* let truncation work */
+}
+.triage-title {
+    display: block;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.triage-meta {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+.triage-tier {
+    text-transform: capitalize;
+}
+.triage-row-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+@media (max-width: 700px) {
+    .triage-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .triage-row-actions {
+        justify-content: flex-end;
+    }
+}
 .review-loading, .review-empty {
     text-align: center;
     padding: 48px 0;

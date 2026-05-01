@@ -160,6 +160,13 @@
     // --- Init -------------------------------------------------------------------
 
     async function init() {
+        // #12 — fetch triage suggestions in parallel with stale tasks.
+        // Independent surfaces, so race them; the suggestions panel
+        // renders even if /api/review fails (and vice versa).
+        loadTriageSuggestions().catch(function (err) {
+            console.warn("triage suggestions failed:", err);
+        });
+
         try {
             tasks = await apiFetch(API);
         } catch (err) {
@@ -176,6 +183,116 @@
         currentIndex = 0;
         summary = { keep: 0, freeze: 0, snooze: 0, delete: 0 };
         showCurrentTask();
+    }
+
+    // --- #12 Triage suggestions -----------------------------------------------
+
+    async function loadTriageSuggestions() {
+        var section = document.getElementById("triageSuggestions");
+        var list = document.getElementById("triageList");
+        var countEl = document.getElementById("triageCount");
+        if (!section || !list) { return; }
+
+        var suggestions;
+        try {
+            suggestions = await apiFetch("/api/triage/suggestions");
+        } catch (err) {
+            return;  // silent — non-critical surface
+        }
+        if (!Array.isArray(suggestions) || suggestions.length === 0) { return; }
+
+        countEl.textContent = "(" + suggestions.length + ")";
+        list.innerHTML = "";
+        suggestions.forEach(function (s) { list.appendChild(renderTriageRow(s)); });
+        section.style.display = "";
+    }
+
+    function renderTriageRow(s) {
+        var li = document.createElement("li");
+        li.className = "triage-row";
+        li.dataset.taskId = s.task_id;
+
+        var actionLabel;
+        if (s.suggested_action === "delete") {
+            actionLabel = "Delete";
+        } else {
+            actionLabel = "→ " + tierLabel(s.suggested_tier);
+        }
+
+        li.innerHTML =
+            '<div class="triage-row-main">' +
+                '<span class="triage-title"></span>' +
+                '<span class="triage-meta">' +
+                    '<span class="triage-tier"></span>' +
+                    ' · <span class="triage-reason"></span>' +
+                '</span>' +
+            '</div>' +
+            '<div class="triage-row-actions">' +
+                '<button class="btn btn-sm triage-apply" type="button"></button>' +
+                '<button class="btn btn-sm triage-dismiss" type="button" title="Hide for now">Dismiss</button>' +
+            '</div>';
+
+        li.querySelector(".triage-title").textContent = s.title;
+        li.querySelector(".triage-tier").textContent = tierLabel(s.current_tier);
+        li.querySelector(".triage-reason").textContent = s.reason;
+        var applyBtn = li.querySelector(".triage-apply");
+        applyBtn.textContent = actionLabel;
+        applyBtn.addEventListener("click", function () { applySuggestion(s, li); });
+        li.querySelector(".triage-dismiss").addEventListener("click", function () {
+            li.remove();
+            updateTriageCount();
+        });
+        return li;
+    }
+
+    function tierLabel(tier) {
+        // Match user-facing labels used elsewhere in the app.
+        var map = {
+            inbox: "Inbox",
+            today: "Today",
+            tomorrow: "Tomorrow",
+            this_week: "This Week",
+            next_week: "Next Week",
+            backlog: "Backlog",
+            freezer: "Freezer",
+        };
+        return map[tier] || tier;
+    }
+
+    async function applySuggestion(s, rowEl) {
+        var applyBtn = rowEl.querySelector(".triage-apply");
+        applyBtn.disabled = true;
+        applyBtn.textContent = "…";
+        try {
+            if (s.suggested_action === "delete") {
+                await apiFetch("/api/tasks/" + s.task_id, { method: "DELETE" });
+            } else {
+                await apiFetch("/api/tasks/" + s.task_id, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ tier: s.suggested_tier }),
+                });
+            }
+            rowEl.remove();
+            updateTriageCount();
+        } catch (err) {
+            applyBtn.disabled = false;
+            applyBtn.textContent = "Retry";
+            console.error("triage apply failed:", err);
+        }
+    }
+
+    function updateTriageCount() {
+        var section = document.getElementById("triageSuggestions");
+        var list = document.getElementById("triageList");
+        var countEl = document.getElementById("triageCount");
+        if (!section || !list) { return; }
+        var n = list.children.length;
+        if (n === 0) {
+            section.style.display = "none";
+        } else {
+            countEl.textContent = "(" + n + ")";
+        }
     }
 
     // Bind action buttons

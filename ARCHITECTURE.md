@@ -431,7 +431,7 @@ commit — the check will fail otherwise.
 - `/projects` — projects CRUD page (#24)
 - `/calendar` — 2-week Mon-Sat drag-drop calendar (#73) — drop tasks on a day to set due_date
 - `/recurring` — recurring template list with multi-select bulk-edit toolbar (#63)
-- `/review` — weekly review swipe
+- `/review` — weekly review swipe + #12 triage-suggestions panel above the review card (heuristic-based stale-task hints from `triage_service.py`, served by `GET /api/triage/suggestions`)
 - `/scan` — image → tasks
 - `/voice-memo` — audio → tasks
 - `/import` — OneNote + Excel imports
@@ -486,6 +486,9 @@ the code.
 # review_api.py
 /api/review
 /api/review/<uuid:task_id>
+
+# triage_api.py — #12
+/api/triage/suggestions
 
 # scan_api.py
 /api/scan/upload

@@ -4,6 +4,17 @@
 
 {% block content %}
 <div class="review-container" id="reviewContainer">
+    {# #12 — heuristic triage suggestions. Hidden by default; shown only
+       when GET /api/triage/suggestions returns a non-empty list. Each
+       row is one stale-task suggestion with a one-click Apply button
+       that routes through the canonical PATCH /api/tasks or DELETE
+       /api/tasks endpoints (no separate mutation surface). #}
+    <section class="triage-suggestions" id="triageSuggestions" style="display:none">
+        <h2>💡 Triage suggestions <span class="triage-count" id="triageCount"></span></h2>
+        <p class="triage-hint">Tasks that have gone stale in their current tier. Apply to move or delete in one click.</p>
+        <ul class="triage-list" id="triageList"></ul>
+    </section>
+
     <!-- Loading state -->
     <div class="review-loading" id="reviewLoading">
         <h2>Loading review items...</h2>

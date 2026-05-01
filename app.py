@@ -28,6 +28,7 @@ import review_api
 import scan_api
 import settings_api
 import tasks_api
+import triage_api
 import voice_api
 from auth import log_bypass_startup_banner, login_required
 from logging_service import configure_logging
@@ -214,6 +215,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(goals_api.bp)
     app.register_blueprint(projects_api.bp)
     app.register_blueprint(review_api.bp)
+    app.register_blueprint(triage_api.bp)
     app.register_blueprint(recurring_api.bp)
     app.register_blueprint(digest_api.bp)
     app.register_blueprint(scan_api.bp)
