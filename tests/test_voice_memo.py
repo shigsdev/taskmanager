@@ -902,6 +902,33 @@ class TestVoicePromptSelfConsistency:
         ):
             assert phrase in _VOICE_PARSE_PROMPT, f"missing rule: {phrase}"
 
+    def test_prompt_covers_user_reported_phrasings(self):
+        """User-reported regression 2026-05-01: prompt didn't catch
+        'put in project NAME' or 'recommend project NAME' — the
+        original explicit-phrasing rules required either a colon
+        ('project: NAME') or 'the' ('for the NAME project'). The
+        widened rule must teach the model to also accept verb-led
+        clauses that mention 'project' + NAME without 'the'."""
+        from scan_service import _VOICE_PARSE_PROMPT
+        for phrase in (
+            "put in project NAME",
+            "recommend project NAME",
+            "in project NAME",
+            "to project NAME",
+        ):
+            assert phrase in _VOICE_PARSE_PROMPT, f"missing rule: {phrase}"
+
+    def test_prompt_states_general_rule_for_phrasings(self):
+        """The widened rule says ANY clause mentioning 'project' + NAME
+        should match. This 'general rule' wording is what teaches the
+        model to generalize beyond the listed examples — without it,
+        Claude over-fits to the literal 5-6 example phrasings."""
+        from scan_service import _VOICE_PARSE_PROMPT
+        # The phrase 'general rule' anchors the broader instruction.
+        assert "general rule" in _VOICE_PARSE_PROMPT
+        # And it must mention the trigger word 'project' alongside NAME.
+        assert "mentions the word \"project\"" in _VOICE_PARSE_PROMPT
+
     def test_prompt_contains_no_invent_rule(self):
         """The 'do not invent' contract is what protects against
         hallucinated project / goal names. Must stay in the prompt."""
@@ -974,4 +1001,28 @@ class TestVoicePromptSelfConsistency:
         tiers_used = {item["tier"] for item in items}
         assert "backlog" in tiers_used, (
             "Sub-PR C example should demonstrate the backlog tier"
+        )
+
+
+class TestVoiceMemoTemplateScripts:
+    """User-reported regression 2026-05-01: project→goal cascade in the
+    voice review UI didn't fire. Root cause: `templates/voice_memo.html`
+    loaded `voice_memo.js` but NOT `filter_helpers.js` — so when the
+    project select's change handler called `window.filterHelpers
+    .projectCascadeGoalId(...)`, it threw TypeError silently. Every
+    other template that renders board / project / goal UI (index,
+    calendar, completed, docs, goals, projects, recurring, tier) loads
+    filter_helpers.js. This test guards the wiring."""
+
+    def test_voice_memo_template_loads_filter_helpers(self, authed_client):
+        """The HTML response for /voice-memo must reference
+        /static/filter_helpers.js. Without it, voice_memo.js's
+        project-cascade handler silently no-ops on every project
+        change."""
+        resp = authed_client.get("/voice-memo")
+        assert resp.status_code == 200
+        body = resp.get_data(as_text=True)
+        assert "filter_helpers.js" in body, (
+            "voice_memo.html must load filter_helpers.js for the "
+            "project→goal cascade in the review UI to work"
         )

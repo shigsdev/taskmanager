@@ -455,13 +455,25 @@ Each item must be a JSON object with these keys:
 - project_hint: exact title (verbatim) of a user project this task
   clearly belongs to, OR null. Only cite a project from the list
   above — do not invent. If nothing on the list fits, null.
-  * Treat EXPLICIT phrasings as strong signals — match
-    case-insensitively against the project list:
-      - "project: NAME"
-      - "for the NAME project"
-      - "on the NAME project"
-      - "in the NAME project"
-      - "for project NAME"
+  * Treat EXPLICIT phrasings as strong signals — case-insensitive.
+    The general rule: ANY clause that mentions the word "project"
+    (or its pronouns) together with a NAME, where NAME
+    case-insensitively matches a project on the list above. Examples
+    that should ALL match (NAME = a project from the list):
+      - "project: NAME"          - "project NAME"
+      - "for project NAME"       - "for the NAME project"
+      - "on project NAME"        - "on the NAME project"
+      - "in project NAME"        - "in the NAME project"
+      - "to project NAME"        - "to the NAME project"
+      - "with project NAME"      - "with the NAME project"
+      - "put in project NAME"    - "put it in the NAME project"
+      - "put it under project NAME"
+      - "recommend project NAME" - "recommend the NAME project"
+      - "use project NAME"       - "tag project NAME"
+      - "tag NAME"               - "(it's) for NAME"
+        (only when NAME unambiguously matches a project; if NAME
+        could be a goal too, prefer the project list when the
+        speaker said "project" in the same clause)
     If NAME case-insensitively matches a project on the list above,
     cite it verbatim (preserving the list's casing) in project_hint.
     If NAME does NOT match any project on the list, leave
@@ -470,12 +482,16 @@ Each item must be a JSON object with these keys:
     project "Q2 OKRs" by topic).
 - goal_hint: exact title (verbatim) of a user goal this task
   clearly supports, OR null. Same rule — only cite from the list.
-  * Treat EXPLICIT phrasings as strong signals — match
-    case-insensitively against the goal list:
-      - "goal: NAME"
-      - "for the NAME goal"
-      - "toward the NAME goal"
+  * Treat EXPLICIT phrasings as strong signals — case-insensitive.
+    Same general rule as project_hint: any clause that mentions the
+    word "goal" together with a NAME on the goal list. Examples:
+      - "goal: NAME"             - "goal NAME"
+      - "for the NAME goal"      - "for goal NAME"
+      - "toward the NAME goal"   - "toward goal NAME"
       - "for my NAME goal"
+      - "in service of the NAME goal"
+      - "tag goal NAME"          - "recommend goal NAME"
+      - "put it under the NAME goal"
     If NAME case-insensitively matches a goal on the list above,
     cite it verbatim. Otherwise leave goal_hint null. Topic-match
     fallback still applies for non-explicit phrasings.

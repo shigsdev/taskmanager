@@ -112,5 +112,10 @@
 {% endblock %}
 
 {% block scripts %}
+{# filter_helpers.js exposes window.filterHelpers, used by voice_memo.js's
+   project→goal cascade in the review UI (see #137 Sub-PR A). Was missing
+   from this template — cascade silently no-op'd because the projSel
+   change handler threw TypeError on `window.filterHelpers.…`. #}
+<script src="{{ url_for('static', filename='filter_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='voice_memo.js') }}"></script>
 {% endblock %}
