@@ -270,11 +270,12 @@ pass "no-string-match-only prod tests (heuristic)"
 # --- 9. Semgrep (security pattern scanner) ----------------------------------
 
 banner "9. Semgrep (security patterns)"
-# Find the semgrep executable. pip install puts semgrep on PATH on
-# mac/linux but on Windows + Python 3.14 it lands in
-# %LOCALAPPDATA%\Python\pythoncore-3.14-64\Scripts\semgrep.exe which
-# isn't on PATH unless the user added it. Fall back to known locations
-# before giving up.
+# Find the semgrep executable. `pip install semgrep` doesn't always
+# put it on PATH — on Windows + Python 3.14 it lands in
+# %LOCALAPPDATA%\Python\pythoncore-3.14-64\Scripts\semgrep.exe; on a
+# Homebrew Mac it's at /opt/homebrew/bin/semgrep (Apple silicon) or
+# /usr/local/bin/semgrep (Intel). Fall back to known locations before
+# giving up. Order: PATH first (cheapest), then OS-specific paths.
 SEMGREP_BIN=""
 if command -v semgrep >/dev/null 2>&1; then
     SEMGREP_BIN="semgrep"
@@ -282,12 +283,19 @@ elif [ -x "/c/Users/${USERNAME}/AppData/Local/Python/pythoncore-3.14-64/Scripts/
     SEMGREP_BIN="/c/Users/${USERNAME}/AppData/Local/Python/pythoncore-3.14-64/Scripts/semgrep.exe"
 elif [ -x "/c/Users/${USER}/AppData/Local/Python/pythoncore-3.14-64/Scripts/semgrep.exe" ]; then
     SEMGREP_BIN="/c/Users/${USER}/AppData/Local/Python/pythoncore-3.14-64/Scripts/semgrep.exe"
+elif [ -x "/opt/homebrew/bin/semgrep" ]; then
+    SEMGREP_BIN="/opt/homebrew/bin/semgrep"               # Apple silicon Homebrew
+elif [ -x "/usr/local/bin/semgrep" ]; then
+    SEMGREP_BIN="/usr/local/bin/semgrep"                  # Intel Homebrew / pipx default
+elif [ -x "$HOME/.local/bin/semgrep" ]; then
+    SEMGREP_BIN="$HOME/.local/bin/semgrep"                # Linux/Mac pip --user
 fi
 
 if [ -z "$SEMGREP_BIN" ]; then
-    fail "semgrep not found. Install with: pip install semgrep"
-    fail "  On Windows, add %LOCALAPPDATA%\\Python\\pythoncore-3.14-64\\Scripts to PATH"
-    fail "  On mac/linux, semgrep should be on PATH after pip install"
+    fail "semgrep not found. Install with one of:"
+    fail "  Windows: pip install semgrep   (adds it to %LOCALAPPDATA%\\Python\\...\\Scripts)"
+    fail "  Mac:     brew install semgrep  (or: pipx install semgrep)"
+    fail "  Linux:   pipx install semgrep  (or: pip install --user semgrep)"
     exit 1
 fi
 
