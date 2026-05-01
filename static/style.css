@@ -324,7 +324,11 @@ body {
 /* #94 (PR26): Unscheduled side panel for /calendar. */
 .calendar-layout {
     display: grid;
-    grid-template-columns: 1fr 240px;
+    /* minmax(0, 1fr) lets the first track shrink below content
+       min-width — without it, long task titles in day cells push
+       the 240px Unscheduled aside off-screen at 1280×800
+       (#138 D-B1 / PR77 audit). */
+    grid-template-columns: minmax(0, 1fr) 240px;
     gap: 16px;
     align-items: start;
 }

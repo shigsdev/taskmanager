@@ -260,6 +260,26 @@ test.describe("Prod smoke — feature surfaces", () => {
         await expect(page.locator("#calendarUnscheduled")).toBeVisible();
     });
 
+    test("/calendar does not horizontally overflow at desktop 1280×800 (#138 D-B1)", async ({ page }) => {
+        // Regression for #138 Phase B audit defect D-B1: long task titles
+        // in day cells were pushing the 240px Unscheduled aside off-screen
+        // because `.calendar-layout` used `1fr 240px` instead of
+        // `minmax(0, 1fr) 240px` — the 1fr column wouldn't shrink below
+        // its content min-width. Asserts no horizontal scroll appears at
+        // the desktop preset.
+        await page.setViewportSize({ width: 1280, height: 800 });
+        await page.goto("/calendar?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator("#calendarUnscheduled")).toBeVisible();
+        const overflow = await page.evaluate(() => {
+            return {
+                scrollWidth: document.documentElement.scrollWidth,
+                innerWidth: window.innerWidth,
+            };
+        });
+        expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth);
+    });
+
     test("home board has both filter bars (#92)", async ({ page }) => {
         await page.goto("/?nosw=1");
         await page.waitForLoadState("networkidle");
