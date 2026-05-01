@@ -356,9 +356,22 @@ Report.
   Recycle bin: batch entries    PASS          Recycle bin: batch entries    PASS
   Recycle bin: Empty Bin btn    PASS          Recycle bin: Empty Bin btn    PASS
   Print: tier grouping          PASS          Print: tier grouping          PASS
+  Viewport parity (sw≤iw)       PASS          Viewport parity (sw≤iw)       PASS
 
   Status: ALL PASS | <N> FAIL (list failures)
   ```
+
+  **Viewport parity row (added 2026-04-30 from #138 audit):** at the
+  end of every Phase 6 regression on the changed page(s), assert
+  `document.documentElement.scrollWidth <= window.innerWidth` at BOTH
+  viewports. This is the load-bearing horizontal-overflow check —
+  catches the #138 D-B1 class of `1fr`-without-`minmax(0,...)`
+  CSS-grid bug where long content blows out a track and shoves
+  siblings off-screen. Easy to forget when the seeded dev data has
+  short titles; the prod-smoke regression test in
+  `tests/e2e-prod/smoke.spec.js` "/calendar does not horizontally
+  overflow at desktop 1280×800 (#138 D-B1)" is the mechanical guard,
+  but the manual Phase 6 row is the discipline.
 
   Mark each test PASS, FAIL, or SKIP (with reason). Any FAIL means the
   change is not ready to commit — fix and re-test before proceeding.
