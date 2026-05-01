@@ -13,6 +13,11 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Tasks">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+    {# #45 — favicon for browser tab. SVG for modern browsers (sharp at any
+       zoom, ~250 bytes); PNG fallback uses the same icon-192 the PWA
+       manifest already references so tab-icon and installed-app icon match. #}
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/icon-192.png') }}">
     {# PR67 audit fix #132: load api_helpers.js + api_client.js globally so
        every page has window.apiFetch with stale-tab retry + recovery-prompt
        behavior. Order matters — api_client.js uses window.apiHelpers.

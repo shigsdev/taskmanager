@@ -123,6 +123,7 @@ EXPECTED_STATIC_FILES = (
     "static/calendar.js",
     "static/recurring.js",
     "static/manifest.json",
+    "static/favicon.svg",  # #45 — browser tab icon
 )
 
 PROJECT_ROOT = Path(__file__).parent
