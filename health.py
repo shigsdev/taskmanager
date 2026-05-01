@@ -366,6 +366,97 @@ def check_static_assets() -> str:
     return "ok"
 
 
+# --- #5 TLS expiry check ----------------------------------------------------
+#
+# Warn-only. Railway auto-renews managed TLS so the immediate risk is
+# near-zero, but if/when this app moves off Railway-managed TLS to a
+# self-managed cert, this gate gives the operator a 30-day heads-up.
+#
+# Disabled by default: only runs when ``TLS_EXPIRY_HOST`` env var is
+# set (e.g. ``shigs.us`` or ``shigs.us:443``). Skipped silently
+# otherwise so adding the check doesn't change /healthz output for the
+# Railway-managed-TLS case.
+#
+# Cached for 5 minutes so /healthz probes (Railway hits it every few
+# seconds during deploy) don't TLS-handshake to the public host on
+# every probe. Cache is per-process; multi-worker deployments do up to
+# `worker_count` handshakes per 5 min — fine for a single-user app.
+TLS_WARN_THRESHOLD_DAYS = 30
+TLS_CHECK_CACHE_SEC = 300
+
+_tls_cache: dict[str, tuple[float, str]] = {}
+
+
+def check_tls_expiry() -> str:
+    """Connect to TLS_EXPIRY_HOST, read the peer cert's notAfter, and
+    return a status string.
+
+    Returns:
+        ``"skipped: TLS_EXPIRY_HOST not set"`` — env var unconfigured (default)
+        ``"ok"``                              — cert valid, > 30 days remaining
+        ``"warn: <N> days remaining"``        — cert expires soon (≤ 30 days)
+        ``"warn: cert expired (...)"``        — cert past notAfter
+        ``"warn: <error>"``                   — handshake / DNS / parse failure
+
+    Never returns ``fail:`` so this check can't brick a deploy. Even
+    "expired" is reported as ``warn:`` because TLS expiry is an
+    operational concern, not a runtime data-integrity bug.
+    """
+    host_env = os.environ.get("TLS_EXPIRY_HOST", "").strip()
+    if not host_env:
+        return "skipped: TLS_EXPIRY_HOST not set"
+
+    # Honor cache.
+    import time
+    now = time.time()
+    cached = _tls_cache.get(host_env)
+    if cached and now - cached[0] < TLS_CHECK_CACHE_SEC:
+        return cached[1]
+
+    if ":" in host_env:
+        host, _, port_s = host_env.partition(":")
+        try:
+            port = int(port_s)
+        except ValueError:
+            result = f"warn: invalid TLS_EXPIRY_HOST port: {port_s!r}"
+            _tls_cache[host_env] = (now, result)
+            return result
+    else:
+        host, port = host_env, 443
+
+    try:
+        import socket
+        import ssl
+        ctx = ssl.create_default_context()
+        # 5s connect + 5s handshake budget — well under any reasonable
+        # /healthz timeout. Probe-level pinning, not network-level.
+        with (
+            socket.create_connection((host, port), timeout=5) as sock,
+            ctx.wrap_socket(sock, server_hostname=host) as ssock,
+        ):
+            cert = ssock.getpeercert()
+        not_after_str = cert.get("notAfter")
+        if not not_after_str:
+            result = "warn: peer cert missing notAfter"
+        else:
+            # OpenSSL format: 'Jun 12 23:59:59 2026 GMT'
+            not_after = _dt.datetime.strptime(
+                not_after_str, "%b %d %H:%M:%S %Y %Z"
+            ).replace(tzinfo=_dt.UTC)
+            days_remaining = (not_after - _dt.datetime.now(_dt.UTC)).days
+            if days_remaining < 0:
+                result = f"warn: cert expired {-days_remaining} days ago ({not_after_str})"
+            elif days_remaining <= TLS_WARN_THRESHOLD_DAYS:
+                result = f"warn: {days_remaining} days remaining"
+            else:
+                result = "ok"
+    except (OSError, ssl.SSLError) as e:
+        result = f"warn: TLS check failed: {type(e).__name__}: {e}"
+
+    _tls_cache[host_env] = (now, result)
+    return result
+
+
 # --- Public entry point ------------------------------------------------------
 
 
@@ -485,6 +576,7 @@ def run_health_checks(app: Any, db: Any) -> dict:
         "digest": _safe_call("digest", check_digest),
         "static_assets": _safe_call("static_assets", check_static_assets),
         "enum_coverage": _safe_call("enum_coverage", check_enum_coverage, db),
+        "tls_expiry": _safe_call("tls_expiry", check_tls_expiry),
     }
 
     # Overall ``status`` reflects ANY fail (for the report). HTTP 503

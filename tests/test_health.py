@@ -589,3 +589,134 @@ class TestSchedulerJobsRegistered:
             assert "5" in str(minute)
         finally:
             self._cleanup()
+
+
+# --- check_tls_expiry (#5) ---------------------------------------------------
+
+
+class TestCheckTlsExpiry:
+    """#5 — TLS cert expiry check. Disabled by default; only runs when
+    TLS_EXPIRY_HOST is set. Always warn-only (never fail:)."""
+
+    def setup_method(self):
+        # Reset the module-level cache between tests so cached results
+        # from a previous case don't bleed into the next.
+        health._tls_cache.clear()
+
+    def test_skipped_when_env_not_set(self, monkeypatch):
+        monkeypatch.delenv("TLS_EXPIRY_HOST", raising=False)
+        assert health.check_tls_expiry() == "skipped: TLS_EXPIRY_HOST not set"
+
+    def test_skipped_when_env_blank(self, monkeypatch):
+        monkeypatch.setenv("TLS_EXPIRY_HOST", "   ")
+        assert health.check_tls_expiry() == "skipped: TLS_EXPIRY_HOST not set"
+
+    def test_warn_on_invalid_port(self, monkeypatch):
+        monkeypatch.setenv("TLS_EXPIRY_HOST", "shigs.us:notaport")
+        result = health.check_tls_expiry()
+        assert result.startswith("warn: invalid TLS_EXPIRY_HOST port")
+
+    def test_warn_on_dns_failure(self, monkeypatch):
+        # Use an unresolvable hostname; getaddrinfo raises socket.gaierror.
+        monkeypatch.setenv("TLS_EXPIRY_HOST", "this-host-definitely-does-not-exist.invalid")
+        result = health.check_tls_expiry()
+        assert result.startswith("warn: TLS check failed:")
+
+    def test_returns_ok_when_cert_far_from_expiry(self, monkeypatch):
+        """Mock the socket + ssl path so we don't need network access."""
+        import datetime as _dt
+        future = _dt.datetime.now(_dt.UTC) + _dt.timedelta(days=180)
+        not_after = future.strftime("%b %e %H:%M:%S %Y GMT")  # OpenSSL fmt
+
+        self._mock_handshake(monkeypatch, {"notAfter": not_after})
+        monkeypatch.setenv("TLS_EXPIRY_HOST", "test.example:443")
+        assert health.check_tls_expiry() == "ok"
+
+    def test_warns_when_cert_within_30_days(self, monkeypatch):
+        import datetime as _dt
+        soon = _dt.datetime.now(_dt.UTC) + _dt.timedelta(days=10)
+        not_after = soon.strftime("%b %e %H:%M:%S %Y GMT")
+
+        self._mock_handshake(monkeypatch, {"notAfter": not_after})
+        monkeypatch.setenv("TLS_EXPIRY_HOST", "test.example")
+        result = health.check_tls_expiry()
+        assert result.startswith("warn: ")
+        assert "days remaining" in result
+
+    def test_warns_when_cert_already_expired(self, monkeypatch):
+        import datetime as _dt
+        past = _dt.datetime.now(_dt.UTC) - _dt.timedelta(days=5)
+        not_after = past.strftime("%b %e %H:%M:%S %Y GMT")
+
+        self._mock_handshake(monkeypatch, {"notAfter": not_after})
+        monkeypatch.setenv("TLS_EXPIRY_HOST", "test.example")
+        result = health.check_tls_expiry()
+        assert result.startswith("warn: cert expired")
+
+    def test_warns_when_peer_cert_missing_not_after(self, monkeypatch):
+        self._mock_handshake(monkeypatch, {})  # empty cert dict
+        monkeypatch.setenv("TLS_EXPIRY_HOST", "test.example")
+        assert health.check_tls_expiry() == "warn: peer cert missing notAfter"
+
+    def test_caches_within_5_minutes(self, monkeypatch):
+        """Second call within cache window must NOT re-handshake."""
+        import datetime as _dt
+        future = _dt.datetime.now(_dt.UTC) + _dt.timedelta(days=180)
+        not_after = future.strftime("%b %e %H:%M:%S %Y GMT")
+
+        call_count = [0]
+
+        def fake_create_connection(*args, **kwargs):
+            call_count[0] += 1
+            return _MockSocket()
+
+        import socket
+        monkeypatch.setattr(socket, "create_connection", fake_create_connection)
+
+        import ssl as _ssl
+        ctx = MagicMock()
+        ssock = MagicMock()
+        ssock.getpeercert.return_value = {"notAfter": not_after}
+        ssock.__enter__ = lambda self: self
+        ssock.__exit__ = lambda *a: None
+        ctx.wrap_socket.return_value = ssock
+        monkeypatch.setattr(_ssl, "create_default_context", lambda: ctx)
+
+        monkeypatch.setenv("TLS_EXPIRY_HOST", "test.example")
+        health.check_tls_expiry()
+        health.check_tls_expiry()
+        health.check_tls_expiry()
+        assert call_count[0] == 1, "cache should suppress repeat handshakes"
+
+    # --- helpers ---------------------------------------------------------
+
+    @staticmethod
+    def _mock_handshake(monkeypatch, peer_cert):
+        """Patch socket.create_connection + ssl.create_default_context
+        so check_tls_expiry runs end-to-end without network access."""
+        import socket
+        import ssl as _ssl
+
+        monkeypatch.setattr(
+            socket,
+            "create_connection",
+            lambda *a, **kw: _MockSocket(),
+        )
+
+        ctx = MagicMock()
+        ssock = MagicMock()
+        ssock.getpeercert.return_value = peer_cert
+        ssock.__enter__ = lambda self: self
+        ssock.__exit__ = lambda *a: None
+        ctx.wrap_socket.return_value = ssock
+        monkeypatch.setattr(_ssl, "create_default_context", lambda: ctx)
+
+
+class _MockSocket:
+    """Minimal context-manager mock for socket.create_connection."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return None
