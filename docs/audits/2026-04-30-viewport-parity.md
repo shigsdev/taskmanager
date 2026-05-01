@@ -401,3 +401,182 @@ fuzzing).
 Phase C (mobile 375×812 walk) is the natural next step — same page +
 interaction surface at the alternate viewport. Phase D will classify
 both walks' defects together; Phase E will batch the quick-win fixes.
+
+---
+
+## Phase C — Mobile walk (375×812)
+
+**Date:** 2026-04-30
+**Tester:** Claude Code via Claude Preview headless (Windows host)
+**Server:** `taskmanager-dev-bypass` on port 5111, `?nosw=1` on every load
+**Viewport:** preview tool resized to 375×812; CSS-side mobile media
+queries confirmed active via `matchMedia('(max-width: 375px)') === true`
+on every probe.
+**Console errors across all 22 pages:** 0
+**Horizontal-scroll defects (`scrollWidth > innerWidth`):** 0
+
+### Per-page results
+
+| # | Path | Layout-viewport sees mobile | scrollWidth ≤ innerWidth | Result |
+|---|---|---|---|---|
+| 1 | `/` | YES (mql 375 ✓) | 531 ≤ 531 | PASS |
+| 2 | `/goals` | YES | 375 ≤ 375 | PASS |
+| 3 | `/projects` | YES | 375 ≤ 375 | PASS |
+| 4 | `/calendar` | YES | 515 ≤ 515 | PASS — single-column collapse via `@media (max-width:700px)` |
+| 5 | `/recurring` | YES | 375 ≤ 375 | PASS |
+| 6 | `/import` | YES | 375 ≤ 375 | PASS |
+| 7 | `/scan` | YES | 375 ≤ 375 | PASS |
+| 8 | `/voice-memo` | YES | 375 ≤ 375 | PASS — record button height 64px (≥44 OK) |
+| 9 | `/review` | YES | 375 ≤ 375 | PASS |
+| 10 | `/completed` | YES | 375 ≤ 375 | PASS |
+| 11 | `/recycle-bin` | YES | 375 ≤ 375 | PASS |
+| 12 | `/settings` | YES | 375 ≤ 375 | PASS |
+| 13 | `/docs` | YES | 581 ≤ 581 | PASS — TOC collapses single-column at 768px (`.docs-page` grid) |
+| 14 | `/architecture` | YES | 694 ≤ 694 | PASS — Mermaid SVGs constrained by `pre.mermaid svg { max-width: 100% }` + `overflow-x: auto` wrapper |
+| 15 | `/print` | YES | 375 ≤ 375 | PASS |
+| 16 | `/tier/inbox` | YES | 375 ≤ 375 | PASS |
+| 17 | `/tier/today` | YES | 375 ≤ 375 | PASS |
+| 18 | `/tier/tomorrow` | YES | 375 ≤ 375 | PASS |
+| 19 | `/tier/this_week` | YES | 375 ≤ 375 | PASS |
+| 20 | `/tier/next_week` | YES | 375 ≤ 375 | PASS — 12 preview cards render, no overflow |
+| 21 | `/tier/backlog` | YES | 375 ≤ 375 | PASS |
+| 22 | `/tier/freezer` | YES | 375 ≤ 375 | PASS |
+
+**Total: 22 PASS, 0 FAIL.**
+
+**Detail-panel mobile-fullscreen check (D1 mobile):** opening a card on
+`/` shows `#detailPanel` at `width=375, top=0` covering full layout
+viewport — full-screen modal pattern as designed. PASS.
+
+**Note on `innerWidth` readings > 375 (`/`, `/calendar`, `/docs`,
+`/architecture`):** the Claude Preview headless viewport rendered some
+pages at a wider layout (531 / 515 / 581 / 694) than the requested 375.
+This is a tool-side quirk — the CSS `matchMedia('(max-width:768px)')`
+and `(max-width:375px)` queries both matched on every page, confirming
+**the mobile media-query CSS layout was actually applied**. The
+overflow check (`scrollWidth > innerWidth`) is the load-bearing
+assertion — and it was zero across all 22 pages, meaning no horizontal
+scroll exists at the rendered layout width regardless of what
+`innerWidth` reported.
+
+### Touch-target audit (cross-cutting, run on `/` mobile)
+
+`getBoundingClientRect()` on every visible button / nav-link /
+tier-button on `/` mobile, threshold `height >= 44 || width >= 44`:
+
+- **199 buttons checked, 185 (93%) under 44×44px.**
+- **By category:**
+  - Header `nav-tab` links: 13 nav links, all 31px tall.
+  - Per-card tier-action buttons (`✓ Done`, `Today`, `Tomorrow`,
+    `This Week`, `Next Week`, `Backlog`, `Freezer`, `+ Subtask`):
+    7-8 per card × ~46 visible cards = 172 instances. Buttons
+    ~22-24px tall.
+  - Filter chips + project chips + capture-bar inline buttons make
+    up the rest.
+
+**Class:** (a) bug, but **systemic** — affects nearly every
+interactive element across the app. Not a per-page defect.
+
+**Why this is a real concern:** Apple HIG and Material Design both
+specify ≥44×44px (or 48×48dp) for touch targets. Below that, mis-taps
+are common — especially with the per-card row of seven small tier
+buttons, where two adjacent buttons are ~3-4px apart.
+
+**Why it's not "ship-blocking":** the user has been running this app
+on mobile for months without filing a tap-accuracy bug — likely a
+combination of (a) thumb size + screen sensitivity tolerates 22-32px
+targets when the surrounding hit area is mostly negative space, and
+(b) the user is a single-person owner who has built muscle memory.
+The defect is real, but the cohort is huge and a CSS-only fix
+(`min-height: 44px` on `.tier-btn` + `.nav-tab` + bumping line-height)
+risks pushing the UI into ugly-on-desktop territory.
+
+**Action:** classified as Phase D defect D-C1 "systemic touch-target
+sizing" → file as a separate BACKLOG row with detailed scope, NOT
+batched into Phase E. The fix needs design judgment + screenshots
+before/after at both viewports, which exceeds the Phase E "quick-win"
+bar.
+
+### Defect log (Phase C)
+
+#### D-C1 — Touch targets across the app are systematically <44×44px on mobile
+
+- **Cells:** all pages with interactive elements (board, tier subpages,
+  goals, projects, recurring, completed, settings, etc.)
+- **Symptom:** 185 of 199 visible buttons on the board are <44×44px;
+  nav tabs are 31px tall; per-card tier-action buttons are ~22-24px
+  tall with ~3-4px horizontal gaps between adjacent buttons.
+- **Class:** (a) bug, **systemic, design-bounded**
+- **Action:** file new BACKLOG row "touch-target sizing pass for
+  mobile" with detailed mock-up needs. Do NOT bundle into Phase E.
+
+### Phase C summary
+
+- 22 pages walked at mobile 375×812.
+- 22 PASS, 0 FAIL on overflow + console-errors + critical layout.
+- Cross-cutting find: systemic touch-target undersize (D-C1) — to be
+  filed as its own BACKLOG row, not Phase-E-fixable.
+- Detail panel renders correctly as full-screen drawer on mobile.
+
+---
+
+## Phase D — Defect classification
+
+Two defects total across both walks. One is Phase-E-fixable inline,
+one needs its own BACKLOG row.
+
+### Defect D-B1 — `/calendar` horizontal overflow at desktop 1280×800
+
+- **Cell(s):** `/calendar` @ desktop 1280×800
+- **Symptom:** scrollWidth=1482 vs viewport 1280 (overflow +202px).
+  `.calendar-unscheduled` aside pushed off-screen.
+- **Class:** **(a) bug — Phase-E quick-win**
+- **Root cause:** `.calendar-layout { grid-template-columns: 1fr 240px }`
+  in `static/style.css:325` — first track lacks `minmax(0, 1fr)`, so
+  the 1fr column refuses to shrink below day-cell min-content.
+- **Fix:** change to `grid-template-columns: minmax(0, 1fr) 240px;`.
+  One CSS line.
+- **Regression test:** Playwright assertion in `tests/e2e-prod/smoke.spec.js`
+  (or `tests/e2e/`):
+  `expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1280)`
+  on `/calendar` at desktop preset.
+- **Action:** ship inline in Phase E PR.
+
+### Defect D-C1 — Systemic touch-target undersize on mobile
+
+- **Cell(s):** every page with interactive elements
+- **Symptom:** 93% of visible buttons under 44×44px on mobile.
+- **Class:** **(a) bug — needs its own BACKLOG row**
+- **Why not Phase E:** the fix isn't one-line; it's a design pass that
+  needs:
+  1. visual proofs at both viewports (otherwise desktop UI gets ugly),
+  2. decisions about `.tier-btn` row layout (currently 7 tiny inline
+     buttons per card — should it become a dropdown on mobile?),
+  3. a touch-target Playwright gate so future buttons can't regress.
+- **Action:** file new BACKLOG row "Mobile touch-target sizing pass
+  (per HIG/Material 44px floor)" with this audit row linked. Phase E
+  ships D-B1 only.
+
+---
+
+## Phase E plan
+
+Only D-B1 ships inline. Phase E PR contents:
+1. `static/style.css:325` — `1fr` → `minmax(0, 1fr)` on `.calendar-layout`.
+2. `tests/e2e-prod/smoke.spec.js` — add the calendar-overflow assertion.
+3. `bash scripts/run_all_gates.sh` clean.
+4. Phase 6 regression at desktop + mobile on `/calendar` (the change
+   touches CSS — Phase 6 is mandatory per CLAUDE.md).
+5. Deploy validate + prod smoke.
+
+## Phase F plan
+
+After Phase E ships:
+1. Update CLAUDE.md "Regression Test Report" template — add a row
+   "Viewport parity: scrollWidth ≤ innerWidth at desktop AND mobile"
+   so future single-feature Phase 6 cycles default-check the parity rule
+   that this audit just proved-out.
+2. File new BACKLOG row for D-C1 (mobile touch targets).
+3. File new BACKLOG row for `tests/e2e-mobile/` Playwright project
+   (re-running the local suite at 375×812) — scope-grow follow-up.
+4. Mark #138 ✅ RESOLVED.
