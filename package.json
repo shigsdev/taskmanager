@@ -10,7 +10,8 @@
     "test:e2e": "playwright test --project=chromium",
     "test:e2e:headed": "playwright test --project=chromium --headed",
     "test:e2e:prod": "playwright test --project=chromium-prod",
-    "test:e2e:sw": "playwright test --project=chromium-sw"
+    "test:e2e:sw": "playwright test --project=chromium-sw",
+    "test:e2e:mobile": "playwright test --project=chromium-mobile"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",

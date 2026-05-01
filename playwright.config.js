@@ -86,6 +86,23 @@ module.exports = defineConfig({
             },
         },
         {
+            // #141 — re-run the local e2e suite at mobile viewport
+            // (375×812) to mechanically catch viewport-specific bugs
+            // (overflow, off-screen elements, missing affordances) at
+            // gate time. Same testDir as `chromium`; only the viewport
+            // differs. Per-spec mobile-only opt-outs use the
+            // `test.skip(viewport.width < 700, "desktop-only")` idiom.
+            name: "chromium-mobile",
+            testDir: "./tests/e2e",
+            use: {
+                baseURL: "http://localhost:5111",
+                headless: true,
+                browserName: "chromium",
+                actionTimeout: 10000,
+                viewport: { width: 375, height: 812 },
+            },
+        },
+        {
             name: "chromium-prod",
             testDir: "./tests/e2e-prod",
             // Prod smoke tests MUST be run explicitly, never as part of the

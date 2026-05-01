@@ -170,6 +170,20 @@ else
     exit 1
 fi
 
+# #141: re-run the same local e2e suite at mobile viewport (375×812).
+# Phase 6 SOP requires manual desktop+mobile regression on every UI
+# change, but it's manual — easy to skip the mobile half on a "small"
+# change. This is the mechanical guard. If a viewport-specific bug
+# (overflow, off-screen element, missing affordance) lands in the
+# changed surface, the existing test suite re-run at mobile catches
+# it at gate time.
+if npm run test:e2e:mobile; then
+    pass "local Playwright (mobile 375×812)"
+else
+    fail "local Playwright (mobile 375×812) failed"
+    exit 1
+fi
+
 # --- 5. Bandit (Python security linter) -------------------------------------
 
 banner "5. Bandit (security lint)"
