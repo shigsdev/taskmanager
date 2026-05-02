@@ -510,9 +510,10 @@ Example (if today is 2026-04-20, a Monday; projects = ["Q2 OKRs",
 "Launch site"]; goals = ["Run a half marathon"]):
 Input: "Okay so tomorrow I need to pick up prescriptions, and by \
 Friday I have to finish the Q2 OKR deck. Also email Sarah for the \
-launch site project. Backlog: redesign the homepage hero. And I \
-should do a 5K run this weekend toward the half marathon goal. I'm \
-feeling scattered today."
+launch site project. Backlog: redesign the homepage hero. Put the \
+new logo work in project Launch site. And I should do a 5K run \
+this weekend toward the half marathon goal. I'm feeling scattered \
+today."
 Output:
 [
   {{"title": "Pick up prescriptions", "type": "personal",
@@ -529,6 +530,10 @@ Output:
   {{"title": "Redesign the homepage hero", "type": "work",
     "tier": "backlog", "due_date": null,
     "project_hint": null, "goal_hint": null, "is_task": true}},
+  {{"title": "New logo work", "type": "work",
+    "tier": "inbox", "due_date": null,
+    "project_hint": "Launch site", "goal_hint": null,
+    "is_task": true}},
   {{"title": "5K run this weekend", "type": "personal",
     "tier": "this_week", "due_date": null,
     "project_hint": null, "goal_hint": "Run a half marathon",

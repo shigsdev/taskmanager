@@ -918,6 +918,21 @@ class TestVoicePromptSelfConsistency:
         ):
             assert phrase in _VOICE_PARSE_PROMPT, f"missing rule: {phrase}"
 
+    def test_prompt_example_demonstrates_put_in_project_phrasing(self):
+        """User-reported regression 2026-05-01 + 2026-05-02:
+        examples in the prompt teach Claude more reliably than abstract
+        rules. The example must include the literal "put ... in
+        project NAME" form so Claude has a concrete instance to
+        generalize from. Without this, even the widened rule list
+        sometimes fails to match the user's verb-led phrasings."""
+        from scan_service import _VOICE_PARSE_PROMPT
+        # Specifically the no-"the" verb-led form.
+        assert "in project Launch site" in _VOICE_PARSE_PROMPT, (
+            "prompt example must demonstrate 'in project NAME' "
+            "(no 'the') so Claude generalizes to the user's "
+            "'put in project' / 'recommend project' phrasings"
+        )
+
     def test_prompt_states_general_rule_for_phrasings(self):
         """The widened rule says ANY clause mentioning 'project' + NAME
         should match. This 'general rule' wording is what teaches the
