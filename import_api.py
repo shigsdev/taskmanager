@@ -1,11 +1,14 @@
 """JSON API for the import feature.
 
 Endpoints:
-    POST /api/import/tasks/parse    — parse OneNote text, return candidates
-    POST /api/import/tasks/upload   — parse OneNote .docx file, return candidates
-    POST /api/import/tasks/confirm  — confirm task candidates, create in Inbox
-    POST /api/import/goals/parse    — parse Excel file, return goal candidates
-    POST /api/import/goals/confirm  — confirm goal candidates, create goals
+    POST /api/import/tasks/parse        — parse OneNote text, return candidates
+    POST /api/import/tasks/upload       — parse OneNote .docx file, return candidates
+    POST /api/import/tasks/confirm      — confirm task candidates, create in Inbox
+    POST /api/import/goals/parse        — parse Excel file, return goal candidates
+    POST /api/import/goals/confirm      — confirm goal candidates, create goals
+    POST /api/import/transcript/parse   — extract action items from pasted
+        meeting transcript text (HyNote / Notion AI Meeting Notes / generic)
+    POST /api/import/transcript/upload  — same, from a .md or .txt file upload
     GET  /api/import/template/<kind>.xlsx — download a pre-built .xlsx
         template for each import mode (kinds: tasks, goals, projects)
 """
@@ -29,6 +32,7 @@ from import_service import (
     parse_onenote_docx,
     parse_onenote_text,
     parse_project_names_text,
+    parse_transcript_text,
 )
 
 bp = Blueprint("import_api", __name__, url_prefix="/api/import")
@@ -171,6 +175,82 @@ def confirm_tasks(email: str):  # noqa: ARG001
             for t in tasks
         ],
     }), 201
+
+
+# --- Meeting transcript (HyNote / Notion AI Meeting Notes / generic) --------
+
+
+@bp.post("/transcript/parse")
+@login_required
+def parse_transcript(email: str):  # noqa: ARG001
+    """Extract action-item candidates from a pasted meeting transcript.
+
+    Expects JSON body: {"text": "...meeting notes / transcript..."}
+    Returns candidates with duplicate flags. Confirm via the existing
+    /api/import/tasks/confirm endpoint with source="transcript_import".
+    """
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON body required"}), 400
+
+    text = data.get("text", "")
+    if not isinstance(text, str) or not text.strip():
+        return jsonify({"error": "text field is required"}), 400
+
+    try:
+        candidates = parse_transcript_text(text)
+    except RuntimeError as e:
+        # Missing key or upstream Claude failure — surface a 503 so the
+        # UI can show "service unavailable" rather than a generic 500.
+        return jsonify({"error": str(e)}), 503
+
+    titles = [c["title"] for c in candidates]
+    duplicates = {t.lower() for t in find_duplicate_tasks(titles)}
+    for c in candidates:
+        c["duplicate"] = c["title"].lower() in duplicates
+
+    return jsonify({"candidates": candidates, "total": len(candidates)})
+
+
+@bp.post("/transcript/upload")
+@login_required
+def upload_transcript(email: str):  # noqa: ARG001
+    """Extract action-item candidates from an uploaded .md or .txt file.
+
+    Accepts multipart/form-data with a 'file' field. Reads the file as
+    UTF-8 (replacing undecodable bytes) and runs the same extraction as
+    /transcript/parse.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    file = request.files["file"]
+    if not file.filename:
+        return jsonify({"error": "No filename"}), 400
+
+    name_lc = file.filename.lower()
+    if not (name_lc.endswith(".md") or name_lc.endswith(".txt")):
+        return jsonify({"error": "Only .md or .txt files are supported"}), 422
+
+    file_bytes = file.read()
+    if len(file_bytes) > MAX_FILE_SIZE:
+        return jsonify({"error": "File too large (max 5MB)"}), 413
+    if not file_bytes:
+        return jsonify({"error": "Empty file"}), 400
+
+    text = file_bytes.decode("utf-8", errors="replace")
+
+    try:
+        candidates = parse_transcript_text(text)
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 503
+
+    titles = [c["title"] for c in candidates]
+    duplicates = {t.lower() for t in find_duplicate_tasks(titles)}
+    for c in candidates:
+        c["duplicate"] = c["title"].lower() in duplicates
+
+    return jsonify({"candidates": candidates, "total": len(candidates)})
 
 
 # --- Excel goals -------------------------------------------------------------

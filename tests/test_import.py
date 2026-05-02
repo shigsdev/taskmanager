@@ -1311,3 +1311,360 @@ class TestImportTemplateDownload:
     def test_unknown_kind_returns_404(self, authed_client):
         resp = authed_client.get("/api/import/template/widgets.xlsx")
         assert resp.status_code == 404
+
+
+# --- Meeting transcript parsing ---------------------------------------------
+
+
+class TestExtractActionItemsSection:
+    """Verify the pre-Claude section sniffer used by parse_transcript_text."""
+
+    def test_finds_basic_action_items_section(self):
+        from import_service import extract_action_items_section
+
+        text = (
+            "# Meeting Summary\n"
+            "We discussed the launch.\n\n"
+            "## Action Items\n"
+            "- Email Sarah the Q3 plan\n"
+            "- Schedule design review\n"
+        )
+        body = extract_action_items_section(text)
+        assert body is not None
+        assert "Email Sarah" in body
+        assert "Schedule design review" in body
+        # Body should not include the pre-section discussion.
+        assert "Meeting Summary" not in body
+
+    def test_recognises_aliases(self):
+        from import_service import extract_action_items_section
+
+        for header in ("Next Steps", "TODOs", "To-dos", "Follow-ups", "Action Item"):
+            text = f"# {header}\n- Item one\n- Item two\n"
+            body = extract_action_items_section(text)
+            assert body is not None, f"Header {header!r} not recognised"
+            assert "Item one" in body
+
+    def test_stops_at_next_header(self):
+        from import_service import extract_action_items_section
+
+        text = (
+            "## Action Items\n"
+            "- First item\n"
+            "## Decisions\n"
+            "- Some decision\n"
+        )
+        body = extract_action_items_section(text)
+        assert body is not None
+        assert "First item" in body
+        assert "Some decision" not in body
+
+    def test_returns_none_when_absent(self):
+        from import_service import extract_action_items_section
+
+        text = "Just a free-form note about a meeting. No structure here."
+        assert extract_action_items_section(text) is None
+
+    def test_handles_empty_input(self):
+        from import_service import extract_action_items_section
+
+        assert extract_action_items_section("") is None
+        assert extract_action_items_section("   \n  ") is None
+
+
+class TestParseTranscriptText:
+    """Verify parse_transcript_text — Claude action-item extraction."""
+
+    def test_raises_without_api_key(self, app, monkeypatch):
+        from import_service import parse_transcript_text
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        with app.app_context(), pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
+            parse_transcript_text("Some transcript")
+
+    def test_empty_input_returns_empty(self, app):
+        from import_service import parse_transcript_text
+
+        with app.app_context():
+            assert parse_transcript_text("") == []
+            assert parse_transcript_text("   \n   ") == []
+
+    def test_returns_normalised_candidates(self, app, monkeypatch):
+        from unittest.mock import patch as _patch
+
+        from import_service import parse_transcript_text
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        claude_reply = [
+            {"title": "Email Sarah the Q3 plan", "notes": None},
+            {"title": "Schedule design review", "notes": "before EOM"},
+        ]
+        with (
+            app.app_context(),
+            _patch("import_service._call_claude_for_transcript", return_value=claude_reply),
+        ):
+            result = parse_transcript_text(
+                "## Action Items\n- Email Sarah\n- Schedule review\n"
+            )
+        assert len(result) == 2
+        assert result[0]["title"] == "Email Sarah the Q3 plan"
+        assert result[0]["type"] == "work"
+        assert result[0]["included"] is True
+        assert result[1]["notes"] == "before EOM"
+
+    def test_prefers_action_items_section(self, app, monkeypatch):
+        """When an explicit Action Items section is present, Claude
+        should be called with ONLY that section's body — not the whole
+        transcript. Verifies the option-(a) "trust pre-extracted" path.
+        """
+        from unittest.mock import patch as _patch
+
+        from import_service import parse_transcript_text
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        captured: dict[str, str] = {}
+
+        def fake_call(api_key, payload):
+            captured["payload"] = payload
+            return [{"title": "Pulled from section"}]
+
+        text = (
+            "# Notes\nBlah blah\n\n"
+            "## Action Items\n- Email Sarah\n- Send invoice\n"
+        )
+        with (
+            app.app_context(),
+            _patch("import_service._call_claude_for_transcript", side_effect=fake_call),
+        ):
+            parse_transcript_text(text)
+        assert "Email Sarah" in captured["payload"]
+        # Pre-section body must NOT be included.
+        assert "Blah blah" not in captured["payload"]
+
+    def test_falls_back_to_full_text_without_section(self, app, monkeypatch):
+        from unittest.mock import patch as _patch
+
+        from import_service import parse_transcript_text
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        captured: dict[str, str] = {}
+
+        def fake_call(api_key, payload):
+            captured["payload"] = payload
+            return [{"title": "An action"}]
+
+        text = "Just free-form meeting notes with no structure at all."
+        with (
+            app.app_context(),
+            _patch("import_service._call_claude_for_transcript", side_effect=fake_call),
+        ):
+            parse_transcript_text(text)
+        assert captured["payload"] == text
+
+    def test_dedupes_and_drops_blank(self, app, monkeypatch):
+        from unittest.mock import patch as _patch
+
+        from import_service import parse_transcript_text
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        claude_reply = [
+            {"title": "Email Sarah"},
+            {"title": "email sarah"},  # case-duplicate
+            {"title": ""},              # blank
+            {"title": "x"},             # too-short
+            {"title": "Schedule review"},
+            {"not_title": "junk"},       # missing title
+            "string-not-dict",           # wrong type
+        ]
+        with (
+            app.app_context(),
+            _patch("import_service._call_claude_for_transcript", return_value=claude_reply),
+        ):
+            result = parse_transcript_text("anything")
+        titles = [c["title"] for c in result]
+        assert titles == ["Email Sarah", "Schedule review"]
+
+    def test_truncates_long_titles(self, app, monkeypatch):
+        from unittest.mock import patch as _patch
+
+        from import_service import parse_transcript_text
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        long_title = "x" * 250
+        with (
+            app.app_context(),
+            _patch(
+                "import_service._call_claude_for_transcript",
+                return_value=[{"title": long_title}],
+            ),
+        ):
+            result = parse_transcript_text("anything")
+        assert len(result[0]["title"]) == 100
+
+
+class TestExtractTranscriptJsonArray:
+    """Verify the lenient JSON extractor handles Claude's output styles."""
+
+    def test_direct_array(self):
+        from import_service import _extract_transcript_json_array
+
+        result = _extract_transcript_json_array('[{"title": "A"}]')
+        assert result == [{"title": "A"}]
+
+    def test_markdown_code_fence(self):
+        from import_service import _extract_transcript_json_array
+
+        text = 'Here you go:\n```json\n[{"title": "A"}]\n```'
+        assert _extract_transcript_json_array(text) == [{"title": "A"}]
+
+    def test_bracket_fallback(self):
+        from import_service import _extract_transcript_json_array
+
+        text = 'Sure! [{"title": "A"}, {"title": "B"}] all done.'
+        assert _extract_transcript_json_array(text) == [{"title": "A"}, {"title": "B"}]
+
+    def test_empty_returns_empty(self):
+        from import_service import _extract_transcript_json_array
+
+        assert _extract_transcript_json_array("") == []
+        assert _extract_transcript_json_array("not json at all") == []
+
+
+class TestTranscriptParseAPI:
+    """Verify POST /api/import/transcript/parse."""
+
+    def test_parse_returns_candidates(self, authed_client, monkeypatch):
+        from unittest.mock import patch as _patch
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        with _patch(
+            "import_service._call_claude_for_transcript",
+            return_value=[{"title": "Email Sarah"}, {"title": "Send invoice"}],
+        ):
+            resp = authed_client.post(
+                "/api/import/transcript/parse",
+                json={"text": "## Action Items\n- Email Sarah\n- Send invoice"},
+            )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["total"] == 2
+        assert body["candidates"][0]["title"] == "Email Sarah"
+        # Duplicate flag should be present even when nothing matches.
+        assert body["candidates"][0]["duplicate"] is False
+
+    def test_no_json_returns_400(self, authed_client):
+        resp = authed_client.post(
+            "/api/import/transcript/parse",
+            data="not json",
+            content_type="text/plain",
+        )
+        assert resp.status_code == 400
+
+    def test_empty_text_returns_400(self, authed_client):
+        resp = authed_client.post(
+            "/api/import/transcript/parse",
+            json={"text": ""},
+        )
+        assert resp.status_code == 400
+
+    def test_missing_key_returns_503(self, authed_client, monkeypatch):
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        resp = authed_client.post(
+            "/api/import/transcript/parse",
+            json={"text": "Some content with potential action items."},
+        )
+        assert resp.status_code == 503
+        assert "ANTHROPIC_API_KEY" in resp.get_json()["error"]
+
+    def test_flags_duplicates(self, authed_client, app, monkeypatch):
+        from unittest.mock import patch as _patch
+
+        with app.app_context():
+            db.session.add(Task(title="Existing", type=TaskType.WORK, tier=Tier.INBOX))
+            db.session.commit()
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        with _patch(
+            "import_service._call_claude_for_transcript",
+            return_value=[{"title": "Existing"}, {"title": "Brand new"}],
+        ):
+            resp = authed_client.post(
+                "/api/import/transcript/parse",
+                json={"text": "## Action Items\n- Existing\n- Brand new"},
+            )
+        body = resp.get_json()
+        dupes = [c for c in body["candidates"] if c["duplicate"]]
+        assert len(dupes) == 1
+        assert dupes[0]["title"] == "Existing"
+
+
+class TestTranscriptUploadAPI:
+    """Verify POST /api/import/transcript/upload."""
+
+    def test_upload_md_returns_candidates(self, authed_client, monkeypatch):
+        from unittest.mock import patch as _patch
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        md_bytes = b"## Action Items\n- Email Sarah\n- Send invoice\n"
+        data = {"file": (io.BytesIO(md_bytes), "notes.md", "text/markdown")}
+        with _patch(
+            "import_service._call_claude_for_transcript",
+            return_value=[{"title": "Email Sarah"}, {"title": "Send invoice"}],
+        ):
+            resp = authed_client.post(
+                "/api/import/transcript/upload",
+                data=data,
+                content_type="multipart/form-data",
+            )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["total"] == 2
+
+    def test_upload_txt_returns_candidates(self, authed_client, monkeypatch):
+        from unittest.mock import patch as _patch
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        txt_bytes = b"Random meeting notes."
+        data = {"file": (io.BytesIO(txt_bytes), "notes.txt", "text/plain")}
+        with _patch(
+            "import_service._call_claude_for_transcript",
+            return_value=[{"title": "Do a thing"}],
+        ):
+            resp = authed_client.post(
+                "/api/import/transcript/upload",
+                data=data,
+                content_type="multipart/form-data",
+            )
+        assert resp.status_code == 200
+
+    def test_no_file_returns_400(self, authed_client):
+        resp = authed_client.post("/api/import/transcript/upload")
+        assert resp.status_code == 400
+
+    def test_wrong_extension_returns_422(self, authed_client):
+        data = {"file": (io.BytesIO(b"data"), "notes.docx", "application/octet-stream")}
+        resp = authed_client.post(
+            "/api/import/transcript/upload",
+            data=data,
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 422
+
+    def test_empty_file_returns_400(self, authed_client):
+        data = {"file": (io.BytesIO(b""), "notes.md", "text/markdown")}
+        resp = authed_client.post(
+            "/api/import/transcript/upload",
+            data=data,
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 400
+
+    def test_oversize_file_returns_413(self, authed_client):
+        big = b"x" * (5 * 1024 * 1024 + 1)
+        data = {"file": (io.BytesIO(big), "notes.md", "text/markdown")}
+        resp = authed_client.post(
+            "/api/import/transcript/upload",
+            data=data,
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code in (413, 400)  # framework MAX_CONTENT_LENGTH may pre-empt

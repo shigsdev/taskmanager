@@ -48,12 +48,15 @@ work and personal life, with a regulated (air-gapped) work environment.
 - **Voice memo** — record long-form audio, transcribed via Whisper, parsed into
   candidates by Claude; keyword router classifies each candidate as
   **task / goal / project** (clickable badge to override before commit)
-- **Import** — three modes: OneNote tasks (paste-text or .docx), Excel goals
-  (.xlsx), Excel/paste-text projects, plus **Excel tasks (.xlsx)** with full
-  column set (title, type, tier, due_date, linked_goal, linked_project, notes,
-  url) — `linked_goal` / `linked_project` resolved case-insensitive at create time.
-  Always-visible expanded preview rows let you edit every field before commit;
-  duplicate detection + recycle-bin batch undo.
+- **Import** — multiple modes: OneNote tasks (paste-text or .docx), Excel goals
+  (.xlsx), Excel/paste-text projects, **Excel tasks (.xlsx)** with full column
+  set (title, type, tier, due_date, linked_goal, linked_project, notes, url) —
+  `linked_goal` / `linked_project` resolved case-insensitive at create time —
+  and **meeting transcript ingestion** (paste or `.md`/`.txt` upload) that
+  runs the transcript through Claude to extract action items as task
+  candidates. Designed for HyNote, Notion AI Meeting Notes, or any plain-text
+  meeting export. Always-visible expanded preview rows let you edit every
+  field before commit; duplicate detection + recycle-bin batch undo.
 - **Bulk-edit toolbar** — multi-select on the task board stages multiple
   attribute changes (Type, Tier, Due, Goal, Project) and applies them in a
   single PATCH on Apply — selection persists across stages

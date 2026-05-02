@@ -64,7 +64,8 @@
     var doneMessage = document.getElementById("importDoneMessage");
     var againBtn = document.getElementById("importAgainBtn");
 
-    var currentMode = null; // "tasks" or "goals"
+    var currentMode = null; // "tasks" or "goals" or "projects"
+    var currentSource = null; // override for ImportLog.source (e.g. "transcript_import")
     var currentCandidates = [];
 
     // #76 (2026-04-25): preview rows now expose all writable fields, so
@@ -109,6 +110,11 @@
         // #89: tasks Excel mode section.
         var tei = document.getElementById("importTasksExcelInput");
         if (tei) tei.style.display = "none";
+        // Transcript sections.
+        var ti = document.getElementById("importTranscriptInput");
+        var tui = document.getElementById("importTranscriptUploadInput");
+        if (ti) ti.style.display = "none";
+        if (tui) tui.style.display = "none";
         section.style.display = "";
     }
 
@@ -129,8 +135,22 @@
         tasksStatus.style.display = "none";
         docxStatus.style.display = "none";
         goalsStatus.style.display = "none";
+        // Transcript inputs.
+        var ttext = document.getElementById("importTranscriptText");
+        var tfile = document.getElementById("importTranscriptFile");
+        var tfileName = document.getElementById("importTranscriptFileName");
+        var tparse = document.getElementById("importParseTranscriptUploadBtn");
+        var tstatus = document.getElementById("importTranscriptStatus");
+        var tustatus = document.getElementById("importTranscriptUploadStatus");
+        if (ttext) ttext.value = "";
+        if (tfile) tfile.value = "";
+        if (tfileName) tfileName.textContent = "";
+        if (tparse) tparse.disabled = true;
+        if (tstatus) tstatus.style.display = "none";
+        if (tustatus) tustatus.style.display = "none";
         currentCandidates = [];
         currentMode = null;
+        currentSource = null;
         showSection(modesSection);
     }
 
@@ -299,6 +319,99 @@
         } catch (err) {
             setStatus(projectsExcelStatus, "Parse failed: " + err.message, true);
             parseProjectsExcelBtn.disabled = false;
+        }
+    });
+
+    // Meeting transcript — paste + file upload modes. Both pipelines feed
+    // the same task review screen via the existing /api/import/tasks/confirm
+    // endpoint (source="transcript_import").
+    var transcriptBtn = document.getElementById("importTranscriptBtn");
+    var transcriptUploadBtn = document.getElementById("importTranscriptUploadBtn");
+    var transcriptInput = document.getElementById("importTranscriptInput");
+    var transcriptUploadInput = document.getElementById("importTranscriptUploadInput");
+    var transcriptText = document.getElementById("importTranscriptText");
+    var parseTranscriptBtn = document.getElementById("importParseTranscriptBtn");
+    var backFromTranscript = document.getElementById("importBackFromTranscript");
+    var transcriptStatus = document.getElementById("importTranscriptStatus");
+    var transcriptFile = document.getElementById("importTranscriptFile");
+    var transcriptFileLabel = document.getElementById("importTranscriptFileLabel");
+    var transcriptFileName = document.getElementById("importTranscriptFileName");
+    var parseTranscriptUploadBtn = document.getElementById("importParseTranscriptUploadBtn");
+    var backFromTranscriptUpload = document.getElementById("importBackFromTranscriptUpload");
+    var transcriptUploadStatus = document.getElementById("importTranscriptUploadStatus");
+
+    if (transcriptBtn) transcriptBtn.addEventListener("click", function () {
+        currentMode = "tasks";
+        currentSource = "transcript_import";
+        showSection(transcriptInput);
+    });
+    if (transcriptUploadBtn) transcriptUploadBtn.addEventListener("click", function () {
+        currentMode = "tasks";
+        currentSource = "transcript_import";
+        showSection(transcriptUploadInput);
+    });
+    if (backFromTranscript) backFromTranscript.addEventListener("click", resetAll);
+    if (backFromTranscriptUpload) backFromTranscriptUpload.addEventListener("click", resetAll);
+    if (transcriptFileLabel) transcriptFileLabel.addEventListener("click", function () {
+        transcriptFile.click();
+    });
+    if (transcriptFile) transcriptFile.addEventListener("change", function () {
+        var file = transcriptFile.files[0];
+        if (!file) return;
+        transcriptFileName.textContent = file.name;
+        parseTranscriptUploadBtn.disabled = false;
+    });
+
+    async function handleTranscriptCandidates(data, statusEl, retryBtn) {
+        if (data.candidates && data.candidates.length > 0) {
+            currentCandidates = data.candidates;
+            reviewTitle.textContent = "Review Action Items";
+            reviewDesc.textContent =
+                data.total + " action item(s) extracted. Edit, include, or exclude before importing.";
+            await loadImportLookups();
+            renderTaskCandidates();
+            showSection(reviewSection);
+        } else {
+            setStatus(statusEl, "No action items found in the transcript.", true);
+            if (retryBtn) retryBtn.disabled = false;
+        }
+    }
+
+    if (parseTranscriptBtn) parseTranscriptBtn.addEventListener("click", async function () {
+        var text = transcriptText.value;
+        if (!text.trim()) {
+            setStatus(transcriptStatus, "Paste a transcript first.", true);
+            return;
+        }
+        parseTranscriptBtn.disabled = true;
+        setStatus(transcriptStatus, "Extracting action items…", false);
+        try {
+            var data = await window.apiFetch("/api/import/transcript/parse", {
+                method: "POST",
+                body: JSON.stringify({ text: text }),
+            });
+            await handleTranscriptCandidates(data, transcriptStatus, parseTranscriptBtn);
+        } catch (err) {
+            setStatus(transcriptStatus, "Extraction failed: " + err.message, true);
+            parseTranscriptBtn.disabled = false;
+        }
+    });
+
+    if (parseTranscriptUploadBtn) parseTranscriptUploadBtn.addEventListener("click", async function () {
+        var file = transcriptFile.files[0];
+        if (!file) return;
+        parseTranscriptUploadBtn.disabled = true;
+        setStatus(transcriptUploadStatus, "Extracting action items…", false);
+        var formData = new FormData();
+        formData.append("file", file);
+        try {
+            var data = await window.apiFetch("/api/import/transcript/upload", {
+                method: "POST", body: formData,
+            });
+            await handleTranscriptCandidates(data, transcriptUploadStatus, parseTranscriptUploadBtn);
+        } catch (err) {
+            setStatus(transcriptUploadStatus, "Extraction failed: " + err.message, true);
+            parseTranscriptUploadBtn.disabled = false;
         }
     });
 
@@ -931,7 +1044,7 @@
                 method: "POST",
                 body: JSON.stringify({
                     candidates: pendingImport,
-                    source: currentMode + "_import",
+                    source: currentSource || (currentMode + "_import"),
                 }),
             });
             var noun = currentMode === "tasks" ? "task(s)"

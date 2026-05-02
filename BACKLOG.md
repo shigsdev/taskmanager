@@ -10,7 +10,12 @@ file is the index pointer.
 
 ## In Progress
 
-_(nothing currently in progress)_
+- [ ] HyNote / Notion AI Meeting Notes integration — Phase 1 (manual ingestion)
+  🔄 **IN PROGRESS — Phase 6 + Phase 8 not yet run.** Manual meeting-transcript
+  ingestion: paste transcript or upload `.md`/`.txt`, Claude extracts action
+  items, candidates ride the existing import preview/confirm flow with
+  `source="transcript_import"`. Notion API pull + auto-sync deferred to a
+  Phase 2 (better-scoped) backlog item.
 
 ## Completed
 

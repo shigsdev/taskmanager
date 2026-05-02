@@ -316,6 +316,20 @@ class TestDocsPage:
         # "Format guide" link with anchor into the docs page
         assert '/docs#import-onenote' in html
 
+    def test_import_page_has_transcript_modes(self, client, monkeypatch):
+        """The HyNote / Notion AI Meeting Notes transcript ingestion adds
+        two mode buttons + two input sections. Asserting the IDs are
+        present catches a template revert that drops the feature wiring.
+        """
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        html = client.get("/import").data.decode()
+        assert 'id="importTranscriptBtn"' in html
+        assert 'id="importTranscriptUploadBtn"' in html
+        assert 'id="importTranscriptInput"' in html
+        assert 'id="importTranscriptUploadInput"' in html
+        assert 'id="importTranscriptText"' in html
+        assert 'id="importTranscriptFile"' in html
+
     def test_docs_page_has_capture_bar(self, client, monkeypatch):
         """Regression for 2026-04-21 bug: capture bar was initially
         omitted on /docs ("this is reading material" reasoning),

@@ -308,6 +308,12 @@ component is added, a data flow changes, or a security boundary shifts.
 - **Import**: user pastes OneNote text or uploads Excel goals file → parser
   produces preview → user confirms → records written to DB, entry written
   to `import_log`. User-facing format rules documented in `/docs#import-onenote`.
+  Meeting-transcript path (HyNote / Notion AI Meeting Notes / generic): user
+  pastes transcript text or uploads a `.md`/`.txt` file →
+  `parse_transcript_text` looks for an explicit "Action Items" section and,
+  if present, sends only that section to Claude (option (a) — "trust the
+  pre-extracted bullets") otherwise sends the whole transcript → returns
+  task candidates with `source="transcript_import"` in `ImportLog`.
 - **GitHub → Railway**: push to `main` triggers rebuild + deploy via Nixpacks;
   `release` phase runs `flask db upgrade`.
 
@@ -511,6 +517,8 @@ the code.
 /api/import/projects/parse           # #80 — paste-text project names
 /api/import/projects/upload          # #80 — Excel project rows
 /api/import/projects/confirm         # #80 — commit projects from preview
+/api/import/transcript/parse         # meeting transcript paste — Claude action-item extraction
+/api/import/transcript/upload        # .md / .txt transcript file — same extraction
 /api/import/template/<kind>.xlsx     # #91 — downloadable .xlsx templates (kinds: tasks, goals, projects)
 
 # digest_api.py

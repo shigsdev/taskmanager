@@ -32,6 +32,7 @@
             <li><a href="#import-excel-tasks">Importing tasks from Excel</a></li>
             <li><a href="#import-excel-goals">Importing goals from Excel</a></li>
             <li><a href="#import-excel-projects">Importing projects from Excel</a></li>
+            <li><a href="#import-transcript">Meeting transcript ingestion</a></li>
         </ul>
 
         <h3 class="docs-toc-group">Task lifecycle</h3>
@@ -536,6 +537,66 @@ Skip this line (too short)</pre>
             <p>
                 Same recycle-bin batch undo as the other import modes.
             </p>
+        </section>
+
+        {# =============================================================
+           Section: Meeting transcript ingestion (HyNote / Notion AI)
+           ============================================================= #}
+        <section id="import-transcript" class="docs-section">
+            <h2>Meeting transcript ingestion</h2>
+            <p>
+                The /import page accepts meeting transcripts pasted directly
+                or uploaded as a <code>.md</code> / <code>.txt</code> file —
+                designed to round-trip exports from
+                <a href="https://hynote.ai" target="_blank" rel="noreferrer noopener">HyNote</a>,
+                Notion AI Meeting Notes, or any tool that produces a plain-text
+                transcript. Claude extracts action items into the same review
+                screen as the other import modes.
+            </p>
+
+            <h3>Two modes</h3>
+            <ul>
+                <li><strong>Paste Meeting Transcript</strong> — drop the
+                    transcript or notes into a textarea. Best for quick
+                    one-offs.</li>
+                <li><strong>Upload Transcript File</strong> — pick a
+                    <code>.md</code> or <code>.txt</code> file (max 5 MB).
+                    Best when you exported from HyNote / Notion to a file.</li>
+            </ul>
+
+            <h3>Action-items section</h3>
+            <p>
+                If the transcript contains an explicit "Action Items"
+                section (also recognised: "Next Steps", "To-dos",
+                "Follow-ups"), only that section is sent to Claude — fewer
+                tokens, lower hallucination room. If no such section
+                exists, the whole transcript is scanned end-to-end.
+            </p>
+
+            <h3>What gets created</h3>
+            <ul>
+                <li>Each extracted action item → one task candidate
+                    (review screen, default tier <strong>Inbox</strong>,
+                    default type <strong>work</strong>).</li>
+                <li>Title is capped at 100 characters; longer items are
+                    truncated.</li>
+                <li>Optional one-line context from Claude lands in the
+                    task's <code>notes</code> field.</li>
+                <li>Confirmed batch is logged with
+                    <code>source="transcript_import"</code>; whole batch
+                    can be undone from the Recycle Bin.</li>
+            </ul>
+
+            <h3>Limitations</h3>
+            <ul>
+                <li>Requires <code>ANTHROPIC_API_KEY</code> on the server
+                    — same key that powers /scan and voice memo. A
+                    missing key surfaces as a 503.</li>
+                <li>One-shot ingestion only: a future Notion API
+                    integration would let taskmanager pull transcripts
+                    automatically. Out of scope for this version.</li>
+                <li>5 MB hard cap on file uploads.</li>
+            </ul>
         </section>
 
         {# =============================================================

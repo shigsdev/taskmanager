@@ -12,7 +12,9 @@ Duplicate detection prevents re-importing the same items.
 from __future__ import annotations
 
 import io
+import json
 import logging
+import os
 import re
 import uuid
 from datetime import date
@@ -183,6 +185,220 @@ def parse_onenote_docx(file_bytes: bytes) -> list[dict[str, Any]]:
     # Reuse the same text parser
     combined = "\n".join(lines)
     return parse_onenote_text(combined)
+
+
+# --- Meeting transcript parsing (HyNote / Notion / generic) ------------------
+
+# Markdown / plain-text headers that mark a pre-extracted action-items
+# section. HyNote and Notion AI Meeting Notes both emit something like
+# this; matching the section verbatim cuts hallucination + tokens vs.
+# re-extracting from the whole transcript.
+_ACTION_ITEMS_HEADER_RE = re.compile(
+    r"^\s{0,3}(?:#{1,6}\s+|\*\*\s*)?(?:action\s*items?|next\s+steps?|"
+    r"to[\-\s]?dos?|todos?|follow[\-\s]?ups?)\s*:?\s*(?:\*\*)?\s*$",
+    re.IGNORECASE,
+)
+# Header that opens any *other* section — used to bound the action-items
+# block so we don't sweep up the entire rest of the document.
+_OTHER_SECTION_HEADER_RE = re.compile(r"^\s{0,3}#{1,6}\s+\S")
+
+
+_TRANSCRIPT_PROMPT = """\
+You are a task extraction assistant. The input is a meeting note or \
+transcript (often exported from HyNote, Notion AI Meeting Notes, or a \
+similar tool). Your job is to extract concrete, actionable items the \
+user committed to or needs to follow up on.
+
+Rules:
+- Each item must be a short imperative phrase under 100 characters
+  (e.g. "Email Sarah the Q3 plan", "Schedule design review").
+- Drop discussion summary, attendee names, meeting metadata, status
+  observations, decisions, and anything that is not an action.
+- Do not invent items the speaker didn't actually commit to.
+- If the transcript explicitly contains a section labeled "Action
+  Items" / "Next Steps" / "To-dos" / "Follow-ups" with bulleted
+  entries, prefer those entries verbatim (lightly cleaned). Otherwise
+  scan the full content.
+- Return ONLY a JSON array of objects, no other text.
+
+Each object has:
+- title (string, required)
+- notes (string or null) — optional one-line context if useful
+
+Example output:
+[{"title": "Email Sarah the Q3 plan", "notes": null},
+ {"title": "Schedule design review with Alex", "notes": "before EOM"}]
+
+Transcript:
+{transcript}
+"""
+
+
+def extract_action_items_section(text: str) -> str | None:
+    """Return the body of an explicit 'Action Items' section if present.
+
+    Walks line-by-line for a header matching ``_ACTION_ITEMS_HEADER_RE``,
+    then collects subsequent lines until the next markdown header (or
+    end of input). Returns the collected body as a single string, or
+    ``None`` if no such section was found.
+
+    Trusting the section verbatim is option (a) from the design spec —
+    fewer Claude tokens + lower hallucination than re-extracting from
+    the whole transcript every time.
+    """
+    if not text:
+        return None
+    lines = text.splitlines()
+    body: list[str] | None = None
+    for raw in lines:
+        if body is None:
+            if _ACTION_ITEMS_HEADER_RE.match(raw):
+                body = []
+            continue
+        # Inside the section — stop at the next markdown header.
+        if _OTHER_SECTION_HEADER_RE.match(raw):
+            break
+        body.append(raw)
+    if body is None:
+        return None
+    joined = "\n".join(body).strip()
+    return joined or None
+
+
+def parse_transcript_text(text: str) -> list[dict[str, Any]]:
+    """Extract action-item task candidates from a meeting transcript.
+
+    Strategy (option (a) — "trust pre-extracted section if present"):
+    1. Look for an explicit "Action Items" / "Next Steps" / "To-dos" /
+       "Follow-ups" markdown section. If found, send only that section
+       to Claude — fewer tokens, less hallucination room.
+    2. Otherwise send the whole transcript with the same prompt; Claude
+       still scans for action items end-to-end.
+
+    Output shape mirrors ``parse_onenote_text`` so the existing
+    ``/api/import/tasks/confirm`` path can ingest these candidates
+    unchanged: ``{title, type, included, notes?}``. Default type=work,
+    default tier=Inbox (applied at confirm time).
+
+    Raises:
+        RuntimeError: If ``ANTHROPIC_API_KEY`` is missing.
+    """
+    if not text or not text.strip():
+        return []
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY not configured")
+
+    section = extract_action_items_section(text)
+    payload = section if section else text
+    raw = _call_claude_for_transcript(api_key, payload)
+
+    candidates: list[dict[str, Any]] = []
+    seen_titles: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        title = item.get("title")
+        if not isinstance(title, str):
+            continue
+        title = title.strip()
+        if not title or len(title) < 2:
+            continue
+        if len(title) > 100:
+            title = title[:100]
+        normalized = title.lower()
+        if normalized in seen_titles:
+            continue
+        seen_titles.add(normalized)
+        notes_raw = item.get("notes")
+        notes = notes_raw.strip() if isinstance(notes_raw, str) else ""
+        candidates.append({
+            "title": title,
+            "type": "work",
+            "included": True,
+            "notes": notes or "",
+        })
+    return candidates
+
+
+def _call_claude_for_transcript(api_key: str, transcript: str) -> list[Any]:
+    """Make the Claude API call for transcript action-item extraction.
+
+    Separated for testability — tests patch this instead of the HTTP
+    layer. Returns the raw list of objects parsed from Claude's reply
+    (caller does the cleaning/coercion).
+    """
+    from egress import EgressError, safe_call_api
+
+    prompt = _TRANSCRIPT_PROMPT.format(transcript=transcript)
+    try:
+        data = safe_call_api(
+            url="https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-sonnet-4-6",
+                "max_tokens": 2048,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout_sec=60,
+            vendor="Claude",
+        )
+    except EgressError as e:
+        raise RuntimeError(str(e)) from e
+
+    content = data.get("content", [{}])[0].get("text", "")
+    return _extract_transcript_json_array(content)
+
+
+def _extract_transcript_json_array(text: str) -> list[Any]:
+    """Extract a JSON array of objects from Claude's reply.
+
+    Mirrors ``scan_service._extract_json_object_list`` — direct parse,
+    then markdown code fence, then bracket-bound fallback. Returns an
+    empty list on any failure rather than raising, so a Claude format
+    blip surfaces as "no candidates found" instead of a 500.
+    """
+    text = (text or "").strip()
+    if not text:
+        return []
+
+    # Direct parse.
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+
+    # Markdown code fence.
+    if "```" in text:
+        for part in text.split("```"):
+            cleaned = part.strip()
+            if cleaned.startswith("json"):
+                cleaned = cleaned[4:].strip()
+            try:
+                parsed = json.loads(cleaned)
+                if isinstance(parsed, list):
+                    return parsed
+            except json.JSONDecodeError:
+                continue
+
+    # Bracket-bound fallback.
+    start = text.find("[")
+    end = text.rfind("]")
+    if start != -1 and end != -1 and end > start:
+        try:
+            parsed = json.loads(text[start : end + 1])
+            if isinstance(parsed, list):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+    return []
 
 
 # --- Excel goals parsing ----------------------------------------------------
