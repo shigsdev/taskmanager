@@ -237,6 +237,15 @@ def _update_repeat(task: Task, repeat: dict | None) -> None:
             "subtasks_snapshot": _snapshot_subtasks(task),
             "is_active": True,
             "end_date": repeat.get("end_date"),  # #101 (PR30)
+            # #147 (2026-05-02): same start_date backfill as _apply_repeat.
+            # Important for the update path so opening + saving an
+            # existing task created before #147 (start_date=NULL)
+            # picks up the sunrise bound from task.due_date — fixes
+            # pre-existing templates without requiring delete-and-recreate.
+            "start_date": (
+                repeat.get("start_date")
+                or (task.due_date.isoformat() if task.due_date else None)
+            ),
         }
         update_recurring(task.recurring_task_id, update_data)
     else:

@@ -1382,6 +1382,39 @@ class TestStartDateSunrise:
             update_recurring(rt.id, {"start_date": None})
             assert db.session.get(RecurringTask, rt.id).start_date is None
 
+    def test_update_repeat_path_also_backfills_start_date(self, app):
+        """User-reported follow-up 2026-05-02: opening + saving an
+        existing task created before PR92 must pick up the sunrise
+        bound. _update_repeat goes through update_recurring, NOT
+        _apply_repeat, so the same start_date plumbing has to be
+        present on both paths or pre-existing templates stay broken."""
+        from datetime import date
+
+        from models import RecurringTask, Task, TaskType, Tier, db
+        from task_service import _apply_repeat, _update_repeat
+
+        with app.app_context():
+            # Step 1: create the template before #147 was in effect by
+            # forcing start_date back to NULL after _apply_repeat fires.
+            task = Task(
+                title="x", type=TaskType.WORK, tier=Tier.NEXT_WEEK,
+                due_date=date(2026, 5, 4),
+            )
+            db.session.add(task)
+            db.session.commit()
+            _apply_repeat(task, {"frequency": "daily"})
+            db.session.commit()
+            rt = db.session.get(RecurringTask, task.recurring_task_id)
+            rt.start_date = None  # simulate pre-#147 row
+            db.session.commit()
+            assert rt.start_date is None
+
+            # Step 2: user opens + saves the task. _update_repeat runs.
+            _update_repeat(task, {"frequency": "daily"})
+            db.session.commit()
+            refreshed = db.session.get(RecurringTask, task.recurring_task_id)
+            assert refreshed.start_date == date(2026, 5, 4)
+
     def test_serializer_exposes_start_date(self, authed_client, app):
 
         from models import db
