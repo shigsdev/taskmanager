@@ -1212,3 +1212,189 @@ class TestRecurringEndDate:
             db.session.add(rt)
             db.session.commit()
             assert _template_fires_on(rt, date(2099, 12, 31)) is True
+
+
+class TestStartDateSunrise:
+    """#147 (2026-05-02): Symmetric counterpart to end_date. User
+    reported a daily-repeat task with due_date=5/4 + end=5/6 fired
+    preview cards on this Saturday (5/2) because the template had no
+    sunrise bound. Adding start_date plus auto-backfilling it from
+    task.due_date in _apply_repeat fixes the case."""
+
+    def test_template_does_not_fire_before_start_date(self, app):
+        from datetime import date
+
+        from models import RecurringFrequency, RecurringTask, TaskType, db
+        from recurring_service import _template_fires_on
+        with app.app_context():
+            rt = RecurringTask(
+                title="Starts Mon", type=TaskType.WORK,
+                frequency=RecurringFrequency.DAILY,
+                start_date=date(2026, 5, 4),  # Monday
+                is_active=True,
+            )
+            db.session.add(rt)
+            db.session.commit()
+            assert _template_fires_on(rt, date(2026, 5, 2)) is False  # Sat — before
+            assert _template_fires_on(rt, date(2026, 5, 3)) is False  # Sun — before
+            assert _template_fires_on(rt, date(2026, 5, 4)) is True   # Mon — start
+            assert _template_fires_on(rt, date(2026, 5, 5)) is True   # Tue — after
+
+    def test_null_start_date_fires_from_beginning(self, app):
+        """Backwards compat: NULL start_date keeps existing 'fire forever
+        from the past' behavior so pre-#147 templates aren't disrupted."""
+        from datetime import date
+
+        from models import RecurringFrequency, RecurringTask, TaskType, db
+        from recurring_service import _template_fires_on
+        with app.app_context():
+            rt = RecurringTask(
+                title="Always", type=TaskType.WORK,
+                frequency=RecurringFrequency.DAILY,
+                start_date=None, end_date=None,
+                is_active=True,
+            )
+            db.session.add(rt)
+            db.session.commit()
+            # Far past — should still fire when start_date is NULL.
+            assert _template_fires_on(rt, date(2020, 1, 1)) is True
+
+    def test_start_and_end_date_window(self, app):
+        """Both bounds set — fires only inside [start_date, end_date]."""
+        from datetime import date
+
+        from models import RecurringFrequency, RecurringTask, TaskType, db
+        from recurring_service import _template_fires_on
+        with app.app_context():
+            rt = RecurringTask(
+                title="Window", type=TaskType.WORK,
+                frequency=RecurringFrequency.DAILY,
+                start_date=date(2026, 5, 4),
+                end_date=date(2026, 5, 6),
+                is_active=True,
+            )
+            db.session.add(rt)
+            db.session.commit()
+            assert _template_fires_on(rt, date(2026, 5, 3)) is False  # before
+            assert _template_fires_on(rt, date(2026, 5, 4)) is True   # start
+            assert _template_fires_on(rt, date(2026, 5, 5)) is True   # mid
+            assert _template_fires_on(rt, date(2026, 5, 6)) is True   # end
+            assert _template_fires_on(rt, date(2026, 5, 7)) is False  # after
+
+    def test_apply_repeat_backfills_start_date_from_task_due_date(self, app):
+        """The user-reported repro: setting repeat=daily on a task with
+        future due_date must record start_date = task.due_date so the
+        preview generator doesn't render cards for days before."""
+        from datetime import date
+
+        from models import RecurringTask, Task, TaskType, Tier, db
+        from task_service import _apply_repeat
+
+        with app.app_context():
+            task = Task(
+                title="Finalize Containers Roadmaps",
+                type=TaskType.WORK,
+                tier=Tier.NEXT_WEEK,
+                due_date=date(2026, 5, 4),
+            )
+            db.session.add(task)
+            db.session.commit()
+            _apply_repeat(task, {
+                "frequency": "daily",
+                "end_date": "2026-05-06",
+                # No explicit start_date — must backfill from task.due_date.
+            })
+            db.session.commit()
+            rt = db.session.get(RecurringTask, task.recurring_task_id)
+            assert rt.start_date == date(2026, 5, 4)
+            assert rt.end_date == date(2026, 5, 6)
+
+    def test_apply_repeat_explicit_start_date_overrides_due_date(self, app):
+        """If the caller passes start_date in the repeat payload
+        explicitly, it wins over task.due_date."""
+        from datetime import date
+
+        from models import RecurringTask, Task, TaskType, Tier, db
+        from task_service import _apply_repeat
+
+        with app.app_context():
+            task = Task(
+                title="x", type=TaskType.WORK, tier=Tier.NEXT_WEEK,
+                due_date=date(2026, 5, 4),
+            )
+            db.session.add(task)
+            db.session.commit()
+            _apply_repeat(task, {
+                "frequency": "daily",
+                "start_date": "2026-06-01",  # explicit, ignores due_date
+            })
+            db.session.commit()
+            rt = db.session.get(RecurringTask, task.recurring_task_id)
+            assert rt.start_date == date(2026, 6, 1)
+
+    def test_apply_repeat_no_due_date_means_no_start_date(self, app):
+        """A task without a due_date and no explicit start_date in the
+        repeat payload should leave start_date NULL (legacy 'fire from
+        the beginning of time' semantic). Otherwise we'd silently change
+        behaviour for templates created from undated tasks."""
+        from models import RecurringTask, Task, TaskType, Tier, db
+        from task_service import _apply_repeat
+
+        with app.app_context():
+            task = Task(
+                title="x", type=TaskType.WORK, tier=Tier.INBOX,
+                due_date=None,
+            )
+            db.session.add(task)
+            db.session.commit()
+            _apply_repeat(task, {"frequency": "daily"})
+            db.session.commit()
+            rt = db.session.get(RecurringTask, task.recurring_task_id)
+            assert rt.start_date is None
+
+    def test_create_recurring_accepts_start_date(self, app):
+        from datetime import date
+
+        from models import RecurringTask, db
+        from recurring_service import create_recurring
+
+        with app.app_context():
+            rt = create_recurring({
+                "title": "x", "type": "work", "frequency": "daily",
+                "start_date": "2026-05-04",
+            })
+            db.session.refresh(rt)
+            fresh = db.session.get(RecurringTask, rt.id)
+            assert fresh.start_date == date(2026, 5, 4)
+
+    def test_update_recurring_can_set_and_clear_start_date(self, app):
+        from datetime import date
+
+        from models import RecurringTask, db
+        from recurring_service import create_recurring, update_recurring
+
+        with app.app_context():
+            rt = create_recurring({
+                "title": "x", "type": "work", "frequency": "daily",
+            })
+            update_recurring(rt.id, {"start_date": "2026-05-04"})
+            assert db.session.get(RecurringTask, rt.id).start_date == date(2026, 5, 4)
+            update_recurring(rt.id, {"start_date": None})
+            assert db.session.get(RecurringTask, rt.id).start_date is None
+
+    def test_serializer_exposes_start_date(self, authed_client, app):
+
+        from models import db
+        from recurring_service import create_recurring
+
+        with app.app_context():
+            rt = create_recurring({
+                "title": "x", "type": "work", "frequency": "daily",
+                "start_date": "2026-05-04",
+            })
+            rt_id = str(rt.id)
+            db.session.commit()
+        resp = authed_client.get("/api/recurring")
+        rows = resp.get_json()
+        row = next(r for r in rows if r["id"] == rt_id)
+        assert row["start_date"] == "2026-05-04"

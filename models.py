@@ -334,6 +334,14 @@ class RecurringTask(db.Model):
     # user set up a finite recurring (e.g. "stretch every morning
     # until end of Q3") without having to remember to deactivate.
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # #147 (2026-05-02): optional sunrise date (paired symmetric with
+    # end_date). When set, the template doesn't fire BEFORE start_date.
+    # Auto-populated from task.due_date when a Task with repeat is
+    # saved (task_service._apply_repeat) so a user setting up "daily
+    # next week through 5/6" doesn't see preview cards on this Saturday.
+    # NULL preserves the historical "fire from beginning of time"
+    # semantics for templates created before this column existed.
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 

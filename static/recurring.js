@@ -39,6 +39,9 @@
         } else {
             base = rt.frequency;
         }
+        // #147 (2026-05-02): show sunrise date when set. Pair-symmetric
+        // with end_date below; both can coexist ("from X until Y").
+        if (rt.start_date) base += " (from " + rt.start_date + ")";
         // #101 (PR30): show sunset date when set.
         if (rt.end_date) base += " (until " + rt.end_date + ")";
         return base;

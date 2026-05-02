@@ -133,6 +133,19 @@ def _parse_end_date(value: object) -> date | None:
     Accepts None / empty string (= no end date), a date instance, or
     an ISO-8601 YYYY-MM-DD string. Raises ValidationError on garbage.
     """
+    return _parse_optional_date(value, field_name="end_date")
+
+
+def _parse_start_date(value: object) -> date | None:
+    """#147 (2026-05-02): parse the optional start_date sunrise field.
+
+    Same shape as `_parse_end_date`. Distinct field name in the
+    ValidationError so client error messages are precise.
+    """
+    return _parse_optional_date(value, field_name="start_date")
+
+
+def _parse_optional_date(value: object, *, field_name: str) -> date | None:
     if value is None:
         return None
     if isinstance(value, date):
@@ -144,7 +157,7 @@ def _parse_end_date(value: object) -> date | None:
         return date.fromisoformat(s)
     except ValueError as e:
         raise ValidationError(
-            "end_date must be ISO date YYYY-MM-DD", "end_date",
+            f"{field_name} must be ISO date YYYY-MM-DD", field_name,
         ) from e
 
 
@@ -222,6 +235,7 @@ def create_recurring(data: dict) -> RecurringTask:
         url=data.get("url") or None,
         subtasks_snapshot=_clean_subtasks_snapshot(data.get("subtasks_snapshot")),
         end_date=_parse_end_date(data.get("end_date")),  # #101
+        start_date=_parse_start_date(data.get("start_date")),  # #147
     )
     db.session.add(rt)
     db.session.commit()
@@ -296,6 +310,9 @@ def update_recurring(rt_id: uuid.UUID, data: dict) -> RecurringTask | None:
     if "end_date" in data:  # #101 (PR30)
         rt.end_date = _parse_end_date(data["end_date"])
 
+    if "start_date" in data:  # #147 (2026-05-02)
+        rt.start_date = _parse_start_date(data["start_date"])
+
     db.session.commit()
     return rt
 
@@ -315,6 +332,13 @@ def delete_recurring(rt_id: uuid.UUID) -> bool:
 
 def _template_fires_on(rt: RecurringTask, target: date) -> bool:
     """Return True if the recurring template should fire on the given date."""
+    # #147 (2026-05-02): respect optional sunrise date. NULL keeps
+    # legacy "fire forever from the past" behaviour (templates created
+    # before #147 had no start_date concept). Set means the template
+    # doesn't fire BEFORE start_date — so a user setting up "daily
+    # next week through Wed" doesn't see preview cards on this Saturday.
+    if rt.start_date is not None and target < rt.start_date:
+        return False
     # #101 (PR30): respect optional sunset date — once we're past it,
     # the template never fires again (preview generation also uses
     # this same fn, so the dashed previews go away once expired).

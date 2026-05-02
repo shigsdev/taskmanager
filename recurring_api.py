@@ -57,6 +57,7 @@ def _serialize(rt: RecurringTask) -> dict:
         "subtasks_snapshot": rt.subtasks_snapshot or [],
         "is_active": rt.is_active,
         "end_date": rt.end_date.isoformat() if rt.end_date else None,  # #101
+        "start_date": rt.start_date.isoformat() if rt.start_date else None,  # #147
         "created_at": rt.created_at.isoformat(),
     }
 

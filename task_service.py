@@ -193,6 +193,15 @@ def _apply_repeat(task: Task, repeat: dict) -> None:
         "url": task.url,
         "subtasks_snapshot": _snapshot_subtasks(task),
         "end_date": repeat.get("end_date"),  # #101 (PR30)
+        # #147 (2026-05-02): if the user provided an explicit start_date
+        # in the repeat payload, use it; otherwise fall back to the task's
+        # due_date so a "daily next week through Wed" task doesn't fire
+        # preview cards on this Saturday. NULL preserves "fire forever
+        # from the past" for templates created without a date hint.
+        "start_date": (
+            repeat.get("start_date")
+            or (task.due_date.isoformat() if task.due_date else None)
+        ),
     }
     rt = create_recurring(rt_data)
     task.recurring_task_id = rt.id
