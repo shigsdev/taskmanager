@@ -428,6 +428,7 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "parent_id":           {"desc": "Parent task (for subtasks)", "fk_target": "tasks.id (self-reference)", "notes": "Optional — one level deep"},
             "recurring_task_id":   {"desc": "The recurring template that spawned this", "fk_target": "recurring_tasks.id", "notes": "Optional"},
             "batch_id":            {"desc": "Bulk-import batch (for recycle-bin undo)", "fk_target": "import_log.batch_id", "notes": "Optional"},
+            "planner_ignore":      {"desc": "Weekly-planner 'stop suggesting until I touch it' flag", "notes": "Auto-resets to False on any meaningful field change in update_task()"},
         },
     },
     "goals": {

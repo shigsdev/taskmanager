@@ -438,6 +438,7 @@ commit — the check will fail otherwise.
 - `/calendar` — 2-week Mon-Sat drag-drop calendar (#73) — drop tasks on a day to set due_date
 - `/recurring` — recurring template list with multi-select bulk-edit toolbar (#63)
 - `/review` — weekly review swipe + #12 triage-suggestions panel above the review card (heuristic-based stale-task hints from `triage_service.py`, served by `GET /api/triage/suggestions`)
+- `/plan` — weekly planner (post-#12 brainstorm Option A, shipped 2026-05-02). Date picker → `POST /api/planner/weekly` → Claude Haiku reviews ALL active non-frozen tasks + 4 weeks of completion history + recurring fires + goals + projects + freezer items > 60 days → returns structured plan: per-task suggestions (action: keep/move/delete/freeze), day-by-day grouping (Mon–Sun), goal hints (on_track / falling_behind / no_progress / ahead), velocity warning, stale freezer review. User accepts / overrides / ignores per row; "Apply all accepted" routes through canonical `PATCH /api/tasks/<id>`. New `Task.planner_ignore` boolean (auto-resets on any task field change) silences specific tasks until next user touch. Service: `weekly_planner_service.py`. Rate-limited 5/min.
 - `/scan` — image → tasks
 - `/voice-memo` — audio → tasks
 - `/import` — OneNote + Excel imports
@@ -498,6 +499,10 @@ the code.
 
 # inbox_categorize_api.py — Option A post-#12 brainstorm
 /api/inbox/categorize    # POST — one-call Claude pass over all inbox tasks
+
+# planner_api.py — weekly planner (post-#12 follow-up; user choice 2026-05-02)
+/api/planner/weekly                # POST — Mon–Sun plan via Claude Haiku
+/api/planner/ignore/<uuid:task_id> # POST — toggle Task.planner_ignore
 
 # scan_api.py
 /api/scan/upload

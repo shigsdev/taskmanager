@@ -22,6 +22,7 @@ import digest_api
 import goals_api
 import import_api
 import inbox_categorize_api
+import planner_api
 import projects_api
 import recurring_api
 import recycle_api
@@ -218,6 +219,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(review_api.bp)
     app.register_blueprint(triage_api.bp)
     app.register_blueprint(inbox_categorize_api.bp)
+    app.register_blueprint(planner_api.bp)
     app.register_blueprint(recurring_api.bp)
     app.register_blueprint(digest_api.bp)
     app.register_blueprint(scan_api.bp)
@@ -448,6 +450,14 @@ def create_app(config: dict | None = None) -> Flask:
     @login_required
     def review_page(email: str):  # noqa: ARG001
         return render_template("review.html")
+
+    @app.route("/plan")
+    @login_required
+    def plan_page(email: str):  # noqa: ARG001
+        # Weekly planner — single-call LLM pass that proposes a Mon–Sun
+        # plan for the requested week. Default selection is next Monday;
+        # client renders the date picker + Generate button.
+        return render_template("plan.html")
 
     @app.route("/scan")
     @login_required

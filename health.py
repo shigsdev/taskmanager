@@ -123,6 +123,7 @@ EXPECTED_STATIC_FILES = (
     "static/calendar.js",
     "static/recurring.js",
     "static/inbox_categorize.js",
+    "static/plan.js",
     "static/manifest.json",
     "static/favicon.svg",  # #45 — browser tab icon
 )

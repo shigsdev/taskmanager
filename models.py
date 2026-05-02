@@ -24,6 +24,9 @@ from sqlalchemy import (
     Text,
     Uuid,
 )
+from sqlalchemy import (
+    false as sql_false,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -242,6 +245,14 @@ class Task(db.Model):
     # bulk import. Cleared (set to NULL) when the task is regular-deleted so
     # that batch undo/restore never resurrects a user-trashed task.
     batch_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    # Weekly-planner "stop suggesting this for now" flag. User toggles via
+    # the planner review modal. task_service.update_task() RESETS this to
+    # False on any field change so the silence is per-suggestion, not
+    # permanent — touching the task in any way re-includes it in the next
+    # planner run.
+    planner_ignore: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sql_false()
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now

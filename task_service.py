@@ -383,6 +383,21 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
     old_goal_id = task.goal_id
     old_project_id = task.project_id
 
+    # Weekly-planner ignore flag is "stop suggesting until I touch the
+    # task again". Any meaningful field change resets it so the next
+    # planner run reconsiders the task. The PATCH from the planner
+    # itself uses planner_ignore=True explicitly (see ignore endpoint),
+    # so when the user clicks "Ignore" we honor it; everything else
+    # (tier change, project link, retitle, …) means the user engaged
+    # with the task and the silence is no longer wanted.
+    _meaningful_change_fields = {
+        "title", "type", "tier", "status", "project_id", "goal_id",
+        "due_date", "url", "notes", "checklist", "cancellation_reason",
+        "parent_id",
+    }
+    if task.planner_ignore and any(k in data for k in _meaningful_change_fields):
+        task.planner_ignore = False
+
     if "title" in data:
         title = (data["title"] or "").strip()
         if not title:

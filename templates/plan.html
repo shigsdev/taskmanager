@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% set active_page = 'plan' %}
+{% block title %}Plan my week — Task Manager{% endblock %}
+
+{% block content %}
+<div class="plan-container" id="planContainer">
+    <div class="plan-header">
+        <h1>💡 Plan my week</h1>
+        <p class="plan-hint">
+            Pick a Monday → AI reviews every active task, last 4 weeks of
+            completions, recurring fires, and goal progress, then proposes a
+            Mon–Sun plan you can review and apply.
+        </p>
+    </div>
+
+    <div class="plan-controls">
+        <label for="planStartDate"><strong>Week starting:</strong></label>
+        <input type="date" id="planStartDate">
+        <button class="btn" id="planGenerateBtn">Generate plan</button>
+    </div>
+
+    <div class="plan-loading" id="planLoading" style="display:none">
+        <p>Asking Claude to plan your week… (~5–10 seconds)</p>
+    </div>
+
+    <div class="plan-error" id="planError" style="display:none"></div>
+
+    <div class="plan-results" id="planResults" style="display:none">
+        <div class="plan-summary" id="planSummary"></div>
+
+        <section class="plan-section" id="planVelocityWarning" style="display:none">
+            <div class="plan-velocity">
+                <strong>⚠ Velocity check:</strong>
+                <span id="planVelocityText"></span>
+            </div>
+        </section>
+
+        <section class="plan-section" id="planGoalHints">
+            <h2>🎯 Goal progress</h2>
+            <ul class="plan-goal-list" id="planGoalList"></ul>
+        </section>
+
+        <section class="plan-section" id="planDayByDay">
+            <h2>📅 Day-by-day plan</h2>
+            <div class="plan-days" id="planDaysContainer"></div>
+        </section>
+
+        <section class="plan-section" id="planOtherSuggestions">
+            <h2>📋 Other suggestions (no specific day)</h2>
+            <ul class="plan-other-list" id="planOtherList"></ul>
+        </section>
+
+        <section class="plan-section" id="planStaleFreezer" style="display:none">
+            <h2>🥶 Stale freezer review</h2>
+            <p class="plan-hint">Items frozen more than 60 days — worth thawing or deleting?</p>
+            <ul class="plan-stale-list" id="planStaleList"></ul>
+        </section>
+
+        <div class="plan-footer">
+            <button class="btn" id="planApplyAllBtn">Apply all accepted</button>
+            <span class="plan-applied-count" id="planAppliedCount"></span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='filter_helpers.js') }}"></script>
+<script src="{{ url_for('static', filename='plan.js') }}"></script>
+{% endblock %}

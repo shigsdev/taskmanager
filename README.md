@@ -37,6 +37,14 @@ work and personal life, with a regulated (air-gapped) work environment.
   a **triage suggestions** panel above the review card listing stale tasks with
   one-click recommended actions (heuristic-based: e.g. inbox >7 days → Backlog,
   backlog >90 days → delete)
+- **Plan my week (AI)** — dedicated `/plan` page; pick a Monday → one-click
+  Claude Haiku pass reviews ALL active non-frozen tasks + 4 weeks of completion
+  history + recurring fires + goals → returns a Mon–Sun plan with per-task
+  action (keep / move / delete / freeze), day-by-day grouping, goal progress
+  hints, optional velocity warning, and a separate stale-freezer review (items
+  frozen > 60 days). Review + override per row, then "Apply all" routes through
+  canonical PATCH /api/tasks. Per-task `planner_ignore` flag auto-resets on any
+  task touch — silence is per-suggestion, not permanent.
 - **Recurring tasks** — 16 system defaults plus custom templates; daily, weekly,
   single-day-of-week, or **multi-day-of-week** (e.g. Mon+Wed+Fri); dedicated
   `/recurring` page with multi-select bulk-edit (type / frequency / project /

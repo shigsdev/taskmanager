@@ -46,6 +46,7 @@
         <h3 class="docs-toc-group">Workflows</h3>
         <ul>
             <li><a href="#auto-categorize">Auto-categorize inbox</a></li>
+            <li><a href="#weekly-planner">Plan my week (AI)</a></li>
             <li><a href="#bulk-ops">Bulk operations</a></li>
             <li><a href="#filters">Filters</a></li>
             <li><a href="#calendar-day-strip">Calendar &amp; day strip</a></li>
@@ -898,6 +899,92 @@ Skip this line (too short)</pre>
                 <li>Subtasks are excluded (they ride along with their parent).</li>
                 <li>Project + goal IDs are <strong>validated server-side</strong> before they reach the modal — if Claude hallucinates an ID, it's quietly dropped to null rather than letting a bad foreign-key reach the PATCH.</li>
                 <li>If <code>ANTHROPIC_API_KEY</code> isn't set, the endpoint returns 502 with a clear error and no DB writes happen.</li>
+            </ul>
+        </section>
+
+        <section id="weekly-planner" class="docs-section">
+            <h2>Plan my week (AI)</h2>
+            <p>
+                The <a href="{{ url_for('plan_page') }}">/plan</a> page
+                runs a single Claude pass over your whole task corpus
+                and proposes a Mon–Sun plan you can review then apply
+                in one click. The default selected week is
+                <strong>next Monday through Sunday</strong> — designed
+                for end-of-week planning ahead.
+            </p>
+            <h3>What goes into the plan</h3>
+            <ul>
+                <li><strong>Active tasks</strong> from every tier
+                    EXCEPT Freezer — frozen tasks are deliberately parked
+                    and aren't re-suggested in the main plan.</li>
+                <li><strong>4 weeks of completed history</strong> — used
+                    for velocity calibration ("last 4 weeks averaged 18
+                    completions; this plan has 28 — too aggressive") and
+                    pattern detection ("you've done 'Pay X bill' 4 weeks
+                    running — recurring template candidate?").</li>
+                <li><strong>Recurring fires expected next week</strong> —
+                    treated as already-committed time; Claude won't
+                    re-suggest them as new tasks but may flag conflicts.</li>
+                <li><strong>Active projects + open goals</strong> —
+                    so suggestions can link to the right project / goal.</li>
+                <li><strong>Stale freezer items (frozen &gt; 60 days)</strong>
+                    — surfaced in a separate section as "thaw / delete /
+                    keep frozen" hints, never mixed into the main plan.</li>
+            </ul>
+            <h3>What comes back</h3>
+            <ul>
+                <li><strong>Per-task action</strong>: keep / move / delete /
+                    freeze. "Move" includes a suggested tier and a
+                    suggested due_date inside the target week.</li>
+                <li><strong>Day-by-day plan</strong> grouped Mon–Sun by
+                    suggested due_date.</li>
+                <li><strong>Goal progress hints</strong> per goal: on
+                    track / falling behind / no progress / ahead, with
+                    a one-sentence recommendation.</li>
+                <li><strong>Velocity warning</strong> (when applicable):
+                    flags weeks where the suggested workload exceeds
+                    your 4-week completion average by &gt; 1.2×.</li>
+                <li><strong>Stale freezer review</strong>: separate list
+                    of long-frozen items, never auto-applied — you skim,
+                    decide, click.</li>
+            </ul>
+            <h3>Review then apply</h3>
+            <ul>
+                <li>Each suggestion is a row with editable selects (tier,
+                    due date, project, goal). Override anything before
+                    accepting.</li>
+                <li><strong>Accept</strong> per row — runs
+                    <code>PATCH /api/tasks/&lt;id&gt;</code>
+                    (or <code>DELETE</code> for delete actions); same
+                    canonical mutation surface as the rest of the app.</li>
+                <li><strong>Apply all accepted</strong> — patches every
+                    pending row in sequence. Failures keep their row
+                    visible (highlighted) for retry.</li>
+                <li><strong>Ignore</strong> — sets
+                    <code>Task.planner_ignore = true</code> so the task
+                    drops out of the next planner run. The flag
+                    auto-resets to false the moment you touch the task
+                    in any meaningful way (tier change, retitle, project
+                    link, etc.) — silence is per-suggestion, never
+                    permanent.</li>
+            </ul>
+            <h3>Cost + safety</h3>
+            <ul>
+                <li>Uses <strong>Claude Haiku</strong> — about
+                    <strong>$0.005–0.01 per click</strong> depending on
+                    history depth.</li>
+                <li>Capped at <strong>100 active tasks per call</strong>
+                    (rare to hit — most users carry &lt; 50 active).</li>
+                <li>Rate-limited <strong>5 calls / minute</strong> —
+                    same per-route cap as voice memo + image scan +
+                    inbox auto-categorize.</li>
+                <li>Subtasks excluded — they ride with their parent.</li>
+                <li>All hallucinated IDs (project / goal / task) are
+                    server-side validated before reaching the review UI;
+                    bad IDs drop to null rather than letting a fake
+                    foreign key reach the PATCH.</li>
+                <li>Suggested due_dates outside the target week are
+                    clamped to the week boundary instead of dropped.</li>
             </ul>
         </section>
 
