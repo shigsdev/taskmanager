@@ -1918,19 +1918,64 @@ function setupDetailPanel() {
     // board so the new card renders.
     const dupBtn = document.getElementById("detailDuplicate");
     if (dupBtn) {
+        // #143 (2026-05-04): user-reported "button stuck on …" 2026-05-04.
+        // First fix shipped (PR94) had the apiFetch + close + load
+        // sequence in a single try with no finally — if the fetch hung
+        // (mobile tab suspension, transient network blip), the catch
+        // never fired and the button stayed disabled forever. Hardened:
+        //
+        //   - finally block ALWAYS restores button state regardless
+        //     of what happens, including uncaught exceptions
+        //   - apiFetch wrapped in its own try/catch with an explicit
+        //     console.error path so devtools shows the failure
+        //   - Original button label cached at click time so we don't
+        //     rely on a hardcoded string staying in sync
+        //   - On success: re-open the clone's detail panel so the
+        //     user can immediately change tier/date if "tomorrow"
+        //     isn't right (2026-05-04 (A) follow-up — the original
+        //     close-and-leave UX made it hard to retier the clone
+        //     without a separate click + find step)
         dupBtn.addEventListener("click", async () => {
             const id = document.getElementById("detailId").value;
             if (!id) return;
+            const originalLabel = dupBtn.textContent;
             dupBtn.disabled = true;
             dupBtn.textContent = "…";
+            let clone = null;
             try {
-                await apiFetch(`/api/tasks/${id}/duplicate`, { method: "POST" });
-                taskDetailClose();
-                await loadTasks();
+                clone = await apiFetch(
+                    `/api/tasks/${id}/duplicate`,
+                    { method: "POST" },
+                );
+                console.info("Task duplicated:", clone && clone.id);
             } catch (err) {
+                console.error("Duplicate task failed:", err);
                 alert("Couldn't duplicate task: " + (err && err.message ? err.message : err));
+                return;  // finally restores button + bails out
+            } finally {
                 dupBtn.disabled = false;
-                dupBtn.textContent = "⧉ Copy to tomorrow";
+                dupBtn.textContent = originalLabel;
+            }
+            // Refresh the board + re-open the clone for immediate edits.
+            // Wrapped separately so a board-refresh blip doesn't strand
+            // the user — they still got a valid clone above.
+            try {
+                await loadTasks();
+                if (clone && clone.id) {
+                    // Read from the freshly-loaded `allTasks` so the
+                    // panel sees full state (subtask_count, etc.) —
+                    // the serializer matches, but `allTasks` is the
+                    // cache the rest of the app reads.
+                    const fresh = (typeof allTasks !== "undefined" && Array.isArray(allTasks))
+                        ? allTasks.find((t) => t.id === clone.id)
+                        : null;
+                    taskDetailOpen(fresh || clone);
+                } else {
+                    taskDetailClose();
+                }
+            } catch (err) {
+                console.error("Post-duplicate refresh failed:", err);
+                taskDetailClose();
             }
         });
     }
