@@ -41,6 +41,7 @@
             <li><a href="#recurring">Recurring tasks</a></li>
             <li><a href="#review-mode">Review mode</a></li>
             <li><a href="#subtasks">Subtasks</a></li>
+            <li><a href="#duplicate-task">Copy a task to tomorrow</a></li>
         </ul>
 
         <h3 class="docs-toc-group">Workflows</h3>
@@ -985,6 +986,50 @@ Skip this line (too short)</pre>
                     foreign key reach the PATCH.</li>
                 <li>Suggested due_dates outside the target week are
                     clamped to the week boundary instead of dropped.</li>
+            </ul>
+        </section>
+
+        <section id="duplicate-task" class="docs-section">
+            <h2>Copy a task to tomorrow</h2>
+            <p>
+                For when you didn't finish something today and want to
+                pick it up the next day without retyping everything: open
+                the task's detail panel and click
+                <strong>⧉ Copy to tomorrow</strong>. The original stays
+                put; a fresh clone appears in the Tomorrow tier with
+                <code>due_date</code> set to tomorrow.
+            </p>
+            <h3>What carries over to the clone</h3>
+            <ul>
+                <li>Title, type (work / personal), project, goal,
+                    URL, notes</li>
+                <li>Checklist items — text preserved, but every item is
+                    reset to <strong>unchecked</strong> (the clone is a
+                    fresh attempt, not a copy of your in-progress state)</li>
+            </ul>
+            <h3>What's reset on the clone</h3>
+            <ul>
+                <li><strong>Tier</strong> → Tomorrow</li>
+                <li><strong>Due date</strong> → tomorrow's date (your
+                    local timezone, same as the rest of the app)</li>
+                <li><strong>Status</strong> → Active (even if you
+                    already marked the original Complete or Cancelled —
+                    the clone represents new work)</li>
+                <li><strong>Parent task</strong> → none. Subtasks
+                    usually describe the parent's specific concrete
+                    steps, so a clone wouldn't make sense as a child of
+                    the original parent. The clone starts as a
+                    standalone task.</li>
+                <li><strong>Recurring template link</strong> → none.
+                    A duplicated recurring instance is a one-off; it
+                    does NOT add itself to the template's spawn schedule.</li>
+            </ul>
+            <h3>What's NOT cascaded</h3>
+            <ul>
+                <li><strong>Subtasks of the original</strong> are not
+                    cloned. If you need them on the clone too, add them
+                    by hand. (We can revisit if this turns out to be
+                    a frequent ask.)</li>
             </ul>
         </section>
 

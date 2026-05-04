@@ -1859,3 +1859,113 @@ class TestProjectGoalCascade:
         body = resp.get_json()
         assert body["project_id"] == proj_no_goal["id"]
         assert body["goal_id"] == g["id"], "goal must NOT be silently cleared"
+
+
+# --- #143 (2026-05-04): duplicate task to tomorrow --------------------------
+
+
+class TestDuplicateTask:
+    """POST /api/tasks/<id>/duplicate clones a task to TOMORROW so the
+    user can keep working on it the next day. Most fields carry over;
+    a small set are reset (parent_id, recurring_task_id, batch_id,
+    timestamps, status, sort_order, last_reviewed). Checklist items
+    keep their text but reset to checked=false."""
+
+    def test_carries_over_core_fields(self, authed_client):
+        proj = authed_client.post(
+            "/api/projects", json={"name": "P", "type": "work"},
+        ).get_json()
+        g = authed_client.post(
+            "/api/goals", json={"title": "G", "category": "work", "priority": "must"},
+        ).get_json()
+        src = authed_client.post(
+            "/api/tasks",
+            json={
+                "title": "Finish slides",
+                "type": "work",
+                "tier": "today",
+                "project_id": proj["id"],
+                "goal_id": g["id"],
+                "url": "https://example.com",
+                "notes": "the long version",
+            },
+        ).get_json()
+        resp = authed_client.post(f"/api/tasks/{src['id']}/duplicate")
+        assert resp.status_code == 201
+        clone = resp.get_json()
+        assert clone["id"] != src["id"]
+        assert clone["title"] == "Finish slides"
+        assert clone["type"] == "work"
+        assert clone["project_id"] == proj["id"]
+        assert clone["goal_id"] == g["id"]
+        assert clone["url"] == "https://example.com"
+        assert clone["notes"] == "the long version"
+
+    def test_lands_in_tomorrow_with_due_date_tomorrow(self, authed_client):
+        from datetime import timedelta
+
+        from utils import local_today_date
+        src = authed_client.post(
+            "/api/tasks", json={"title": "x", "type": "work", "tier": "today"},
+        ).get_json()
+        clone = authed_client.post(f"/api/tasks/{src['id']}/duplicate").get_json()
+        assert clone["tier"] == "tomorrow"
+        expected = local_today_date() + timedelta(days=1)
+        assert clone["due_date"] == expected.isoformat()
+
+    def test_checklist_items_carry_text_but_reset_checked(self, authed_client):
+        src = authed_client.post(
+            "/api/tasks",
+            json={
+                "title": "x", "type": "work",
+                "checklist": [
+                    {"id": "1", "text": "step 1", "checked": True},
+                    {"id": "2", "text": "step 2", "checked": True},
+                    {"id": "3", "text": "step 3", "checked": False},
+                ],
+            },
+        ).get_json()
+        clone = authed_client.post(f"/api/tasks/{src['id']}/duplicate").get_json()
+        assert len(clone["checklist"]) == 3
+        for item in clone["checklist"]:
+            assert item["checked"] is False
+        texts = [i["text"] for i in clone["checklist"]]
+        assert texts == ["step 1", "step 2", "step 3"]
+
+    def test_resets_status_to_active_even_if_source_completed(self, authed_client):
+        src = authed_client.post(
+            "/api/tasks", json={"title": "x", "type": "work"},
+        ).get_json()
+        authed_client.post(f"/api/tasks/{src['id']}/complete")
+        clone = authed_client.post(f"/api/tasks/{src['id']}/duplicate").get_json()
+        assert clone["status"] == "active"
+
+    def test_resets_parent_id_so_clone_is_standalone(self, authed_client):
+        parent = authed_client.post(
+            "/api/tasks", json={"title": "Parent", "type": "work"},
+        ).get_json()
+        sub = authed_client.post(
+            "/api/tasks",
+            json={"title": "Sub", "type": "work", "parent_id": parent["id"]},
+        ).get_json()
+        assert sub["parent_id"] == parent["id"]
+        clone = authed_client.post(f"/api/tasks/{sub['id']}/duplicate").get_json()
+        assert clone["parent_id"] is None
+
+    def test_returns_404_for_unknown_task(self, authed_client):
+        ghost = "11111111-2222-3333-4444-555555555555"
+        resp = authed_client.post(f"/api/tasks/{ghost}/duplicate")
+        assert resp.status_code == 404
+
+    def test_returns_404_for_already_deleted_task(self, authed_client):
+        src = authed_client.post(
+            "/api/tasks", json={"title": "x", "type": "work"},
+        ).get_json()
+        authed_client.delete(f"/api/tasks/{src['id']}")
+        resp = authed_client.post(f"/api/tasks/{src['id']}/duplicate")
+        assert resp.status_code == 404
+
+    def test_endpoint_requires_auth(self, client):
+        ghost = "11111111-2222-3333-4444-555555555555"
+        resp = client.post(f"/api/tasks/{ghost}/duplicate")
+        assert resp.status_code != 201

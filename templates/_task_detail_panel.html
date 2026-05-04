@@ -211,6 +211,12 @@
             <div class="detail-actions">
                 <button type="submit" class="btn">Save</button>
                 <button type="button" class="btn btn-complete" id="detailComplete">✓ Complete</button>
+                {# #143 (2026-05-04): clone the task to TOMORROW so the user
+                   can keep working on it the next day without retyping
+                   title / project / goal / notes / checklist. Original
+                   stays put; new copy lands in TOMORROW tier with
+                   due_date=tomorrow. Subtasks NOT cascaded in v1. #}
+                <button type="button" class="btn" id="detailDuplicate" title="Copy this task to Tomorrow (keeps original where it is)">⧉ Copy to tomorrow</button>
                 <button type="button" class="btn btn-cancel" id="detailCancel" title="Mark as consciously dropped (separate from completed)">✕ Cancel task</button>
                 <button type="button" class="btn btn-danger" id="detailDelete">Delete</button>
             </div>

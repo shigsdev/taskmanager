@@ -191,6 +191,21 @@ def destroy(email: str, task_id: uuid.UUID):  # noqa: ARG001
     return "", 204
 
 
+@bp.post("/<uuid:task_id>/duplicate")
+@login_required
+def duplicate(email: str, task_id: uuid.UUID):  # noqa: ARG001
+    """#143 (2026-05-04): clone a task to TOMORROW so the user can keep
+    working on it the next day. See ``task_service.duplicate_task`` for
+    the field-by-field clone semantics. Returns 201 + the new task on
+    success, 404 if the source task doesn't exist or has been deleted.
+    """
+    from task_service import duplicate_task
+    new_task = duplicate_task(task_id)
+    if new_task is None:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(_serialize(new_task)), 201
+
+
 @bp.patch("/bulk")
 @login_required
 def bulk_update(email: str):  # noqa: ARG001

@@ -592,6 +592,73 @@ def delete_task(task_id: uuid.UUID) -> bool:
     return True
 
 
+def duplicate_task(task_id: uuid.UUID) -> Task | None:
+    """#143 (2026-05-04): clone a task to TOMORROW so the user can keep
+    working on it the next day without retyping title / project / goal /
+    notes / checklist.
+
+    What carries over:
+      title · type · project_id · goal_id · url · notes · checklist
+      (every checklist item gets ``checked=False`` since the duplicate
+      represents a fresh attempt, not the in-progress state of the
+      original)
+
+    What's reset / fresh on the new task:
+      tier         → TOMORROW
+      due_date     → tomorrow's date (DIGEST_TZ-local, matches
+                      _local_today_date semantics)
+      status       → ACTIVE
+      parent_id    → None (duplicates are standalone — subtasks usually
+                      describe the parent's specific concrete steps,
+                      not a copy-pasted plan)
+      recurring_task_id → None (don't accidentally link to a template)
+      batch_id     → None (not a bulk-import row)
+      sort_order   → 0
+      last_reviewed → None
+      created_at / updated_at → fresh
+
+    Subtasks are NOT cascaded in v1 — see #143 for the rationale.
+
+    Returns the new Task, or None if the source doesn't exist or has
+    been deleted.
+    """
+    src = get_task(task_id)
+    if src is None or src.status == TaskStatus.DELETED:
+        return None
+
+    from utils import local_today_date
+    tomorrow = local_today_date() + timedelta(days=1)
+
+    # Reset all checklist items so the duplicate represents a fresh start.
+    new_checklist: list[dict] = []
+    if isinstance(src.checklist, list):
+        for item in src.checklist:
+            if isinstance(item, dict):
+                new_checklist.append({
+                    "id": item.get("id", ""),
+                    "text": item.get("text", ""),
+                    "checked": False,
+                })
+
+    new_task = Task(
+        title=src.title,
+        type=src.type,
+        tier=Tier.TOMORROW,
+        due_date=tomorrow,
+        project_id=src.project_id,
+        goal_id=src.goal_id,
+        url=src.url,
+        notes=src.notes,
+        checklist=new_checklist,
+        status=TaskStatus.ACTIVE,
+        # Explicitly NOT copied: parent_id / recurring_task_id / batch_id
+        # / sort_order / last_reviewed / cancellation_reason / planner_ignore
+    )
+    db.session.add(new_task)
+    db.session.commit()
+    return new_task
+
+
 # --- Bulk operations --------------------------------------------------------
 
 

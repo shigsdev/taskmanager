@@ -1912,6 +1912,28 @@ function setupDetailPanel() {
             taskComplete(id);
         }
     });
+    // #143 (2026-05-04): "Copy to tomorrow". Original stays put;
+    // POST /api/tasks/<id>/duplicate creates a clone in TOMORROW
+    // tier with due_date=tomorrow. Close the panel + reload the
+    // board so the new card renders.
+    const dupBtn = document.getElementById("detailDuplicate");
+    if (dupBtn) {
+        dupBtn.addEventListener("click", async () => {
+            const id = document.getElementById("detailId").value;
+            if (!id) return;
+            dupBtn.disabled = true;
+            dupBtn.textContent = "…";
+            try {
+                await apiFetch(`/api/tasks/${id}/duplicate`, { method: "POST" });
+                taskDetailClose();
+                await loadTasks();
+            } catch (err) {
+                alert("Couldn't duplicate task: " + (err && err.message ? err.message : err));
+                dupBtn.disabled = false;
+                dupBtn.textContent = "⧉ Copy to tomorrow";
+            }
+        });
+    }
     // Backlog #25: Cancel button — sets status=cancelled and saves the
     // optional reason from the inline input. Different from Complete.
     document.getElementById("detailCancel").addEventListener("click", () => {
