@@ -1992,6 +1992,43 @@ function setupDetailPanel() {
     document.getElementById("addChecklistItem").addEventListener("click", () => {
         taskDetailAddChecklistRow("", false);
     });
+    // #149 (2026-05-05): live bidirectional tier ↔ due_date sync in
+    // the panel — preview the same auto-fill / auto-route logic the
+    // server already applies on save.
+    //
+    // Tier → due_date: scoped to TODAY/TOMORROW only (mirrors
+    // server's _auto_fill_tier_due_date — only those two tiers have
+    // a single canonical date). Fill-if-null only — don't clobber
+    // an existing user-set date. Don't clear an auto-filled date
+    // when switching back out (server keeps the date as a reminder;
+    // UI matches).
+    //
+    // Date → tier: always live except when tier is currently FREEZER
+    // (user explicitly parked it; the date is just a reminder, not a
+    // commitment to do it that day — matches the FREEZER guard in
+    // _auto_promote_tier_on_due_today).
+    const _detailTierEl = document.getElementById("detailTier");
+    const _detailDueDateEl = document.getElementById("detailDueDate");
+    if (_detailTierEl && _detailDueDateEl && window.tierHelpers) {
+        _detailTierEl.addEventListener("change", () => {
+            const tier = _detailTierEl.value;
+            // Only fill if currently empty; never clobber.
+            if (_detailDueDateEl.value) return;
+            const filled = window.tierHelpers.dueDateForTier(tier);
+            if (filled) _detailDueDateEl.value = filled;
+        });
+        _detailDueDateEl.addEventListener("change", () => {
+            const tier = _detailTierEl.value;
+            // FREEZER preserves explicit park.
+            if (tier === "freezer") return;
+            const v = _detailDueDateEl.value;
+            if (!v) return;  // empty date — leave tier alone
+            const newTier = window.tierHelpers.tierForDueDate(v);
+            if (newTier && newTier !== tier) {
+                _detailTierEl.value = newTier;
+            }
+        });
+    }
     setupAddSubtask();
 }
 

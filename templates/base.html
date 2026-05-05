@@ -27,6 +27,11 @@
        small + don't touch the DOM, so synchronous load is fine. #}
     <script src="{{ url_for('static', filename='api_helpers.js') }}"></script>
     <script src="{{ url_for('static', filename='api_client.js') }}"></script>
+    {# #149 (2026-05-05): tier_helpers exposes window.tierHelpers used by
+       app.js's detail-panel tier↔date sync. Tiny pure module, no DOM
+       deps; loaded globally so every page that may host the detail
+       panel has it before page-specific scripts run. #}
+    <script src="{{ url_for('static', filename='tier_helpers.js') }}"></script>
 </head>
 <body>
     <header class="nav">

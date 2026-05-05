@@ -250,12 +250,16 @@ test.describe("Detail panel", () => {
             await expect(page.locator("#detailPanel")).toBeVisible();
 
             // Set every field. Distinct values so silent overwrites are easy
-            // to spot in the assertion message.
+            // to spot in the assertion message. Use today's ISO for due_date
+            // so tier=today + due_date stay consistent under #149's live
+            // date→tier auto-routing (a far-future date would now flip the
+            // tier to backlog before save).
+            const todayIso = new Date().toISOString().slice(0, 10);
             await page.fill("#detailTitle", "round-trip new title");
             await page.selectOption("#detailTier", "today");
             await page.selectOption("#detailType", "work");
             await page.selectOption("#detailProject", seed.projectId);
-            await page.fill("#detailDueDate", "2026-12-31");
+            await page.fill("#detailDueDate", todayIso);
             await page.selectOption("#detailGoal", seed.goalId);
             await page.fill("#detailUrl", "https://example.com/round-trip");
             await page.fill("#detailNotes", "round-trip notes body");
@@ -271,7 +275,7 @@ test.describe("Detail panel", () => {
             expect(persisted.tier, "tier").toBe("today");
             expect(persisted.type, "type").toBe("work");
             expect(persisted.project_id, "project_id").toBe(seed.projectId);
-            expect(persisted.due_date, "due_date").toBe("2026-12-31");
+            expect(persisted.due_date, "due_date").toBe(todayIso);
             expect(persisted.goal_id, "goal_id").toBe(seed.goalId);
             expect(persisted.url, "url").toBe("https://example.com/round-trip");
             expect(persisted.notes, "notes").toBe("round-trip notes body");
@@ -554,6 +558,112 @@ test.describe("Detail panel: edit completed task → unarchive (#148)", () => {
                 `.tier[data-tier="this_week"] .task-card[data-id="${task.id}"]`
             );
             await expect(inThisWeek).toBeVisible({ timeout: 2000 });
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("changing tier to 'today' on a dateless task auto-fills due_date", async ({
+        page, request,
+    }) => {
+        // #149: live tier→date sync. Tier=today/tomorrow has a
+        // canonical date; UI should preview the same auto-fill the
+        // server applies on save.
+        const create = await request.post("/api/tasks", {
+            data: { title: "BUG149 tier-to-date", type: "work", tier: "inbox" },
+        });
+        const task = await create.json();
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const card = page.locator(`.task-card[data-id="${task.id}"]`);
+            await card.click();
+            await expect(page.locator("#detailPanel")).toBeVisible({ timeout: 2000 });
+            // Due date starts empty.
+            await expect(page.locator("#detailDueDate")).toHaveValue("");
+            // Pick Today → due_date should populate (fill-if-null).
+            await page.locator("#detailTier").selectOption("today");
+            const dueValue = await page.locator("#detailDueDate").inputValue();
+            expect(dueValue).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+            // Per #149 spec: fill-if-null only. Once filled, switching
+            // tier again must NOT clobber the date (mirrors server's
+            // "an explicit user-provided due_date is never clobbered").
+            // Switch to tomorrow → date should STAY as today's value.
+            const tomorrowValue = await page.locator("#detailTier").evaluate((el) => {
+                el.value = "tomorrow";
+                el.dispatchEvent(new Event("change", { bubbles: true }));
+                return document.getElementById("detailDueDate").value;
+            });
+            expect(tomorrowValue).toBe(dueValue);
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("changing due_date routes the tier dropdown live", async ({
+        page, request,
+    }) => {
+        // #149: live date→tier sync. Set a date a week out → tier
+        // should jump to next_week (or this_week depending on
+        // weekday). We assert it's NOT inbox anymore.
+        const create = await request.post("/api/tasks", {
+            data: { title: "BUG149 date-to-tier", type: "work", tier: "inbox" },
+        });
+        const task = await create.json();
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const card = page.locator(`.task-card[data-id="${task.id}"]`);
+            await card.click();
+            await expect(page.locator("#detailPanel")).toBeVisible({ timeout: 2000 });
+            // Pick a date 8 days out (definitely past tomorrow, in or
+            // beyond next_week range).
+            const future = new Date();
+            future.setDate(future.getDate() + 8);
+            const iso = future.toISOString().slice(0, 10);
+            await page.locator("#detailDueDate").evaluate((el, v) => {
+                el.value = v;
+                el.dispatchEvent(new Event("change", { bubbles: true }));
+            }, iso);
+            const tierAfter = await page.locator("#detailTier").inputValue();
+            expect(tierAfter).not.toBe("inbox");
+            // 8 days out is either next_week or backlog depending on
+            // today's weekday; assert it's one of those.
+            expect(["this_week", "next_week", "backlog"]).toContain(tierAfter);
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("FREEZER tier suppresses date→tier auto-routing", async ({
+        page, request,
+    }) => {
+        // #149 scope: FREEZER preserves explicit park — changing the
+        // date shouldn't kick the task out of the freezer.
+        const create = await request.post("/api/tasks", {
+            data: { title: "BUG149 freezer", type: "work", tier: "freezer" },
+        });
+        const task = await create.json();
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            // Expand freezer section to make the card clickable.
+            const freezerToggle = page.locator('.tier[data-tier="freezer"] .collapse-toggle');
+            const ariaExpanded = await freezerToggle.getAttribute("aria-expanded");
+            if (ariaExpanded === "false") {
+                await freezerToggle.click();
+            }
+            const card = page.locator(`.task-card[data-id="${task.id}"]`);
+            await card.click();
+            await expect(page.locator("#detailPanel")).toBeVisible({ timeout: 2000 });
+            await expect(page.locator("#detailTier")).toHaveValue("freezer");
+            const today = new Date().toISOString().slice(0, 10);
+            await page.locator("#detailDueDate").evaluate((el, v) => {
+                el.value = v;
+                el.dispatchEvent(new Event("change", { bubbles: true }));
+            }, today);
+            // Tier should STILL be freezer.
+            await expect(page.locator("#detailTier")).toHaveValue("freezer");
         } finally {
             await request.delete(`/api/tasks/${task.id}`);
         }
