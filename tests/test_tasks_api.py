@@ -1969,3 +1969,112 @@ class TestDuplicateTask:
         ghost = "11111111-2222-3333-4444-555555555555"
         resp = client.post(f"/api/tasks/{ghost}/duplicate")
         assert resp.status_code != 201
+
+
+# --- #148 (2026-05-05): detail-panel tier change unarchives an archived task -
+
+
+class TestArchivedTaskUnarchiveOnDetailSave:
+    """When the user opens the detail panel of an archived (✓ Completed)
+    task, changes a field, and clicks Save, the client now sends
+    `{tier: ..., status: "active", cancellation_reason: null, ...}` —
+    the server already handles each piece independently, this test
+    locks in the round-trip on the route layer."""
+
+    def test_archived_task_patch_with_new_tier_and_status_active_returns_200(
+        self, authed_client
+    ):
+        # Create + complete a task so it ends up archived.
+        src = authed_client.post(
+            "/api/tasks", json={"title": "x", "type": "work", "tier": "today"},
+        ).get_json()
+        authed_client.post(f"/api/tasks/{src['id']}/complete")
+        # Mirror the new client payload: tier change + explicit status.
+        resp = authed_client.patch(
+            f"/api/tasks/{src['id']}",
+            json={
+                "tier": "this_week",
+                "status": "active",
+                "cancellation_reason": None,
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["status"] == "active"
+        assert body["tier"] == "this_week"
+
+    def test_unarchived_task_appears_on_default_get_tasks(self, authed_client):
+        """The bug symptom: after the unarchive PATCH, the task must
+        be visible on default GET /api/tasks (which filters status=active).
+        Before #148 the client never sent status:active so the task
+        stayed archived and was filtered out."""
+        src = authed_client.post(
+            "/api/tasks", json={"title": "Reborn", "type": "work", "tier": "today"},
+        ).get_json()
+        authed_client.post(f"/api/tasks/{src['id']}/complete")
+        # Verify it's NOT in the default list while archived.
+        active_titles = [t["title"] for t in authed_client.get("/api/tasks").get_json()]
+        assert "Reborn" not in active_titles
+        # Patch with the new shape.
+        authed_client.patch(
+            f"/api/tasks/{src['id']}",
+            json={
+                "tier": "this_week",
+                "status": "active",
+                "cancellation_reason": None,
+            },
+        )
+        # Now it should be on the default list.
+        active_titles = [t["title"] for t in authed_client.get("/api/tasks").get_json()]
+        assert "Reborn" in active_titles
+
+    def test_cancelled_task_unarchives_and_clears_cancellation_reason(
+        self, authed_client
+    ):
+        src = authed_client.post(
+            "/api/tasks", json={"title": "x", "type": "work"},
+        ).get_json()
+        authed_client.patch(
+            f"/api/tasks/{src['id']}",
+            json={"status": "cancelled", "cancellation_reason": "no time"},
+        )
+        # Mirror the new client payload for an "edited cancelled task".
+        resp = authed_client.patch(
+            f"/api/tasks/{src['id']}",
+            json={
+                "title": "now I have time",
+                "tier": "today",
+                "status": "active",
+                "cancellation_reason": None,
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["status"] == "active"
+        assert body["cancellation_reason"] is None
+        assert body["title"] == "now I have time"
+
+    def test_archived_task_no_field_change_remains_archived(self, authed_client):
+        """The 'no-op save on completed task' guard: if the client
+        decides nothing changed, it does NOT send status:active, and
+        the task stays archived. Mirrors the
+        detailFormDiffersFromSnapshot=false case in the Jest tests."""
+        src = authed_client.post(
+            "/api/tasks", json={"title": "x", "type": "work"},
+        ).get_json()
+        authed_client.post(f"/api/tasks/{src['id']}/complete")
+        # Send a PATCH that exactly mirrors the existing state (no
+        # status field included). The task should stay archived.
+        resp = authed_client.patch(
+            f"/api/tasks/{src['id']}",
+            json={
+                "title": "x",
+                "tier": "today",
+                "type": "work",
+            },
+        )
+        assert resp.status_code == 200
+        # Status field is preserved server-side because we didn't send
+        # it; archived task stays out of the default list.
+        active_titles = [t["title"] for t in authed_client.get("/api/tasks").get_json()]
+        assert "x" not in active_titles

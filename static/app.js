@@ -1995,7 +1995,21 @@ function setupDetailPanel() {
     setupAddSubtask();
 }
 
+// #148 (2026-05-05): snapshot of the loaded task, captured at
+// taskDetailOpen and read at taskDetailSave to detect "user changed a
+// field" on a completed/cancelled task. The save handler augments
+// the PATCH payload with status:active when the snapshot is
+// archived/cancelled AND the form differs from it. Module-level
+// rather than panel-state because there's only one panel at a time
+// and the snapshot lifetime is the same as the panel's.
+let _detailOpenSnapshot = null;
+
 function taskDetailOpen(task) {
+    // Capture a deep copy so subsequent allTasks reloads can't mutate
+    // it under us. JSON round-trip is safe — the API serializer's
+    // shape is plain JSON-compatible (strings, numbers, arrays of
+    // {id, text, checked} dicts, nullable timestamps).
+    _detailOpenSnapshot = task ? JSON.parse(JSON.stringify(task)) : null;
     document.getElementById("detailId").value = task.id;
     document.getElementById("detailTitle").value = task.title;
     document.getElementById("detailTier").value = task.tier;
@@ -2386,6 +2400,12 @@ async function taskDetailSave(e) {
     });
 
     const rawUrl = document.getElementById("detailUrl").value.trim();
+    // #148: pass the open-time snapshot so the builder can decide
+    // whether to augment the payload with status:active +
+    // cancellation_reason:null when the user is bringing a
+    // completed/cancelled task back to life. Snapshot is null when
+    // creating-via-detail-panel (not currently a flow, but the
+    // builder is null-safe).
     const data = buildTaskDetailPayload({
         title: document.getElementById("detailTitle").value.trim(),
         tier: document.getElementById("detailTier").value,
@@ -2397,7 +2417,7 @@ async function taskDetailSave(e) {
         notes: document.getElementById("detailNotes").value,
         checklist: clItems,
         repeat: taskDetailCollectRepeat(),
-    });
+    }, _detailOpenSnapshot);
     // #78: parent_id from the typeahead picker (separate field — payload
     // builder doesn't know about parent yet, so wire it in directly).
     const parentPickerEl = document.getElementById("parentPickerId");
@@ -2414,6 +2434,16 @@ async function taskDetailSave(e) {
             body: JSON.stringify(data),
         });
         await loadTasks();
+        // #148: when the task was archived/cancelled and we just
+        // un-archived it via the field-change → status:active
+        // augmentation, the in-memory `allCompleted` / `allCancelled`
+        // caches still contain the old row. Mirror taskRestore's
+        // reload trio to keep both lists in sync. No-op on tasks
+        // that started out active — these calls are cheap (tier-
+        // count badges + list re-renders); fire on every save for
+        // simplicity rather than gating on "did status flip".
+        loadCompletedTasks();
+        loadCancelledTasks();
         taskDetailClose();
     } catch (err) {
         alert("Save failed: " + err.message);

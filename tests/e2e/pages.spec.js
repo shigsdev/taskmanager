@@ -501,3 +501,96 @@ test.describe("Calendar drag-and-drop (#94)", () => {
         }
     });
 });
+
+/**
+ * Bug #148 (2026-05-05): completed/cancelled task → open detail
+ * panel → change tier → Save. Old behaviour: task vanished from
+ * active board AND stayed under Completed because the PATCH only
+ * sent {tier} not {status, tier}. Fixed by snapshotting on open +
+ * augmenting payload with status:active when an archived/cancelled
+ * task has any field change.
+ */
+test.describe("Detail panel: edit completed task → unarchive (#148)", () => {
+    test("completed task with tier change un-archives and appears on active board", async ({
+        page, request,
+    }) => {
+        // Create + complete a task so it's archived going in.
+        const create = await request.post("/api/tasks", {
+            data: { title: "BUG148 round-trip", type: "work", tier: "today" },
+        });
+        const task = await create.json();
+        await request.post(`/api/tasks/${task.id}/complete`);
+
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+
+            // Expand the Completed section so the card is in the DOM
+            // and clickable. Toggle is the chevron on the heading.
+            await page.locator("#tierCompleted .collapse-toggle").click();
+            const completedCard = page.locator(`.task-card[data-id="${task.id}"]`);
+            await expect(completedCard).toBeVisible({ timeout: 2000 });
+
+            // Open detail panel
+            await completedCard.click();
+            await expect(page.locator("#detailPanel")).toBeVisible({ timeout: 2000 });
+
+            // Change tier from today → this_week
+            await page.locator("#detailTier").selectOption("this_week");
+            // Save (form submit)
+            await page.locator("#detailForm button[type=submit]").click();
+
+            // Panel closes + reloads; wait for the request to settle.
+            await page.waitForTimeout(500);
+
+            // API verification — status should be active now
+            const refetch = await request.get(`/api/tasks/${task.id}`);
+            const refreshed = await refetch.json();
+            expect(refreshed.status).toBe("active");
+            expect(refreshed.tier).toBe("this_week");
+
+            // DOM verification — card should be in This Week tier, NOT Completed
+            const inThisWeek = page.locator(
+                `.tier[data-tier="this_week"] .task-card[data-id="${task.id}"]`
+            );
+            await expect(inThisWeek).toBeVisible({ timeout: 2000 });
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("no-op save on completed task does NOT un-archive", async ({
+        page, request,
+    }) => {
+        // Guard from the BACKLOG row scope: opening a completed task
+        // and clicking Save without changing anything must keep the
+        // task archived. Otherwise the click-Save-by-accident case
+        // resurrects every completed task the user opens.
+        const create = await request.post("/api/tasks", {
+            data: { title: "BUG148 no-op", type: "work", tier: "today" },
+        });
+        const task = await create.json();
+        await request.post(`/api/tasks/${task.id}/complete`);
+
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+
+            await page.locator("#tierCompleted .collapse-toggle").click();
+            const card = page.locator(`.task-card[data-id="${task.id}"]`);
+            await expect(card).toBeVisible({ timeout: 2000 });
+            await card.click();
+            await expect(page.locator("#detailPanel")).toBeVisible({ timeout: 2000 });
+
+            // Save without touching anything.
+            await page.locator("#detailForm button[type=submit]").click();
+            await page.waitForTimeout(500);
+
+            const refetch = await request.get(`/api/tasks/${task.id}`);
+            const refreshed = await refetch.json();
+            expect(refreshed.status).toBe("archived");
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+});
