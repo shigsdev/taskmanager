@@ -16,7 +16,7 @@ per branch — keeps the suite tight):
 """
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from models import Task, TaskStatus, TaskType, Tier, db
 from triage_service import compute_triage_suggestions
@@ -24,8 +24,23 @@ from triage_service import compute_triage_suggestions
 
 def _make_task(*, title: str, tier: Tier, days_old: int = 0, due_date: date | None = None,
                status: TaskStatus = TaskStatus.ACTIVE, parent_id=None) -> Task:
-    """Helper. ``days_old`` shifts both created_at and updated_at backwards."""
-    when = datetime.now(UTC) - timedelta(days=days_old)
+    """Helper. ``days_old`` shifts both created_at and updated_at backwards
+    by exactly that many LOCAL (DIGEST_TZ) days — so the triage-service's
+    date math is deterministic regardless of what time-of-day the test
+    runs at.
+
+    The original implementation used ``datetime.now(UTC) - timedelta(days=N)``,
+    which produced an updated_at whose UTC date was N days back but whose
+    LOCAL date could be N-1 days back when the test ran during the early
+    UTC morning (the local-vs-UTC date crossover). That made the
+    `days_since_update > THRESHOLD` checks flake at that time of day.
+    """
+    from utils import local_today_date as _today
+    when_date = _today() - timedelta(days=days_old)
+    # Mid-day timestamp so it sits comfortably inside the local date,
+    # not on a midnight boundary. Naive datetime — SQLite drops the tz
+    # anyway, and the date() comparison ignores tzinfo.
+    when = datetime.combine(when_date, datetime.min.time().replace(hour=12))
     task = Task(
         title=title,
         type=TaskType.WORK,

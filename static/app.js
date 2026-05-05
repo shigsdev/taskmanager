@@ -2097,6 +2097,20 @@ function taskDetailToggleProject(type) {
 // user picks a project, look up its goal_id and pre-set the Goal
 // dropdown. Pure logic in filter_helpers.projectCascadeGoalId
 // (Jest-tested per anti-pattern #3); this is the DOM-glue layer.
+//
+// 2026-05-04 UX fix: when the new project has NO goal (or the user
+// picks "(no project)"), CLEAR the goal select rather than leaving
+// the old goal in place. The original "preserve existing goal" rule
+// (PR24 BUG-2) is kept on the server for API consumers who PATCH
+// project_id without sending an explicit goal_id, but the in-panel
+// flow is interactive — when the user manually changes project, the
+// task's goal context should reset too. Otherwise the goal field
+// shows the OLD project's goal under a NEW project, which feels
+// broken (user reported this 2026-05-04: "I changed project from
+// Roadmaps to Product Operations BAU and the goal didn't change
+// with it"). buildTaskDetailPayload always sends goal_id explicitly,
+// so the server-side preserve rule isn't triggered; the cleared
+// dropdown round-trips faithfully as goal_id=null on save.
 function taskDetailProjectChanged(projectId) {
     const goalSel = document.getElementById("detailGoal");
     if (!goalSel) return;
@@ -2104,7 +2118,9 @@ function taskDetailProjectChanged(projectId) {
     const newGoalId = window.filterHelpers.projectCascadeGoalId(
         projectId, allProjects, allowed,
     );
-    if (newGoalId) goalSel.value = newGoalId;
+    // Always reset — empty string maps to "— None —" option;
+    // a real UUID jumps to the matching option.
+    goalSel.value = newGoalId || "";
 }
 
 function taskDetailClose() {

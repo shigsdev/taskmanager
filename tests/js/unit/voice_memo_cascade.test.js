@@ -30,7 +30,11 @@ beforeAll(() => {
 });
 
 function buildHandler(idx, projSel, goalSel, currentCandidates, availableProjects) {
-    // Verbatim mirror of voice_memo.js:499-518 cascade handler body.
+    // Verbatim mirror of voice_memo.js cascade handler body.
+    // 2026-05-04 UX fix: ALWAYS reset goal context on project change
+    // (either to project's goal, or clear when new project has none /
+    // user picks "(no project)"). Original "preserve" behaviour left
+    // a stale OLD-project goal under a NEW project — user reported.
     return function () {
         currentCandidates[idx].project_id = projSel.value || null;
         const allowedGoalIds = new Set(
@@ -39,10 +43,8 @@ function buildHandler(idx, projSel, goalSel, currentCandidates, availableProject
         const newGoalId = window.filterHelpers.projectCascadeGoalId(
             projSel.value, availableProjects, allowedGoalIds,
         );
-        if (newGoalId) {
-            goalSel.value = newGoalId;
-            currentCandidates[idx].goal_id = newGoalId;
-        }
+        goalSel.value = newGoalId || "";
+        currentCandidates[idx].goal_id = newGoalId || null;
     };
 }
 
@@ -101,7 +103,12 @@ describe("#137 Sub-PR A — voice memo project→goal cascade", () => {
         expect(goalSel.value).toBe(GOAL_X);
     });
 
-    test("picking a project with no goal leaves goal selection alone", () => {
+    test("picking a project with no goal CLEARS the goal selection", () => {
+        // 2026-05-04: behaviour changed from "preserve" to "clear". User
+        // reported that switching from a project-with-goal to a
+        // project-without-goal left the OLD goal showing under the NEW
+        // project, which felt like a stale association. New rule:
+        // changing project always resets goal context.
         const projects = [{ id: PROJ_A, name: "Solo proj", goal_id: null }];
         const goals = [{ id: GOAL_X, title: "Q2 launch" }];
         const candidates = [{ project_id: null, goal_id: GOAL_X }];
@@ -114,13 +121,15 @@ describe("#137 Sub-PR A — voice memo project→goal cascade", () => {
         projSel.dispatchEvent(new Event("change"));
 
         expect(candidates[0].project_id).toBe(PROJ_A);
-        // Goal selection is preserved when the project has no goal_id —
-        // we don't blow away a user's existing goal pick.
-        expect(candidates[0].goal_id).toBe(GOAL_X);
-        expect(goalSel.value).toBe(GOAL_X);
+        expect(candidates[0].goal_id).toBeNull();
+        expect(goalSel.value).toBe("");
     });
 
-    test("clearing the project to '(no project)' clears project_id but not goal_id", () => {
+    test("clearing the project to '(no project)' clears project_id AND goal_id", () => {
+        // 2026-05-04: behaviour changed. Used to preserve goal when user
+        // selected "(no project)"; now mirrors server's project=null →
+        // goal=null rule. User can re-pick a goal manually after if
+        // they want one without a project.
         const projects = [{ id: PROJ_A, name: "Launch site", goal_id: GOAL_X }];
         const goals = [{ id: GOAL_X, title: "Q2 launch" }];
         const candidates = [{ project_id: PROJ_A, goal_id: GOAL_X }];
@@ -134,9 +143,37 @@ describe("#137 Sub-PR A — voice memo project→goal cascade", () => {
         projSel.dispatchEvent(new Event("change"));
 
         expect(candidates[0].project_id).toBeNull();
-        // Goal stays — user can independently clear it via the goal dropdown.
-        expect(candidates[0].goal_id).toBe(GOAL_X);
-        expect(goalSel.value).toBe(GOAL_X);
+        expect(candidates[0].goal_id).toBeNull();
+        expect(goalSel.value).toBe("");
+    });
+
+    test("switching from project-with-goal-X to project-with-goal-Y updates the goal", () => {
+        // The user's reported scenario inverse: switching between two
+        // projects that BOTH have goals should follow the new project's
+        // goal. Already worked under the old rules; tested explicitly
+        // here so the reset-on-change rule doesn't accidentally regress
+        // this case.
+        const projects = [
+            { id: PROJ_A, name: "Launch site", goal_id: GOAL_X },
+            { id: PROJ_B, name: "Move apt", goal_id: GOAL_Y },
+        ];
+        const goals = [
+            { id: GOAL_X, title: "Q2 launch" },
+            { id: GOAL_Y, title: "Relocation" },
+        ];
+        const candidates = [{ project_id: PROJ_A, goal_id: GOAL_X }];
+        const { projSel, goalSel } = setupSelects(projects, goals);
+        projSel.value = PROJ_A;
+        goalSel.value = GOAL_X;
+        projSel.addEventListener("change",
+            buildHandler(0, projSel, goalSel, candidates, projects));
+
+        projSel.value = PROJ_B;
+        projSel.dispatchEvent(new Event("change"));
+
+        expect(candidates[0].project_id).toBe(PROJ_B);
+        expect(candidates[0].goal_id).toBe(GOAL_Y);
+        expect(goalSel.value).toBe(GOAL_Y);
     });
 
     test("project's goal_id not in allowed set (filtered out) → no cascade", () => {

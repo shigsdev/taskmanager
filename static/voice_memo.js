@@ -507,22 +507,26 @@
         projSel.addEventListener("change", function () {
             currentCandidates[idx].project_id = projSel.value || null;
             // #137 Sub-PR A: cascade goal_id from the selected project,
-            // matching taskDetailProjectChanged (app.js:2023) and the
+            // matching taskDetailProjectChanged (app.js) and the
             // server-side cascade in task_service.update_task (#77).
             // Without this, dictating a memo, picking a project in the
             // review UI, and confirming saves the task with project_id
             // set but goal_id null even when the project belongs to a
             // goal — user has to manually re-pick the goal every time.
+            //
+            // 2026-05-04 UX fix mirroring app.js taskDetailProjectChanged:
+            // ALWAYS reset the goal context when project changes (either
+            // to the new project's goal, or clear if new project has
+            // none). User-reported in the detail panel; same fix here
+            // for consistency across all places we cascade.
             const allowedGoalIds = new Set(
                 Array.from(goalSel.options).map((o) => o.value)
             );
             const newGoalId = window.filterHelpers.projectCascadeGoalId(
                 projSel.value, availableProjects, allowedGoalIds,
             );
-            if (newGoalId) {
-                goalSel.value = newGoalId;
-                currentCandidates[idx].goal_id = newGoalId;
-            }
+            goalSel.value = newGoalId || "";
+            currentCandidates[idx].goal_id = newGoalId || null;
         });
         row.appendChild(projSel);
 
