@@ -921,6 +921,22 @@ function getListUnderPoint(x, y) {
     return null;
 }
 
+// Build the PATCH body for a drag-to-tier drop. When dropping into
+// today / tomorrow we ALSO bump due_date to the matching ISO so a
+// task already dated yesterday doesn't keep its stale date after
+// being moved to Tomorrow (user reported 2026-05-05). Same rule as
+// the detail-panel tier→date sync (#149 / PR99). Other tiers don't
+// have a canonical date, so we leave due_date alone — the server's
+// _auto_promote_tier_on_due_today only routes the OTHER direction.
+function _patchBodyForTierDrop(targetTier, extraFields) {
+    var body = Object.assign({ tier: targetTier }, extraFields || {});
+    if (window.tierHelpers) {
+        var iso = window.tierHelpers.dueDateForTier(targetTier);
+        if (iso) body.due_date = iso;
+    }
+    return body;
+}
+
 function finishDrop(list) {
     if (!draggedCard) return;
     var targetTier = list.dataset.tier;
@@ -934,7 +950,9 @@ function finishDrop(list) {
         // Completed → tier: restore status=active AND set new tier
         apiFetch(API + "/" + taskId, {
             method: "PATCH",
-            body: JSON.stringify({ status: "active", tier: targetTier }),
+            body: JSON.stringify(
+                _patchBodyForTierDrop(targetTier, { status: "active" })
+            ),
         }).then(function () {
             return saveReorder(targetTier, cardIds);
         }).then(function () {
@@ -944,7 +962,7 @@ function finishDrop(list) {
     } else if (sourceTier !== targetTier) {
         apiFetch(API + "/" + taskId, {
             method: "PATCH",
-            body: JSON.stringify({ tier: targetTier }),
+            body: JSON.stringify(_patchBodyForTierDrop(targetTier)),
         }).then(function () {
             return saveReorder(targetTier, cardIds);
         }).then(function () {

@@ -512,6 +512,105 @@ test.describe("Calendar drag-and-drop (#94)", () => {
     });
 });
 
+test.describe("Tier-column drag updates due_date for today/tomorrow", () => {
+    test("dragging a dated task to Tomorrow advances due_date (user report 2026-05-05)", async ({
+        page, request,
+    }) => {
+        // Create a task in TODAY with today's date — exact user repro.
+        const _now = new Date();
+        const todayIso =
+            _now.getFullYear() + "-" +
+            String(_now.getMonth() + 1).padStart(2, "0") + "-" +
+            String(_now.getDate()).padStart(2, "0");
+        const create = await request.post("/api/tasks", {
+            data: {
+                title: "DRAG-149 today→tomorrow",
+                type: "work", tier: "today", due_date: todayIso,
+            },
+        });
+        const task = await create.json();
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+
+            // Programmatic drag from today list to tomorrow list, mirroring
+            // calendar drag-and-drop test pattern.
+            await page.evaluate((tid) => {
+                const card = document.querySelector(`.task-card[data-id="${tid}"]`);
+                const tomorrowList = document.querySelector(
+                    '.task-list[data-tier="tomorrow"]'
+                );
+                const dt = new DataTransfer();
+                dt.setData("text/plain", tid);
+                card.dispatchEvent(new DragEvent("dragstart", { dataTransfer: dt, bubbles: true }));
+                tomorrowList.dispatchEvent(new DragEvent("dragover", { dataTransfer: dt, bubbles: true, cancelable: true }));
+                tomorrowList.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
+            }, task.id);
+            await page.waitForTimeout(700);
+
+            const refetch = await request.get(`/api/tasks/${task.id}`);
+            const refreshed = await refetch.json();
+            expect(refreshed.tier).toBe("tomorrow");
+            // Date must have advanced — bug was that it stayed at today.
+            expect(refreshed.due_date).not.toBe(todayIso);
+            const oldDate = new Date(todayIso);
+            const newDate = new Date(refreshed.due_date);
+            const deltaDays = Math.round(
+                (newDate - oldDate) / (1000 * 60 * 60 * 24)
+            );
+            expect(deltaDays).toBe(1);
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("dragging a dated task to This Week LEAVES the date alone (no canonical date)", async ({
+        page, request,
+    }) => {
+        // Inverse — week ranges have no single canonical date, so the
+        // drop handler should NOT touch due_date. Server's _auto_promote
+        // route runs the OTHER direction (date→tier), not this one.
+        const _now = new Date();
+        const todayIso =
+            _now.getFullYear() + "-" +
+            String(_now.getMonth() + 1).padStart(2, "0") + "-" +
+            String(_now.getDate()).padStart(2, "0");
+        const create = await request.post("/api/tasks", {
+            data: {
+                title: "DRAG-149 today→this_week",
+                type: "work", tier: "today", due_date: todayIso,
+            },
+        });
+        const task = await create.json();
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+
+            await page.evaluate((tid) => {
+                const card = document.querySelector(`.task-card[data-id="${tid}"]`);
+                const list = document.querySelector(
+                    '.task-list[data-tier="this_week"]'
+                );
+                const dt = new DataTransfer();
+                dt.setData("text/plain", tid);
+                card.dispatchEvent(new DragEvent("dragstart", { dataTransfer: dt, bubbles: true }));
+                list.dispatchEvent(new DragEvent("dragover", { dataTransfer: dt, bubbles: true, cancelable: true }));
+                list.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
+            }, task.id);
+            await page.waitForTimeout(700);
+
+            const refetch = await request.get(`/api/tasks/${task.id}`);
+            const refreshed = await refetch.json();
+            // Tier moved...
+            expect(refreshed.tier).toBe("this_week");
+            // ...but date is preserved.
+            expect(refreshed.due_date).toBe(todayIso);
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+});
+
 /**
  * Bug #148 (2026-05-05): completed/cancelled task → open detail
  * panel → change tier → Save. Old behaviour: task vanished from
