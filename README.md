@@ -333,8 +333,11 @@ Exit codes:
 - `2` — COOKIE EXPIRED (refresh it — the script prints copy-pasteable instructions)
 - `3` — Usage error (missing cookie file or bad args)
 
-Cookies expire after 24 hours of inactivity. On a `2` exit code, the script
-walks you through re-capturing the cookie from your browser.
+Validator cookies expire after the `--days` lifetime they were minted with
+(default 90 days, no sliding refresh). Browser session cookies (legacy
+fallback) follow the app's session lifetime — 30 days of inactivity. On
+a `2` exit code, the script walks you through re-capturing the cookie
+from your browser.
 
 ### Prod smoke tests (optional)
 

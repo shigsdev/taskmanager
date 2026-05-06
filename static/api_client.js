@@ -67,7 +67,7 @@
         //      during tab suspension; first wake-up fetch dies before
         //      reconnect.
         //  (b) Service worker controller went stale during sleep.
-        //  (c) Flask OAuth session expired (24h sliding) — redirect to
+        //  (c) Flask OAuth session expired (30d sliding) — redirect to
         //      /login/google → cross-origin → browser blocks.
         // Recovery: auto-retry once on TypeError. If retry also fails,
         // prompt to reload via _hardRecover() (unregisters SW first so

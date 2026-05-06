@@ -153,7 +153,7 @@ component is added, a data flow changes, or a security boundary shifts.
 ## Data Flows
 
 - **User → App**: HTTPS request, Google OAuth session cookie (encrypted,
-  24h inactivity expiry).
+  30-day sliding inactivity expiry).
 - **App → DB**: SQLAlchemy ORM queries. No raw SQL.
 - **App → SendGrid**: once per day at `DIGEST_TIME`, plain-text email with
   Today / Overdue / Goals summary / This Week count.

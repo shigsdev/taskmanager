@@ -177,7 +177,13 @@ def create_app(config: dict | None = None) -> Flask:
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=os.environ.get("FLASK_ENV") != "development",
-        PERMANENT_SESSION_LIFETIME=timedelta(hours=24),
+        # 30-day sliding session — single-user app with AUTHORIZED_EMAIL
+        # gating; the original 24h cap forced a Google OAuth round-trip
+        # any time the user stepped away for a day, which got annoying
+        # fast (user reported 2026-05-05). Cookie is HttpOnly + Secure +
+        # SameSite=Lax, so the bump only widens the window for a stolen-
+        # laptop scenario — which already bypasses 24h anyway.
+        PERMANENT_SESSION_LIFETIME=timedelta(days=30),
         # Hard cap on every incoming request body. 30 MB covers our
         # largest legitimate upload (25 MB Whisper limit + multipart
         # overhead). Werkzeug rejects bigger requests with 413 BEFORE

@@ -138,10 +138,10 @@ class TestSessionSecurity:
     def test_session_cookie_samesite(self, app):
         assert app.config["SESSION_COOKIE_SAMESITE"] == "Lax"
 
-    def test_session_lifetime_24_hours(self, app):
+    def test_session_lifetime_30_days(self, app):
         from datetime import timedelta
 
-        assert app.config["PERMANENT_SESSION_LIFETIME"] == timedelta(hours=24)
+        assert app.config["PERMANENT_SESSION_LIFETIME"] == timedelta(days=30)
 
     def test_session_is_permanent(self, authed_client):
         """Sessions should be marked permanent for the lifetime to apply."""

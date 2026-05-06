@@ -552,7 +552,7 @@ as gate 8d.
 - Images are processed in memory only — never written to disk or DB
 - Google Vision and Claude API calls are server-side only — browsers never
   talk to those APIs directly
-- Session tokens expire after 24 hours of inactivity
+- Session tokens expire after 30 days of inactivity (sliding)
 - HTTPS enforced via Flask-Talisman in all environments except local dev
 
 ---
