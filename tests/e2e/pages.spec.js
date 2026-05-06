@@ -253,8 +253,14 @@ test.describe("Detail panel", () => {
             // to spot in the assertion message. Use today's ISO for due_date
             // so tier=today + due_date stay consistent under #149's live
             // date→tier auto-routing (a far-future date would now flip the
-            // tier to backlog before save).
-            const todayIso = new Date().toISOString().slice(0, 10);
+            // tier to backlog before save). LOCAL date — toISOString() is
+            // UTC and crosses midnight earlier than the listener's local
+            // "today" near end-of-day, which would route tier→tomorrow.
+            const _now = new Date();
+            const todayIso =
+                _now.getFullYear() + "-" +
+                String(_now.getMonth() + 1).padStart(2, "0") + "-" +
+                String(_now.getDate()).padStart(2, "0");
             await page.fill("#detailTitle", "round-trip new title");
             await page.selectOption("#detailTier", "today");
             await page.selectOption("#detailType", "work");
@@ -581,20 +587,27 @@ test.describe("Detail panel: edit completed task → unarchive (#148)", () => {
             await expect(page.locator("#detailPanel")).toBeVisible({ timeout: 2000 });
             // Due date starts empty.
             await expect(page.locator("#detailDueDate")).toHaveValue("");
-            // Pick Today → due_date should populate (fill-if-null).
+            // Pick Today → due_date should populate.
             await page.locator("#detailTier").selectOption("today");
             const dueValue = await page.locator("#detailDueDate").inputValue();
             expect(dueValue).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-            // Per #149 spec: fill-if-null only. Once filled, switching
-            // tier again must NOT clobber the date (mirrors server's
-            // "an explicit user-provided due_date is never clobbered").
-            // Switch to tomorrow → date should STAY as today's value.
+            // Per #149 follow-up (user bug report 2026-05-05):
+            // switching tier from today→tomorrow MUST advance the
+            // date, otherwise the UI feels broken. Always-overwrite
+            // for today/tomorrow (canonical date per tier).
             const tomorrowValue = await page.locator("#detailTier").evaluate((el) => {
                 el.value = "tomorrow";
                 el.dispatchEvent(new Event("change", { bubbles: true }));
                 return document.getElementById("detailDueDate").value;
             });
-            expect(tomorrowValue).toBe(dueValue);
+            expect(tomorrowValue).not.toBe(dueValue);
+            // Tomorrow's date should be exactly +1 day from today's.
+            const todayDate = new Date(dueValue);
+            const tomorrowDate = new Date(tomorrowValue);
+            const deltaDays = Math.round(
+                (tomorrowDate - todayDate) / (1000 * 60 * 60 * 24)
+            );
+            expect(deltaDays).toBe(1);
         } finally {
             await request.delete(`/api/tasks/${task.id}`);
         }

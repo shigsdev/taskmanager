@@ -1998,10 +1998,15 @@ function setupDetailPanel() {
     //
     // Tier → due_date: scoped to TODAY/TOMORROW only (mirrors
     // server's _auto_fill_tier_due_date — only those two tiers have
-    // a single canonical date). Fill-if-null only — don't clobber
-    // an existing user-set date. Don't clear an auto-filled date
-    // when switching back out (server keeps the date as a reminder;
-    // UI matches).
+    // a single canonical date). Always overwrite when switching to
+    // today/tomorrow — user reported 2026-05-05 right after #149
+    // ship: changing tier from today→tomorrow on a task already
+    // dated today did nothing, which felt broken. Symmetric with the
+    // always-live date→tier direction below. Other tiers don't
+    // auto-set (no canonical date — week ranges span 6 days; inbox /
+    // freezer / backlog have no date semantics). Don't clear an
+    // auto-filled date when switching out of today/tomorrow (server
+    // keeps the date as a reminder; UI matches).
     //
     // Date → tier: always live except when tier is currently FREEZER
     // (user explicitly parked it; the date is just a reminder, not a
@@ -2012,8 +2017,10 @@ function setupDetailPanel() {
     if (_detailTierEl && _detailDueDateEl && window.tierHelpers) {
         _detailTierEl.addEventListener("change", () => {
             const tier = _detailTierEl.value;
-            // Only fill if currently empty; never clobber.
-            if (_detailDueDateEl.value) return;
+            // dueDateForTier returns the canonical date for today /
+            // tomorrow and null for everything else — so this both
+            // sets the date when there is one AND leaves the field
+            // alone for week ranges / inbox / freezer / backlog.
             const filled = window.tierHelpers.dueDateForTier(tier);
             if (filled) _detailDueDateEl.value = filled;
         });
