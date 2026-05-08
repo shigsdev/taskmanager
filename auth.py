@@ -26,7 +26,7 @@ import os
 import sys
 from functools import wraps
 
-from flask import current_app, redirect, render_template, request, session, url_for
+from flask import current_app, jsonify, redirect, render_template, request, session, url_for
 from flask_dance.contrib.google import google
 from oauthlib.oauth2.rfc6749.errors import TokenExpiredError
 
@@ -201,10 +201,24 @@ def login_required(view):
 
         email = get_current_user_email()
         if email is None:
+            # API routes: return 401 JSON so apiFetch's existing recovery
+            # prompt fires ("Authentication failed. Reload to sign in
+            # again?"). Bug 2026-05-07: returning 302 → /login/google for
+            # PATCH /api/tasks/<id> caused the browser to follow the OAuth
+            # chain cross-origin to accounts.google.com, returning an
+            # opaque response (status 0, empty statusText). The client
+            # threw `new Error("")`, surfacing as the meaningless dialog
+            # "Save failed: " — user couldn't tell their session expired.
+            # HTML page routes still redirect to OAuth (the natural sign-
+            # in flow for a user navigating to a page).
+            if request.path.startswith("/api/"):
+                return jsonify(error="Authentication required"), 401
             return redirect(url_for("google.login"))
         authorized = (current_app.config.get("AUTHORIZED_EMAIL") or "").strip().lower()
         if not authorized or email.strip().lower() != authorized:
             session.clear()
+            if request.path.startswith("/api/"):
+                return jsonify(error="Not authorized"), 403
             return render_template("unauthorized.html"), 403
         return view(*args, email=email, **kwargs)
 

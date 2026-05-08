@@ -190,21 +190,20 @@ def test_validator_cookie_does_not_authenticate_mutations(app, client, method):
     """CRITICAL SECURITY INVARIANT: validator cookie must NOT
     authenticate mutation methods. A leaked cookie can only read,
     never modify. login_required falls through to OAuth on these
-    methods and OAuth fails (no session) → 302 to /login/google.
+    methods and OAuth fails (no session) → 401 JSON for /api/* paths
+    (changed from 302 redirect on 2026-05-07; see TestAuthLockdown).
     """
     token = validator_cookie.mint(
         app.config["SECRET_KEY"], app.config["AUTHORIZED_EMAIL"], days=90
     )
     client.set_cookie(key=validator_cookie.COOKIE_NAME, value=token)
     resp = client.open("/api/tasks", method=method, json={"title": "x"})
-    assert resp.status_code in (302, 405), (
+    assert resp.status_code in (401, 405), (
         f"{method} /api/tasks returned {resp.status_code}; "
         "validator cookie must not authenticate mutations. "
-        "302 = redirect to login (expected); 405 = method not allowed "
+        "401 = auth required JSON (expected); 405 = method not allowed "
         "(also fine — auth never even ran)."
     )
-    if resp.status_code == 302:
-        assert "/login/google" in resp.headers.get("Location", "")
 
 
 # --- CLI command test --------------------------------------------------------

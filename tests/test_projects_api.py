@@ -20,9 +20,10 @@ def _make_project(**overrides) -> Project:
 
 
 def test_projects_api_requires_login(client, monkeypatch):
+    # API routes return 401 JSON (not 302 to OAuth) since 2026-05-07.
     monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
     resp = client.get("/api/projects")
-    assert resp.status_code == 302
+    assert resp.status_code == 401
 
 
 def test_projects_api_rejects_wrong_email(client, monkeypatch):

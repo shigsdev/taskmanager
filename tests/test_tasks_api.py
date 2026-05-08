@@ -20,9 +20,10 @@ def _make_task(**overrides) -> Task:
 
 
 def test_api_requires_login(client, monkeypatch):
+    # API routes return 401 JSON (not 302 to OAuth) since 2026-05-07.
     monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
     resp = client.get("/api/tasks")
-    assert resp.status_code == 302
+    assert resp.status_code == 401
 
 
 def test_api_rejects_wrong_email(client, monkeypatch):
@@ -1460,8 +1461,9 @@ class TestBulkUpdate:
             "/api/tasks/bulk",
             json={"task_ids": [str(uuid.uuid4())], "updates": {"tier": "today"}},
         )
-        assert resp.status_code == 302
-        assert "/login/google" in resp.headers.get("Location", "")
+        # API routes return 401 JSON (not 302 to OAuth) since 2026-05-07.
+        assert resp.status_code == 401
+        assert resp.is_json
 
     def test_bulk_set_due_date(self, authed_client):
         """Bulk-set due_date with an ISO string."""

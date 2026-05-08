@@ -169,17 +169,49 @@ class TestAuthLockdown:
         resp = client.get("/")
         assert resp.status_code == 403
 
-    def test_api_unauthenticated_redirects(self, client, monkeypatch):
+    def test_api_unauthenticated_returns_401_json(self, client, monkeypatch):
+        # Bug 2026-05-07: returning 302 → /login/google for an API call
+        # caused fetch to follow the OAuth chain cross-origin, returning
+        # an opaque response that surfaced as the meaningless dialog
+        # "Save failed: ". 401 JSON lets apiFetch's existing recovery
+        # prompt fire instead.
         monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
         resp = client.get("/api/tasks")
-        assert resp.status_code == 302
+        assert resp.status_code == 401
+        assert resp.is_json
+        assert resp.get_json()["error"] == "Authentication required"
 
-    def test_api_wrong_email_returns_403(self, client, monkeypatch):
+    def test_api_patch_unauthenticated_returns_401_json(
+        self, client, monkeypatch
+    ):
+        # The exact user-reported repro: PATCH /api/tasks/<id> while the
+        # session is gone must give the client a clean 401, not a 302
+        # that spirals into an opaque cross-origin redirect.
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
+        resp = client.patch(
+            "/api/tasks/00000000-0000-0000-0000-000000000000",
+            json={"tier": "today"},
+        )
+        assert resp.status_code == 401
+        assert resp.is_json
+
+    def test_api_wrong_email_returns_403_json(self, client, monkeypatch):
         monkeypatch.setattr(
             auth, "get_current_user_email", lambda: "attacker@evil.com"
         )
         resp = client.get("/api/tasks")
         assert resp.status_code == 403
+        assert resp.is_json
+        assert resp.get_json()["error"] == "Not authorized"
+
+    def test_html_route_unauthenticated_still_redirects(
+        self, client, monkeypatch
+    ):
+        # Page navigation (HTML) keeps the natural redirect-to-OAuth flow.
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
+        resp = client.get("/")
+        assert resp.status_code == 302
+        assert "/login" in resp.headers.get("Location", "")
 
     def test_logout_clears_session(self, authed_client):
         resp = authed_client.post("/logout")

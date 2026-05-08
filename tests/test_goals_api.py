@@ -24,9 +24,11 @@ def _make_goal(**overrides) -> Goal:
 
 
 def test_goals_api_requires_login(client, monkeypatch):
+    # API routes return 401 JSON (not 302 to OAuth) since 2026-05-07 —
+    # see TestAuthLockdown.test_api_unauthenticated_returns_401_json.
     monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
     resp = client.get("/api/goals")
-    assert resp.status_code == 302
+    assert resp.status_code == 401
 
 
 def test_goals_api_rejects_wrong_email(client, monkeypatch):
