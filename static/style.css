@@ -601,18 +601,34 @@ body {
 }
 .loading-msg { color: var(--text-muted); padding: 8px; font-size: 0.85rem; }
 
-.task-card .task-checkbox {
-    margin-top: 3px;
-    cursor: pointer;
-    accent-color: var(--green);
-    width: 20px;
-    height: 20px;
-    min-width: 20px;
-    min-height: 20px;
+/* .task-checkbox (the per-card "complete" checkbox) was removed
+   2026-05-08 — left-edge checkbox role moved to .bulk-select-check
+   (selection); one-click complete moved to .task-complete-btn on the
+   right edge. Rule kept as a comment so a stale grep doesn't get
+   confused. */
+
+/* Right-edge one-click complete button. Always visible so completing
+   stays a single tap on both desktop and mobile. */
+.task-card .task-complete-btn {
     flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
     border: 2px solid var(--green);
-    border-radius: 4px;
-    appearance: auto;
+    background: transparent;
+    color: var(--green);
+    border-radius: 6px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    line-height: 1;
+    margin-left: 6px;
+    margin-top: 2px;
+    align-self: flex-start;
+}
+.task-card .task-complete-btn:hover {
+    background: var(--green);
+    color: #fff;
 }
 
 .task-card .task-body {
@@ -737,10 +753,8 @@ body {
     max-width: 50%;
 }
 
-/* Hide the redundant complete checkbox on inbox — triage flow owns inbox */
-.tier[data-tier="inbox"] .task-card .task-checkbox {
-    display: none;
-}
+/* (Removed 2026-05-08: rule that hid .task-checkbox on inbox — the
+   checkbox itself was removed when selection became its primary role.) */
 .task-card:hover .task-quick-actions { opacity: 1; }
 
 .task-quick-actions button {
@@ -2335,12 +2349,8 @@ body {
         min-height: 44px;
         overflow: hidden;
     }
-    .task-card .task-checkbox {
-        width: 22px;
-        height: 22px;
-        min-width: 22px;
-        min-height: 22px;
-    }
+    /* (Removed 2026-05-08: mobile sizing for .task-checkbox — element
+       deleted when selection became the primary checkbox role.) */
     .tier[data-tier="inbox"] .task-card .triage-check {
         width: 20px;
         height: 20px;
@@ -2662,16 +2672,20 @@ body {
     border-color: var(--accent, #2980b9);
 }
 
-/* Bulk-select checkboxes — hidden by default; revealed when body has
-   .bulk-select-mode (toggled by initBulkSelect in app.js). */
+/* Selection checkbox — always visible on every card (user-redesign
+   2026-05-08: tap to add to bulk selection; toolbar appears at the
+   bottom when ≥1 selected). Old behavior gated visibility on
+   body.bulk-select-mode (toggled by a Select button in the nav);
+   that toggle was removed when selection became the primary role. */
 .task-card .bulk-select-check {
-    display: none;
+    display: block;
     margin-top: 3px;
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     flex-shrink: 0;
+    cursor: pointer;
+    accent-color: var(--accent, #2980b9);
 }
-body.bulk-select-mode .task-card .bulk-select-check { display: block; }
 
 /* Selected card highlight */
 .task-card.bulk-selected {
@@ -2909,10 +2923,17 @@ body.bulk-select-mode .task-card .bulk-select-check { display: block; }
         padding: 8px 12px;
     }
     .task-card .bulk-select-check {
-        width: 22px;
-        height: 22px;  /* easier tap target on mobile */
+        width: 24px;
+        height: 24px;  /* easier tap target on mobile */
     }
-    body.bulk-select-mode .task-card .bulk-select-check { display: block; }
+    /* #140 — 44px touch-target floor on mobile so the dominant
+       complete action stays single-tap reliable. */
+    .task-card .task-complete-btn {
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        font-size: 1.2rem;
+    }
 }
 
 /* === Projects page (backlog #24) ===

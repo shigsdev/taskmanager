@@ -1077,9 +1077,12 @@ function taskCardEl(task) {
     triageCheck.addEventListener("change", updateBulkTriageBtn);
     card.appendChild(triageCheck);
 
-    // Bulk-select checkbox — appears on EVERY task card when bulk-select
-    // mode is on (body has class .bulk-select-mode). Independent of the
-    // triage-check above. See backlog #21.
+    // Selection checkbox — always visible on every card. Tapping it
+    // adds the card to the bulk selection (toolbar appears when ≥1
+    // selected). User-redesign 2026-05-08: this used to be the
+    // "complete" checkbox, but that conflated selection and a destructive
+    // action. Selection now lives on the left edge; one-click complete
+    // moved to the .task-complete-btn on the right edge below.
     const bulkCheck = document.createElement("input");
     bulkCheck.type = "checkbox";
     bulkCheck.className = "bulk-select-check";
@@ -1090,15 +1093,6 @@ function taskCardEl(task) {
         updateBulkToolbar();
     });
     card.appendChild(bulkCheck);
-
-    // Complete checkbox
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.className = "task-checkbox";
-    cb.title = "Complete task";
-    cb.addEventListener("click", (e) => e.stopPropagation());
-    cb.addEventListener("change", () => taskComplete(task.id));
-    card.appendChild(cb);
 
     // Body
     const body = document.createElement("div");
@@ -1220,21 +1214,26 @@ function taskCardEl(task) {
     body.appendChild(meta);
     card.appendChild(body);
 
-    // Quick actions
-    const actions = document.createElement("div");
-    actions.className = "task-quick-actions";
-
-    // Complete button — shown on every tier, including inbox, so users
-    // can archive a task straight from triage without a two-step move.
+    // One-click complete (✓ icon, always visible on the right edge).
+    // User-redesign 2026-05-08: when the left checkbox became selection,
+    // this button took over as the dedicated "complete this task"
+    // affordance so the dominant action stays one click. Lives outside
+    // the hover-only quick-actions row below for that reason.
     const completeBtn = document.createElement("button");
-    completeBtn.textContent = "✓ Done";
+    completeBtn.textContent = "✓";
     completeBtn.title = "Mark complete";
-    completeBtn.className = "quick-complete-btn";
+    completeBtn.className = "task-complete-btn";
     completeBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         taskComplete(task.id);
     });
-    actions.appendChild(completeBtn);
+    card.appendChild(completeBtn);
+
+    // Quick actions (hover-only on desktop, always-visible on mobile).
+    // Holds the tier-jump shortcuts + Add Subtask. Complete moved out
+    // to .task-complete-btn above (always visible).
+    const actions = document.createElement("div");
+    actions.className = "task-quick-actions";
 
     const tierBtns = TIER_ORDER.filter((t) => t !== task.tier && t !== "inbox");
     for (const t of tierBtns) {
@@ -2658,11 +2657,9 @@ async function addSubtask() {
 
 // --- Bulk select & batch operations (backlog #21) ----------------------------
 //
-// State machine:
-//   - Off (default): no body class, no checkboxes visible, no toolbar
-//   - On + 0 selected: body has .bulk-select-mode, checkboxes visible
-//                       on every card, toolbar HIDDEN (nothing to act on)
-//   - On + ≥1 selected: same as above + toolbar visible at bottom
+// State (post-2026-05-08 redesign):
+//   - 0 selected: checkboxes visible (always), toolbar HIDDEN
+//   - ≥1 selected: checkboxes visible, toolbar appears at bottom
 //
 // Selection lives in the DOM (one checkbox per card). We don't keep a
 // JS array of ids — a simple querySelectorAll is the source of truth.
@@ -2681,20 +2678,6 @@ function updateBulkToolbar() {
     const countEl = document.getElementById("bulkSelectedCount");
     if (countEl) countEl.textContent = String(ids.length);
     tb.style.display = ids.length > 0 ? "" : "none";
-}
-
-function setBulkSelectMode(on) {
-    document.body.classList.toggle("bulk-select-mode", on);
-    const toggle = document.getElementById("bulkSelectToggle");
-    if (toggle) toggle.classList.toggle("active", on);
-    if (!on) {
-        // Turning off — clear selection, hide toolbar
-        document.querySelectorAll(".bulk-select-check:checked").forEach((cb) => {
-            cb.checked = false;
-            cb.closest(".task-card").classList.remove("bulk-selected");
-        });
-    }
-    updateBulkToolbar();
 }
 
 function clearBulkSelection() {
@@ -2940,15 +2923,13 @@ async function applyStagedChanges() {
     await bulkPatch(updates);
 }
 
-// Wire up the toggle + toolbar buttons (deferred to DOMContentLoaded
-// because the static HTML elements need to exist when listeners attach)
+// Wire up the toolbar buttons (deferred to DOMContentLoaded because
+// the static HTML elements need to exist when listeners attach).
+// 2026-05-08: dropped the #bulkSelectToggle wiring — selection is now
+// the always-on primary role of the per-card checkbox.
 function initBulkSelect() {
-    const toggle = document.getElementById("bulkSelectToggle");
-    if (!toggle) return;  // not on this page
-    toggle.addEventListener("click", () => {
-        const on = !document.body.classList.contains("bulk-select-mode");
-        setBulkSelectMode(on);
-    });
+    const toolbar = document.getElementById("bulkToolbar");
+    if (!toolbar) return;  // not on this page
 
     const clearBtn = document.getElementById("bulkClearSelection");
     if (clearBtn) clearBtn.addEventListener("click", clearBulkSelection);

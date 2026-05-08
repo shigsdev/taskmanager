@@ -839,8 +839,8 @@ test.describe("Bulk move-up / move-down within a tier", () => {
         try {
             await page.goto("/?nosw=1");
             await page.waitForLoadState("networkidle");
-            // Enter bulk-select mode.
-            await page.locator("#bulkSelectToggle").click();
+            // 2026-05-08 redesign: per-card checkbox IS selection — no
+            // separate "enter bulk mode" toggle. Just check the boxes.
             // Select cards [1] and [2] (the second and third in tier
             // creation order) — should move up to positions [0] and [1].
             const list = page.locator('.task-list[data-tier="today"]');
