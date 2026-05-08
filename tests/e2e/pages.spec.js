@@ -816,3 +816,86 @@ test.describe("Detail panel: edit completed task → unarchive (#148)", () => {
         }
     });
 });
+
+/**
+ * Auto-categorize Inbox: user reported 2026-05-08 that the project
+ * dropdown rendered with empty/blank options. Bug was in
+ * static/inbox_categorize.js — option label read p.title, but
+ * /api/projects returns p.name (Goal uses title; Project uses name —
+ * model asymmetry). This test mocks the categorize endpoint so the
+ * Claude call doesn't fire, then asserts the project dropdown options
+ * have visible text matching real project names.
+ */
+test.describe("Auto-categorize Inbox: project dropdown labels", () => {
+    test("project options show readable text (not blank from p.title bug)", async ({
+        page, request,
+    }) => {
+        // Seed: one inbox task + one project so the dropdown has at
+        // least one non-empty option to assert on.
+        const projResp = await request.post("/api/projects", {
+            data: { name: "AUTOCAT-PROJ", type: "work" },
+        });
+        const proj = await projResp.json();
+        const taskResp = await request.post("/api/tasks", {
+            data: { title: "auto-cat dropdown probe", type: "work", tier: "inbox" },
+        });
+        const task = await taskResp.json();
+
+        try {
+            // Mock the Claude-backed endpoint so we don't burn an API
+            // call (and so the test is deterministic regardless of
+            // Claude's mood). Returns one suggestion that picks our
+            // seeded project.
+            await page.route("**/api/inbox/categorize", (route) => {
+                route.fulfill({
+                    status: 200,
+                    contentType: "application/json",
+                    body: JSON.stringify({
+                        count: 1,
+                        capped: false,
+                        suggestions: [{
+                            task_id: task.id,
+                            title: task.title,
+                            suggested_tier: "this_week",
+                            suggested_project_id: proj.id,
+                            suggested_goal_id: null,
+                            suggested_due_date: null,
+                            suggested_type: "work",
+                            reason: "fixture",
+                        }],
+                    }),
+                });
+            });
+
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator("#autoCategorizeBtn").click();
+            // Wait for the modal to render the row.
+            await expect(
+                page.locator('#autoCategorizeRows tr[data-task-id="' + task.id + '"]')
+            ).toBeVisible({ timeout: 5000 });
+
+            // The project select for our row should have an <option>
+            // with our project's NAME as visible text. Before the fix,
+            // every option's textContent was "undefined" (p.title on a
+            // payload that only has p.name).
+            const optionTexts = await page.locator(
+                `#autoCategorizeRows tr[data-task-id="${task.id}"] select[data-field="project"] option`
+            ).allTextContents();
+            expect(optionTexts).toContain("AUTOCAT-PROJ");
+            // And no option text should equal "undefined" (paranoia
+            // guard against a future regression that swallows the bug).
+            expect(optionTexts).not.toContain("undefined");
+
+            // Suggested project should be pre-selected (Claude picked it).
+            const selectedValue = await page.locator(
+                `#autoCategorizeRows tr[data-task-id="${task.id}"] select[data-field="project"]`
+            ).inputValue();
+            expect(selectedValue).toBe(proj.id);
+        } finally {
+            await page.unroute("**/api/inbox/categorize");
+            await request.delete(`/api/tasks/${task.id}`);
+            await request.delete(`/api/projects/${proj.id}`);
+        }
+    });
+});

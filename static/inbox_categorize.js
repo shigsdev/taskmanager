@@ -170,7 +170,11 @@
             if (!p.is_active && p.is_active !== undefined) { return; }
             // Type-scope per #98 if type known.
             if (type && p.type && p.type !== type) { return; }
-            options.push([p.id, p.title]);
+            // Project model uses `name` (not `title` like Goal). Bug
+            // 2026-05-08: was reading p.title, every option label
+            // rendered blank, so even when Claude suggested a project
+            // the dropdown looked empty.
+            options.push([p.id, p.name]);
         });
         return makeSelect(options, current || "", "project");
     }
