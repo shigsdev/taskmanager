@@ -2777,6 +2777,75 @@ async function bulkPatch(updates, successMessage) {
     await loadTasks();
 }
 
+// Bulk move up/down within a tier. User-requested 2026-05-08:
+// "I need the ability to multi select things and move them up and down."
+// Operates only when the selection lives in a SINGLE tier — moving
+// across tiers via reorder doesn't have well-defined semantics (use
+// drag-and-drop or the Tier ▾ menu instead).
+async function bulkMove(direction) {
+    const ids = getBulkSelectedIds();
+    if (ids.length === 0) return;
+    if (!window.reorderHelpers) {
+        alert("Reorder helper not loaded — refresh the page.");
+        return;
+    }
+    // Build the {id, tier} pair list from the current allTasks cache
+    // so the classifier can decide if the selection spans tiers.
+    const pairs = allTasks.map((t) => ({ id: t.id, tier: t.tier }));
+    const cls = window.reorderHelpers.classifySelectionForReorder(
+        pairs, new Set(ids)
+    );
+    if (!cls.ok) {
+        if (cls.reason === "multiple_tiers") {
+            alert(
+                "Move up/down works within a single tier. Your selection "
+                + "spans tiers — drag across columns or use the Tier ▾ menu."
+            );
+        }
+        return;
+    }
+    // Reconstruct the current visible ordering of THIS tier from the
+    // DOM so reorder respects whatever drag order the user left things
+    // in (allTasks is the load-order, not the user-arranged order).
+    const list = document.querySelector(
+        `.task-list[data-tier="${cls.tier}"]`
+    );
+    if (!list) return;
+    const currentOrder = Array.from(list.querySelectorAll(".task-card"))
+        .map((c) => c.dataset.id);
+    const newOrder = window.reorderHelpers.reorderSelectionWithinTier(
+        currentOrder, new Set(ids), direction
+    );
+    // No-op (selection at boundary) → don't bother the server.
+    let changed = false;
+    for (let i = 0; i < newOrder.length; i++) {
+        if (newOrder[i] !== currentOrder[i]) { changed = true; break; }
+    }
+    if (!changed) return;
+    try {
+        await saveReorder(cls.tier, newOrder);
+    } catch (err) {
+        alert("Reorder failed: " + (err.message || err));
+        return;
+    }
+    // Keep the selection alive after the reorder so the user can
+    // press ↑ / ↓ repeatedly without re-checking boxes.
+    await loadTasks();
+    // Re-apply the checkbox state — loadTasks rebuilds the cards.
+    requestAnimationFrame(() => {
+        for (const id of ids) {
+            const cb = document.querySelector(
+                `.task-card[data-id="${id}"] .bulk-select-check`
+            );
+            if (cb) {
+                cb.checked = true;
+                cb.closest(".task-card").classList.add("bulk-selected");
+            }
+        }
+        updateBulkToolbar();
+    });
+}
+
 async function bulkDelete() {
     const ids = getBulkSelectedIds();
     if (ids.length === 0) return;
@@ -3008,6 +3077,15 @@ function initBulkSelect() {
 
     const deleteBtn = document.getElementById("bulkActionDelete");
     if (deleteBtn) deleteBtn.addEventListener("click", bulkDelete);
+
+    // Bulk move up/down — within-tier reorder of every selected card
+    // (user-requested 2026-05-08). Pure logic in static/reorder_helpers.js
+    // so the boundary cases (block, non-contig, top/bottom edges) are
+    // Jest-tested separately.
+    const moveUpBtn = document.getElementById("bulkActionMoveUp");
+    if (moveUpBtn) moveUpBtn.addEventListener("click", () => bulkMove("up"));
+    const moveDownBtn = document.getElementById("bulkActionMoveDown");
+    if (moveDownBtn) moveDownBtn.addEventListener("click", () => bulkMove("down"));
 
     // #71: Apply / Clear-pending wiring
     const applyBtn = document.getElementById("bulkApplyChanges");

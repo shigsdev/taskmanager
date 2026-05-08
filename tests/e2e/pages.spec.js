@@ -817,6 +817,73 @@ test.describe("Detail panel: edit completed task → unarchive (#148)", () => {
     });
 });
 
+test.describe("Bulk move-up / move-down within a tier", () => {
+    // Feature shipped 2026-05-08 (user-requested):
+    //   "I need the ability to multi select things and move them up
+    //   and down in the task window."
+    // Pure reorder logic is Jest-tested in tier_helpers.test.js; this
+    // test verifies the wiring: select-mode + checkboxes + toolbar
+    // buttons → /api/tasks/reorder → DOM reflects the new order.
+
+    test("contiguous selection moves up by one slot, stays selected", async ({
+        page, request,
+    }) => {
+        // Seed three tasks in TODAY so we have something to reorder.
+        const created = [];
+        for (let i = 0; i < 3; i++) {
+            const r = await request.post("/api/tasks", {
+                data: { title: `BULK-MOVE ${i}`, type: "work", tier: "today" },
+            });
+            created.push(await r.json());
+        }
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            // Enter bulk-select mode.
+            await page.locator("#bulkSelectToggle").click();
+            // Select cards [1] and [2] (the second and third in tier
+            // creation order) — should move up to positions [0] and [1].
+            const list = page.locator('.task-list[data-tier="today"]');
+            const initialIds = await list.locator(".task-card").evaluateAll(
+                (els) => els.map((e) => e.dataset.id)
+            );
+            // Find the indexes of our seeded tasks in the rendered list.
+            const seedSet = new Set(created.map((t) => t.id));
+            const ourIds = initialIds.filter((id) => seedSet.has(id));
+            expect(ourIds.length).toBe(3);
+            // Check the LAST two of our three seeded cards.
+            for (const id of [ourIds[1], ourIds[2]]) {
+                await page.locator(
+                    `.task-card[data-id="${id}"] .bulk-select-check`
+                ).check();
+            }
+            await page.locator("#bulkActionMoveUp").click();
+            // Wait for the reorder PATCH + reload.
+            await page.waitForTimeout(900);
+            const afterIds = await list.locator(".task-card").evaluateAll(
+                (els) => els.map((e) => e.dataset.id)
+            );
+            // Find our three IDs in the new ordering — they should now
+            // appear as ourIds[1], ourIds[2], ourIds[0] (the middle and
+            // bottom shifted up over the top).
+            const ourAfter = afterIds.filter((id) => seedSet.has(id));
+            expect(ourAfter).toEqual([ourIds[1], ourIds[2], ourIds[0]]);
+            // The reordered selection should still be checked so the
+            // user can press ↑ again without re-selecting.
+            for (const id of [ourIds[1], ourIds[2]]) {
+                const isChecked = await page.locator(
+                    `.task-card[data-id="${id}"] .bulk-select-check`
+                ).isChecked();
+                expect(isChecked).toBe(true);
+            }
+        } finally {
+            for (const t of created) {
+                await request.delete(`/api/tasks/${t.id}`);
+            }
+        }
+    });
+});
+
 /**
  * Auto-categorize Inbox: user reported 2026-05-08 that the project
  * dropdown rendered with empty/blank options. Bug was in
