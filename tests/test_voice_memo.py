@@ -1041,3 +1041,82 @@ class TestVoiceMemoTemplateScripts:
             "voice_memo.html must load filter_helpers.js for the "
             "project→goal cascade in the review UI to work"
         )
+
+
+class TestVoiceHintSubstringFallback:
+    """Bug 2026-05-09: project_hint resolver did exact-match only, so
+    "audit" never resolved to "IPPM Audit". Added a substring fallback:
+    if a hint is contained in (or contains) exactly ONE active title,
+    resolve to that. Multi-match → leave unresolved (ambiguous)."""
+
+    def _norm(self, item, projects=None, goals=None):
+        from scan_service import _normalise_voice_candidates
+        return _normalise_voice_candidates([item], projects=projects, goals=goals)
+
+    def test_substring_single_match_resolves(self):
+        """User said "audit"; project list has one match — should resolve."""
+        result = self._norm(
+            {"title": "Tidy the audit notes", "project_hint": "audit"},
+            projects=[("p-ippm", "IPPM Audit"), ("p-other", "Roadmaps")],
+        )
+        assert result[0]["project_id"] == "p-ippm"
+        # The original hint is preserved alongside the resolved id.
+        assert result[0]["project_hint"] == "audit"
+
+    def test_substring_multi_match_stays_unresolved(self):
+        """Hint matches multiple projects — don't guess."""
+        result = self._norm(
+            {"title": "audit work", "project_hint": "audit"},
+            projects=[
+                ("p-ippm", "IPPM Audit"),
+                ("p-ext",  "External Audit"),
+            ],
+        )
+        assert result[0]["project_id"] is None
+        assert result[0]["project_hint"] == "audit"
+
+    def test_exact_match_still_wins(self):
+        """When an exact title is present, prefer it over any
+        substring-matching siblings (preserves prior behavior)."""
+        result = self._norm(
+            {"title": "x", "project_hint": "audit"},
+            projects=[
+                ("p-exact", "audit"),
+                ("p-fuzzy", "Some Audit Project"),
+            ],
+        )
+        assert result[0]["project_id"] == "p-exact"
+
+    def test_inverse_substring_resolves(self):
+        """Hint LONGER than the title (e.g. Claude added qualifiers).
+        "the audit project" still resolves to "audit"."""
+        result = self._norm(
+            {"title": "x", "project_hint": "the audit project"},
+            projects=[("p-audit", "audit")],
+        )
+        assert result[0]["project_id"] == "p-audit"
+
+    def test_no_match_leaves_hint_unresolved(self):
+        """Hint nowhere on the list → no resolution, hint preserved."""
+        result = self._norm(
+            {"title": "x", "project_hint": "completely unrelated"},
+            projects=[("p-ippm", "IPPM Audit")],
+        )
+        assert result[0]["project_id"] is None
+        assert result[0]["project_hint"] == "completely unrelated"
+
+    def test_substring_fallback_works_for_goals_too(self):
+        """Same logic applied symmetrically for goal_hint."""
+        result = self._norm(
+            {"title": "x", "goal_hint": "fitness"},
+            goals=[("g-fitness", "Q2 Fitness Goal")],
+        )
+        assert result[0]["goal_id"] == "g-fitness"
+
+    def test_case_insensitive_substring(self):
+        """Casing on the hint shouldn't matter."""
+        result = self._norm(
+            {"title": "x", "project_hint": "AUDIT"},
+            projects=[("p-ippm", "IPPM Audit")],
+        )
+        assert result[0]["project_id"] == "p-ippm"

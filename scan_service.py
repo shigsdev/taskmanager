@@ -668,6 +668,61 @@ _VOICE_VALID_TIERS = {"inbox", "today", "tomorrow", "this_week", "next_week", "b
 # into via the detail panel, not something to auto-assign from voice.
 
 
+def _resolve_voice_hint(
+    hint: str,
+    by_title_lc: dict[str, str],
+    *,
+    kind: str,
+) -> str | None:
+    """Resolve a Claude-emitted voice hint to a real project/goal UUID.
+
+    Two-pass match (user-reported 2026-05-09):
+      1. Exact case-insensitive title match.
+      2. If exact missed, substring fallback: hint contained in title
+         OR title contained in hint. Resolves only when there's
+         exactly ONE such match — multi-match leaves the hint
+         unresolved (ambiguous). Common repro: user said "audit"
+         while the project is "IPPM Audit".
+
+    Args:
+        hint: Trimmed hint string from Claude (project title fragment).
+        by_title_lc: ``{lowercased_title: id}`` lookup.
+        kind: ``"project"`` or ``"goal"`` — used for log labels only.
+
+    Returns:
+        The resolved id, or None if no unambiguous match.
+    """
+    hint_lc = hint.lower()
+    exact = by_title_lc.get(hint_lc)
+    if exact is not None:
+        logger.info("voice hint resolved: %s %r → exact match", kind, hint)
+        return exact
+
+    # Substring fallback. Bidirectional so "audit" matches "IPPM Audit"
+    # AND "IPPM Audit" (if Claude adds extra qualifiers) matches "audit".
+    candidates = [
+        eid for title_lc, eid in by_title_lc.items()
+        if hint_lc in title_lc or title_lc in hint_lc
+    ]
+    if len(candidates) == 1:
+        logger.info(
+            "voice hint resolved: %s %r → substring match (1 of %d titles)",
+            kind, hint, len(by_title_lc),
+        )
+        return candidates[0]
+    if len(candidates) > 1:
+        logger.info(
+            "voice hint ambiguous: %s %r → %d substring matches; left unresolved",
+            kind, hint, len(candidates),
+        )
+    else:
+        logger.info(
+            "voice hint missed: %s %r → no match in %d titles",
+            kind, hint, len(by_title_lc),
+        )
+    return None
+
+
 def _normalise_voice_candidates(
     raw: list[dict[str, Any]],
     *,
@@ -734,17 +789,30 @@ def _normalise_voice_candidates(
         # Resolve project_hint + goal_hint to UUIDs (#37). Hint
         # string stays on the candidate regardless so the UI can
         # show "Claude suggested X" even when X doesn't match.
+        #
+        # Resolution strategy (2026-05-09 user-reported bug):
+        #   1. Exact case-insensitive title match (preserves prior
+        #      behavior — Claude usually echoes the verbatim title).
+        #   2. Substring fallback if exact misses. If the hint is
+        #      contained in exactly ONE active title (or vice versa),
+        #      use it. Common repro: user said "audit" while the
+        #      project is "IPPM Audit". Multi-match → leave as hint
+        #      (ambiguous; don't guess).
+        # Logs INFO on every resolution path so we can audit hint
+        # accuracy from /api/debug/logs.
         project_hint = item.get("project_hint")
         project_id: str | None = None
         if isinstance(project_hint, str) and project_hint.strip():
-            project_id = proj_by_title_lc.get(
-                project_hint.strip().lower()
+            project_id = _resolve_voice_hint(
+                project_hint.strip(), proj_by_title_lc, kind="project",
             )
 
         goal_hint = item.get("goal_hint")
         goal_id: str | None = None
         if isinstance(goal_hint, str) and goal_hint.strip():
-            goal_id = goal_by_title_lc.get(goal_hint.strip().lower())
+            goal_id = _resolve_voice_hint(
+                goal_hint.strip(), goal_by_title_lc, kind="goal",
+            )
 
         # Default is_task=True so that a Claude miss (forgot to emit
         # the field) still treats the item as a task. `is not False`
