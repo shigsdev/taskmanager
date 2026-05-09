@@ -3573,7 +3573,13 @@ table.quality-gates code {
     border: 1px solid var(--border, #e5e7eb);
     border-radius: 8px;
     padding: 12px 16px;
-    margin: 12px 0;
+    /* Match the page's other content bars (project-filter-bar,
+       task-search-bar, goal-filter-bar, day-strip, tier-board) which
+       all clamp to 1200px and center. Without this the panel
+       stretched edge-to-edge while the filter chips above it stayed
+       centered — visually inconsistent (user-reported 2026-05-09). */
+    max-width: 1200px;
+    margin: 12px auto;
 }
 .weekly-focus-header {
     display: flex;
