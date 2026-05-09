@@ -213,9 +213,11 @@ _ER_TABLE_GROUPS: dict[str, str] = {
     "goals": "core",
     "projects": "core",
     "recurring_tasks": "core",
+    "weekly_focus": "core",
     # Operational: system-generated records
     "app_logs": "ops",
     "import_log": "ops",
+    "app_settings": "ops",
     # Auth: token storage by flask-dance
     "flask_dance_oauth": "auth",
 }
@@ -228,9 +230,11 @@ _ER_TABLE_ORDER = (
     "projects",
     "tasks",
     "recurring_tasks",
+    "weekly_focus",
     # Operational cluster
     "app_logs",
     "import_log",
+    "app_settings",
     # Auth (orphan)
     "flask_dance_oauth",
 )
@@ -531,6 +535,34 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "error":       {"desc": "Failure message (if the import errored partway)", "notes": "Optional"},
             "imported_at": {"desc": "When the import ran", "notes": "Used for the recycle-bin TTL"},
             "undone_at":   {"desc": "When the import was undone (if at all)", "notes": "NULL = still in recycle bin; not-NULL = restored to the active board"},
+        },
+    },
+    "weekly_focus": {
+        "blurb": (
+            "The 'This Week's Focus' panel on the home board. One row "
+            "per (ISO week, slot) holding a free-form focus statement "
+            "and an optional Goal link. Past weeks' rows are kept as "
+            "silent history snapshots — the panel falls back to the "
+            "most recent past week when the current week is empty "
+            "(carry-forward UX, no auto-roll on Monday)."
+        ),
+        "columns": {
+            "week_start_date": {"desc": "Monday of the ISO week this slot belongs to", "notes": "Indexed; the display query asks for current_week or falls back to most recent past week"},
+            "slot_order":      {"desc": "Position in the slot list (1..N)", "notes": "N comes from app_settings.weekly_focus_slot_count, default 3"},
+            "text":             {"desc": "The focus statement", "notes": "Required; 500 char cap"},
+            "goal_id":          {"desc": "Optional Goal-link", "fk_target": "goals.id", "notes": "Hybrid mode (Q1 of feature spec): free-form text by default; this column lets a slot point at an existing Goal"},
+            "is_active":        {"desc": "Soft-delete flag", "notes": "✕ button on the panel sets this False — past-week rows are preserved"},
+        },
+    },
+    "app_settings": {
+        "blurb": (
+            "Tiny generic key/value store for runtime configuration "
+            "that needs to survive a redeploy without touching env "
+            "vars. Single-user app — no per-user namespacing."
+        ),
+        "columns": {
+            "key":    {"desc": "Well-known config name (e.g. 'weekly_focus_slot_count')", "notes": "Unique"},
+            "value":  {"desc": "String value (caller parses to int / etc.)", "notes": "500 char cap"},
         },
     },
     "flask_dance_oauth": {

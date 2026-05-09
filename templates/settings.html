@@ -48,6 +48,27 @@
         </table>
     </section>
 
+    <!-- Feature 1 (2026-05-09): Weekly Focus slot count.
+         Stored server-side in app_settings so the choice survives
+         across devices. Range 1-7. -->
+    <section class="settings-section" id="settingsWeeklyFocus">
+        <h3>Weekly Focus</h3>
+        <p class="settings-hint">
+            Number of focus slots shown on the home board's
+            "This Week's Focus" panel. 3 is the research-backed
+            default — keep it small to keep prioritization honest.
+        </p>
+        <div class="settings-row">
+            <label for="settingsWeeklyFocusSlotCount">
+                Slots:
+                <input type="number" id="settingsWeeklyFocusSlotCount"
+                       min="1" max="7" step="1" value="3" style="width: 80px;">
+            </label>
+            <button class="btn btn-sm" id="settingsWeeklyFocusSave">Save</button>
+            <span class="settings-hint" id="settingsWeeklyFocusStatus"></span>
+        </div>
+    </section>
+
     <!-- Digest settings -->
     <section class="settings-section" id="settingsDigest">
         <h3>Daily Digest</h3>

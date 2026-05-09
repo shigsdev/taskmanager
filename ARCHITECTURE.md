@@ -501,6 +501,12 @@ the code.
 # inbox_categorize_api.py — Option A post-#12 brainstorm
 /api/inbox/categorize    # POST — one-call Claude pass over all inbox tasks
 
+# weekly_focus_api.py — Feature 1 (2026-05-09): "This Week's Focus" panel
+/api/weekly-focus                                # GET — display payload (slots + slot_count)
+/api/weekly-focus/<int:slot_order>               # PATCH/DELETE — upsert/clear a slot
+/api/weekly-focus/<int:slot_order>/plan          # POST — Claude proposes task changes for the slot's focus
+/api/weekly-focus/settings/slot-count            # PATCH — configurable slot count (1-7, default 3)
+
 # planner_api.py — weekly planner (post-#12 follow-up; user choice 2026-05-02)
 /api/planner/weekly                # POST — Mon–Sun plan via Claude Haiku
 /api/planner/ignore/<uuid:task_id> # POST — toggle Task.planner_ignore

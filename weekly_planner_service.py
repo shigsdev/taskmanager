@@ -338,7 +338,14 @@ def _post_to_claude(api_key: str, prompt: str, max_tokens: int) -> dict[str, Any
                 "max_tokens": max_tokens,
                 "messages": [{"role": "user", "content": prompt}],
             },
-            timeout_sec=90,
+            # 180s — user reported ReadTimeout at 90s 2026-05-09 (real
+            # repro: 100 tasks + 4 weeks history + 12k max_tokens of
+            # JSON output = the model can take 60-150s end-to-end).
+            # Anthropic's official recommendation is to use the streaming
+            # endpoint for max_tokens > ~4k; we should switch to that
+            # (filed as a follow-up). 180s buys headroom in the
+            # meantime.
+            timeout_sec=180,
             vendor="Claude",
         )
     except EgressError as e:

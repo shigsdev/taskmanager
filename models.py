@@ -407,3 +407,61 @@ class ImportLog(db.Model):
     undone_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+# Feature 1 (2026-05-09): "This Week's Focus" panel
+class WeeklyFocus(db.Model):
+    """One row per (ISO-week, slot) for the user's weekly focus statements.
+
+    User flow: at the top of the main board, N free-form text slots
+    (configurable, default 3). Each slot can optionally link to a Goal.
+    On edit, the new text becomes the row for the current ISO week —
+    past weeks' rows are preserved (silent history snapshot for
+    retrospectives). No auto-roll: if no row exists for the current
+    week, the panel falls back to displaying the most recent past
+    week's text (carry-forward visual).
+    """
+
+    __tablename__ = "weekly_focus"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    # Monday of the ISO week this slot was set for. Indexed because the
+    # display query is "give me rows for current_week or fall back to the
+    # most recent past week."
+    week_start_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    # 1..N (N from app_settings.weekly_focus_slot_count, default 3).
+    slot_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    # Optional Goal-link (hybrid mode per Q1). FK with ON DELETE SET NULL
+    # so deleting a goal doesn't orphan the focus row.
+    goal_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("goals.id", ondelete="SET NULL"), nullable=True
+    )
+    # Soft-delete flag so the X-button on a slot doesn't blow away the
+    # historical row — set is_active=False and the panel skips it but
+    # retrospectives can still see what was there.
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
+
+
+class AppSetting(db.Model):
+    """Tiny generic key/value store for runtime config that needs to
+    survive a redeploy without touching env vars.
+
+    Single-user app — no per-user namespacing. Keys are well-known
+    strings (e.g. ``weekly_focus_slot_count``); values are stored as
+    text and parsed by the caller. Future settings can reuse this
+    table without a new migration each time.
+    """
+
+    __tablename__ = "app_settings"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
+    value: Mapped[str] = mapped_column(String(500), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )

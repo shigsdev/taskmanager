@@ -3564,3 +3564,188 @@ table.quality-gates code {
     font-size: 0.95em;
     word-break: break-word;
 }
+
+
+/* === Weekly Focus panel (Feature 1, 2026-05-09) === */
+
+.weekly-focus-panel {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 12px 0;
+}
+.weekly-focus-header {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+.weekly-focus-header h2 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+}
+.weekly-focus-icon {
+    margin-right: 4px;
+}
+.weekly-focus-week {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+.weekly-focus-fallback {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-style: italic;
+    margin-left: auto;
+}
+.weekly-focus-slots {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.weekly-focus-slot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.weekly-focus-slot-num {
+    color: var(--text-muted);
+    font-weight: 700;
+    min-width: 18px;
+}
+.weekly-focus-slot-input {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+.weekly-focus-slot-goal {
+    max-width: 200px;
+    padding: 6px 4px;
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    background: #fff;
+}
+.weekly-focus-slot-plan {
+    flex-shrink: 0;
+}
+.weekly-focus-slot-clear {
+    flex-shrink: 0;
+    color: var(--text-muted);
+}
+.weekly-focus-slot-clear:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+@media (max-width: 700px) {
+    .weekly-focus-slot {
+        flex-wrap: wrap;
+    }
+    .weekly-focus-slot-input {
+        flex-basis: 100%;
+        order: 1;
+    }
+    .weekly-focus-slot-num {
+        order: 0;
+    }
+    .weekly-focus-slot-goal {
+        order: 2;
+        max-width: none;
+        flex: 1 1 60%;
+    }
+    .weekly-focus-slot-plan,
+    .weekly-focus-slot-clear {
+        order: 3;
+        min-height: 40px;
+    }
+}
+
+/* Plan-for-focus review modal */
+.weekly-focus-plan-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+}
+.weekly-focus-plan-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+}
+.weekly-focus-plan-dialog {
+    position: relative;
+    max-width: 720px;
+    margin: 4vh auto;
+    background: var(--surface, #fff);
+    border-radius: 8px;
+    padding: 16px 20px;
+    max-height: 92vh;
+    overflow-y: auto;
+}
+.weekly-focus-plan-dialog header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.weekly-focus-plan-dialog h3 {
+    margin: 0;
+    font-size: 1.05rem;
+}
+.weekly-focus-plan-loading {
+    color: var(--text-muted);
+    font-style: italic;
+}
+.weekly-focus-plan-error {
+    color: var(--red, #b91c1c);
+}
+.weekly-focus-plan-empty {
+    color: var(--text-muted);
+}
+.weekly-focus-plan-changes {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 12px 0;
+}
+.weekly-focus-plan-group h4 {
+    margin: 0 0 4px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.weekly-focus-plan-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border, #f1f5f9);
+}
+.weekly-focus-plan-check {
+    flex-shrink: 0;
+}
+.weekly-focus-plan-title {
+    flex: 1;
+    font-weight: 600;
+}
+.weekly-focus-plan-reason {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-style: italic;
+}
+.weekly-focus-plan-meta {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+.weekly-focus-plan-dialog footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+}

@@ -264,4 +264,39 @@
         sendBtn.disabled = false;
         sendBtn.textContent = "Send Now";
     });
+
+    // Feature 1 (2026-05-09): Weekly Focus slot count input.
+    var slotInput = document.getElementById("settingsWeeklyFocusSlotCount");
+    var slotSave = document.getElementById("settingsWeeklyFocusSave");
+    var slotStatus = document.getElementById("settingsWeeklyFocusStatus");
+    if (slotInput && slotSave) {
+        // Hydrate the current value on load.
+        window.apiFetch("/api/weekly-focus").then(function (d) {
+            slotInput.value = String(d.slot_count);
+        }).catch(function () { /* leave default */ });
+
+        slotSave.addEventListener("click", async function () {
+            var n = parseInt(slotInput.value, 10);
+            if (isNaN(n) || n < 1 || n > 7) {
+                alert("Slots must be between 1 and 7.");
+                return;
+            }
+            slotSave.disabled = true;
+            try {
+                var r = await window.apiFetch(
+                    "/api/weekly-focus/settings/slot-count",
+                    {
+                        method: "PATCH",
+                        body: JSON.stringify({ slot_count: n }),
+                    }
+                );
+                slotInput.value = String(r.slot_count);
+                slotStatus.textContent = "Saved.";
+                setTimeout(function () { slotStatus.textContent = ""; }, 2000);
+            } catch (err) {
+                alert("Save failed: " + err.message);
+            }
+            slotSave.disabled = false;
+        });
+    }
 })();

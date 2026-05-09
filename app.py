@@ -32,6 +32,7 @@ import settings_api
 import tasks_api
 import triage_api
 import voice_api
+import weekly_focus_api
 from auth import log_bypass_startup_banner, login_required
 from logging_service import configure_logging
 from models import TaskStatus, Tier, db
@@ -225,6 +226,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(review_api.bp)
     app.register_blueprint(triage_api.bp)
     app.register_blueprint(inbox_categorize_api.bp)
+    app.register_blueprint(weekly_focus_api.bp)
     app.register_blueprint(planner_api.bp)
     app.register_blueprint(recurring_api.bp)
     app.register_blueprint(digest_api.bp)

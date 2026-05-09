@@ -126,6 +126,7 @@ EXPECTED_STATIC_FILES = (
     "static/plan.js",
     "static/tier_helpers.js",
     "static/reorder_helpers.js",
+    "static/weekly_focus.js",
     "static/manifest.json",
     "static/favicon.svg",  # #45 — browser tab icon
 )
