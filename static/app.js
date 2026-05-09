@@ -753,8 +753,35 @@ function renderTierGroupedByProject(list, tasks) {
 // Supports both desktop (HTML5 drag) and mobile (touch events).
 
 let draggedCard = null;
+// Multi-drag (user-redesign 2026-05-09): when the user drags a card
+// that's part of a multi-selection (≥2 .bulk-selected cards), the whole
+// group moves together. draggedGroup is an Array of cards in document
+// order, or null when single-card drag. The group's relative order is
+// preserved across the drop.
+let draggedGroup = null;
 let dragDropInitialized = false;
 let touchDragState = null; // { card, placeholder, startY, scrollInterval }
+
+// Compute the multi-drag group from the current bulk selection. Returns
+// an array of cards in DOM order if 2+ selected and `card` is part of
+// that selection — otherwise null (caller should fall back to single-
+// card drag). The returned array always includes `card` at its DOM
+// position; callers don't need to special-case it.
+function _computeDragGroup(card) {
+    if (!card.classList.contains("bulk-selected")) return null;
+    const selected = Array.from(document.querySelectorAll(".task-card.bulk-selected"));
+    if (selected.length < 2) return null;
+    // Sort by document order so the block keeps its visual order during
+    // the drag — without this, selection order would dictate insertion
+    // order and produce surprising rearrangements.
+    selected.sort((a, b) => {
+        const pos = a.compareDocumentPosition(b);
+        if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+        if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+        return 0;
+    });
+    return selected;
+}
 
 function setupDragAndDrop() {
     if (dragDropInitialized) return;
@@ -770,10 +797,13 @@ function setupDragAndDrop() {
             if (!draggedCard) return;
             e.dataTransfer.dropEffect = "move";
             const afterEl = getDragAfterElement(list, e.clientY);
-            if (afterEl) {
-                list.insertBefore(draggedCard, afterEl);
-            } else {
-                list.appendChild(draggedCard);
+            // Multi-drag: insert every group member in DOM order before
+            // the same anchor so the block stays a block and lands as a
+            // contiguous group.
+            const cardsToMove = draggedGroup || [draggedCard];
+            for (const c of cardsToMove) {
+                if (afterEl) list.insertBefore(c, afterEl);
+                else list.appendChild(c);
             }
         });
 
@@ -818,6 +848,26 @@ function setupDragAndDrop() {
             e.stopPropagation();
             completedSection.classList.remove("drag-over");
             if (!draggedCard) return;
+            // Multi-drag onto Completed: archive the whole group via
+            // bulk PATCH rather than firing N single-task completes.
+            if (draggedGroup && draggedGroup.length >= 2) {
+                const groupIds = draggedGroup.map((c) => c.dataset.id);
+                for (const c of draggedGroup) c.classList.remove("dragging");
+                draggedCard = null;
+                draggedGroup = null;
+                apiFetch("/api/tasks/bulk", {
+                    method: "PATCH",
+                    body: JSON.stringify({
+                        task_ids: groupIds,
+                        updates: { status: "archived" },
+                    }),
+                }).then(() => {
+                    clearBulkSelection();
+                    loadTasks();
+                    loadCompletedTasks();
+                });
+                return;
+            }
             const taskId = draggedCard.dataset.id;
             draggedCard.classList.remove("dragging");
             draggedCard = null;
@@ -836,11 +886,15 @@ function onTouchMove(e) {
 
     var touch = e.touches[0];
     var card = touchDragState.card;
+    // Multi-drag visual: translate every group member by the same dy
+    // so the block follows the finger as a unit.
+    var cardsToMove = draggedGroup || [card];
 
-    // Move the card visually
     var dy = touch.clientY - touchDragState.startY;
-    card.style.transform = "translateY(" + dy + "px)";
-    card.style.zIndex = "9999";
+    for (var i = 0; i < cardsToMove.length; i++) {
+        cardsToMove[i].style.transform = "translateY(" + dy + "px)";
+        cardsToMove[i].style.zIndex = "9999";
+    }
 
     // Is the finger over the Completed drop-zone?
     // Checked BEFORE the tier-list scan so an inbox card dropped on the
@@ -864,10 +918,11 @@ function onTouchMove(e) {
     var targetList = getListUnderPoint(touch.clientX, touch.clientY);
     if (targetList) {
         var afterEl = getDragAfterElement(targetList, touch.clientY);
-        if (afterEl) {
-            targetList.insertBefore(card, afterEl);
-        } else {
-            targetList.appendChild(card);
+        // Insert every group member in DOM order before the same anchor
+        // so the block stays contiguous when it lands.
+        for (var j = 0; j < cardsToMove.length; j++) {
+            if (afterEl) targetList.insertBefore(cardsToMove[j], afterEl);
+            else targetList.appendChild(cardsToMove[j]);
         }
     }
 }
@@ -876,20 +931,39 @@ function onTouchEnd() {
     if (!touchDragState) return;
     var card = touchDragState.card;
     var overCompleted = touchDragState.overCompleted;
+    var cardsToMove = draggedGroup || [card];
 
-    // Reset visual state
-    card.style.transform = "";
-    card.style.zIndex = "";
-    card.classList.remove("dragging");
+    // Reset visual state on every group member
+    for (var i = 0; i < cardsToMove.length; i++) {
+        cardsToMove[i].style.transform = "";
+        cardsToMove[i].style.zIndex = "";
+        cardsToMove[i].classList.remove("dragging");
+    }
     var completedSection = document.getElementById("tierCompleted");
     if (completedSection) completedSection.classList.remove("drag-over");
 
     if (overCompleted) {
-        // Dropped on Completed → archive instead of tier-move
-        var taskId = card.dataset.id;
+        // Dropped on Completed → archive instead of tier-move. For a
+        // group, archive every selected card via bulk PATCH.
+        if (draggedGroup) {
+            var groupIds = draggedGroup.map(function (c) { return c.dataset.id; });
+            apiFetch("/api/tasks/bulk", {
+                method: "PATCH",
+                body: JSON.stringify({
+                    task_ids: groupIds,
+                    updates: { status: "archived" },
+                }),
+            }).then(function () {
+                clearBulkSelection();
+                loadTasks();
+                loadCompletedTasks();
+            });
+        } else {
+            taskComplete(card.dataset.id);
+        }
         touchDragState = null;
         draggedCard = null;
-        taskComplete(taskId);
+        draggedGroup = null;
         return;
     }
 
@@ -901,6 +975,7 @@ function onTouchEnd() {
 
     touchDragState = null;
     draggedCard = null;
+    draggedGroup = null;
 }
 
 function isPointOverEl(el, x, y) {
@@ -945,6 +1020,51 @@ function finishDrop(list) {
 
     var cardIds = Array.from(list.querySelectorAll(".task-card"))
         .map(function (c) { return c.dataset.id; });
+
+    // Multi-drag (2026-05-09): when the user drags a multi-selection,
+    // PATCH the whole group's tier in one bulk call (preserves the
+    // block intent + cuts roundtrips), then the saveReorder call uses
+    // the post-drop DOM ordering to commit the new positions.
+    if (draggedGroup && draggedGroup.length >= 2) {
+        var groupIds = draggedGroup.map(function (c) { return c.dataset.id; });
+        var sourceTiers = new Set(
+            draggedGroup.map(function (c) { return c.dataset.sourceTier; })
+        );
+        // Tier change needed if any source tier ≠ target. Pure-reorder
+        // case (all-from-target-tier) skips the PATCH entirely.
+        var needTierPatch = !(sourceTiers.size === 1 && sourceTiers.has(targetTier));
+        var tierPatch = needTierPatch
+            ? apiFetch("/api/tasks/bulk", {
+                method: "PATCH",
+                body: JSON.stringify({
+                    task_ids: groupIds,
+                    updates: _patchBodyForTierDrop(targetTier),
+                }),
+            })
+            : Promise.resolve();
+        tierPatch.then(function () {
+            return saveReorder(targetTier, cardIds);
+        }).then(function () {
+            loadTasks();
+            // Re-apply the checkbox state after re-render so the user
+            // can keep operating on the same group (mirror bulkMove's
+            // post-action restore).
+            var keepIds = groupIds;
+            requestAnimationFrame(function () {
+                for (var i = 0; i < keepIds.length; i++) {
+                    var cb = document.querySelector(
+                        '.task-card[data-id="' + keepIds[i] + '"] .bulk-select-check'
+                    );
+                    if (cb) {
+                        cb.checked = true;
+                        cb.closest(".task-card").classList.add("bulk-selected");
+                    }
+                }
+                updateBulkToolbar();
+            });
+        });
+        return;
+    }
 
     if (sourceTier === "completed") {
         // Completed → tier: restore status=active AND set new tier
@@ -1021,13 +1141,27 @@ function taskCardEl(task) {
     // Desktop drag events
     card.addEventListener("dragstart", function (e) {
         draggedCard = card;
-        card.classList.add("dragging");
+        // Multi-drag: if this card is part of a 2+ selection, drag the
+        // whole group together (user-requested 2026-05-09 follow-up).
+        draggedGroup = _computeDragGroup(card);
+        if (draggedGroup) {
+            // Mark all group members as dragging so getDragAfterElement
+            // skips them as drop targets and CSS can fade the block.
+            for (const c of draggedGroup) c.classList.add("dragging");
+        } else {
+            card.classList.add("dragging");
+        }
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", task.id);
     });
     card.addEventListener("dragend", function () {
-        card.classList.remove("dragging");
+        if (draggedGroup) {
+            for (const c of draggedGroup) c.classList.remove("dragging");
+        } else {
+            card.classList.remove("dragging");
+        }
         draggedCard = null;
+        draggedGroup = null;
     });
 
     // Mobile touch: long-press to start drag (500ms hold)
@@ -1040,11 +1174,20 @@ function taskCardEl(task) {
         longPressTimer = setTimeout(function () {
             longPressTimer = null;
             draggedCard = card;
+            // Multi-drag on touch: same group rule as desktop. Long-
+            // press on any selected card → drags the whole group.
+            draggedGroup = _computeDragGroup(card);
             touchDragState = {
                 card: card,
                 startY: e.touches[0].clientY,
             };
-            card.classList.add("dragging");
+            if (draggedGroup) {
+                for (var i = 0; i < draggedGroup.length; i++) {
+                    draggedGroup[i].classList.add("dragging");
+                }
+            } else {
+                card.classList.add("dragging");
+            }
             // Haptic feedback if available
             if (navigator.vibrate) navigator.vibrate(50);
         }, 500);

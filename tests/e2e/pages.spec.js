@@ -512,6 +512,65 @@ test.describe("Calendar drag-and-drop (#94)", () => {
     });
 });
 
+test.describe("Multi-drag: dragging a selected card moves the whole group", () => {
+    // User-requested 2026-05-09: "when I select two at a time, i cannot
+    // drag them up/down in unison." Fix: when the dragged card is part
+    // of a 2+ selection, the whole .bulk-selected set drags together;
+    // tier change applies via /api/tasks/bulk PATCH.
+
+    test("drag a selected card from TODAY to TOMORROW carries the whole 2-card selection", async ({
+        page, request,
+    }) => {
+        const created = [];
+        for (let i = 0; i < 3; i++) {
+            const r = await request.post("/api/tasks", {
+                data: { title: `MULTI-DRAG ${i}`, type: "work", tier: "today" },
+            });
+            created.push(await r.json());
+        }
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            // Select cards [0] and [1] (third card is the control —
+            // should NOT move).
+            await page.locator(
+                `.task-card[data-id="${created[0].id}"] .bulk-select-check`
+            ).check();
+            await page.locator(
+                `.task-card[data-id="${created[1].id}"] .bulk-select-check`
+            ).check();
+            // Programmatic drag — dispatch native DragEvents the same
+            // way calendar drag-and-drop tests do.
+            await page.evaluate(({ src, target }) => {
+                const card = document.querySelector(`.task-card[data-id="${src}"]`);
+                const list = document.querySelector(
+                    `.task-list[data-tier="${target}"]`
+                );
+                const dt = new DataTransfer();
+                dt.setData("text/plain", src);
+                card.dispatchEvent(new DragEvent("dragstart", { dataTransfer: dt, bubbles: true }));
+                list.dispatchEvent(new DragEvent("dragover", { dataTransfer: dt, bubbles: true, cancelable: true, clientY: 99999 }));
+                list.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
+                card.dispatchEvent(new DragEvent("dragend", { dataTransfer: dt, bubbles: true }));
+            }, { src: created[0].id, target: "tomorrow" });
+            await page.waitForTimeout(1500);
+
+            // BOTH selected cards should now be in tomorrow.
+            const t0 = await (await request.get(`/api/tasks/${created[0].id}`)).json();
+            const t1 = await (await request.get(`/api/tasks/${created[1].id}`)).json();
+            const t2 = await (await request.get(`/api/tasks/${created[2].id}`)).json();
+            expect(t0.tier).toBe("tomorrow");
+            expect(t1.tier).toBe("tomorrow");
+            // Control: unselected card stays in today.
+            expect(t2.tier).toBe("today");
+        } finally {
+            for (const t of created) {
+                await request.delete(`/api/tasks/${t.id}`);
+            }
+        }
+    });
+});
+
 test.describe("Tier-column drag updates due_date for today/tomorrow", () => {
     test("dragging a dated task to Tomorrow advances due_date (user report 2026-05-05)", async ({
         page, request,
