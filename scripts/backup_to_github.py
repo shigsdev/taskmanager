@@ -36,7 +36,6 @@ Exit codes:
 """
 from __future__ import annotations
 
-import base64
 import datetime
 import json
 import os
@@ -261,7 +260,8 @@ def send_status_email(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
+        # URL is the constant SendGrid endpoint, not user input.
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310  # nosec B310  # nosemgrep
             sys.stdout.write(f"[backup] email sent: HTTP {resp.status}\n")
     except urllib.error.URLError as e:
         sys.stderr.write(f"[backup] email send failed: {e}\n")

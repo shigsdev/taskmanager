@@ -247,10 +247,15 @@ def confirm(email: str):  # noqa: ARG001
                 rec = create_recurring_template_from_voice_candidate(rc)
                 if rec is not None:
                     recurring_created.append(rec)
-            except Exception:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001, S110
                 # Don't let one bad candidate kill the whole batch — the
                 # user can re-create it manually if it doesn't appear.
-                pass
+                # Log so silent skips are observable in /api/debug/logs.
+                import logging
+                logging.getLogger(__name__).warning(
+                    "voice recurring candidate skipped: %s: %s",
+                    type(e).__name__, e,
+                )
 
     goals_created = []
     if goal_candidates:

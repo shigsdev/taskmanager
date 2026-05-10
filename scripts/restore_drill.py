@@ -194,7 +194,8 @@ def send_drill_email(*, success: bool, live: dict, scratch: dict, error: str | N
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
+        # URL is the constant SendGrid endpoint, not user input.
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310  # nosec B310  # nosemgrep
             sys.stdout.write(f"[drill] email sent: HTTP {resp.status}\n")
     except urllib.error.URLError as e:
         sys.stderr.write(f"[drill] email send failed: {e}\n")

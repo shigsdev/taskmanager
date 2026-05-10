@@ -357,6 +357,7 @@ class TestWeekOffsetNextWeek:
 
     def test_get_next_week_returns_empty_when_no_rows(self, app):
         from datetime import date
+
         from weekly_focus_service import get_displayed_focus
         today = date(2026, 5, 13)  # Wednesday this week
         with app.app_context():
@@ -368,6 +369,7 @@ class TestWeekOffsetNextWeek:
 
     def test_upsert_next_week_does_not_touch_this_week(self, app):
         from datetime import date
+
         from weekly_focus_service import get_displayed_focus, upsert_slot
         today = date(2026, 5, 13)
         with app.app_context():
@@ -391,6 +393,7 @@ class TestWeekOffsetNextWeek:
 
     def test_clear_next_week_does_not_touch_this_week(self, app):
         from datetime import date
+
         from weekly_focus_service import clear_slot, get_displayed_focus, upsert_slot
         today = date(2026, 5, 13)
         with app.app_context():
@@ -406,6 +409,7 @@ class TestWeekOffsetNextWeek:
         # blank — the user shouldn't be tricked into thinking they
         # already planned ahead by silently seeded text.
         from datetime import date
+
         from weekly_focus_service import get_displayed_focus, upsert_slot
         last = date(2026, 5, 6)
         today = date(2026, 5, 13)
