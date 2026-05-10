@@ -3764,6 +3764,15 @@ table.quality-gates code {
 }
 
 
+/* === #156 (2026-05-09): calendar empty-cell click affordance === */
+.calendar-cell-empty {
+    cursor: pointer;
+}
+.calendar-cell:hover .calendar-cell-empty {
+    color: var(--accent, #2980b9);
+    border-color: var(--accent, #2980b9);
+}
+
 /* === #155 (2026-05-09): voice memo "Make recurring" modal === */
 .voice-recur-overlay {
     position: fixed;

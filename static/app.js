@@ -293,18 +293,51 @@ async function init() {
     // #153 (2026-05-09): /calendar's task lines navigate here with
     // ?task=<id> when the user clicks a (potentially-truncated) cell
     // line. Open the detail panel after the board has loaded.
+    //
+    // #156 (2026-05-09): /calendar's empty-cell click navigates here
+    // with ?new_task_due=<iso>. Prompt for a title, POST creates the
+    // task with that date, open detail panel for further edits.
     try {
         const params = new URLSearchParams(window.location.search);
         const openId = params.get("task");
+        const newDue = params.get("new_task_due");
         if (openId) {
             const full = await window.apiFetch("/api/tasks/" + openId);
             if (full) {
                 taskDetailOpen(full);
             }
-            // Strip the query param so a refresh doesn't re-open the
-            // panel and so the URL stays clean.
+        } else if (newDue && /^\d{4}-\d{2}-\d{2}$/.test(newDue)) {
+            // eslint-disable-next-line no-alert
+            const title = prompt(
+                "New task for " + newDue + "\n\nTitle:",
+                "",
+            );
+            if (title && title.trim()) {
+                try {
+                    const created = await window.apiFetch("/api/tasks", {
+                        method: "POST",
+                        body: JSON.stringify({
+                            title: title.trim(),
+                            type: "work",  // user can edit in the panel
+                            due_date: newDue,
+                        }),
+                    });
+                    if (created) {
+                        await loadTasks();
+                        taskDetailOpen(created);
+                    }
+                } catch (e) {
+                    console.error("create-from-calendar failed:", e);
+                    alert("Couldn't create task: " + (e.message || e));
+                }
+            }
+        }
+        // Strip the query params so a refresh doesn't re-prompt and
+        // so the URL stays clean.
+        if (openId || newDue) {
             const url = new URL(window.location.href);
             url.searchParams.delete("task");
+            url.searchParams.delete("new_task_due");
             window.history.replaceState({}, "", url.pathname + url.search);
         }
     } catch (e) {

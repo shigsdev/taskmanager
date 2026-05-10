@@ -183,9 +183,26 @@
                 if (items.length === 0 && dayPreviews.length === 0) {
                     const empty = document.createElement("div");
                     empty.className = "calendar-cell-empty";
-                    empty.textContent = "Drop here";
+                    empty.textContent = "Drop here · click to add";
                     cell.appendChild(empty);
                 }
+                // #156 (2026-05-09): click empty space on a cell →
+                // navigate to / with ?new_task_due=<iso>; app.js init
+                // hook opens the detail panel in "create new" mode
+                // pre-filled with that date. Click handler attached
+                // to the cell itself; drop handler stays separate
+                // (drop is on .calendar-cell too — distinguish by
+                // whether dataTransfer carries a task UUID).
+                cell.addEventListener("click", function (e) {
+                    // If the click landed on a task line (li), the li's
+                    // own click handler navigates to ?task=<id>; this
+                    // cell-level handler fires AFTER but we don't want
+                    // to re-navigate. Bail when the target is inside
+                    // an existing list item.
+                    if (e.target.closest("li")) return;
+                    window.location.href =
+                        "/?new_task_due=" + encodeURIComponent(iso);
+                });
 
                 cell.addEventListener("dragover", function (e) {
                     e.preventDefault();
