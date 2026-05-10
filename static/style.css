@@ -2921,13 +2921,25 @@ body {
     .bulk-toolbar-actions {
         order: 3;
         flex-basis: 100%;
-        overflow-x: auto;
-        flex-wrap: nowrap;
+        /* #158 (2026-05-09): wrap instead of horizontal-scroll so all
+           9 buttons remain visible+tappable without sideways swiping.
+           Combined with the smaller padding below, the row reflows
+           to 2 lines on a 375px viewport which is still tight but
+           always within view. */
+        overflow-x: visible;
+        flex-wrap: wrap;
+        gap: 4px;
         padding-bottom: 4px;
     }
     .bulk-toolbar-actions .btn-sm {
+        /* #158 — shrunk padding from 8px 12px to 6px 8px so 9 buttons
+           fit in the available width. min-height stays at 40 — a
+           hair below the #140 44px floor but acceptable for this
+           secondary action surface (primary actions like ✓ Done
+           already meet the floor). */
         min-height: 40px;
-        padding: 8px 12px;
+        padding: 6px 8px;
+        font-size: 0.85rem;
     }
     .task-card .bulk-select-check {
         width: 24px;
