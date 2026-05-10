@@ -25,9 +25,14 @@
     var state = {
         slot_count: 3,
         week_start_date: null,
+        week_offset: 0,
         fallback_from: null,
         slots: [],          // [{slot_order, text, goal_id, goal_title}]
     };
+    // #157 (2026-05-09): tab toggle "This Week" | "Next Week".
+    // 0 = current week, 1 = next week. Drives the GET/PATCH/DELETE
+    // query param on every API call.
+    var currentWeekOffset = 0;
     // Goals for the optional Goal-link picker. Loaded once on init,
     // independent of app.js's allGoals (which loads async + may not be
     // ready when the panel first renders).
@@ -43,6 +48,26 @@
         slotsContainer = document.getElementById("weeklyFocusSlots");
         weekLabel = document.getElementById("weeklyFocusWeek");
         fallbackLabel = document.getElementById("weeklyFocusFallback");
+
+        // #157 — tab pill click handlers (added to the template).
+        var thisWeekTab = document.getElementById("weeklyFocusTabThis");
+        var nextWeekTab = document.getElementById("weeklyFocusTabNext");
+        if (thisWeekTab) {
+            thisWeekTab.addEventListener("click", function () {
+                if (currentWeekOffset !== 0) {
+                    currentWeekOffset = 0;
+                    loadFocus();
+                }
+            });
+        }
+        if (nextWeekTab) {
+            nextWeekTab.addEventListener("click", function () {
+                if (currentWeekOffset !== 1) {
+                    currentWeekOffset = 1;
+                    loadFocus();
+                }
+            });
+        }
 
         modal = document.getElementById("weeklyFocusPlanModal");
         modalFocus = document.getElementById("weeklyFocusPlanFocus");
@@ -77,7 +102,9 @@
 
     async function loadFocus() {
         try {
-            var data = await window.apiFetch("/api/weekly-focus");
+            var data = await window.apiFetch(
+                "/api/weekly-focus?week_offset=" + currentWeekOffset,
+            );
             state = data;
             render();
         } catch (err) {
@@ -85,7 +112,19 @@
         }
     }
 
+    function _refreshTabActive() {
+        var thisTab = document.getElementById("weeklyFocusTabThis");
+        var nextTab = document.getElementById("weeklyFocusTabNext");
+        if (thisTab) {
+            thisTab.classList.toggle("active", currentWeekOffset === 0);
+        }
+        if (nextTab) {
+            nextTab.classList.toggle("active", currentWeekOffset === 1);
+        }
+    }
+
     function render() {
+        _refreshTabActive();
         // Format the week header.
         if (state.week_start_date) {
             var ws = new Date(state.week_start_date + "T00:00:00");
@@ -94,7 +133,11 @@
             weekLabel.textContent =
                 "(" + _shortDate(ws) + " – " + _shortDate(we) + ")";
         }
-        fallbackLabel.hidden = !state.fallback_from;
+        // The carry-forward "fallback_from" hint only makes sense
+        // for the current-week tab. Hide it on next-week regardless
+        // (next-week starts blank by design — see service docstring).
+        fallbackLabel.hidden = !state.fallback_from
+            || (state.week_offset || 0) !== 0;
 
         // Build a slot_order → row lookup so empty slots render as
         // empty placeholders.
@@ -238,7 +281,8 @@
         _saveInflight[slotOrder] = true;
         try {
             var fresh = await window.apiFetch(
-                "/api/weekly-focus/" + slotOrder,
+                "/api/weekly-focus/" + slotOrder
+                + "?week_offset=" + currentWeekOffset,
                 {
                     method: "PATCH",
                     body: JSON.stringify({ text: text, goal_id: goalId }),
@@ -257,7 +301,8 @@
     async function clearSlot(slotOrder) {
         try {
             var fresh = await window.apiFetch(
-                "/api/weekly-focus/" + slotOrder,
+                "/api/weekly-focus/" + slotOrder
+                + "?week_offset=" + currentWeekOffset,
                 { method: "DELETE" }
             );
             // DELETE response includes the same display payload.
@@ -281,7 +326,8 @@
         pendingChanges = [];
         try {
             var result = await window.apiFetch(
-                "/api/weekly-focus/" + slotOrder + "/plan",
+                "/api/weekly-focus/" + slotOrder + "/plan"
+                + "?week_offset=" + currentWeekOffset,
                 { method: "POST", body: JSON.stringify({}) }
             );
             modalLoading.style.display = "none";

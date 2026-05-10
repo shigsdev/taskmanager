@@ -346,3 +346,95 @@ class TestPlanForFocus:
             assert normalized["suggested_tier"] == "this_week"
             assert normalized["type"] == "work"
             assert normalized["due_date"] is None
+
+
+# --- #157 next-week tab toggle -----------------------------------------------
+
+
+class TestWeekOffsetNextWeek:
+    """Locks #157: ?week_offset=1 reads/writes/plans the next ISO
+    week's slots without disturbing the current week's data."""
+
+    def test_get_next_week_returns_empty_when_no_rows(self, app):
+        from datetime import date
+        from weekly_focus_service import get_displayed_focus
+        today = date(2026, 5, 13)  # Wednesday this week
+        with app.app_context():
+            d = get_displayed_focus(today=today, week_offset=1)
+            assert d["week_start_date"] == "2026-05-18"  # next Monday
+            assert d["week_offset"] == 1
+            assert d["fallback_from"] is None  # no carry-forward into future
+            assert d["slots"] == []
+
+    def test_upsert_next_week_does_not_touch_this_week(self, app):
+        from datetime import date
+        from weekly_focus_service import get_displayed_focus, upsert_slot
+        today = date(2026, 5, 13)
+        with app.app_context():
+            upsert_slot(slot_order=1, text="this", today=today, week_offset=0)
+            upsert_slot(
+                slot_order=1, text="planning ahead", today=today, week_offset=1,
+            )
+            this_week = get_displayed_focus(today=today, week_offset=0)
+            next_week = get_displayed_focus(today=today, week_offset=1)
+            assert this_week["slots"][0]["text"] == "this"
+            assert next_week["slots"][0]["text"] == "planning ahead"
+            assert this_week["week_start_date"] != next_week["week_start_date"]
+
+    def test_upsert_invalid_week_offset_rejected(self, app):
+        from weekly_focus_service import upsert_slot
+        with app.app_context():
+            with pytest.raises(ValueError, match="week_offset"):
+                upsert_slot(slot_order=1, text="x", week_offset=2)
+            with pytest.raises(ValueError, match="week_offset"):
+                upsert_slot(slot_order=1, text="x", week_offset=-1)
+
+    def test_clear_next_week_does_not_touch_this_week(self, app):
+        from datetime import date
+        from weekly_focus_service import clear_slot, get_displayed_focus, upsert_slot
+        today = date(2026, 5, 13)
+        with app.app_context():
+            upsert_slot(slot_order=1, text="this", today=today, week_offset=0)
+            upsert_slot(slot_order=1, text="next", today=today, week_offset=1)
+            cleared = clear_slot(1, today=today, week_offset=1)
+            assert cleared is True
+            assert get_displayed_focus(today=today, week_offset=0)["slots"][0]["text"] == "this"
+            assert get_displayed_focus(today=today, week_offset=1)["slots"] == []
+
+    def test_no_carry_forward_for_next_week(self, app):
+        # Even if last week had rows, a fresh next-week query returns
+        # blank — the user shouldn't be tricked into thinking they
+        # already planned ahead by silently seeded text.
+        from datetime import date
+        from weekly_focus_service import get_displayed_focus, upsert_slot
+        last = date(2026, 5, 6)
+        today = date(2026, 5, 13)
+        with app.app_context():
+            upsert_slot(slot_order=1, text="last", today=last, week_offset=0)
+            d = get_displayed_focus(today=today, week_offset=1)
+            assert d["slots"] == []
+            assert d["fallback_from"] is None
+
+    def test_api_get_with_week_offset_query_param(self, authed_client):
+        # The endpoint reads ?week_offset=1 and forwards to the service.
+        resp = authed_client.get("/api/weekly-focus?week_offset=1")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["week_offset"] == 1
+
+    def test_api_invalid_week_offset_defaults_to_0(self, authed_client):
+        # Malformed param falls back to 0 silently — the panel must
+        # always render.
+        resp = authed_client.get("/api/weekly-focus?week_offset=abc")
+        assert resp.status_code == 200
+        assert resp.get_json()["week_offset"] == 0
+
+    def test_api_upsert_with_week_offset(self, authed_client):
+        resp = authed_client.patch(
+            "/api/weekly-focus/1?week_offset=1",
+            json={"text": "planning ahead"},
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["week_offset"] == 1
+        assert body["slots"][0]["text"] == "planning ahead"

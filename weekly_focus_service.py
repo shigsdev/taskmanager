@@ -105,40 +105,59 @@ def set_slot_count(n: int) -> int:
 # --- Read: what to display ---------------------------------------------------
 
 
-def get_displayed_focus(today: date | None = None) -> dict:
-    """Return the focus rows the panel should show today, plus the
-    slot count.
+def get_displayed_focus(
+    today: date | None = None, week_offset: int = 0,
+) -> dict:
+    """Return the focus rows the panel should show, plus the slot count.
+
+    Args:
+        today: Override for "today's date" — defaults to local today.
+        week_offset: 0 = current week (default), 1 = next week.
+            Negative values are accepted (past week) but only 0 and 1
+            are wired to the UI per #157 — option A tabs are "This
+            Week" and "Next Week".
 
     Strategy (matches user-confirmed spec 2026-05-09):
-      1. If rows exist for ``monday_of(today)``, return those.
-      2. Otherwise fall back to the most recent past week's rows
-         (carry-forward — last week's text remains visible until the
-         user edits).
-      3. If no rows exist at all, return empty list — first-run state.
+      week_offset=0 (current week, default behavior since 2026-05-09):
+        1. If rows exist for ``monday_of(today)``, return those.
+        2. Otherwise fall back to the most recent past week's rows
+           (carry-forward — last week's text remains visible until
+           the user edits).
+        3. If no rows exist at all, return empty list — first-run.
+      week_offset=1 (next week, added 2026-05-09 #157):
+        1. If rows exist for ``monday_of(today) + 7d``, return those.
+        2. Otherwise return empty (no carry-forward into the future —
+           the user is planning fresh; we don't want to seed them
+           with current-week's text). The fallback_from field stays
+           None.
 
     Soft-deleted rows (``is_active=False``) are excluded.
 
     Returns:
         ``{"slot_count": int, "week_start_date": ISO, "fallback_from":
-        ISO|None, "slots": [{slot_order, text, goal_id, goal_title}]}``
-        — ``fallback_from`` is the previous week's ISO if we're
-        carrying forward, else None (panel can show "Edit to update").
+        ISO|None, "slots": [{slot_order, text, goal_id, goal_title}],
+        "week_offset": int}`` — ``week_offset`` echoed so the client
+        can label tabs without needing to recompute.
     """
     today = today or local_today_date()
-    current_week = monday_of(today)
+    target_week = monday_of(today) + timedelta(days=7 * week_offset)
 
     rows = list(db.session.scalars(
         select(WeeklyFocus)
-        .where(WeeklyFocus.week_start_date == current_week)
+        .where(WeeklyFocus.week_start_date == target_week)
         .where(WeeklyFocus.is_active.is_(True))
         .order_by(WeeklyFocus.slot_order)
     ))
     fallback_from: date | None = None
-    if not rows:
+    # Carry-forward fallback ONLY for the current-week view. Future
+    # weeks (offset > 0) start blank — we don't want to silently seed
+    # next week with this week's focus and trick the user into
+    # thinking they already planned ahead.
+    if not rows and week_offset == 0:
         # Most recent past week.
         most_recent = db.session.scalar(
             select(WeeklyFocus.week_start_date)
-            .where(WeeklyFocus.week_start_date < current_week)
+            .where(WeeklyFocus.week_start_date < target_week)
             .where(WeeklyFocus.is_active.is_(True))
             .order_by(WeeklyFocus.week_start_date.desc())
             .limit(1)
@@ -163,7 +182,8 @@ def get_displayed_focus(today: date | None = None) -> dict:
 
     return {
         "slot_count": get_slot_count(),
-        "week_start_date": current_week.isoformat(),
+        "week_start_date": target_week.isoformat(),
+        "week_offset": week_offset,
         "fallback_from": fallback_from.isoformat() if fallback_from else None,
         "slots": [
             {
@@ -185,20 +205,30 @@ def upsert_slot(
     text: str,
     goal_id: uuid.UUID | None = None,
     today: date | None = None,
+    week_offset: int = 0,
 ) -> WeeklyFocus:
-    """Set the text + optional goal link for ``slot_order`` of THIS week.
+    """Set the text + optional goal link for ``slot_order`` of the
+    target week (current week by default; pass ``week_offset=1`` to
+    write to next week per #157).
 
-    If a row already exists for ``(this_week, slot_order)``, update it.
-    Otherwise create a new row. Past-week rows are NEVER touched —
-    history is preserved by always writing to the current week's row.
+    If a row already exists for ``(target_week, slot_order)``, update
+    it. Past-week rows are NEVER touched — history is preserved by
+    always writing to the target week's row.
 
     Validation:
       - slot_order must be in [1, get_slot_count()]
       - text must be non-empty after strip()
       - goal_id, if given, must exist in goals table
+      - week_offset must be 0 (this week) or 1 (next week) — write
+        access is intentionally bounded; you can't edit past weeks
+        through the panel.
     """
     today = today or local_today_date()
-    current_week = monday_of(today)
+    if not isinstance(week_offset, int) or week_offset not in (0, 1):
+        raise ValueError(
+            f"week_offset must be 0 (this week) or 1 (next week); got {week_offset}"
+        )
+    target_week = monday_of(today) + timedelta(days=7 * week_offset)
 
     slot_count = get_slot_count()
     if not isinstance(slot_order, int) or slot_order < 1 or slot_order > slot_count:
@@ -223,12 +253,12 @@ def upsert_slot(
 
     row = db.session.scalar(
         select(WeeklyFocus)
-        .where(WeeklyFocus.week_start_date == current_week)
+        .where(WeeklyFocus.week_start_date == target_week)
         .where(WeeklyFocus.slot_order == slot_order)
     )
     if row is None:
         row = WeeklyFocus(
-            week_start_date=current_week,
+            week_start_date=target_week,
             slot_order=slot_order,
             text=text,
             goal_id=goal_id,
@@ -243,18 +273,24 @@ def upsert_slot(
     return row
 
 
-def clear_slot(slot_order: int, today: date | None = None) -> bool:
-    """Soft-delete the row for ``(this_week, slot_order)``.
+def clear_slot(
+    slot_order: int, today: date | None = None, week_offset: int = 0,
+) -> bool:
+    """Soft-delete the row for ``(target_week, slot_order)``.
 
     Returns True if a row was cleared, False if no row existed (no-op).
-    Past weeks' rows are never touched — only the current week's slot
-    can be cleared via this path.
+    Past weeks' rows are never touched — only this week's or next
+    week's slot (#157) can be cleared via this path.
     """
     today = today or local_today_date()
-    current_week = monday_of(today)
+    if not isinstance(week_offset, int) or week_offset not in (0, 1):
+        raise ValueError(
+            f"week_offset must be 0 (this week) or 1 (next week); got {week_offset}"
+        )
+    target_week = monday_of(today) + timedelta(days=7 * week_offset)
     row = db.session.scalar(
         select(WeeklyFocus)
-        .where(WeeklyFocus.week_start_date == current_week)
+        .where(WeeklyFocus.week_start_date == target_week)
         .where(WeeklyFocus.slot_order == slot_order)
         .where(WeeklyFocus.is_active.is_(True))
     )
@@ -521,8 +557,19 @@ def _validate_change(
     return None
 
 
-def plan_for_focus(slot_order: int, today: date | None = None) -> dict:
+def plan_for_focus(
+    slot_order: int, today: date | None = None, week_offset: int = 0,
+) -> dict:
     """Run the AI plan for the slot's current focus statement.
+
+    Args:
+        slot_order: 1..N slot index.
+        today: Override "today" — defaults to local today.
+        week_offset: 0 = this week's focus (default), 1 = next week's
+            focus (#157). Carry-forward fallback to the most recent
+            past week applies ONLY at offset=0 — planning for next
+            week against an empty next-week slot raises ValueError
+            because there's nothing to plan FROM.
 
     Returns ``{"focus": str, "linked_goal": str|None, "changes": [...]}``.
     Caller is the API layer; raises RuntimeError when the API key is
@@ -531,19 +578,23 @@ def plan_for_focus(slot_order: int, today: date | None = None) -> dict:
     endpoints.
     """
     today = today or local_today_date()
-    current_week = monday_of(today)
-    # Find the slot's row — fall back to most recent past week if
-    # current week has nothing (matches get_displayed_focus behavior).
+    if not isinstance(week_offset, int) or week_offset not in (0, 1):
+        raise ValueError(
+            f"week_offset must be 0 (this week) or 1 (next week); got {week_offset}"
+        )
+    target_week = monday_of(today) + timedelta(days=7 * week_offset)
+    # Find the slot's row.
     row = db.session.scalar(
         select(WeeklyFocus)
-        .where(WeeklyFocus.week_start_date == current_week)
+        .where(WeeklyFocus.week_start_date == target_week)
         .where(WeeklyFocus.slot_order == slot_order)
         .where(WeeklyFocus.is_active.is_(True))
     )
-    if row is None:
+    # Carry-forward fallback only at offset=0 (matches get_displayed_focus).
+    if row is None and week_offset == 0:
         most_recent = db.session.scalar(
             select(WeeklyFocus.week_start_date)
-            .where(WeeklyFocus.week_start_date < current_week)
+            .where(WeeklyFocus.week_start_date < target_week)
             .where(WeeklyFocus.is_active.is_(True))
             .order_by(WeeklyFocus.week_start_date.desc())
             .limit(1)

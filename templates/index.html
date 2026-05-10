@@ -46,7 +46,15 @@
    static/weekly_focus.js on DOMContentLoaded. #}
 <section class="weekly-focus-panel" id="weeklyFocusPanel" aria-label="This week's focus">
     <header class="weekly-focus-header">
-        <h2><span class="weekly-focus-icon">🎯</span> This Week's Focus</h2>
+        <h2><span class="weekly-focus-icon">🎯</span> Focus</h2>
+        {# #157 (2026-05-09) — Option A locked: This Week / Next Week
+           tabs so the user can plan ahead before Monday rolls. #}
+        <div class="weekly-focus-tabs" role="tablist">
+            <button type="button" id="weeklyFocusTabThis"
+                    class="weekly-focus-tab active" role="tab">This Week</button>
+            <button type="button" id="weeklyFocusTabNext"
+                    class="weekly-focus-tab" role="tab">Next Week</button>
+        </div>
         <span class="weekly-focus-week" id="weeklyFocusWeek"></span>
         <span class="weekly-focus-fallback" id="weeklyFocusFallback" hidden>
             Carried forward — edit any slot to make it this week's
