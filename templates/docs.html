@@ -1482,6 +1482,23 @@ Skip this line (too short)</pre>
                 <li>Add repo variables: <code>BACKUP_REPO_URL</code> (e.g. <code>git@github.com:user/taskmanager-backups.git</code>), <code>DIGEST_FROM_EMAIL</code>, <code>DIGEST_TO_EMAIL</code>.</li>
                 <li>Verify by running the daily-backup workflow manually — should send a success email and push a file to the backup repo.</li>
             </ol>
+
+            <h3>One-time: install the workflow files</h3>
+            <p>
+                The workflow YAML files ship in <code>scripts/proposed-workflows/</code>
+                (not <code>.github/workflows/</code>) because the
+                automated push from the AI session uses a token
+                without the GitHub <code>workflow</code> scope.
+                Copy them to the right place via the GitHub web UI
+                (no scope needed when editing via the browser):
+            </p>
+            <ol>
+                <li>Go to your main repo → <strong>Add file → Create new file</strong>.</li>
+                <li>Filename: <code>.github/workflows/daily-backup.yml</code></li>
+                <li>Paste the contents of <code>scripts/proposed-workflows/daily-backup.yml</code> from this repo.</li>
+                <li>Repeat for <code>monthly-restore-drill.yml</code>.</li>
+                <li>Both workflows are then visible in the Actions tab and run on their cron schedule.</li>
+            </ol>
         </section>
     </main>
 </div>
