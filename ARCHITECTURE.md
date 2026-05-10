@@ -600,6 +600,88 @@ the code.
 
 ---
 
+## Backups (#154, 2026-05-09)
+
+Threat model: Railway-side incident (regional outage, account
+lockout, billing snafu, accidental project deletion) takes both the
+data and any Railway-resident backups. Mitigation: encrypted dumps
+live in a SEPARATE GitHub repo, written by a runner that lives outside
+Railway entirely.
+
+### Daily backup pipeline
+
+```
+GitHub Actions (cron 07:30 UTC daily) on the main repo
+        ↓
+scripts/backup_to_github.py
+        ↓
+pg_dump --format=custom $DATABASE_URL → bytes
+        ↓
+Fernet.encrypt(bytes, $BACKUP_FERNET_KEY) → ciphertext
+        ↓
+git clone + drop *.dump.fernet + prune >7d + git push
+        ↓
+private GitHub repo: $BACKUP_REPO_URL (e.g. user/taskmanager-backups)
+        ↓
+SendGrid status email to $DIGEST_TO_EMAIL (subject ✓ or ✗)
+```
+
+### Monthly restore drill
+
+First of every month at 08:00 UTC:
+
+```
+GitHub Actions runner spins up postgres:16 service container
+        ↓
+scripts/restore_drill.py: clone backup repo → pick latest .dump.fernet
+        ↓
+Fernet.decrypt with $BACKUP_FERNET_KEY → original pg_dump custom bytes
+        ↓
+pg_restore --clean --if-exists into scratch container
+        ↓
+psycopg row-count compare: scratch vs live within ±5%
+        ↓
+Email PASS or FAIL to $DIGEST_TO_EMAIL
+```
+
+A backup you've never restored is a 50/50 backup. The drill catches
+ciphertext corruption, key rotation drift, and pg_restore version
+skew before the day you actually need to restore.
+
+### Files
+
+- `scripts/backup_to_github.py` — daily backup pipeline.
+- `scripts/restore_drill.py` — monthly restore validation.
+- `.github/workflows/daily-backup.yml` — daily cron + manual dispatch.
+- `.github/workflows/monthly-restore-drill.yml` — monthly cron + manual.
+- `tests/test_backup_to_github.py` — Fernet round-trip + retention prune logic.
+
+### Required secrets / variables (configured in main repo's GitHub settings)
+
+| Name | Type | Purpose |
+|---|---|---|
+| `DATABASE_URL` | secret | Railway Postgres URL (for pg_dump source + drill comparison) |
+| `BACKUP_FERNET_KEY` | secret | 44-char Fernet key (also stored in 1Password for restore) |
+| `BACKUP_REPO_DEPLOY_KEY` | secret | SSH private key with write access to the backups repo |
+| `SENDGRID_API_KEY` | secret | reuse the app's existing key |
+| `BACKUP_REPO_URL` | variable | e.g. `git@github.com:user/taskmanager-backups.git` |
+| `DIGEST_FROM_EMAIL` | variable | reuse |
+| `DIGEST_TO_EMAIL` | variable | reuse — backup status emails go here |
+
+### Defense-in-depth
+
+- The backup repo is **private** AND the dumps are **Fernet-encrypted** before
+  upload — neither alone is sufficient. A compromised repo without the key
+  yields opaque ciphertext; a leaked key without the repo is useless.
+- The Fernet key never lives in the main repo, the backups repo, or any
+  log line. Stored in GitHub Actions secrets (encrypted, masked in workflow
+  logs) and a copy in 1Password for human-restore use.
+- `.gitignore` covers `*.dump`, `*.dump.fernet`, and `*.sql` so a
+  fat-fingered `git add .` can't accidentally commit a dump or its
+  encryption key to the main repo.
+
+---
+
 ## Scan pipeline (tasks OR goals)
 
 The same OCR → Claude pipeline serves two destinations, picked by a

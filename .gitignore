@@ -69,3 +69,11 @@ Thumbs.db
 # Local-only binaries (gitleaks, etc. — installed via
 # scripts/install_dev_tools.sh, not checked in)
 tools/
+
+# Backups (#154, 2026-05-09): never commit raw or encrypted dumps to
+# the main repo. Encrypted dumps live in the separate taskmanager-backups
+# repo only. Plaintext dumps should never exist on disk except for the
+# brief moment between pg_dump and Fernet encrypt.
+*.dump
+*.dump.fernet
+*.sql
