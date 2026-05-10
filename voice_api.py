@@ -192,6 +192,7 @@ def confirm(email: str):  # noqa: ARG001
     # every dictated project was silently becoming a junk task with
     # "(project)" in the title).
     task_candidates = []
+    recurring_candidates = []  # #155 — candidates with `repeat` go here
     goal_candidates = []
     project_candidates = []
     skipped_empty = 0  # PR24 TD-2: surface silent skips back to the user
@@ -227,10 +228,29 @@ def confirm(email: str):  # noqa: ARG001
                 "status": "not_started",
                 "included": c.get("included", True),
             })
+        elif isinstance(c.get("repeat"), dict) and c["repeat"].get("frequency"):
+            # #155 (2026-05-09): user clicked "↻ Make recurring" on the
+            # review screen — this candidate becomes a RecurringTask
+            # template instead of a one-off task.
+            recurring_candidates.append(c)
         else:
             task_candidates.append(c)
 
     tasks = create_tasks_from_candidates(task_candidates, source_prefix="voice")
+
+    # #155: route recurring candidates to the template create flow.
+    recurring_created: list = []
+    if recurring_candidates:
+        from recurring_service import create_recurring_template_from_voice_candidate
+        for rc in recurring_candidates:
+            try:
+                rec = create_recurring_template_from_voice_candidate(rc)
+                if rec is not None:
+                    recurring_created.append(rec)
+            except Exception:  # noqa: BLE001
+                # Don't let one bad candidate kill the whole batch — the
+                # user can re-create it manually if it doesn't appear.
+                pass
 
     goals_created = []
     if goal_candidates:
@@ -245,7 +265,10 @@ def confirm(email: str):  # noqa: ARG001
         )
 
     response = {
-        "created": len(tasks) + len(goals_created) + len(projects_created),
+        "created": (
+            len(tasks) + len(goals_created)
+            + len(projects_created) + len(recurring_created)
+        ),
         "tasks": [
             {"id": str(t.id), "title": t.title, "tier": t.tier.value}
             for t in tasks
@@ -257,6 +280,11 @@ def confirm(email: str):  # noqa: ARG001
         "projects": [
             {"id": str(p.id), "name": p.name, "type": p.type.value}
             for p in projects_created
+        ],
+        "recurring": [
+            {"id": str(r.id), "title": r.title,
+             "frequency": r.frequency.value if r.frequency else None}
+            for r in recurring_created
         ],
     }
     if skipped_empty > 0:

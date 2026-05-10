@@ -3762,3 +3762,67 @@ table.quality-gates code {
     gap: 8px;
     margin-top: 12px;
 }
+
+
+/* === #155 (2026-05-09): voice memo "Make recurring" modal === */
+.voice-recur-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 250;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.voice-recur-dialog {
+    background: var(--surface, #fff);
+    border-radius: 8px;
+    padding: 16px 20px;
+    width: 90%;
+    max-width: 420px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+.voice-recur-dialog h3 {
+    margin: 0 0 12px;
+    font-size: 1rem;
+}
+.voice-recur-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.voice-recur-row label {
+    flex-basis: 130px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+.voice-recur-row select,
+.voice-recur-row input {
+    flex: 1;
+    padding: 4px 6px;
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+.voice-recur-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+}
+.voice-candidate-recur-btn {
+    margin-left: 4px;
+    padding: 2px 8px;
+    border: 1px dashed var(--border, #e5e7eb);
+    background: transparent;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.voice-candidate-recur-btn:hover {
+    background: var(--accent, #2980b9);
+    color: #fff;
+    border-color: var(--accent, #2980b9);
+}

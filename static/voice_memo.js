@@ -568,7 +568,163 @@
             row.appendChild(hint);
         }
 
+        // #155 (2026-05-09): "Make recurring" button per candidate.
+        // Voice memos today create one-off tasks; if the user
+        // dictated "every Monday until June 15" the recurrence intent
+        // is lost. Click this button → modal pre-filled with Claude's
+        // inferred recurrence (or empty if none) → confirm creates
+        // the task as a recurring template instead of a one-off.
+        // Only relevant for the "task" route — recurring projects /
+        // recurring goals don't exist as a model.
+        if ((candidate.route || "task") === "task") {
+            const recurBtn = document.createElement("button");
+            recurBtn.type = "button";
+            recurBtn.className = "voice-candidate-recur-btn";
+            recurBtn.textContent = candidate.repeat
+                ? "↻ Recurring (" + (candidate.repeat.frequency || "?") + ")"
+                : "↻ Make recurring";
+            recurBtn.title =
+                "Open the recurring-template editor pre-filled with what Claude heard";
+            recurBtn.addEventListener("click", function () {
+                openRecurringModal(idx);
+            });
+            row.appendChild(recurBtn);
+        }
+
         return row;
+    }
+
+    // #155 (2026-05-09): "Make recurring" modal.
+    // Opens a small inline form pre-filled with Claude's inferred
+    // repeat (frequency, day_of_week, day_of_month, end_date). User
+    // can override or clear. On Save, the candidate gets a `repeat`
+    // object attached; on confirm, the candidate is routed to the
+    // recurring-template create flow instead of a one-off task.
+    function openRecurringModal(idx) {
+        const cand = currentCandidates[idx];
+        const existing = cand.repeat || {};
+
+        const overlay = document.createElement("div");
+        overlay.className = "voice-recur-overlay";
+        overlay.addEventListener("click", function (e) {
+            if (e.target === overlay) close();
+        });
+
+        const dialog = document.createElement("div");
+        dialog.className = "voice-recur-dialog";
+        dialog.setAttribute("role", "dialog");
+        dialog.setAttribute("aria-label", "Make recurring");
+
+        const h = document.createElement("h3");
+        h.textContent = "Make recurring: " + (cand.title || "(untitled)");
+        dialog.appendChild(h);
+
+        const freqRow = document.createElement("div");
+        freqRow.className = "voice-recur-row";
+        freqRow.innerHTML = '<label>Frequency</label>';
+        const freqSel = document.createElement("select");
+        [
+            ["", "— Not recurring —"],
+            ["daily", "Daily"],
+            ["weekdays", "Weekdays (Mon-Fri)"],
+            ["weekly", "Weekly"],
+            ["monthly_date", "Monthly (by date)"],
+            ["monthly_nth_weekday", "Monthly (by Nth weekday)"],
+        ].forEach(function (pair) {
+            const opt = document.createElement("option");
+            opt.value = pair[0];
+            opt.textContent = pair[1];
+            if (pair[0] === (existing.frequency || "")) opt.selected = true;
+            freqSel.appendChild(opt);
+        });
+        freqRow.appendChild(freqSel);
+        dialog.appendChild(freqRow);
+
+        const dowRow = document.createElement("div");
+        dowRow.className = "voice-recur-row";
+        dowRow.innerHTML = '<label>Day of week</label>';
+        const dowSel = document.createElement("select");
+        [["", "—"], ["0", "Mon"], ["1", "Tue"], ["2", "Wed"], ["3", "Thu"],
+         ["4", "Fri"], ["5", "Sat"], ["6", "Sun"]].forEach(function (pair) {
+            const opt = document.createElement("option");
+            opt.value = pair[0];
+            opt.textContent = pair[1];
+            if (existing.day_of_week !== undefined
+                && existing.day_of_week !== null
+                && String(existing.day_of_week) === pair[0]) {
+                opt.selected = true;
+            }
+            dowSel.appendChild(opt);
+        });
+        dowRow.appendChild(dowSel);
+        dialog.appendChild(dowRow);
+
+        const domRow = document.createElement("div");
+        domRow.className = "voice-recur-row";
+        domRow.innerHTML = '<label>Day of month</label>';
+        const domInput = document.createElement("input");
+        domInput.type = "number";
+        domInput.min = "1";
+        domInput.max = "31";
+        domInput.placeholder = "1-31";
+        if (existing.day_of_month) domInput.value = String(existing.day_of_month);
+        domRow.appendChild(domInput);
+        dialog.appendChild(domRow);
+
+        const endRow = document.createElement("div");
+        endRow.className = "voice-recur-row";
+        endRow.innerHTML = '<label>End date (optional)</label>';
+        const endInput = document.createElement("input");
+        endInput.type = "date";
+        if (existing.end_date) endInput.value = existing.end_date;
+        endRow.appendChild(endInput);
+        dialog.appendChild(endRow);
+
+        const btnRow = document.createElement("div");
+        btnRow.className = "voice-recur-actions";
+        const saveBtn = document.createElement("button");
+        saveBtn.type = "button";
+        saveBtn.className = "btn btn-primary";
+        saveBtn.textContent = "Save";
+        saveBtn.addEventListener("click", function () {
+            const freq = freqSel.value;
+            if (!freq) {
+                // User picked "Not recurring" → drop any existing repeat.
+                delete currentCandidates[idx].repeat;
+            } else {
+                currentCandidates[idx].repeat = {
+                    frequency: freq,
+                    day_of_week: dowSel.value === "" ? null : Number(dowSel.value),
+                    day_of_month: domInput.value
+                        ? Number(domInput.value) : null,
+                    end_date: endInput.value || null,
+                };
+            }
+            close();
+            // Re-render the candidates so the button label updates.
+            const container = document.getElementById("voiceCandidates");
+            if (container) {
+                container.innerHTML = "";
+                currentCandidates.forEach(function (c, i) {
+                    container.appendChild(renderCandidate(c, i));
+                });
+            }
+        });
+        const cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "btn";
+        cancelBtn.textContent = "Cancel";
+        cancelBtn.addEventListener("click", close);
+        btnRow.appendChild(saveBtn);
+        btnRow.appendChild(cancelBtn);
+        dialog.appendChild(btnRow);
+
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+
+        function close() {
+            if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        }
     }
 
     async function confirmCandidates(onlySelected) {

@@ -677,3 +677,57 @@ def seed_defaults() -> list[RecurringTask]:
     if created:
         db.session.commit()
     return created
+
+
+def create_recurring_template_from_voice_candidate(
+    candidate: dict,
+) -> RecurringTask | None:
+    """Create a RecurringTask from a voice-memo review candidate (#155).
+
+    Voice-memo flow: user dictates a task, clicks "↻ Make recurring"
+    on the review screen, the modal returns a `repeat` object on the
+    candidate, the confirm endpoint routes the candidate here instead
+    of to ``create_tasks_from_candidates``.
+
+    The candidate's existing task fields (title, type) are reused.
+    The repeat object provides {frequency, day_of_week, day_of_month,
+    end_date} pre-filled by the modal (which seeded from Claude's
+    inference). project_id / goal_id / due_date from the candidate
+    are forwarded if set.
+
+    Returns None when the candidate is malformed (e.g. missing title
+    or frequency); caller silently skips so one bad row doesn't kill
+    the batch.
+    """
+    title = (candidate.get("title") or "").strip()
+    if not title:
+        return None
+    repeat = candidate.get("repeat") or {}
+    if not isinstance(repeat, dict):
+        return None
+    freq_str = repeat.get("frequency")
+    if not freq_str:
+        return None
+
+    type_str = candidate.get("type") if candidate.get("type") in (
+        "work", "personal",
+    ) else "personal"
+
+    # Build the data dict in the same shape create_recurring expects.
+    data = {
+        "title": title,
+        "type": type_str,
+        "frequency": freq_str,
+        "day_of_week": repeat.get("day_of_week"),
+        "day_of_month": repeat.get("day_of_month"),
+        "end_date": repeat.get("end_date"),
+    }
+    # Forward project / goal hints if Claude resolved them.
+    if candidate.get("project_id"):
+        data["project_id"] = candidate["project_id"]
+    if candidate.get("goal_id"):
+        data["goal_id"] = candidate["goal_id"]
+    try:
+        return create_recurring(data)
+    except Exception:  # noqa: BLE001 — bad shape; caller silently skips
+        return None
