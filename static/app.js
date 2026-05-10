@@ -693,10 +693,49 @@ function renderBoard() {
     // ONCE here, bucket by tier, look up O(1) inside the loop.
     const filtered = filteredTasks();
     const byTier = new Map();
+    // #161 (2026-05-09): the Today and Tomorrow panels are inclusive
+    // of due_date. A task with tier=this_week and due_date=today
+    // shows up on Today (and stays in This Week per its tier). Same
+    // for Tomorrow. Resolves the "tier vs due_date drift" UX bug
+    // where a task could be invisible on the Today panel even
+    // though its date said today. INBOX and FREEZER are excluded —
+    // INBOX needs explicit triage, FREEZER is a deliberate park.
+    const _today = new Date();
+    const _todayIso =
+        _today.getFullYear() + "-"
+        + String(_today.getMonth() + 1).padStart(2, "0") + "-"
+        + String(_today.getDate()).padStart(2, "0");
+    const _tomorrow = new Date(_today.getTime() + 86400000);
+    const _tomorrowIso =
+        _tomorrow.getFullYear() + "-"
+        + String(_tomorrow.getMonth() + 1).padStart(2, "0") + "-"
+        + String(_tomorrow.getDate()).padStart(2, "0");
+    const _seenInToday = new Set();
+    const _seenInTomorrow = new Set();
     for (const t of filtered) {
         const bucket = byTier.get(t.tier);
         if (bucket) bucket.push(t);
         else byTier.set(t.tier, [t]);
+        // Inclusive Today/Tomorrow: surface tasks where due_date
+        // matches even if the tier is elsewhere. Skip if tier is
+        // already today/tomorrow (no double-listing) AND skip if
+        // tier is inbox/freezer (excluded from inclusive view).
+        if (t.due_date && t.tier !== "inbox" && t.tier !== "freezer") {
+            if (t.due_date === _todayIso && t.tier !== "today"
+                && !_seenInToday.has(t.id)) {
+                _seenInToday.add(t.id);
+                const today = byTier.get("today");
+                if (today) today.push(t);
+                else byTier.set("today", [t]);
+            }
+            if (t.due_date === _tomorrowIso && t.tier !== "tomorrow"
+                && !_seenInTomorrow.has(t.id)) {
+                _seenInTomorrow.add(t.id);
+                const tomorrow = byTier.get("tomorrow");
+                if (tomorrow) tomorrow.push(t);
+                else byTier.set("tomorrow", [t]);
+            }
+        }
     }
     for (const tier of TIER_ORDER) {
         // #79: refresh the date / date-range below each header on every
