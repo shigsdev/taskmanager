@@ -326,6 +326,18 @@
             _lastRefresh = now;
             renderCalendar();
         });
+        // #160 (2026-05-09): polling backstop for the case where the
+        // user keeps the page foregrounded but state changes happen
+        // elsewhere (a phone PWA + a desktop browser editing the
+        // same data, or a recurring-spawn cron firing). Every 60s we
+        // re-fetch — same throttle as the app.js poll. Cheap, idempotent.
+        setInterval(() => {
+            if (document.visibilityState === "visible") renderCalendar();
+        }, 60_000);
+        // Expose renderCalendar so other modules (or DevTools) can
+        // force a refresh — useful for the future cross-tab consistency
+        // story (websockets / SSE per #160 option C).
+        window.renderCalendar = renderCalendar;
     }
 
     if (document.readyState === "loading") {
