@@ -2226,6 +2226,8 @@ function taskDetailOpen(task) {
     taskDetailPopulateProjects(task.type);
     document.getElementById("detailProject").value = task.project_id || "";
     document.getElementById("detailDueDate").value = task.due_date || "";
+    // #142 (2026-05-09): scope goals by type, same pattern as projects.
+    taskDetailPopulateGoals(task.type);
     document.getElementById("detailGoal").value = task.goal_id || "";
     const urlInput = document.getElementById("detailUrl");
     const urlOpen = document.getElementById("detailUrlOpen");
@@ -2309,6 +2311,8 @@ function taskDetailOpen(task) {
 
 function taskDetailToggleProject(type) {
     taskDetailPopulateProjects(type);
+    // #142 (2026-05-09): mirror the type-filter on goals too.
+    taskDetailPopulateGoals(type);
 }
 
 // #117 (PR53/PR56): UI mirror of the server-side #77 cascade. When
@@ -2484,14 +2488,29 @@ function _setupParentPicker(task) {
     input.onblur = () => setTimeout(() => { results.style.display = "none"; }, 200);
 }
 
-function taskDetailPopulateGoals() {
+function taskDetailPopulateGoals(filterType) {
     const sel = document.getElementById("detailGoal");
+    if (!sel) return;
+    const currentValue = sel.value;
     while (sel.options.length > 1) sel.remove(1);
-    for (const goal of allGoals) {
+    // #142 (2026-05-09, locked option A): strict bipartition by
+    // category. Pure helper in static/goal_filter_helpers.js so the
+    // mapping table is Jest-tested.
+    const filtered = (window.goalFilterHelpers && filterType)
+        ? window.goalFilterHelpers.filterGoalsByType(allGoals, filterType)
+        : (allGoals || []);
+    for (const goal of filtered) {
         const opt = document.createElement("option");
         opt.value = goal.id;
         opt.textContent = `${goal.title} (${goal.category})`;
         sel.appendChild(opt);
+    }
+    // Restore selection if it's still in the filtered list. If the
+    // user changed the type and the previously-selected goal no
+    // longer fits, the dropdown silently resets to "" — matches the
+    // project-side behavior and the user can re-pick.
+    if (currentValue && filtered.some((g) => g.id === currentValue)) {
+        sel.value = currentValue;
     }
 }
 
