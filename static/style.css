@@ -170,6 +170,14 @@ body {
     gap: 4px;
     padding: 6px 14px 0;
     margin-bottom: 4px;
+    /* #159 (2026-05-09): match the 1200px-centered pattern of every
+       other content bar (project-filter, task-search, goal-filter,
+       day-strip, tier-board). Without this the View pills sat
+       left-aligned at the viewport edge while everything below them
+       was centered — visually fragmented (user-reported with screenshot). */
+    max-width: 1200px;
+    margin-left: auto;
+    margin-right: auto;
 }
 .view-filter-btn {
     font-size: 0.8rem;
