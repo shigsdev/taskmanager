@@ -289,6 +289,27 @@ async function init() {
     // header counts are correct even before the user expands either.
     loadCompletedTasks();
     loadCancelledTasks();
+
+    // #153 (2026-05-09): /calendar's task lines navigate here with
+    // ?task=<id> when the user clicks a (potentially-truncated) cell
+    // line. Open the detail panel after the board has loaded.
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const openId = params.get("task");
+        if (openId) {
+            const full = await window.apiFetch("/api/tasks/" + openId);
+            if (full) {
+                taskDetailOpen(full);
+            }
+            // Strip the query param so a refresh doesn't re-open the
+            // panel and so the URL stays clean.
+            const url = new URL(window.location.href);
+            url.searchParams.delete("task");
+            window.history.replaceState({}, "", url.pathname + url.search);
+        }
+    } catch (e) {
+        console.warn("open-from-url failed:", e);
+    }
 }
 
 // --- Rendering ---------------------------------------------------------------

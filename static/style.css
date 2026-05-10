@@ -318,6 +318,13 @@ body {
     white-space: nowrap;
     cursor: grab;  /* #94 — affordance: tasks are draggable */
 }
+/* #153 (2026-05-09): clickable task lines navigate to / with
+   ?task=<id> on click; drag still works on grab. Subtle hover so
+   the user knows it's interactive. */
+.calendar-cell-tasks li.calendar-task-link:hover {
+    background: var(--accent, #2980b9);
+    color: #fff;
+}
 .calendar-cell-tasks li.dragging,
 .calendar-unscheduled-list li.dragging {
     opacity: 0.5;

@@ -135,6 +135,22 @@
                     // tier panels to drag from.
                     li.draggable = true;
                     li.dataset.taskId = t.id;
+                    // #153 (2026-05-09): click on a task line opens the
+                    // task detail panel. Without this, long titles
+                    // truncated with ellipsis had no full-text affordance
+                    // and the user couldn't edit a task from /calendar
+                    // without leaving the page. Click and drag are
+                    // distinguished by the browser natively — a
+                    // mousedown→mousemove→mouseup sequence fires
+                    // dragstart/dragend, while a fast mousedown→mouseup
+                    // (no movement) fires click. Both wired here.
+                    li.classList.add("calendar-task-link");
+                    li.addEventListener("click", function () {
+                        // Detail panel lives on the home page (index.html);
+                        // navigate there with ?task=<id> and let app.js'
+                        // open-from-url hook do the rest.
+                        window.location.href = "/?task=" + encodeURIComponent(t.id);
+                    });
                     li.addEventListener("dragstart", function (e) {
                         li.classList.add("dragging");
                         if (e.dataTransfer) {
