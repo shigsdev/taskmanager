@@ -1441,64 +1441,259 @@ Skip this line (too short)</pre>
                 Backups exist to protect against that exact scenario.
             </p>
 
-            <h3>What runs automatically</h3>
+            <p>
+                <strong>Quick summary of what you'll set up:</strong>
+                A daily GitHub Actions job dumps your Railway Postgres,
+                encrypts the dump with a Fernet key, and pushes the
+                ciphertext to a SECOND private GitHub repo. A monthly
+                drill restores the latest dump into a scratch Postgres
+                and verifies row counts match the live DB. Both runs
+                email you the result.
+            </p>
+
+            <p>
+                <strong>Time to complete first-time setup:</strong>
+                about 25 minutes. After that it runs on its own.
+            </p>
+
+            <h3>How the pieces fit together</h3>
             <ul>
-                <li><strong>Daily backup</strong> — every day at 03:30 ET (07:30 UTC). Runs as a GitHub Actions workflow OUTSIDE Railway, so a Railway-side incident can't take both the data and the backup runner. Pulls a <code>pg_dump --format=custom</code> of the live Postgres, encrypts it with a Fernet key (same encryption primitive used for OAuth tokens), and pushes the ciphertext blob to a private GitHub repo (<code>taskmanager-backups</code>). Last 7 days kept; older ones auto-pruned.</li>
-                <li><strong>Monthly restore drill</strong> — first of every month at 04:00 ET. Pulls the latest dump, decrypts it, restores into a scratch Postgres in the GitHub Actions runner, and validates that row counts match the live DB within ±5%. Catches dump corruption, key drift, and pg_restore version skew BEFORE the day you actually need to restore.</li>
-                <li><strong>Status emails</strong> — every backup and every drill sends a result email to your <code>DIGEST_TO_EMAIL</code> (same address as the daily digest). Subject starts with <strong>OK</strong> for success or <strong>FAIL</strong> for failure so the bad ones are hard to miss in inbox triage.</li>
+                <li><strong>Daily backup workflow</strong> — every day at 03:30 ET (07:30 UTC). Runs OUTSIDE Railway in GitHub Actions, so a Railway-side incident can't take both the data and the backup runner. Pulls a <code>pg_dump --format=custom</code> of the live Postgres, encrypts with Fernet, pushes ciphertext to a private GitHub repo (e.g. <code>shigsdev/taskmanager-backups</code>). Last 7 days kept; older auto-pruned.</li>
+                <li><strong>Monthly restore drill</strong> — first of every month at 04:00 ET. Pulls the latest dump, decrypts, restores into a scratch Postgres inside the GitHub Actions runner, validates row counts match the live DB within ±5%. Catches dump corruption, key drift, and pg_restore version skew BEFORE the day you actually need to restore.</li>
+                <li><strong>Status emails</strong> — every backup AND every drill sends a result email to your <code>DIGEST_TO_EMAIL</code> (same address as the daily digest). Subject starts with <strong>OK</strong> for success, <strong>FAIL</strong> for failure.</li>
             </ul>
 
-            <h3>What you control</h3>
-            <ul>
-                <li><strong>Encryption key</strong> — stored as a GitHub Actions secret (<code>BACKUP_FERNET_KEY</code>) AND in 1Password. The key NEVER lands in any repo. Without the key, the backup files are unreadable bytes — even if someone got read access to the backup repo.</li>
-                <li><strong>Retention</strong> — 7 daily snapshots. To extend, edit <code>RETENTION_DAYS</code> in <code>scripts/backup_to_github.py</code>.</li>
-                <li><strong>Trigger on demand</strong> — both workflows have a manual <code>workflow_dispatch</code> trigger. Go to the Actions tab on the main repo, pick the workflow, click "Run workflow."</li>
-            </ul>
+            <hr>
 
-            <h3>How to restore (if Railway is down or data is lost)</h3>
+            <h3>Step-by-step setup (one-time, ~25 minutes)</h3>
+
+            <p>
+                Each step is independent and idempotent — if you stop
+                halfway, you can pick up where you left off.
+            </p>
+
+            <h4>Step 1 of 7 — Create the backups repository (~2 min)</h4>
             <ol>
+                <li>Open GitHub in your browser. Click the <strong>+</strong> in the top-right → <strong>New repository</strong>.</li>
+                <li>Repository name: <code>taskmanager-backups</code> (or any name; just remember it for later).</li>
+                <li>Owner: same account as the main <code>taskmanager</code> repo.</li>
+                <li>Set visibility to <strong>Private</strong>. (This is your second line of defense; the first is the Fernet encryption you'll add in Step 3.)</li>
+                <li>Check <strong>Add a README file</strong> so the repo has an initial commit. The backup script needs an existing branch to push onto.</li>
+                <li>Click <strong>Create repository</strong>.</li>
+                <li>Copy the SSH URL — looks like <code>git@github.com:&lt;your-username&gt;/taskmanager-backups.git</code>. You'll paste it in Step 5.</li>
+            </ol>
+
+            <h4>Step 2 of 7 — Generate an SSH deploy key (~3 min)</h4>
+            <p>
+                The daily backup needs to push to the new repo. Each
+                workflow run starts on a fresh GitHub-hosted VM with
+                no credentials, so we install an SSH key that has
+                write access to <em>only</em> the backups repo (least-
+                privilege; can't touch the main repo).
+            </p>
+            <ol>
+                <li>On your laptop, open a terminal in a temp directory: <code>cd /tmp</code> (Mac/Linux) or <code>cd $env:TEMP</code> (Windows PowerShell).</li>
+                <li>Generate the key pair: <code>ssh-keygen -t ed25519 -f backup-key -N "" -C "taskmanager backup bot"</code>
+                    <ul>
+                        <li><code>-t ed25519</code>: modern key type, smaller than RSA.</li>
+                        <li><code>-f backup-key</code>: output filenames will be <code>backup-key</code> (private) and <code>backup-key.pub</code> (public).</li>
+                        <li><code>-N ""</code>: empty passphrase — GitHub Actions can't type one.</li>
+                    </ul>
+                </li>
+                <li>Two files now exist: <code>backup-key</code> (the PRIVATE key — keep secret) and <code>backup-key.pub</code> (the PUBLIC key — safe to share).</li>
+            </ol>
+
+            <h4>Step 3 of 7 — Generate the Fernet encryption key (~2 min)</h4>
+            <p>
+                Even on a private repo, the dump is encrypted before
+                upload. Without this key, anyone who got read access
+                to the backup repo would see only opaque bytes.
+            </p>
+            <ol>
+                <li>On your laptop: <code>python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"</code></li>
+                <li>The output is a 44-character base64 string ending in <code>=</code>. Looks like: <code>aB1cD2eF3gH4iJ5kL6mN7oP8qR9sT0uV1wX2yZ3aB4=</code></li>
+                <li><strong>Save this key in 1Password</strong> as a new item titled "Taskmanager backup Fernet key". Without this key you cannot restore any backup. Losing it = losing the backups.</li>
+                <li>Keep the terminal output visible — you'll paste this key in Step 5.</li>
+            </ol>
+
+            <h4>Step 4 of 7 — Install the SSH public key on the backups repo (~2 min)</h4>
+            <ol>
+                <li>Go to <code>https://github.com/&lt;your-username&gt;/taskmanager-backups/settings/keys</code> (Settings → Deploy keys on the backups repo).</li>
+                <li>Click <strong>Add deploy key</strong>.</li>
+                <li>Title: <code>Taskmanager backup writer</code></li>
+                <li>Key: paste the contents of <code>backup-key.pub</code> (the PUBLIC file). On Mac/Linux: <code>cat backup-key.pub | pbcopy</code> or <code>xclip -sel clip &lt; backup-key.pub</code>. On Windows: <code>Get-Content backup-key.pub | Set-Clipboard</code>.</li>
+                <li><strong>Check "Allow write access"</strong>. The backup needs to push, not just read.</li>
+                <li>Click <strong>Add key</strong>.</li>
+            </ol>
+
+            <h4>Step 5 of 7 — Configure the secrets on the MAIN repo (~5 min)</h4>
+            <p>
+                The workflows run on the main <code>taskmanager</code>
+                repo (not the backups repo), so all secrets go here.
+                Go to <code>https://github.com/&lt;your-username&gt;/taskmanager/settings/secrets/actions</code>
+                (Settings → Secrets and variables → Actions, the
+                <strong>Secrets</strong> tab).
+            </p>
+            <p>Add each of the following four secrets. For each: click <strong>New repository secret</strong> → enter the name → paste the value → click <strong>Add secret</strong>.</p>
+            <ol>
+                <li><strong><code>BACKUP_REPO_DEPLOY_KEY</code></strong> — the PRIVATE SSH key. Paste the ENTIRE contents of the <code>backup-key</code> file (the one without <code>.pub</code>), starting with <code>-----BEGIN OPENSSH PRIVATE KEY-----</code> and ending with <code>-----END OPENSSH PRIVATE KEY-----</code>, including those lines and the trailing newline.</li>
+                <li><strong><code>BACKUP_FERNET_KEY</code></strong> — the Fernet key from Step 3. Paste the 44-character string only (no quotes, no spaces).</li>
+                <li><strong><code>DATABASE_URL</code></strong> — your Railway Postgres URL. Find it on Railway: open your project → click the Postgres service → Variables tab → copy the <code>DATABASE_URL</code> value. Starts with <code>postgresql://</code>.</li>
+                <li><strong><code>SENDGRID_API_KEY</code></strong> — same key the app already uses for the daily digest. Find it on Railway: open your project → click the Flask service → Variables tab → copy <code>SENDGRID_API_KEY</code>. Starts with <code>SG.</code>.</li>
+            </ol>
+
+            <p>
+                Now switch to the <strong>Variables</strong> tab (same
+                URL, second tab). Variables are like secrets but
+                non-sensitive — they appear in workflow logs in
+                plaintext, which is fine for these.
+            </p>
+            <ol>
+                <li><strong><code>BACKUP_REPO_URL</code></strong> — the SSH URL from Step 1, e.g. <code>git@github.com:shigsdev/taskmanager-backups.git</code>.</li>
+                <li><strong><code>DIGEST_FROM_EMAIL</code></strong> — same as the app's. Find it on Railway → Flask service → Variables.</li>
+                <li><strong><code>DIGEST_TO_EMAIL</code></strong> — same.</li>
+            </ol>
+
+            <h4>Step 6 of 7 — Install the workflow files (~5 min)</h4>
+            <p>
+                The two YAML files ship in
+                <code>scripts/proposed-workflows/</code> in the main
+                repo. They need to be at
+                <code>.github/workflows/</code> to actually trigger.
+                The automated push from the AI session couldn't put
+                them there directly because GitHub requires a special
+                token scope for that path; you create them via the
+                browser instead (no extra scope needed).
+            </p>
+            <ol>
+                <li>On the main <code>taskmanager</code> repo, click <strong>Add file</strong> → <strong>Create new file</strong> (top-right of the file list).</li>
+                <li>Filename: type <code>.github/workflows/daily-backup.yml</code> exactly. GitHub creates the directories automatically as you type slashes.</li>
+                <li>In another browser tab, open <code>scripts/proposed-workflows/daily-backup.yml</code> from the same repo. Click <strong>Raw</strong> → select all → copy.</li>
+                <li>Paste into the new-file editor. Scroll to the bottom, type a commit message like "Install daily backup workflow", click <strong>Commit changes</strong>.</li>
+                <li>Repeat the same flow for <code>.github/workflows/monthly-restore-drill.yml</code> using <code>scripts/proposed-workflows/monthly-restore-drill.yml</code> as the source.</li>
+                <li>Within ~10 seconds, both workflows appear in the repo's <strong>Actions</strong> tab.</li>
+            </ol>
+
+            <h4>Step 7 of 7 — Verify with a manual run (~5 min)</h4>
+            <ol>
+                <li>Go to the main repo's <strong>Actions</strong> tab.</li>
+                <li>Click <strong>Daily backup</strong> in the left sidebar.</li>
+                <li>Click <strong>Run workflow</strong> (top-right of the runs list) → keep the default branch → <strong>Run workflow</strong>.</li>
+                <li>Wait ~30 seconds for the run to appear, then click into it. Expand the <strong>Run backup</strong> step.</li>
+                <li>Expected log output: <code>[backup] pg_dump → taskmanager-...dump</code>, <code>[backup] dump OK — N bytes in M.Ms</code>, <code>[backup] encrypted → ...dump.fernet</code>, <code>[backup] cloning git@github.com:.../taskmanager-backups.git</code>, <code>[backup] pushed &lt;sha&gt;</code>, <code>[backup] email sent: HTTP 202</code>.</li>
+                <li>Check your inbox — within 60 seconds you should see an email with subject <code>[Taskmanager backup] OK daily backup OK — &lt;date&gt;</code>.</li>
+                <li>Visit your <code>taskmanager-backups</code> repo on GitHub — you should see one new file like <code>taskmanager-20260510T030000Z.dump.fernet</code>.</li>
+            </ol>
+
+            <p>
+                <strong>If anything fails:</strong> see the
+                <a href="#backups-troubleshooting">troubleshooting</a>
+                section below. The error log in the workflow run
+                output is the source of truth.
+            </p>
+
+            <p>
+                Once Step 7 succeeds, you're done. The daily backup
+                will run automatically at 03:30 ET, and the monthly
+                drill runs at 04:00 ET on the 1st.
+            </p>
+
+            <hr>
+
+            <h3 id="backups-troubleshooting">Troubleshooting</h3>
+
+            <p>
+                Open the failed workflow run on the main repo's
+                Actions tab. The "Run backup" step has the most
+                useful error line near the bottom.
+            </p>
+
+            <dl>
+                <dt><code>FATAL: pg_dump failed (exit 1): pg_dump: error: connection to server failed</code></dt>
+                <dd>The <code>DATABASE_URL</code> secret is wrong or stale. Re-copy from Railway. Common cause: Railway rotated the password during a service restart.</dd>
+
+                <dt><code>FATAL: git push failed: ... Permission denied (publickey)</code></dt>
+                <dd>The <code>BACKUP_REPO_DEPLOY_KEY</code> secret doesn't match the public key on the backups repo. Re-generate the pair (Step 2), re-install the public key (Step 4), re-paste the private key (Step 5).</dd>
+
+                <dt><code>FATAL: invalid Fernet key: ... Token must be 32 url-safe base64-encoded bytes</code></dt>
+                <dd>The <code>BACKUP_FERNET_KEY</code> secret got mangled during paste. Re-generate (Step 3), update the secret, run again.</dd>
+
+                <dt><code>[backup] email sent: HTTP 401</code></dt>
+                <dd>The <code>SENDGRID_API_KEY</code> secret is wrong. The backup itself succeeded; just the email didn't. Fix the key so future runs notify you on failure.</dd>
+
+                <dt>Workflow runs successfully but no email arrives</dt>
+                <dd>Check spam. SendGrid sometimes routes to spam on a new sender domain. If it stays in spam, mark "Not spam" once and Gmail learns it.</dd>
+
+                <dt>Daily backup doesn't trigger on schedule</dt>
+                <dd>GitHub Actions cron has a ~5-15 minute jitter and pauses for repos with no activity in 60+ days. To re-arm: push any commit to main, or trigger the workflow manually once.</dd>
+            </dl>
+
+            <hr>
+
+            <h3>How to restore from a backup</h3>
+
+            <p>
+                Two scenarios: you want to spin up a fresh local copy
+                for testing, OR Railway lost your data and you're
+                rebuilding production.
+            </p>
+
+            <h4>Scenario A: restore to a local Postgres (for testing / dev)</h4>
+            <ol>
+                <li>Clone the backups repo: <code>git clone git@github.com:&lt;you&gt;/taskmanager-backups.git</code></li>
+                <li>Pick the dump file you want — typically the newest: <code>ls -t taskmanager-backups/*.dump.fernet | head -1</code></li>
                 <li>Get the Fernet key from 1Password.</li>
-                <li>Clone <code>taskmanager-backups</code> locally.</li>
-                <li>Pick the most recent <code>*.dump.fernet</code>.</li>
-                <li>Decrypt: <code>python -c "from cryptography.fernet import Fernet; import sys; Fernet(sys.argv[1].encode()).decrypt(open(sys.argv[2],'rb').read())" &lt;KEY&gt; latest.dump.fernet &gt; latest.dump</code></li>
-                <li>Restore into a fresh Postgres: <code>pg_restore --clean --if-exists --dbname &lt;NEW_DATABASE_URL&gt; latest.dump</code></li>
-                <li>Point the Flask app at the new <code>DATABASE_URL</code> (Railway environment variable). It picks up on the next deploy.</li>
+                <li>Decrypt: <pre><code>python -c "
+from cryptography.fernet import Fernet
+import sys
+key = sys.argv[1].encode()
+src = sys.argv[2]
+out = src.removesuffix('.fernet')
+open(out, 'wb').write(Fernet(key).decrypt(open(src, 'rb').read()))
+print('wrote', out)
+" '&lt;FERNET_KEY&gt;' taskmanager-backups/&lt;file&gt;.dump.fernet</code></pre></li>
+                <li>Spin up a local Postgres (e.g. via Docker): <code>docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=test --name pg postgres:16</code></li>
+                <li>Restore: <code>pg_restore --clean --if-exists --no-owner --no-privileges --dbname postgresql://postgres:test@localhost:5432/postgres &lt;file&gt;.dump</code></li>
+                <li>You now have a working copy of the data. Point a local Flask instance at <code>postgresql://postgres:test@localhost:5432/postgres</code> to read it.</li>
             </ol>
 
-            <h3>Setup checklist (one-time)</h3>
-            <p>
-                For the backups to actually start running, the following
-                GitHub repo configuration is required (done once per
-                deployment of the app):
-            </p>
+            <h4>Scenario B: restore to production (Railway disaster)</h4>
             <ol>
-                <li>Create a private GitHub repo for the encrypted dumps (e.g. <code>taskmanager-backups</code>).</li>
-                <li>Generate an SSH deploy key pair: <code>ssh-keygen -t ed25519 -f backup-key</code></li>
-                <li>Add the PUBLIC key to <code>taskmanager-backups</code> → Settings → Deploy keys (with write access).</li>
-                <li>Add the PRIVATE key as a secret on THIS repo: <code>BACKUP_REPO_DEPLOY_KEY</code>.</li>
-                <li>Generate a Fernet key once: <code>python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"</code></li>
-                <li>Save the Fernet key in 1Password AND as a repo secret <code>BACKUP_FERNET_KEY</code>.</li>
-                <li>Add other secrets: <code>DATABASE_URL</code>, <code>SENDGRID_API_KEY</code>.</li>
-                <li>Add repo variables: <code>BACKUP_REPO_URL</code> (e.g. <code>git@github.com:user/taskmanager-backups.git</code>), <code>DIGEST_FROM_EMAIL</code>, <code>DIGEST_TO_EMAIL</code>.</li>
-                <li>Verify by running the daily-backup workflow manually — should send a success email and push a file to the backup repo.</li>
+                <li>Provision a new Railway Postgres service (or use an existing healthy one).</li>
+                <li>Copy the new service's <code>DATABASE_URL</code> from Railway → Variables.</li>
+                <li>Follow Scenario A steps 1-4 to decrypt the latest dump locally.</li>
+                <li>Restore into the new Railway DB: <code>pg_restore --clean --if-exists --no-owner --no-privileges --dbname "&lt;NEW_RAILWAY_DATABASE_URL&gt;" &lt;file&gt;.dump</code></li>
+                <li>Update the Flask service's <code>DATABASE_URL</code> env var on Railway to point at the new DB. The app picks up on the next deploy (Railway auto-restarts when env vars change).</li>
+                <li>Visit the app — confirm tasks/goals/projects are present.</li>
+                <li>Update the <code>DATABASE_URL</code> GitHub Actions secret to match the new DB so future backups dump the right place.</li>
             </ol>
 
-            <h3>One-time: install the workflow files</h3>
+            <hr>
+
+            <h3>Key rotation (recommended yearly, or after any leak suspicion)</h3>
             <p>
-                The workflow YAML files ship in <code>scripts/proposed-workflows/</code>
-                (not <code>.github/workflows/</code>) because the
-                automated push from the AI session uses a token
-                without the GitHub <code>workflow</code> scope.
-                Copy them to the right place via the GitHub web UI
-                (no scope needed when editing via the browser):
+                The Fernet key never expires, so rotation is optional.
+                But if you suspect the key leaked, rotating means
+                future backups can't be decrypted with the old key
+                even if it's compromised.
             </p>
             <ol>
-                <li>Go to your main repo → <strong>Add file → Create new file</strong>.</li>
-                <li>Filename: <code>.github/workflows/daily-backup.yml</code></li>
-                <li>Paste the contents of <code>scripts/proposed-workflows/daily-backup.yml</code> from this repo.</li>
-                <li>Repeat for <code>monthly-restore-drill.yml</code>.</li>
-                <li>Both workflows are then visible in the Actions tab and run on their cron schedule.</li>
+                <li>Generate a new Fernet key (Step 3).</li>
+                <li>Save it in 1Password under "Taskmanager backup Fernet key (rotated YYYY-MM-DD)". <strong>Do not delete the old key — old dumps still need it.</strong></li>
+                <li>Update the <code>BACKUP_FERNET_KEY</code> repo secret to the new key.</li>
+                <li>Manually trigger the daily-backup workflow. Confirm it succeeds.</li>
+                <li>From this point forward, new dumps use the new key. Dumps older than today still need the old key — keep both in 1Password indefinitely.</li>
             </ol>
+
+            <hr>
+
+            <h3>Operational details (knobs you can change)</h3>
+            <ul>
+                <li><strong>Retention window</strong> — edit <code>RETENTION_DAYS = 7</code> in <code>scripts/backup_to_github.py</code>. Older dumps auto-prune on every run.</li>
+                <li><strong>Schedule</strong> — edit the <code>cron:</code> lines in <code>.github/workflows/daily-backup.yml</code> and <code>monthly-restore-drill.yml</code>. GitHub crons are in UTC.</li>
+                <li><strong>Restore drill tolerance</strong> — edit <code>TOLERANCE = 0.05</code> in <code>scripts/restore_drill.py</code> (5% row-count drift allowed before FAIL).</li>
+                <li><strong>Disable temporarily</strong> — in the Actions tab, click the workflow → "..." menu → Disable workflow. Re-enable later.</li>
+            </ul>
         </section>
     </main>
 </div>
