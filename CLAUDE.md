@@ -315,7 +315,18 @@ Report.
   13. **Print view**: verify tasks are listed with correct tier grouping.
 
   **Cleanup:**
-  14. Stop the bypass server and delete `.env.dev-bypass` before committing
+  14. Stop the bypass server and delete `.env.dev-bypass` before committing.
+      The canonical teardown is `python scripts/stop_dev_bypass.py`
+      (cross-platform: Windows netstat + Unix lsof; finds any
+      process on port 5111, kills it, removes the marker file).
+      **Never leave `run_dev_bypass.py` running in a `Bash
+      run_in_background=true` task** — orphans show up as stale
+      "open tasks" the user has to manually kill (user-reported
+      2026-05-11). Prefer letting `run_all_gates.sh` manage the
+      bypass itself (it has a `trap`-EXIT cleanup); use
+      `mcp__Claude_Preview__preview_start`/`preview_stop` for
+      Phase 6 (lifecycle-managed); call `stop_dev_bypass.py`
+      explicitly for any ad-hoc starts.
 
   **What automated testing CANNOT cover** (tell the user to manually verify):
   - OAuth-protected pages on Railway (bypass is local-only)
