@@ -147,6 +147,16 @@ def upload(email: str):  # noqa: ARG001
             "type": c["type"],
             "tier": c["tier"],
             "due_date": c["due_date"],
+            # Forward the hint-resolution fields from
+            # _normalise_voice_candidates so the review UI's project /
+            # goal dropdowns pre-select and the "Heard project: ..."
+            # unresolved-hint note can render (#37). Without this
+            # passthrough, every dictated project silently dropped on
+            # the floor regardless of how clearly the user said it.
+            "project_id": c.get("project_id"),
+            "project_hint": c.get("project_hint"),
+            "goal_id": c.get("goal_id"),
+            "goal_hint": c.get("goal_hint"),
             "route": route,
             "included": True,
         })

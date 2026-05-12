@@ -325,6 +325,57 @@ class TestVoiceUpload:
         assert cands[1]["due_date"] is None
         assert all(c["included"] is True for c in cands)
 
+    def test_project_and_goal_hint_fields_round_trip_to_response(self, client, monkeypatch):
+        """Regression (2026-05-12): voice_api dropped project_id /
+        project_hint / goal_id / goal_hint when building candidates_out,
+        so the review UI's project dropdown never pre-selected the
+        project Claude resolved — every dictated project silently
+        landed with no project link. Assert all four fields survive
+        the round-trip from parse_voice_memo_to_tasks → response JSON.
+        """
+        _bypass_auth(monkeypatch)
+        monkeypatch.setenv("OPENAI_API_KEY", "fake-key")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+
+        with (
+            patch(
+                "voice_api.transcribe_audio",
+                return_value={
+                    "transcript": "Email Bob about the Q2 OKRs project.",
+                    "duration_seconds": 4.0,
+                    "cost_usd": 0.0004,
+                },
+            ),
+            patch(
+                "voice_api.parse_voice_memo_to_tasks",
+                return_value=[
+                    {
+                        "title": "Email Bob",
+                        "type": "work",
+                        "tier": "inbox",
+                        "due_date": None,
+                        "project_hint": "Q2 OKRs",
+                        "project_id": "proj-uuid-resolved",
+                        "goal_hint": "Hit Q2 targets",
+                        "goal_id": None,  # unresolved — still must surface
+                        "is_task": True,
+                    },
+                ],
+            ),
+        ):
+            resp = client.post(
+                "/api/voice-memo",
+                data={"audio": (io.BytesIO(b"audio"), "memo.webm", "audio/webm")},
+                content_type="multipart/form-data",
+            )
+
+        assert resp.status_code == 200
+        cand = resp.get_json()["candidates"][0]
+        assert cand["project_id"] == "proj-uuid-resolved"
+        assert cand["project_hint"] == "Q2 OKRs"
+        assert cand["goal_id"] is None
+        assert cand["goal_hint"] == "Hit Q2 targets"
+
     def test_empty_transcript_returns_empty_candidates_with_message(self, client, monkeypatch):
         """No speech detected → empty transcript, no Claude call,
         helpful 'no speech' message returned 200."""
