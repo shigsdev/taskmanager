@@ -128,6 +128,7 @@ EXPECTED_STATIC_FILES = (
     "static/reorder_helpers.js",
     "static/weekly_focus.js",
     "static/goal_filter_helpers.js",
+    "static/date_helpers.js",
     "static/manifest.json",
     "static/favicon.svg",  # #45 — browser tab icon
 )

@@ -32,6 +32,11 @@
        deps; loaded globally so every page that may host the detail
        panel has it before page-specific scripts run. #}
     <script src="{{ url_for('static', filename='tier_helpers.js') }}"></script>
+    {# Bug 2026-05-11: app.js + plan.js were using `new Date().toISOString().slice(0,10)`
+       which returns UTC date. Late-evening EDT (8 PM = 00 UTC next day) rolled a
+       day early → tasks due today flagged as overdue. Pure local-date helper here,
+       loaded globally before page-specific scripts run. #}
+    <script src="{{ url_for('static', filename='date_helpers.js') }}"></script>
 </head>
 <body>
     <header class="nav">

@@ -1303,7 +1303,12 @@ function taskCardEl(task) {
         }
     });
 
-    const today = new Date().toISOString().slice(0, 10);
+    // User-reported 2026-05-11: at 8:18 PM EDT on May 11, tasks
+    // with due_date=2026-05-11 showed as "overdue". Root cause was
+    // a UTC-slice that rolled past midnight ahead of local. Pure
+    // local-date helper (Jest-tested in date_helpers.test.js)
+    // prevents the recurrence.
+    const today = window.dateHelpers.localIsoDate();
 
     // Triage checkbox (inbox only) — kept for the existing inbox-triage flow.
     const triageCheck = document.createElement("input");

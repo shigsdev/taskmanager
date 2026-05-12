@@ -26,7 +26,9 @@
         var daysUntilMon = (7 - mon) % 7;
         if (daysUntilMon === 0) { daysUntilMon = 7; }
         d.setDate(d.getDate() + daysUntilMon);
-        return d.toISOString().slice(0, 10);
+        // Pure local-date helper — toISOString is UTC and rolls a
+        // day early in late-evening negative-offset zones.
+        return window.dateHelpers.localIsoDate(d);
     }
 
     function tierLabel(tier) {

@@ -49,6 +49,8 @@ def _pids_on_port_windows(port: int) -> list[int]:
         sys.stderr.write(f"could not run netstat: {e}\n")
         return []
     pids: set[int] = set()
+    import contextlib
+
     needle = f":{port} "
     for line in out.splitlines():
         if needle not in line or "LISTENING" not in line:
@@ -57,10 +59,8 @@ def _pids_on_port_windows(port: int) -> list[int]:
         parts = line.split()
         if not parts:
             continue
-        try:
+        with contextlib.suppress(ValueError):
             pids.add(int(parts[-1]))
-        except ValueError:
-            pass
     return sorted(pids)
 
 
