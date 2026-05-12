@@ -1775,9 +1775,22 @@ async function bulkMoveTier(tier) {
 // --- Task mutations ----------------------------------------------------------
 
 async function taskMoveTier(id, tier) {
+    // User-reported 2026-05-11: clicking "Tomorrow" on a today card
+    // left the date at today, so the inclusive Today panel (#161)
+    // kept the card visible there — looked like the click did nothing.
+    // Mirror the drag-to-tier-column behavior (PR101): when target is
+    // today/tomorrow, ALSO bump the date to the matching ISO.
+    // dueDateForTier returns the canonical date for today/tomorrow and
+    // null for everything else, so this naturally no-ops for week
+    // ranges / inbox / freezer / backlog.
+    const body = { tier };
+    if (window.tierHelpers) {
+        const iso = window.tierHelpers.dueDateForTier(tier);
+        if (iso) body.due_date = iso;
+    }
     await apiFetch(`${API}/${id}`, {
         method: "PATCH",
-        body: JSON.stringify({ tier }),
+        body: JSON.stringify(body),
     });
     await loadTasks();
 }
