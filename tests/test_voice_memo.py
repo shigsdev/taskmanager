@@ -332,6 +332,11 @@ class TestVoiceUpload:
         project Claude resolved — every dictated project silently
         landed with no project link. Assert all four fields survive
         the round-trip from parse_voice_memo_to_tasks → response JSON.
+
+        Two candidates exercise BOTH the resolved-id and the
+        unresolved-hint branches for project AND goal, so the symmetric
+        contract is pinned for both kinds — a future refactor can't
+        quietly regress one direction without the other.
         """
         _bypass_auth(monkeypatch)
         monkeypatch.setenv("OPENAI_API_KEY", "fake-key")
@@ -341,14 +346,15 @@ class TestVoiceUpload:
             patch(
                 "voice_api.transcribe_audio",
                 return_value={
-                    "transcript": "Email Bob about the Q2 OKRs project.",
-                    "duration_seconds": 4.0,
-                    "cost_usd": 0.0004,
+                    "transcript": "Email Bob about Q2 OKRs. Run 5K for the marathon goal.",
+                    "duration_seconds": 6.0,
+                    "cost_usd": 0.0006,
                 },
             ),
             patch(
                 "voice_api.parse_voice_memo_to_tasks",
                 return_value=[
+                    # Candidate 1: project resolved, goal unresolved.
                     {
                         "title": "Email Bob",
                         "type": "work",
@@ -357,7 +363,21 @@ class TestVoiceUpload:
                         "project_hint": "Q2 OKRs",
                         "project_id": "proj-uuid-resolved",
                         "goal_hint": "Hit Q2 targets",
-                        "goal_id": None,  # unresolved — still must surface
+                        "goal_id": None,  # unresolved — must still surface
+                        "is_task": True,
+                    },
+                    # Candidate 2: goal resolved, project unresolved. Locks
+                    # the symmetric guarantee — goal_id round-trips just
+                    # like project_id (the original bug dropped both).
+                    {
+                        "title": "Run 5K",
+                        "type": "personal",
+                        "tier": "this_week",
+                        "due_date": None,
+                        "project_hint": "Phantom Project",
+                        "project_id": None,  # unresolved — must still surface
+                        "goal_hint": "Run a half marathon",
+                        "goal_id": "goal-uuid-resolved",
                         "is_task": True,
                     },
                 ],
@@ -370,11 +390,21 @@ class TestVoiceUpload:
             )
 
         assert resp.status_code == 200
-        cand = resp.get_json()["candidates"][0]
-        assert cand["project_id"] == "proj-uuid-resolved"
-        assert cand["project_hint"] == "Q2 OKRs"
-        assert cand["goal_id"] is None
-        assert cand["goal_hint"] == "Hit Q2 targets"
+        cands = resp.get_json()["candidates"]
+        assert len(cands) == 2
+
+        # Candidate 1: project resolved, goal unresolved.
+        assert cands[0]["project_id"] == "proj-uuid-resolved"
+        assert cands[0]["project_hint"] == "Q2 OKRs"
+        assert cands[0]["goal_id"] is None
+        assert cands[0]["goal_hint"] == "Hit Q2 targets"
+
+        # Candidate 2: goal resolved, project unresolved. Pins the
+        # symmetric contract — the original bug dropped goal_id too.
+        assert cands[1]["goal_id"] == "goal-uuid-resolved"
+        assert cands[1]["goal_hint"] == "Run a half marathon"
+        assert cands[1]["project_id"] is None
+        assert cands[1]["project_hint"] == "Phantom Project"
 
     def test_empty_transcript_returns_empty_candidates_with_message(self, client, monkeypatch):
         """No speech detected → empty transcript, no Claude call,
