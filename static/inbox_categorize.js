@@ -146,6 +146,7 @@
                     var prevProjVal = projCell.querySelector("select").value;
                     projCell.innerHTML = "";
                     projCell.appendChild(projectSelect(prevProjVal, newType));
+                    _wireProjectCascade(tr);
                 }
                 if (goalCell) {
                     var prevGoalVal = goalCell.querySelector("select").value;
@@ -154,7 +155,33 @@
                 }
             });
         }
+        // #117 cascade on this row too — same pattern as the detail
+        // panel (taskDetailProjectChanged). Wire ONCE on first render;
+        // re-wire after the type-change rebuild via _wireProjectCascade.
+        _wireProjectCascade(tr);
         return tr;
+    }
+
+    // User-reported follow-up 2026-05-12: picking a Project did not
+    // auto-set the Goal even though the project has a goal_id. Mirror
+    // the detail-panel cascade (#117) using the same pure helper.
+    function _wireProjectCascade(tr) {
+        var projSel = tr.querySelector('select[data-field="project"]');
+        var goalSel = tr.querySelector('select[data-field="goal"]');
+        if (!projSel || !goalSel || !window.filterHelpers) return;
+        projSel.addEventListener("change", function () {
+            var allowed = new Set(
+                Array.from(goalSel.options).map(function (o) { return o.value; })
+            );
+            var newGoalId = window.filterHelpers.projectCascadeGoalId(
+                projSel.value, availableProjects, allowed
+            );
+            // Always reset: empty string → "— None —"; real UUID
+            // jumps to the matching option. Matches the detail-panel
+            // 2026-05-04 UX fix — picking a new project that has its
+            // own goal shouldn't leave the old project's goal in place.
+            goalSel.value = newGoalId || "";
+        });
     }
 
     function td(child, cls, titleAttr) {
