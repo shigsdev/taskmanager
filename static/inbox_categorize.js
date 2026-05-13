@@ -125,10 +125,35 @@
         tr.appendChild(td(textNode(s.title), "auto-categorize-title", s.reason));
         tr.appendChild(td(tierSelect(s.suggested_tier), "auto-categorize-tier"));
         tr.appendChild(td(projectSelect(s.suggested_project_id, s.suggested_type), "auto-categorize-project"));
-        tr.appendChild(td(goalSelect(s.suggested_goal_id), "auto-categorize-goal"));
+        tr.appendChild(td(goalSelect(s.suggested_goal_id, s.suggested_type), "auto-categorize-goal"));
         tr.appendChild(td(dueInput(s.suggested_due_date), "auto-categorize-due"));
         tr.appendChild(td(typeSelect(s.suggested_type), "auto-categorize-type"));
         tr.appendChild(td(rowApplyBtn(), "auto-categorize-actions"));
+
+        // User-reported 2026-05-12: clicking Personal in the Type
+        // dropdown left the Project list showing Work projects only
+        // — same class as #98 / #142 (type-scope filter applied once
+        // at row creation, never re-applied when type changed). Wire
+        // a change listener that rebuilds both project + goal
+        // dropdowns when type flips.
+        var typeSel = tr.querySelector('select[data-field="type"]');
+        if (typeSel) {
+            typeSel.addEventListener("change", function () {
+                var newType = typeSel.value;
+                var projCell = tr.querySelector(".auto-categorize-project");
+                var goalCell = tr.querySelector(".auto-categorize-goal");
+                if (projCell) {
+                    var prevProjVal = projCell.querySelector("select").value;
+                    projCell.innerHTML = "";
+                    projCell.appendChild(projectSelect(prevProjVal, newType));
+                }
+                if (goalCell) {
+                    var prevGoalVal = goalCell.querySelector("select").value;
+                    goalCell.innerHTML = "";
+                    goalCell.appendChild(goalSelect(prevGoalVal, newType));
+                }
+            });
+        }
         return tr;
     }
 
@@ -179,9 +204,16 @@
         return makeSelect(options, current || "", "project");
     }
 
-    function goalSelect(current) {
+    function goalSelect(current, type) {
         var options = [["", "— None —"]];
-        availableGoals.forEach(function (g) {
+        // #142 (2026-05-09) strict bipartition: work + bau → work-side,
+        // health + relationships + personal_growth → personal-side.
+        // Same filter the detail panel uses (window.goalFilterHelpers).
+        // If no type is provided OR the helper isn't loaded, show all.
+        var filtered = (type && window.goalFilterHelpers)
+            ? window.goalFilterHelpers.filterGoalsByType(availableGoals, type)
+            : availableGoals;
+        filtered.forEach(function (g) {
             options.push([g.id, g.title]);
         });
         return makeSelect(options, current || "", "goal");
