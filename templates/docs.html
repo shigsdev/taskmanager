@@ -1493,11 +1493,17 @@ Skip this line (too short)</pre>
             </p>
             <ol>
                 <li>On your laptop, open a terminal in a temp directory: <code>cd /tmp</code> (Mac/Linux) or <code>cd $env:TEMP</code> (Windows PowerShell).</li>
-                <li>Generate the key pair: <code>ssh-keygen -t ed25519 -f backup-key -N "" -C "taskmanager backup bot"</code>
+                <li>Generate the key pair.
+                    <p><strong>Mac / Linux / Git Bash:</strong></p>
+                    <pre><code>ssh-keygen -t ed25519 -f backup-key -N "" -C "taskmanager backup bot"</code></pre>
+                    <p><strong>Windows PowerShell</strong> (PS mis-parses the empty-string arg; use the <code>--%</code> stop-parsing token):</p>
+                    <pre><code>ssh-keygen --% -t ed25519 -f backup-key -N "" -C "taskmanager backup bot"</code></pre>
+                    <p>Or, simpler on PowerShell — drop the flags and press Enter at the passphrase prompts:</p>
+                    <pre><code>ssh-keygen -t ed25519 -f backup-key</code></pre>
                     <ul>
                         <li><code>-t ed25519</code>: modern key type, smaller than RSA.</li>
                         <li><code>-f backup-key</code>: output filenames will be <code>backup-key</code> (private) and <code>backup-key.pub</code> (public).</li>
-                        <li><code>-N ""</code>: empty passphrase — GitHub Actions can't type one.</li>
+                        <li><code>-N ""</code>: empty passphrase — GitHub Actions can't type one. If you omit this flag, ssh-keygen prompts twice; press Enter both times.</li>
                     </ul>
                 </li>
                 <li>Two files now exist: <code>backup-key</code> (the PRIVATE key — keep secret) and <code>backup-key.pub</code> (the PUBLIC key — safe to share).</li>
