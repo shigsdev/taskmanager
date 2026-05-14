@@ -80,4 +80,9 @@ jobs:
           SENDGRID_API_KEY:    ${{ secrets.SENDGRID_API_KEY }}
           DIGEST_FROM_EMAIL:   ${{ vars.DIGEST_FROM_EMAIL }}
           DIGEST_TO_EMAIL:     ${{ vars.DIGEST_TO_EMAIL }}
+          # Absolute path to the v18 binary the previous step
+          # installed. Bypasses any $PATH-ordering surprises with
+          # $GITHUB_PATH prepending when the runner already has
+          # /usr/bin/pg_dump (v16) earlier in PATH.
+          PG_DUMP_BIN: /usr/lib/postgresql/18/bin/pg_dump
         run: python scripts/backup_to_github.py

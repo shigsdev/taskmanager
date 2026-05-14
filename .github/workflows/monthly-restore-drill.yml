@@ -90,4 +90,6 @@ jobs:
           SENDGRID_API_KEY:       ${{ secrets.SENDGRID_API_KEY }}
           DIGEST_FROM_EMAIL:      ${{ vars.DIGEST_FROM_EMAIL }}
           DIGEST_TO_EMAIL:        ${{ vars.DIGEST_TO_EMAIL }}
+          # Absolute path — bypasses $PATH-ordering surprises.
+          PG_RESTORE_BIN: /usr/lib/postgresql/18/bin/pg_restore
         run: python scripts/restore_drill.py

@@ -1560,24 +1560,15 @@ Skip this line (too short)</pre>
                 <li><strong><code>DIGEST_TO_EMAIL</code></strong> — same.</li>
             </ol>
 
-            <h4>Step 6 of 7 — Install the workflow files (~5 min)</h4>
+            <h4>Step 6 of 7 — Confirm workflow files are present (~1 min)</h4>
             <p>
-                The two YAML files ship in
-                <code>scripts/proposed-workflows/</code> in the main
-                repo. They need to be at
-                <code>.github/workflows/</code> to actually trigger.
-                The automated push from the AI session couldn't put
-                them there directly because GitHub requires a special
-                token scope for that path; you create them via the
-                browser instead (no extra scope needed).
+                The two YAML files ship in <code>.github/workflows/</code>
+                directly. Verify they're there:
             </p>
             <ol>
-                <li>On the main <code>taskmanager</code> repo, click <strong>Add file</strong> → <strong>Create new file</strong> (top-right of the file list).</li>
-                <li>Filename: type <code>.github/workflows/daily-backup.yml</code> exactly. GitHub creates the directories automatically as you type slashes.</li>
-                <li>In another browser tab, open <code>scripts/proposed-workflows/daily-backup.yml</code> from the same repo. Click <strong>Raw</strong> → select all → copy.</li>
-                <li>Paste into the new-file editor. Scroll to the bottom, type a commit message like "Install daily backup workflow", click <strong>Commit changes</strong>.</li>
-                <li>Repeat the same flow for <code>.github/workflows/monthly-restore-drill.yml</code> using <code>scripts/proposed-workflows/monthly-restore-drill.yml</code> as the source.</li>
-                <li>Within ~10 seconds, both workflows appear in the repo's <strong>Actions</strong> tab.</li>
+                <li>On the main <code>taskmanager</code> repo, navigate to <code>.github/workflows/</code>.</li>
+                <li>You should see two files: <code>daily-backup.yml</code> and <code>monthly-restore-drill.yml</code>.</li>
+                <li>Both workflows appear in the repo's <strong>Actions</strong> tab in the left sidebar.</li>
             </ol>
 
             <h4>Step 7 of 7 — Verify with a manual run (~5 min)</h4>
@@ -1619,7 +1610,7 @@ Skip this line (too short)</pre>
                 <dd>You copied Railway's <em>internal</em> <code>DATABASE_URL</code> instead of the <em>public</em> URL. <code>postgres.railway.internal</code> is only reachable from inside Railway's network; GitHub Actions runs outside. Open Railway → Postgres service → Variables, copy <code>DATABASE_PUBLIC_URL</code> (or toggle Networking → Public Networking ON to generate one) and update the <code>DATABASE_URL</code> secret. The public URL host ends in <code>.railway.app</code> and usually uses a non-standard port.</dd>
 
                 <dt><code>FATAL: pg_dump failed: aborting because of server version mismatch ... server version: 18.x ; pg_dump version: 16.x</code></dt>
-                <dd>The runner's default pg_dump is older than your Railway Postgres. The shipped workflow installs PostgreSQL 18 client tools from the official PGDG repo — if you're seeing this error, you have an older copy of <code>daily-backup.yml</code> (or <code>monthly-restore-drill.yml</code>) in <code>.github/workflows/</code>. Re-copy the workflow from <code>scripts/proposed-workflows/</code> via the GitHub web UI; the updated version has a PGDG install step that puts <code>/usr/lib/postgresql/18/bin</code> at the front of <code>PATH</code>.</dd>
+                <dd>The runner's default pg_dump is older than your Railway Postgres. The shipped workflow installs PostgreSQL 18 client tools from PGDG AND passes the absolute v18 binary path via <code>PG_DUMP_BIN=/usr/lib/postgresql/18/bin/pg_dump</code> so PATH ordering can't trip it. If you're seeing this error, you have an old copy of the workflow file from before the fix shipped. Pull the latest workflow YAML from <code>.github/workflows/daily-backup.yml</code> in the main repo and confirm the Run backup step's <code>env:</code> block includes <code>PG_DUMP_BIN</code>.</dd>
 
                 <dt><code>FATAL: pg_dump failed (exit 1): pg_dump: error: connection to server failed</code></dt>
                 <dd>The <code>DATABASE_URL</code> secret is wrong or stale. Re-copy from Railway. Common cause: Railway rotated the password during a service restart.</dd>
