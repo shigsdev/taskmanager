@@ -39,12 +39,24 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Install pg_dump + Python deps
+      - name: Install pg_dump v18 + Python deps
         run: |
-          # GitHub-hosted Ubuntu runners come with PostgreSQL 16 client
-          # tools preinstalled. Verify, then install Python deps.
-          which pg_dump
-          pg_dump --version
+          # User-reported 2026-05-13: GitHub runners ship pg_dump 16 by
+          # default, but Railway's managed Postgres is on v18.3. pg_dump
+          # refuses to dump from a newer server. Install the PG 18
+          # client tools from the official PGDG repo so we always run a
+          # pg_dump that is >= the server version.
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+              https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client-18
+          # PGDG installs to /usr/lib/postgresql/18/bin — prepend to
+          # PATH so `pg_dump` resolves to the 18 binary, not the
+          # default 16 one that's still around.
+          echo "/usr/lib/postgresql/18/bin" >> $GITHUB_PATH
+          /usr/lib/postgresql/18/bin/pg_dump --version
           python -m pip install --upgrade pip
           python -m pip install psycopg[binary] cryptography
 
