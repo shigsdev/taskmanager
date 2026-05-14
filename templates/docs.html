@@ -1544,7 +1544,7 @@ Skip this line (too short)</pre>
             <ol>
                 <li><strong><code>BACKUP_REPO_DEPLOY_KEY</code></strong> — the PRIVATE SSH key. Paste the ENTIRE contents of the <code>backup-key</code> file (the one without <code>.pub</code>), starting with <code>-----BEGIN OPENSSH PRIVATE KEY-----</code> and ending with <code>-----END OPENSSH PRIVATE KEY-----</code>, including those lines and the trailing newline.</li>
                 <li><strong><code>BACKUP_FERNET_KEY</code></strong> — the Fernet key from Step 3. Paste the 44-character string only (no quotes, no spaces).</li>
-                <li><strong><code>DATABASE_URL</code></strong> — your Railway Postgres URL. Find it on Railway: open your project → click the Postgres service → Variables tab → copy the <code>DATABASE_URL</code> value. Starts with <code>postgresql://</code>.</li>
+                <li><strong><code>DATABASE_URL</code></strong> — your Railway Postgres <em>public</em> URL. Find it on Railway: open your project → click the Postgres service → Variables tab → copy <strong><code>DATABASE_PUBLIC_URL</code></strong> (NOT the plain <code>DATABASE_URL</code>, which is the private <code>postgres.railway.internal</code> hostname — reachable only inside Railway's network, NOT from GitHub Actions). The public URL host ends in <code>.railway.app</code> and usually uses a non-standard port like <code>12345</code> (not 5432). If you don't see <code>DATABASE_PUBLIC_URL</code>, open the Postgres service's <strong>Networking</strong> sub-tab and toggle <strong>Public Networking / TCP Proxy</strong> to ON — Railway then generates one. Symptom of getting this wrong: workflow fails with <code>pg_dump: error: could not translate host name "postgres.railway.internal" to address</code>.</li>
                 <li><strong><code>SENDGRID_API_KEY</code></strong> — same key the app already uses for the daily digest. Find it on Railway: open your project → click the Flask service → Variables tab → copy <code>SENDGRID_API_KEY</code>. Starts with <code>SG.</code>.</li>
             </ol>
 
@@ -1615,6 +1615,9 @@ Skip this line (too short)</pre>
             </p>
 
             <dl>
+                <dt><code>FATAL: pg_dump failed (exit 1): pg_dump: error: could not translate host name "postgres.railway.internal" to address</code></dt>
+                <dd>You copied Railway's <em>internal</em> <code>DATABASE_URL</code> instead of the <em>public</em> URL. <code>postgres.railway.internal</code> is only reachable from inside Railway's network; GitHub Actions runs outside. Open Railway → Postgres service → Variables, copy <code>DATABASE_PUBLIC_URL</code> (or toggle Networking → Public Networking ON to generate one) and update the <code>DATABASE_URL</code> secret. The public URL host ends in <code>.railway.app</code> and usually uses a non-standard port.</dd>
+
                 <dt><code>FATAL: pg_dump failed (exit 1): pg_dump: error: connection to server failed</code></dt>
                 <dd>The <code>DATABASE_URL</code> secret is wrong or stale. Re-copy from Railway. Common cause: Railway rotated the password during a service restart.</dd>
 
