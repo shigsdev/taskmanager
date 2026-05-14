@@ -30,8 +30,10 @@ jobs:
       # as Railway's prod Postgres so pg_restore doesn't trip on
       # version skew. Port-forwarded to the runner; the script reads
       # SCRATCH_DATABASE_URL pointing at localhost:5432.
+      # 2026-05-13: bumped 16 → 18 to match Railway's managed Postgres
+      # 18.3. Dumps from server v18 can't restore into v16.
       postgres:
-        image: postgres:16
+        image: postgres:18
         env:
           POSTGRES_USER:     drill
           POSTGRES_PASSWORD: drill
@@ -53,10 +55,19 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Install pg_restore + Python deps
+      - name: Install pg_restore v18 + Python deps
         run: |
-          which pg_restore
-          pg_restore --version
+          # Match the server (Railway Postgres 18.3) — runners ship 16
+          # by default. Install PG 18 client tools from PGDG so
+          # pg_restore is >= the dump's server version.
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+              https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client-18
+          echo "/usr/lib/postgresql/18/bin" >> $GITHUB_PATH
+          /usr/lib/postgresql/18/bin/pg_restore --version
           python -m pip install --upgrade pip
           python -m pip install psycopg[binary] cryptography
 

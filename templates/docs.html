@@ -1618,6 +1618,9 @@ Skip this line (too short)</pre>
                 <dt><code>FATAL: pg_dump failed (exit 1): pg_dump: error: could not translate host name "postgres.railway.internal" to address</code></dt>
                 <dd>You copied Railway's <em>internal</em> <code>DATABASE_URL</code> instead of the <em>public</em> URL. <code>postgres.railway.internal</code> is only reachable from inside Railway's network; GitHub Actions runs outside. Open Railway → Postgres service → Variables, copy <code>DATABASE_PUBLIC_URL</code> (or toggle Networking → Public Networking ON to generate one) and update the <code>DATABASE_URL</code> secret. The public URL host ends in <code>.railway.app</code> and usually uses a non-standard port.</dd>
 
+                <dt><code>FATAL: pg_dump failed: aborting because of server version mismatch ... server version: 18.x ; pg_dump version: 16.x</code></dt>
+                <dd>The runner's default pg_dump is older than your Railway Postgres. The shipped workflow installs PostgreSQL 18 client tools from the official PGDG repo — if you're seeing this error, you have an older copy of <code>daily-backup.yml</code> (or <code>monthly-restore-drill.yml</code>) in <code>.github/workflows/</code>. Re-copy the workflow from <code>scripts/proposed-workflows/</code> via the GitHub web UI; the updated version has a PGDG install step that puts <code>/usr/lib/postgresql/18/bin</code> at the front of <code>PATH</code>.</dd>
+
                 <dt><code>FATAL: pg_dump failed (exit 1): pg_dump: error: connection to server failed</code></dt>
                 <dd>The <code>DATABASE_URL</code> secret is wrong or stale. Re-copy from Railway. Common cause: Railway rotated the password during a service restart.</dd>
 
