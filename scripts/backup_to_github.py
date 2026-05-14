@@ -53,6 +53,15 @@ ROOT = SCRIPT_DIR.parent
 RETENTION_DAYS = 7  # locked-in #154.2: last 7 daily only
 DUMP_FORMAT = "custom"  # locked-in #154.4: pg_dump custom format
 
+# User-reported 2026-05-13: GitHub-hosted Ubuntu runners ship pg_dump
+# 16 by default. Railway's managed Postgres is 18.x — pg_dump refuses
+# to dump from a newer server. Workflow installs postgresql-client-18
+# from PGDG at /usr/lib/postgresql/18/bin and passes the absolute
+# path here via PG_DUMP_BIN — bypasses any $PATH-ordering surprises
+# from $GITHUB_PATH prepending logic. Falls back to `pg_dump` on PATH
+# for local testing where the default binary is the right version.
+PG_DUMP_BIN = os.environ.get("PG_DUMP_BIN", "pg_dump")
+
 
 def _now_iso() -> str:
     return datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -70,9 +79,9 @@ def run_pg_dump(database_url: str, out_path: Path) -> dict:
     """Run pg_dump --format=custom and write to out_path. Returns
     {"size_bytes": N, "elapsed_sec": N}."""
     started = datetime.datetime.now(datetime.UTC)
-    sys.stdout.write(f"[backup] pg_dump → {out_path.name}\n")
+    sys.stdout.write(f"[backup] pg_dump → {out_path.name} (binary={PG_DUMP_BIN})\n")
     proc = subprocess.run(
-        ["pg_dump", f"--format={DUMP_FORMAT}", "--file", str(out_path), database_url],
+        [PG_DUMP_BIN, f"--format={DUMP_FORMAT}", "--file", str(out_path), database_url],
         capture_output=True, text=True, check=False,
     )
     elapsed = (datetime.datetime.now(datetime.UTC) - started).total_seconds()

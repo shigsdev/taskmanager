@@ -8,6 +8,13 @@
  * Uses ?nosw=1 to avoid SW interference.
  */
 // @ts-check
+// Re-apply the no-IPv6 DNS patch in this worker. globalSetup runs in
+// the parent process; the patch on dns.promises.lookup is lost when
+// Playwright forks workers and they re-require dns. Without this,
+// `request.post("/api/tasks", ...)` intermittently fails with
+// `ECONNREFUSED ::1:5111` when Happy Eyeballs picks IPv6 first.
+// Matches the pattern smoke.spec.js uses (per globalSetup comment).
+require("../playwright-globalSetup");
 const { test, expect } = require("@playwright/test");
 
 test.describe("Page navigation — no console errors", () => {

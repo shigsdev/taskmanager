@@ -40,6 +40,12 @@ from pathlib import Path
 
 TOLERANCE = 0.05  # 5%
 
+# Same pattern as backup_to_github.py — pass absolute pg_restore path
+# via env to dodge $GITHUB_PATH ordering surprises. Workflow sets this
+# to /usr/lib/postgresql/18/bin/pg_restore so the runner uses the v18
+# binary it installed from PGDG, not the v16 default.
+PG_RESTORE_BIN = os.environ.get("PG_RESTORE_BIN", "pg_restore")
+
 
 def _require_env(name: str) -> str:
     val = os.environ.get(name)
@@ -118,7 +124,7 @@ def restore(dump_path: Path, scratch_url: str) -> dict:
     """
     started = datetime.datetime.now(datetime.UTC)
     proc = subprocess.run(
-        ["pg_restore", "--clean", "--if-exists", "--no-owner",
+        [PG_RESTORE_BIN, "--clean", "--if-exists", "--no-owner",
          "--no-privileges", "--dbname", scratch_url, str(dump_path)],
         capture_output=True, text=True, check=False,
     )
