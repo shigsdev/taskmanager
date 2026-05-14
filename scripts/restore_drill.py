@@ -155,7 +155,7 @@ def send_drill_email(*, success: bool, live: dict, scratch: dict, error: str | N
         return
     today = datetime.date.today().isoformat()
     if success:
-        subject = f"[Taskmanager backup] OK restore drill PASSED — {today}"
+        subject = f"[Taskmanager backup] ✓ Restore drill PASSED — {today}"
         body_lines = [
             f"Monthly restore drill PASSED on {today}.",
             "",
@@ -168,7 +168,7 @@ def send_drill_email(*, success: bool, live: dict, scratch: dict, error: str | N
             "The backups remain restorable. Next drill in ~30 days.",
         ]
     else:
-        subject = f"[Taskmanager backup] FAIL restore drill FAILED — {today}"
+        subject = f"[Taskmanager backup] ✗ Restore drill FAILED — {today}"
         body_lines = [
             f"Monthly restore drill FAILED on {today}.",
             "",

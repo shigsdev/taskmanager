@@ -223,7 +223,7 @@ def send_status_email(
 
     today = datetime.date.today().isoformat()
     if success:
-        subject = f"[Taskmanager backup] OK daily backup OK — {today}"
+        subject = f"[Taskmanager backup] ✓ Daily backup OK — {today}"
         size_mb = dump_meta.get("size_bytes", 0) / (1024 * 1024)
         body_lines = [
             f"Daily backup ran successfully on {today}.",
@@ -238,7 +238,7 @@ def send_status_email(
             "Retention policy: last 7 daily backups kept; older pruned automatically.",
         ]
     else:
-        subject = f"[Taskmanager backup] FAIL FAILED — {today}"
+        subject = f"[Taskmanager backup] ✗ Daily backup FAILED — {today}"
         body_lines = [
             f"Daily backup FAILED on {today}.",
             "",
