@@ -26,6 +26,7 @@ import planner_api
 import projects_api
 import recurring_api
 import recycle_api
+import reflection_api
 import review_api
 import scan_api
 import settings_api
@@ -237,6 +238,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(debug_api.bp)
     app.register_blueprint(auth_api.bp)
     app.register_blueprint(voice_api.bp)
+    app.register_blueprint(reflection_api.bp)
 
     # --- Global error handlers (#50, ADR-031) ---
     # Catch any exception that escapes per-route handlers and shape it

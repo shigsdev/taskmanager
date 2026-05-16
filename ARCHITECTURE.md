@@ -83,7 +83,9 @@ component is added, a data flow changes, or a security boundary shifts.
   self-referential `parent_id` for one-level subtasks, and optional
   `cancellation_reason` for status=CANCELLED tasks), projects, goals,
   recurring tasks (with `subtasks_snapshot` JSON for #26's clone-on-
-  spawn pattern), import log, and app_logs. The `Tier` enum includes
+  spawn pattern), import log, app_logs, and `reflections` (Weekly
+  Reflection transcripts + AI-proposed action audit trail, 2026-05-16).
+  The `Tier` enum includes
   `INBOX, TODAY, TOMORROW, THIS_WEEK, NEXT_WEEK, BACKLOG, FREEZER`
   (NEXT_WEEK from #23, TOMORROW from #27). The `TaskStatus` enum
   includes `ACTIVE, ARCHIVED, CANCELLED, DELETED` (CANCELLED from #25).
@@ -193,6 +195,24 @@ component is added, a data flow changes, or a security boundary shifts.
   Hard cap of 10 min per memo enforced both client-side
   (auto-stop) and server-side (25 MB upload limit at typical opus
   bitrates).
+- **Weekly Reflection** (2026-05-16, `reflection_service.py`,
+  `reflection_api.py`, `reflections` table): user types a reflection
+  or records audio → if audio, `voice_service.transcribe_audio`
+  (Whisper, server-side, in-memory) → transcript persisted to a
+  `reflections` row (kept forever for future reference) → Claude
+  (server-side, via `scan_service._post_to_claude`) reads the
+  transcript alongside a compact snapshot of active
+  projects/goals/tasks and returns proposed create/update/delete
+  actions in two buckets (`explicit` = directly asked,
+  `suggested` = proactive cleanup the user opted into) → normalised +
+  validated against current ids → returned to the browser for review
+  → user confirms a subset via `POST /api/reflection/<id>/confirm` →
+  applied through the canonical `task/goal/project` services. Created
+  rows are grouped under `reflection_*` ImportLog batches (recycle-bin
+  undo); deletes are **soft** (recycle bin) — never hard. The
+  confirmed action set + apply summary are stored back on the
+  `reflections` row as an audit trail. Rate-limited 20/min (paid
+  Whisper + Claude).
 - **URL save**: user pastes or types a URL in the quick-capture bar → the
   browser `POST`s to `/api/tasks/url-preview` → Flask resolves the hostname,
   validates it is not a private/loopback IP (SSRF protection), fetches the
@@ -518,6 +538,11 @@ the code.
 # voice_api.py
 /api/voice-memo
 /api/voice-memo/confirm                # #36
+
+# reflection_api.py — Weekly Reflection (2026-05-16)
+/api/reflection                                  # POST submit (typed/audio), GET list
+/api/reflection/<uuid:reflection_id>             # GET one (history detail)
+/api/reflection/<uuid:reflection_id>/confirm     # POST apply confirmed actions
 
 # import_api.py
 /api/import/tasks/parse

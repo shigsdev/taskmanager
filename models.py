@@ -17,6 +17,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -124,6 +125,14 @@ class ProjectStatus(enum.StrEnum):
     IN_PROGRESS = "in_progress"
     DONE = "done"
     ON_HOLD = "on_hold"
+
+
+# Weekly Reflection (user-requested 2026-05-16): how the reflection text
+# reached the server. "voice" = recorded + Whisper-transcribed; "typed" =
+# entered directly in the textarea.
+class ReflectionInputMode(enum.StrEnum):
+    VOICE = "voice"
+    TYPED = "typed"
 
 
 # --- Helpers -----------------------------------------------------------------
@@ -441,6 +450,56 @@ class WeeklyFocus(db.Model):
     # historical row — set is_active=False and the panel skips it but
     # retrospectives can still see what was there.
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
+
+
+class Reflection(db.Model):
+    """A weekly reflection capture + the AI-proposed entity changes.
+
+    User flow (user-requested 2026-05-16): record a voice memo (which is
+    Whisper-transcribed) or type a reflection. Claude reads the transcript
+    alongside a snapshot of the active projects/goals/tasks and proposes
+    create / update / delete actions. The user reviews and confirms; only
+    confirmed actions are applied.
+
+    The transcript is persisted forever — the user explicitly wants every
+    reflection saved for future reference / retrospectives. Audio is
+    processed in memory only and is never written to disk or the DB
+    (same guarantee as the voice-memo pipeline).
+    """
+
+    __tablename__ = "reflections"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    # ISO week label (e.g. "2026-W20") for grouping the history view and
+    # retrospectives. Indexed because the history page queries by week.
+    iso_week: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    input_mode: Mapped[ReflectionInputMode] = mapped_column(
+        Enum(ReflectionInputMode), nullable=False
+    )
+    transcript: Mapped[str] = mapped_column(Text, nullable=False)
+    # Voice-only telemetry; NULL for typed reflections.
+    audio_duration_seconds: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    audio_cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Best-effort Claude cost from the response usage block; NULL if the
+    # usage data was unavailable.
+    ai_cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Claude's proposed actions, as returned by reflection_service after
+    # normalisation. Shape: {"explicit": [...], "suggested": [...]}.
+    proposed_actions: Mapped[dict] = mapped_column(
+        JSONType, nullable=False, default=dict
+    )
+    # What the user actually confirmed + the apply result (audit trail).
+    # NULL until the confirm endpoint runs.
+    applied_actions: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    applied_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now

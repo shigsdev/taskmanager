@@ -214,6 +214,7 @@ _ER_TABLE_GROUPS: dict[str, str] = {
     "projects": "core",
     "recurring_tasks": "core",
     "weekly_focus": "core",
+    "reflections": "core",
     # Operational: system-generated records
     "app_logs": "ops",
     "import_log": "ops",
@@ -231,6 +232,7 @@ _ER_TABLE_ORDER = (
     "tasks",
     "recurring_tasks",
     "weekly_focus",
+    "reflections",
     # Operational cluster
     "app_logs",
     "import_log",
@@ -552,6 +554,27 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "text":             {"desc": "The focus statement", "notes": "Required; 500 char cap"},
             "goal_id":          {"desc": "Optional Goal-link", "fk_target": "goals.id", "notes": "Hybrid mode (Q1 of feature spec): free-form text by default; this column lets a slot point at an existing Goal"},
             "is_active":        {"desc": "Soft-delete flag", "notes": "✕ button on the panel sets this False — past-week rows are preserved"},
+        },
+    },
+    "reflections": {
+        "blurb": (
+            "Your weekly reflections. You record or type a reflection; "
+            "Claude reads it against your active projects/goals/tasks "
+            "and proposes create/update/delete changes you review + "
+            "confirm. Every transcript is kept forever for future "
+            "reference / retrospectives. Audio is never stored — only "
+            "the transcript."
+        ),
+        "columns": {
+            "iso_week":               {"desc": "ISO week the reflection belongs to (e.g. \"2026-W20\")", "notes": "Indexed; groups the history view"},
+            "input_mode":             {"desc": "How it was captured", "notes": "voice (Whisper-transcribed) or typed"},
+            "transcript":             {"desc": "The reflection text itself", "notes": "Required; persisted forever"},
+            "audio_duration_seconds": {"desc": "Length of the recording", "notes": "Voice only; NULL for typed"},
+            "audio_cost_usd":         {"desc": "Whisper transcription cost", "notes": "Voice only; NULL for typed"},
+            "ai_cost_usd":            {"desc": "Approximate Claude cost for the analysis", "notes": "Best-effort from the response usage; NULL if unavailable"},
+            "proposed_actions":       {"desc": "Claude's proposed changes", "notes": "JSON {explicit: [...], suggested: [...]}"},
+            "applied_actions":        {"desc": "What you actually confirmed + the apply result", "notes": "JSON audit trail; NULL until confirmed"},
+            "applied_at":             {"desc": "When the confirmed actions were applied", "notes": "NULL until you confirm"},
         },
     },
     "app_settings": {

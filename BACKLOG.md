@@ -10,7 +10,22 @@ file is the index pointer.
 
 ## In Progress
 
-_(nothing currently in progress)_
+- **Weekly Reflection** (user-requested 2026-05-16) — record (voice) or
+  type a weekly reflection; Claude reads it against the active
+  projects/goals/tasks snapshot and proposes create/update/delete
+  actions in two buckets (explicit = directly asked, suggested =
+  proactive cleanup the user opted into); user reviews + confirms;
+  applied through the canonical service layer with creations grouped
+  for recycle-bin undo and deletes kept soft. Every transcript is
+  persisted forever for future reference.
+  Status: `🔄 IN PROGRESS — backend complete (models.Reflection +
+  migration f3a4b5c6d7e8 + reflection_service + reflection_api +
+  tests + ARCHITECTURE/schema-drift updates; ruff/pytest/jest green).
+  PENDING: frontend (new "Reflection" main-nav tab + page + review UI +
+  static JS/helpers + Jest helper tests + docs.html + sw.js/health
+  cache bump), Phase 6 desktop+mobile regression, deploy validation +
+  prod smoke. Backend committed to branch claude/pull-latest-changes-MeyjZ
+  for desktop execution; not deployed.`
 
 ## Completed
 
