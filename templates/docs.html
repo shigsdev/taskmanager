@@ -48,6 +48,7 @@
         <ul>
             <li><a href="#auto-categorize">Auto-categorize inbox</a></li>
             <li><a href="#weekly-planner">Plan my week (AI)</a></li>
+            <li><a href="#weekly-reflection">Weekly reflection (AI)</a></li>
             <li><a href="#bulk-ops">Bulk operations</a></li>
             <li><a href="#filters">Filters</a></li>
             <li><a href="#calendar-day-strip">Calendar &amp; day strip</a></li>
@@ -234,6 +235,63 @@ https://example.com/foo
                 <li>🎤 dictation is unsupported on some desktop browsers and unreliable in iOS Safari PWA standalone mode.</li>
                 <li>🎙️ voice memo requires <code>OPENAI_API_KEY</code> and <code>ANTHROPIC_API_KEY</code> configured on the server.</li>
                 <li>iOS Safari has occasionally shipped MediaRecorder bugs that break the memo flow. Fall back to typing if you hit one.</li>
+            </ul>
+        </section>
+
+        <section id="weekly-reflection" class="docs-section">
+            <h2>Weekly reflection</h2>
+            <p>
+                The <a href="{{ url_for('reflection_page') }}">/reflection</a>
+                page lets you think out loud about your week. Claude reads
+                your reflection alongside a snapshot of your active
+                projects, goals, and tasks and proposes concrete changes
+                you review before anything is touched.
+            </p>
+            <h3>Input</h3>
+            <ul>
+                <li>Two tabs: <strong>⌨️ Type</strong> (a textarea) or
+                    <strong>🎙️ Record</strong> (audio, transcribed via
+                    Whisper on the server, in memory only).</li>
+                <li>Your transcript is saved <strong>before</strong> the
+                    Claude call, so a Claude hiccup never loses what you
+                    wrote — it shows up in the history list to re-analyze
+                    later.</li>
+                <li>Every reflection is kept forever for future
+                    reference.</li>
+            </ul>
+            <h3>Review</h3>
+            <ul>
+                <li>Claude's proposals come in two buckets:
+                    <strong>From your reflection</strong> (things you
+                    directly said — checked by default) and
+                    <strong>Suggested cleanup</strong> (proactive ideas —
+                    unchecked by default).</li>
+                <li>Each row shows a CREATE / UPDATE / DELETE badge, the
+                    target, the field changes, and Claude's reason.</li>
+                <li><strong>Apply Selected</strong> writes only the rows
+                    you checked. New items are grouped for one-click
+                    recycle-bin undo; deletes are soft (recycle bin), not
+                    permanent.</li>
+            </ul>
+            <h3>Use as Next Week's Focus</h3>
+            <ul>
+                <li>The <strong>✨ Use as Next Week's Focus</strong>
+                    button turns task/goal statements from the reflection
+                    into Focus slots on the home page's Next Week tab
+                    (replacing whatever was there).</li>
+                <li>You pick which statements, up to your configured Focus
+                    slot count.</li>
+            </ul>
+            <h3>Limits &amp; privacy</h3>
+            <ul>
+                <li>Rate-limited to 20 submissions per minute (Whisper +
+                    Claude are paid).</li>
+                <li>Audio is processed in memory only — never written to
+                    disk or the database. Only the text transcript is
+                    stored.</li>
+                <li>Requires <code>ANTHROPIC_API_KEY</code> (and
+                    <code>OPENAI_API_KEY</code> for the record option)
+                    configured on the server.</li>
             </ul>
         </section>
 

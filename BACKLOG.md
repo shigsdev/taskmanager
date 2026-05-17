@@ -18,14 +18,23 @@ file is the index pointer.
   applied through the canonical service layer with creations grouped
   for recycle-bin undo and deletes kept soft. Every transcript is
   persisted forever for future reference.
-  Status: `🔄 IN PROGRESS — backend complete (models.Reflection +
-  migration f3a4b5c6d7e8 + reflection_service + reflection_api +
-  tests + ARCHITECTURE/schema-drift updates; ruff/pytest/jest green).
-  PENDING: frontend (new "Reflection" main-nav tab + page + review UI +
-  static JS/helpers + Jest helper tests + docs.html + sw.js/health
-  cache bump), Phase 6 desktop+mobile regression, deploy validation +
-  prod smoke. Backend committed to branch claude/pull-latest-changes-MeyjZ
-  for desktop execution; not deployed.`
+  Status: `🔄 IN PROGRESS — backend + frontend code complete on branch
+  claude/pull-latest-changes-MeyjZ. Backend: models.Reflection +
+  migration f3a4b5c6d7e8 + reflection_service + reflection_api + tests
+  + the data-loss fix (transcript persisted BEFORE the Claude call).
+  Frontend: /reflection route + page (new "Reflection" main-nav tab),
+  type-or-record input, two-bucket review UI, Apply Selected →
+  /api/reflection/<id>/confirm, "✨ Use as Next Week's Focus" seeding
+  the #157 Next-Week slots, Past Reflections history; static
+  reflection.js + Jest-tested reflection_helpers.js; CSS; sw.js v137 +
+  health.py EXPECTED_STATIC_FILES; ARCHITECTURE.md + docs.html (Help)
+  updated. PENDING: 12-gate run + Phase 6 desktop+mobile, merge to
+  main, deploy validation + prod smoke. NOTE divergences from the
+  original #165 spec (accepted during the 2026-05-16 build): analysis
+  runs inline on submit (no separate /analyze endpoint); transcript is
+  stored plaintext, not Fernet-encrypted at rest (deferred — single
+  user, DB already access-controlled; revisit if multi-device sync
+  ever lands).`
 
 ## Completed
 

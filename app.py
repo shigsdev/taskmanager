@@ -479,6 +479,11 @@ def create_app(config: dict | None = None) -> Flask:
     def voice_memo_page(email: str):  # noqa: ARG001
         return render_template("voice_memo.html")
 
+    @app.route("/reflection")
+    @login_required
+    def reflection_page(email: str):  # noqa: ARG001
+        return render_template("reflection.html")
+
     @app.route("/import")
     @login_required
     def import_page(email: str):  # noqa: ARG001

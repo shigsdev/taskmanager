@@ -127,6 +127,8 @@ EXPECTED_STATIC_FILES = (
     "static/tier_helpers.js",
     "static/reorder_helpers.js",
     "static/weekly_focus.js",
+    "static/reflection_helpers.js",  # #165 — Jest-importable reflection helpers
+    "static/reflection.js",          # #165 — Weekly Reflection page
     "static/goal_filter_helpers.js",
     "static/date_helpers.js",
     "static/manifest.json",

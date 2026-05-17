@@ -212,7 +212,16 @@ component is added, a data flow changes, or a security boundary shifts.
   undo); deletes are **soft** (recycle bin) — never hard. The
   confirmed action set + apply summary are stored back on the
   `reflections` row as an audit trail. Rate-limited 20/min (paid
-  Whisper + Claude).
+  Whisper + Claude). The frontend (2026-05-17, `/reflection` page,
+  `templates/reflection.html`, `static/reflection.js`,
+  `static/reflection_helpers.js`) is a type-or-record input → analyzing
+  → review (two checkbox buckets; explicit checked by default,
+  suggested unchecked) → done state machine, plus a "✨ Use as Next
+  Week's Focus" action that seeds the #157 Next-Week focus slots via
+  `PATCH /api/weekly-focus/<slot>?week_offset=1`, and a Past
+  Reflections history list. Branchy client logic (focus-candidate
+  derivation, summary formatting, selection filtering) is extracted to
+  the Jest-tested `reflection_helpers.js` per the anti-pattern #3 rule.
 - **URL save**: user pastes or types a URL in the quick-capture bar → the
   browser `POST`s to `/api/tasks/url-preview` → Flask resolves the hostname,
   validates it is not a private/loopback IP (SSRF protection), fetches the
@@ -461,6 +470,9 @@ commit — the check will fail otherwise.
 - `/plan` — weekly planner (post-#12 brainstorm Option A, shipped 2026-05-02). Date picker → `POST /api/planner/weekly` → Claude Haiku reviews ALL active non-frozen tasks + 4 weeks of completion history + recurring fires + goals + projects + freezer items > 60 days → returns structured plan: per-task suggestions (action: keep/move/delete/freeze), day-by-day grouping (Mon–Sun), goal hints (on_track / falling_behind / no_progress / ahead), velocity warning, stale freezer review. User accepts / overrides / ignores per row; "Apply all accepted" routes through canonical `PATCH /api/tasks/<id>`. New `Task.planner_ignore` boolean (auto-resets on any task field change) silences specific tasks until next user touch. Service: `weekly_planner_service.py`. Rate-limited 5/min.
 - `/scan` — image → tasks
 - `/voice-memo` — audio → tasks
+- `/reflection` — weekly reflection (type/record → Claude proposes
+  create/update/delete across tasks/goals/projects → review + confirm →
+  optional "Use as Next Week's Focus"). #165
 - `/import` — OneNote + Excel imports
 - `/settings` — settings page
 - `/print` — print-friendly view

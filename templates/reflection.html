@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% set active_page = 'reflection' %}
+{% block title %}Weekly Reflection — Task Manager{% endblock %}
+
+{% block content %}
+<div class="reflection-container" id="reflectionContainer">
+
+    <!-- State 1: Input (type or record) -->
+    <section class="reflection-state" id="reflStateInput">
+        <h2>Weekly Reflection</h2>
+        <p>
+            Think out loud about your week — what moved, what stalled, what
+            you want to change. Claude reads it alongside your current
+            projects, goals, and tasks and proposes concrete changes you
+            can review before anything is touched. Every reflection is
+            kept forever for future reference.
+        </p>
+
+        <div class="reflection-mode-tabs" role="tablist">
+            <button type="button" class="reflection-mode-tab active"
+                    id="reflTabType" role="tab">⌨️ Type</button>
+            <button type="button" class="reflection-mode-tab"
+                    id="reflTabVoice" role="tab">🎙️ Record</button>
+        </div>
+
+        <!-- Typed sub-state -->
+        <div class="reflection-typed" id="reflTyped">
+            <textarea id="reflText" rows="10" maxlength="20000"
+                placeholder="This week I shipped the backup feature but the auth refresh slipped. I want to drop the old CSV importer — nobody uses it. Next week is mostly about the calendar redesign…"></textarea>
+            <div class="reflection-input-actions">
+                <button class="btn btn-primary" id="reflAnalyzeBtn" type="button">
+                    Analyze with Claude
+                </button>
+            </div>
+        </div>
+
+        <!-- Voice sub-state -->
+        <div class="reflection-voice" id="reflVoice" style="display:none">
+            <div class="reflection-voice-controls" id="reflVoiceIdle">
+                <button class="btn btn-record" id="reflRecordBtn" type="button"
+                        aria-label="Start recording">
+                    <span class="voice-record-icon">●</span>
+                    <span class="voice-record-label">Start recording</span>
+                </button>
+                <p class="reflection-hint">
+                    Max 10 min. Audio is transcribed via Whisper in memory
+                    only — never written to disk or the database.
+                </p>
+            </div>
+            <div class="reflection-voice-controls" id="reflVoiceRecording" style="display:none">
+                <div class="voice-recording-indicator">
+                    <div class="voice-pulse" aria-hidden="true"></div>
+                    <div class="voice-timer" id="reflTimer">0:00</div>
+                </div>
+                <button class="btn btn-stop" id="reflStopBtn" type="button">
+                    <span>■</span> Stop &amp; Analyze
+                </button>
+                <button class="btn btn-sm btn-cancel" id="reflCancelBtn" type="button">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- State 2: Analyzing -->
+    <section class="reflection-state" id="reflStateAnalyzing" style="display:none">
+        <h2>Analyzing…</h2>
+        <div class="reflection-progress">
+            <div class="reflection-progress-step" id="reflStepSave">⏳ Saving transcript…</div>
+            <div class="reflection-progress-step" id="reflStepClaude">⏳ Asking Claude for proposed changes…</div>
+        </div>
+        <p class="reflection-hint">Usually 3-8 seconds.</p>
+    </section>
+
+    <!-- State 3: Review proposed actions -->
+    <section class="reflection-state" id="reflStateReview" style="display:none">
+        <h2>Review Proposed Changes</h2>
+        <p class="reflection-cost-hint" id="reflCostHint"></p>
+
+        <div class="reflection-buckets" id="reflBuckets"></div>
+
+        <p class="reflection-empty" id="reflEmpty" style="display:none">
+            Claude didn't propose any changes — your week sounds aligned
+            with your current plan already. The reflection is still saved
+            in your history.
+        </p>
+
+        <div class="reflection-review-actions">
+            <button class="btn btn-primary" id="reflApplyBtn" type="button">
+                Apply Selected
+            </button>
+            <button class="btn btn-sm" id="reflFocusBtn" type="button"
+                    title="Seed next week's Focus slots from this reflection">
+                ✨ Use as Next Week's Focus
+            </button>
+            <button class="btn btn-sm" id="reflStartOverBtn" type="button">
+                Start Over
+            </button>
+        </div>
+
+        <details class="reflection-transcript-details">
+            <summary>Show transcript</summary>
+            <pre id="reflTranscript"></pre>
+        </details>
+    </section>
+
+    <!-- State 4: Done -->
+    <section class="reflection-state" id="reflStateDone" style="display:none">
+        <h2>Changes Applied</h2>
+        <p id="reflDoneMessage"></p>
+        <ul class="reflection-done-summary" id="reflDoneSummary"></ul>
+        <div class="reflection-done-actions">
+            <a href="{{ url_for('index') }}" class="btn">Go to Tasks</a>
+            <button class="btn btn-sm" id="reflAnotherBtn" type="button">
+                New Reflection
+            </button>
+        </div>
+    </section>
+
+    <!-- State 5: Error -->
+    <section class="reflection-state reflection-state-error" id="reflStateError" style="display:none">
+        <h2>Something Went Wrong</h2>
+        <p class="reflection-error-message" id="reflErrorMessage"></p>
+        <p class="reflection-hint" id="reflErrorSaved" style="display:none">
+            Your transcript was saved before the failure — it's in your
+            history below and can be re-analyzed later.
+        </p>
+        <div class="reflection-error-actions">
+            <button class="btn" id="reflRetryBtn" type="button">Try Again</button>
+            <a href="{{ url_for('index') }}" class="btn btn-sm">Go to Tasks</a>
+        </div>
+    </section>
+
+    <!-- ✨ Use as Next Week's Focus picker (inline modal) -->
+    <div class="reflection-focus-modal" id="reflFocusModal" style="display:none">
+        <div class="reflection-focus-backdrop"></div>
+        <div class="reflection-focus-dialog" role="dialog"
+             aria-labelledby="reflFocusTitle">
+            <header>
+                <h3 id="reflFocusTitle">✨ Next Week's Focus</h3>
+                <button type="button" id="reflFocusClose" class="icon-btn"
+                        aria-label="Close">✕</button>
+            </header>
+            <p class="reflection-hint" id="reflFocusHint">
+                Pick up to <span id="reflFocusMax">3</span> statements to
+                seed next week's Focus slots. They'll replace whatever is
+                in the Next Week tab.
+            </p>
+            <div class="reflection-focus-choices" id="reflFocusChoices"></div>
+            <footer>
+                <button type="button" id="reflFocusApply"
+                        class="btn btn-primary">Set Focus</button>
+                <button type="button" id="reflFocusCancel" class="btn">Cancel</button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- History -->
+    <section class="reflection-history">
+        <h3>Past Reflections</h3>
+        <div id="reflHistory" class="reflection-history-list">
+            <p class="reflection-hint">Loading…</p>
+        </div>
+    </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{# reflection_helpers.js exposes window.reflectionHelpers (pure logic,
+   Jest-tested per CLAUDE.md anti-pattern #3); must load before
+   reflection.js which consumes it. #}
+<script src="{{ url_for('static', filename='reflection_helpers.js') }}"></script>
+<script src="{{ url_for('static', filename='reflection.js') }}"></script>
+{% endblock %}
