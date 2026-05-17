@@ -2597,6 +2597,7 @@ function _setupParentPicker(task) {
 }
 
 function taskDetailPopulateGoals(filterType) {
+    filterType = _taskDetailActiveTypeFilter(filterType);
     const sel = document.getElementById("detailGoal");
     if (!sel) return;
     const currentValue = sel.value;
@@ -2622,7 +2623,28 @@ function taskDetailPopulateGoals(filterType) {
     }
 }
 
+// When taskDetailPopulate{Projects,Goals} is called WITHOUT an explicit
+// type (the init / polling / post-save `loadProjects()` + `loadGoals()`
+// path passes no arg), fall back to the type of the task whose detail
+// panel is currently open. Without this, a background projects/goals
+// refresh that races or fires while the panel is open silently widens
+// the type-scoped dropdown back to ALL types — e.g. a Personal task
+// showing Work projects (user report 2026-05-17). Same bug class as
+// #57 (single-type assumption leaking across the work/personal split).
+// Panel closed → return undefined so callers keep their "show all"
+// behavior for the hidden, about-to-be-reset selects.
+function _taskDetailActiveTypeFilter(filterType) {
+    if (filterType) return filterType;
+    const overlay = document.getElementById("detailOverlay");
+    if (overlay && overlay.style.display !== "none") {
+        const dt = document.getElementById("detailType");
+        if (dt && dt.value) return dt.value;
+    }
+    return filterType;
+}
+
 function taskDetailPopulateProjects(filterType) {
+    filterType = _taskDetailActiveTypeFilter(filterType);
     const sel = document.getElementById("detailProject");
     if (!sel) return;
     const currentValue = sel.value;

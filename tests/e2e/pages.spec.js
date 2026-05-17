@@ -208,6 +208,61 @@ test.describe("Detail panel", () => {
         }
     });
 
+    test("background projects/goals refresh does not widen a personal task's dropdowns to work items (2026-05-17)", async ({ page }) => {
+        // Regression: loadProjects()/loadGoals() (init race, polling,
+        // post-save) called taskDetailPopulate{Projects,Goals}() with no
+        // type arg → repopulated the OPEN panel unfiltered, so a Personal
+        // task showed Work projects/goals. Same class as #57.
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+
+        const ids = await page.evaluate(async () => {
+            const mk = async (url, body) =>
+                (await (await fetch(url, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body),
+                })).json());
+            const workProj = await mk("/api/projects", { name: "ZZ Work Proj", type: "work" });
+            const persProj = await mk("/api/projects", { name: "ZZ Personal Proj", type: "personal" });
+            const task = await mk("/api/tasks", { title: "zz-personal-dropdown-task", type: "personal", tier: "inbox" });
+            return { workProj: workProj.id, persProj: persProj.id, task: task.id };
+        });
+
+        try {
+            await page.reload();
+            await page.waitForLoadState("networkidle");
+
+            const result = await page.evaluate(async (ids) => {
+                const t = await fetch(`/api/tasks/${ids.task}`).then((r) => r.json());
+                window.taskDetailOpen(t);
+                await new Promise((x) => setTimeout(x, 300));
+                const opts = () =>
+                    Array.from(document.getElementById("detailProject").options).map((o) => o.value);
+                const before = opts();
+                // The clobber path: a background refresh while panel open.
+                await window.loadProjects();
+                if (typeof window.loadGoals === "function") await window.loadGoals();
+                await new Promise((x) => setTimeout(x, 300));
+                const after = opts();
+                return { before, after, workId: ids.workProj, persId: ids.persProj };
+            }, ids);
+
+            // Personal project present, work project absent — BEFORE and
+            // crucially AFTER the background refresh (the regression).
+            expect(result.before).toContain(result.persId);
+            expect(result.before).not.toContain(result.workId);
+            expect(result.after).toContain(result.persId);
+            expect(result.after).not.toContain(result.workId);
+        } finally {
+            await page.evaluate(async (ids) => {
+                await fetch(`/api/tasks/${ids.task}`, { method: "DELETE" });
+                await fetch(`/api/projects/${ids.workProj}`, { method: "DELETE" });
+                await fetch(`/api/projects/${ids.persProj}`, { method: "DELETE" });
+            }, ids);
+        }
+    });
+
     /**
      * Bug #58 sweep (2026-04-25): #57 was a silent payload drop. Sibling
      * bugs of the same class would silently drop other detail-panel
