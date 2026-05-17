@@ -323,7 +323,11 @@ https://example.com/foo
             <h3>Accepted formats and limits</h3>
             <ul>
                 <li>Accepted MIME types: <code>image/jpeg</code>, <code>image/png</code>, <code>image/webp</code>.</li>
-                <li>Max file size: <strong>10 MB</strong>.</li>
+                <li>Max file size: <strong>10 MB</strong> (server-side cap).</li>
+                <li>Large phone photos are automatically downscaled (long
+                    edge ≤ 2048&nbsp;px, re-encoded as JPEG) in your browser
+                    before upload — typically well under 500&nbsp;KB — so
+                    cellular uploads don't fail. OCR quality is unaffected.</li>
                 <li>Images are processed in memory only — never saved to disk or database.</li>
             </ul>
 

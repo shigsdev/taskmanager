@@ -298,6 +298,29 @@ class TestUploadAPI:
         assert resp.status_code == 200
         assert resp.get_json()["candidates"] == []
 
+    def test_oversize_upload_returns_413(self, authed_client):
+        """Scan uploads larger than the per-route cap should 413.
+
+        iPhone photos are 3-8+ MB. Without a deterministic rejection an
+        oversized upload could be dropped mid-stream by the WSGI/edge
+        layer, which Safari surfaces as an opaque "Load failed" fetch
+        TypeError. ``utils.validate_upload`` enforces scan_api's 10 MB
+        ``MAX_IMAGE_SIZE`` and returns a clean 413 the client can show.
+        The new client-side compression in scan.js keeps real photos
+        well under this cap; this test guards the server-side backstop.
+        """
+        # 13 MB payload — above scan_api.MAX_IMAGE_SIZE (10 MB), below
+        # Flask's 30 MB MAX_CONTENT_LENGTH so validate_upload is what
+        # rejects it (deterministic 413, not a WSGI-layer drop).
+        big = b"x" * (13 * 1024 * 1024)
+        data = {"image": (io.BytesIO(big), "huge.jpg", "image/jpeg")}
+        resp = authed_client.post(
+            "/api/scan/upload",
+            data=data,
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 413
+
     def test_vision_api_not_configured(self, authed_client, monkeypatch):
         monkeypatch.delenv("GOOGLE_VISION_API_KEY", raising=False)
         data = {
