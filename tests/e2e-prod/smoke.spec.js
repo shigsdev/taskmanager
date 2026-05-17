@@ -192,6 +192,7 @@ test.describe("Prod smoke — pages render", () => {
         { path: "/projects?nosw=1", anchor: "#projectsBoard" },
         { path: "/scan?nosw=1", anchor: "#scanContainer" },
         { path: "/voice-memo?nosw=1", anchor: "#voiceMemoContainer" },
+        { path: "/reflection?nosw=1", anchor: "#reflectionContainer" },  // #165
         { path: "/recycle-bin?nosw=1", anchor: "#recycleContainer" },
         { path: "/docs?nosw=1", anchor: "#filters" },  // PR25 docs section
     ];
@@ -587,6 +588,30 @@ test.describe("Prod smoke — feature surfaces", () => {
         // The repeat-end-date row exists in the template (hidden until a
         // frequency is selected). Just confirm the markup shipped.
         await expect(page.locator("#detailRepeatEndDate")).toHaveCount(1);
+    });
+
+    test("/reflection input mode tabs toggle + helpers load (#165)", async ({ page }) => {
+        const errors = [];
+        page.on("pageerror", (err) => errors.push(err.message));
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        // Pure-logic helper module loaded (anti-pattern #3 contract).
+        const helperType = await page.evaluate(
+            () => typeof window.reflectionHelpers
+        );
+        expect(helperType).toBe("object");
+        // Typed sub-state is the default; clicking Record toggles it.
+        await expect(page.locator("#reflTyped")).toBeVisible();
+        await page.locator("#reflTabVoice").click();
+        await expect(page.locator("#reflVoice")).toBeVisible();
+        await expect(page.locator("#reflTyped")).toBeHidden();
+        await page.locator("#reflTabType").click();
+        await expect(page.locator("#reflText")).toBeVisible();
+        // Nav tab is wired on every page.
+        await expect(
+            page.locator('.nav-tab[href*="reflection"]')
+        ).toHaveCount(1);
+        expect(errors).toEqual([]);
     });
 });
 
