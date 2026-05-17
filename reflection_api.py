@@ -26,6 +26,7 @@ from rate_limit import limiter
 from reflection_service import (
     analyze_reflection,
     apply_selected_actions,
+    attach_analysis,
     get_reflection,
     list_reflections,
     save_reflection,
@@ -121,27 +122,54 @@ def submit(email: str):  # noqa: ARG001
             "error": "Reflection is empty — nothing to analyze",
         }), 422
 
-    # Analyze with Claude (proposes create/update/delete actions).
-    try:
-        analysis = analyze_reflection(transcript)
-    except RuntimeError as e:
-        logger.warning("Reflection analysis failed: %s", e)
-        return jsonify({"error": f"Analysis failed: {e}"}), 422
-    except Exception:
-        logger.exception("Reflection analysis crashed unexpectedly")
-        return jsonify(
-            {"error": "Analysis failed (unexpected)"}
-        ), 500
-
+    # Persist the transcript FIRST, before the paid + failure-prone
+    # Claude call. #165 requires every transcript persisted forever;
+    # the original order (analyze → save) discarded the reflection on
+    # any Claude failure — worst case losing a voice memo that already
+    # cost a Whisper transcription. proposed_actions starts empty and
+    # gets attached on analysis success.
     reflection = save_reflection(
         transcript=transcript,
         input_mode=input_mode,
+        proposed={"explicit": [], "suggested": []},
+        audio_duration_seconds=duration,
+        audio_cost_usd=audio_cost,
+        ai_cost_usd=None,
+    )
+
+    # Analyze with Claude (proposes create/update/delete actions). On
+    # failure the reflection is ALREADY saved — return its id + the
+    # error so the client shows "saved, analysis failed — retry" and
+    # the transcript is visible in the history list, NOT lost.
+    try:
+        analysis = analyze_reflection(transcript)
+    except RuntimeError as e:
+        logger.warning(
+            "Reflection analysis failed (transcript %s saved): %s",
+            reflection.id, e,
+        )
+        return jsonify({
+            "error": f"Analysis failed: {e}",
+            "reflection_id": str(reflection.id),
+            "saved": True,
+        }), 422
+    except Exception:
+        logger.exception(
+            "Reflection analysis crashed unexpectedly "
+            "(transcript %s saved)", reflection.id,
+        )
+        return jsonify({
+            "error": "Analysis failed (unexpected)",
+            "reflection_id": str(reflection.id),
+            "saved": True,
+        }), 500
+
+    reflection = attach_analysis(
+        reflection,
         proposed={
             "explicit": analysis["explicit"],
             "suggested": analysis["suggested"],
         },
-        audio_duration_seconds=duration,
-        audio_cost_usd=audio_cost,
         ai_cost_usd=analysis["ai_cost_usd"],
     )
 

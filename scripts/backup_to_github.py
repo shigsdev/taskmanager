@@ -80,8 +80,19 @@ def run_pg_dump(database_url: str, out_path: Path) -> dict:
     {"size_bytes": N, "elapsed_sec": N}."""
     started = datetime.datetime.now(datetime.UTC)
     sys.stdout.write(f"[backup] pg_dump → {out_path.name} (binary={PG_DUMP_BIN})\n")
-    proc = subprocess.run(
-        [PG_DUMP_BIN, f"--format={DUMP_FORMAT}", "--file", str(out_path), database_url],
+    # PG_DUMP_BIN is an env var the trusted workflow YAML sets to a
+    # fixed absolute path (/usr/lib/postgresql/18/bin/pg_dump), with a
+    # hardcoded "pg_dump" literal fallback. Not user-controlled. No
+    # shell=True. Bare trailing nosemgrep (matched-line suppression).
+    _dump_cmd = [
+        PG_DUMP_BIN, f"--format={DUMP_FORMAT}",
+        "--file", str(out_path), database_url,
+    ]
+    # PG_DUMP_BIN: trusted fixed env path from the workflow YAML,
+    # hardcoded "pg_dump" fallback, no shell=True. Bare nosemgrep —
+    # `nosemgrep: <text>` would be parsed as a rule-id list.
+    proc = subprocess.run(  # noqa: S603
+        _dump_cmd,  # nosemgrep
         capture_output=True, text=True, check=False,
     )
     elapsed = (datetime.datetime.now(datetime.UTC) - started).total_seconds()

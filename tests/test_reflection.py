@@ -466,6 +466,58 @@ class TestReflectionApi:
         )
         assert resp.status_code == 400
 
+    def test_analysis_failure_still_persists_transcript(
+        self, app, client, monkeypatch
+    ):
+        """Data-loss regression guard (2026-05-16 review finding).
+
+        The transcript MUST be saved before the Claude call. A
+        RuntimeError from analyze_reflection (rate limit / network /
+        missing key) must NOT discard the reflection — it returns 422
+        with saved:true + the reflection_id, and the row is in the DB
+        with empty proposed_actions (analysable later)."""
+        _bypass_auth(monkeypatch)
+        with patch(
+            "reflection_api.analyze_reflection",
+            side_effect=RuntimeError("ANTHROPIC_API_KEY not configured"),
+        ):
+            resp = client.post(
+                "/api/reflection",
+                json={"text": "A reflection that must survive a Claude outage."},
+            )
+        assert resp.status_code == 422
+        body = resp.get_json()
+        assert body["saved"] is True
+        assert body["reflection_id"]
+        # The transcript is persisted despite the analysis failure.
+        with app.app_context():
+            assert db.session.scalar(select(func.count(Reflection.id))) == 1
+            r = db.session.scalar(select(Reflection))
+            assert r.transcript == (
+                "A reflection that must survive a Claude outage."
+            )
+            assert r.proposed_actions == {"explicit": [], "suggested": []}
+
+    def test_analysis_crash_still_persists_transcript(
+        self, app, client, monkeypatch
+    ):
+        """Same guard for the unexpected-exception (500) branch."""
+        _bypass_auth(monkeypatch)
+        with patch(
+            "reflection_api.analyze_reflection",
+            side_effect=ValueError("claude returned garbage"),
+        ):
+            resp = client.post(
+                "/api/reflection",
+                json={"text": "Survive an unexpected analyzer crash."},
+            )
+        assert resp.status_code == 500
+        body = resp.get_json()
+        assert body["saved"] is True
+        assert body["reflection_id"]
+        with app.app_context():
+            assert db.session.scalar(select(func.count(Reflection.id))) == 1
+
     def test_confirm_applies_and_blocks_double_apply(
         self, app, client, monkeypatch
     ):

@@ -60,6 +60,13 @@ ALLOWED_IMPLICIT_VARS = {
     # Gunicorn / WSGI conventions — set by Railway or the Procfile, not
     # by the user. gunicorn.conf.py reads WEB_CONCURRENCY directly.
     "WEB_CONCURRENCY",
+    # Backup workflows (#154) — set by the GitHub Actions YAML, not by
+    # the user and not part of the Flask app's runtime config. They
+    # point at the absolute pg_dump / pg_restore v18 binaries on the
+    # CI runner (Railway Postgres 18.3 vs runner default 16). Documented
+    # in /docs#backups + the workflow files, not the README env table.
+    "PG_DUMP_BIN",
+    "PG_RESTORE_BIN",
 }
 
 

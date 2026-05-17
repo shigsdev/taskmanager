@@ -123,9 +123,20 @@ def restore(dump_path: Path, scratch_url: str) -> dict:
     extensions and roles that don't exist on the scratch side.
     """
     started = datetime.datetime.now(datetime.UTC)
-    proc = subprocess.run(
-        [PG_RESTORE_BIN, "--clean", "--if-exists", "--no-owner",
-         "--no-privileges", "--dbname", scratch_url, str(dump_path)],
+    # PG_RESTORE_BIN is an env var the trusted workflow YAML sets to a
+    # fixed absolute path (/usr/lib/postgresql/18/bin/pg_restore), with
+    # a hardcoded "pg_restore" literal fallback. Not user-controlled.
+    # No shell=True. Bare trailing nosemgrep (the working suppression
+    # pattern in this codebase — semgrep wants it on the matched line).
+    _restore_cmd = [
+        PG_RESTORE_BIN, "--clean", "--if-exists", "--no-owner",
+        "--no-privileges", "--dbname", scratch_url, str(dump_path),
+    ]
+    # PG_RESTORE_BIN: trusted fixed env path from the workflow YAML,
+    # hardcoded "pg_restore" fallback, no shell=True. Bare nosemgrep —
+    # `nosemgrep: <text>` would be parsed as a rule-id list.
+    proc = subprocess.run(  # noqa: S603
+        _restore_cmd,  # nosemgrep
         capture_output=True, text=True, check=False,
     )
     elapsed = (datetime.datetime.now(datetime.UTC) - started).total_seconds()

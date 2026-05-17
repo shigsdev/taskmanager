@@ -537,6 +537,35 @@ def save_reflection(
     return reflection
 
 
+def attach_analysis(
+    reflection: Reflection,
+    *,
+    proposed: dict[str, Any],
+    ai_cost_usd: float | None = None,
+) -> Reflection:
+    """Attach Claude's proposed actions to an already-persisted
+    reflection.
+
+    Split out from save_reflection so the transcript can be committed
+    BEFORE the (failure-prone, paid) Claude call — a transient Claude
+    outage must never discard a reflection the user already typed or
+    a voice memo that already cost a Whisper transcription. The #165
+    spec requires "every transcript persisted forever"; persisting
+    only on analysis success violated that. The endpoint now does
+    save_reflection() → analyze_reflection() → attach_analysis(), so
+    a Claude failure leaves a saved (analysable-later) reflection
+    rather than losing it.
+    """
+    reflection.proposed_actions = {
+        "explicit": proposed.get("explicit", []),
+        "suggested": proposed.get("suggested", []),
+    }
+    if ai_cost_usd is not None:
+        reflection.ai_cost_usd = ai_cost_usd
+    db.session.commit()
+    return reflection
+
+
 def get_reflection(reflection_id: uuid.UUID) -> Reflection | None:
     return db.session.get(Reflection, reflection_id)
 
