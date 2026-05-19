@@ -1,3 +1,5 @@
+<instructions>
+
 # CLAUDE.md — Coding Standards and Quality Gates
 
 Claude Code must read and follow this file on every session. Every commit must
@@ -819,3 +821,5 @@ about these — they're not relevant here):
   leaked (read-only, no mutation, rotatable via `SECRET_KEY`)
 - `LOCAL_DEV_BYPASS_AUTH` exists at all (acceptable because of the
   four-gate defense including the triple Railway tripwire)
+
+</instructions>
