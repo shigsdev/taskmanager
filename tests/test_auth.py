@@ -2,8 +2,99 @@
 from __future__ import annotations
 
 import pytest
+from flask import session
+from oauthlib.oauth2.rfc6749.errors import TokenExpiredError
 
 import auth
+
+
+class _FakeResp:
+    def __init__(self, ok, payload):
+        self.ok = ok
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+class TestGetCurrentUserEmailSessionCache:
+    """Regression for the 2026-05-17 "logged out every 10-15 min" bug.
+
+    The old code called Google's userinfo endpoint on EVERY request;
+    the first call after Google's short-lived access token expired
+    raised TokenExpiredError -> session.clear() -> forced re-login.
+    The fix caches the verified email in the signed session and never
+    re-hits Google for the life of the 30-day cookie.
+    """
+
+    def test_first_lookup_hits_google_and_caches(self, app, monkeypatch):
+        calls = {"n": 0}
+
+        class G:
+            authorized = True
+
+            def get(self, _path):
+                calls["n"] += 1
+                return _FakeResp(True, {"email": "me@example.com"})
+
+        monkeypatch.setattr(auth, "google", G())
+        with app.test_request_context("/"):
+            assert auth.get_current_user_email() == "me@example.com"
+            assert session[auth._SESSION_EMAIL_KEY] == "me@example.com"
+        assert calls["n"] == 1
+
+    def test_cached_email_short_circuits_without_calling_google(
+        self, app, monkeypatch
+    ):
+        class G:
+            authorized = True
+
+            def get(self, _path):  # pragma: no cover - must NOT run
+                raise AssertionError("Google must not be called when cached")
+
+        monkeypatch.setattr(auth, "google", G())
+        with app.test_request_context("/"):
+            session[auth._SESSION_EMAIL_KEY] = "me@example.com"
+            assert auth.get_current_user_email() == "me@example.com"
+
+    def test_expired_token_with_cache_does_NOT_log_out(self, app, monkeypatch):
+        """The actual bug: an expired Google token used to clear the
+        session. With a cached email it must NOT — the user stays in."""
+
+        class G:
+            authorized = True
+
+            def get(self, _path):  # pragma: no cover - must NOT run
+                raise TokenExpiredError()
+
+        monkeypatch.setattr(auth, "google", G())
+        with app.test_request_context("/"):
+            session[auth._SESSION_EMAIL_KEY] = "me@example.com"
+            assert auth.get_current_user_email() == "me@example.com"
+            assert auth._SESSION_EMAIL_KEY in session  # not cleared
+
+    def test_expired_token_without_cache_clears_session(self, app, monkeypatch):
+        class G:
+            authorized = True
+
+            def get(self, _path):
+                raise TokenExpiredError()
+
+        monkeypatch.setattr(auth, "google", G())
+        with app.test_request_context("/"):
+            session["something"] = "x"
+            assert auth.get_current_user_email() is None
+            assert "something" not in session  # session.clear() ran
+
+    def test_unauthorized_when_not_signed_in_and_no_cache(
+        self, app, monkeypatch
+    ):
+        class G:
+            authorized = False
+
+        monkeypatch.setattr(auth, "google", G())
+        with app.test_request_context("/"):
+            assert auth.get_current_user_email() is None
 
 
 def test_index_unauthenticated_redirects_to_google_login(client, monkeypatch):

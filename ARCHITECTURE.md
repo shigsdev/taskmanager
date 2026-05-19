@@ -400,9 +400,13 @@ authentication state. It enforces the same single-user lockdown as
 ### Long-lived validator cookie (`validator_cookie.py`)
 
 The naive "copy your browser session cookie" path for the validator has
-a silent failure mode: Flask-Dance auto-refreshes the Google OAuth
-token during normal browser use, which re-signs the `session` cookie
-and invalidates any previously-captured copy.
+a silent failure mode: the `session` cookie is rewritten during normal
+use (OAuth sign-in, and identity caching per ADR-032), so any
+previously-captured copy goes stale. (Note: Flask-Dance does **not**
+auto-refresh the Google token — no offline/refresh token is requested;
+that token's short life is exactly why identity is now cached in the
+signed session rather than re-resolved against Google every request —
+ADR-032.)
 
 The fix is a **dedicated, signed, opt-in credential** minted offline via
 a Flask CLI command:

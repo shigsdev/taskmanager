@@ -104,15 +104,47 @@ def log_bypass_startup_banner() -> None:
     )
 
 
+#: Flask-session key holding the email verified at OAuth time. Once set,
+#: it is trusted for the life of the signed session cookie
+#: (PERMANENT_SESSION_LIFETIME = 30d, sliding) so we never have to call
+#: Google's userinfo endpoint again on subsequent requests.
+_SESSION_EMAIL_KEY = "auth_email"
+
+
 def get_current_user_email() -> str | None:
     """Return the authenticated user's Google email, or None if not signed in.
 
     Kept as a module-level function so tests can monkeypatch it without
     needing a real OAuth flow.
 
+    Identity is resolved ONCE via Google's userinfo endpoint at first
+    sign-in and then cached in the signed Flask session. Every later
+    request trusts the session cookie instead of re-calling Google.
+
+    Why this matters (user report 2026-05-17 "logged out every 10-15
+    min"): Google access tokens are short-lived (~1h) and the OAuth
+    blueprint requests NO offline/refresh token, so the token cannot be
+    renewed. The old code called ``google.get(/userinfo)`` on EVERY
+    request; the first call after the access token expired raised
+    ``TokenExpiredError`` → ``session.clear()`` → forced re-login,
+    roughly hourly (and sooner under Google's variable token TTLs /
+    multiple workers — felt like every 10-15 min). Caching the verified
+    email decouples app-session longevity (30d signed cookie, the real
+    security boundary, re-checked against AUTHORIZED_EMAIL by
+    ``login_required`` on every request) from Google's token lifetime.
+
     Returns None (triggering a login redirect) when the OAuth token has
     expired rather than letting the TokenExpiredError bubble up as a 500.
     """
+    # Fast path: identity already established this session. The cookie
+    # is signed with SECRET_KEY (unforgeable) and HttpOnly/Secure/
+    # SameSite=Lax; login_required still validates this value against
+    # AUTHORIZED_EMAIL on every request, so caching narrows only the
+    # *lookup*, not the authorization decision.
+    cached = session.get(_SESSION_EMAIL_KEY)
+    if cached:
+        return cached
+
     if not google.authorized:
         return None
     try:
@@ -122,7 +154,13 @@ def get_current_user_email() -> str | None:
         return None
     if not resp.ok:
         return None
-    return resp.json().get("email")
+    email = resp.json().get("email")
+    if email:
+        # Persist for the life of the 30-day signed session so the
+        # expiring Google access token never forces a re-login again.
+        session[_SESSION_EMAIL_KEY] = email
+        session.permanent = True
+    return email
 
 
 # HTTP methods on which the validator cookie is allowed to authenticate.

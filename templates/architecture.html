@@ -679,8 +679,11 @@ flowchart TD
     Redirect --> Callback[Google callback]
     Callback --> Token[Token stored in<br/>flask_dance_oauth table]
     Token --> Userinfo[google.get oauth2/v2/userinfo<br/>get email]
-    Userinfo --> EmailCheck
-    OAuth -- Yes — session exists --> Userinfo
+    Userinfo --> Cache[Cache email in signed<br/>session auth_email · ADR-032]
+    Cache --> EmailCheck
+    OAuth -- Yes — session exists --> Cached{auth_email cached<br/>in signed session?}
+    Cached -- Yes — skip Google --> EmailCheck
+    Cached -- No --> Userinfo
 
     EmailCheck{Email matches<br/>AUTHORIZED_EMAIL?}
     EmailCheck -- No --> Bad([403 unauthorized.html<br/>session.clear])
@@ -691,7 +694,7 @@ flowchart TD
     classDef ok fill:#dcfce7,stroke:#15803d,color:#0a3d1d
     classDef bad fill:#fee2e2,stroke:#b91c1c,color:#5a0a0a
     class Start startNode
-    class BypassEnv,Tripwire,EnvFile,AuthEmail,Cookie,Method,Verify,OAuth,EmailCheck decision
+    class BypassEnv,Tripwire,EnvFile,AuthEmail,Cookie,Method,Verify,OAuth,Cached,EmailCheck decision
     class In1,In2,In3 ok
     class Bad bad
                 </pre>
@@ -720,7 +723,7 @@ flowchart TD
                 <h4>3. Do you have a Google OAuth session?</h4>
                 <div class="branch">
                     <p><span class="no">NO session</span> → redirect you to Google, then back to the page you wanted.</p>
-                    <p><span class="yes">YES session</span>, AND the Google account email matches your authorized email → log you in. (Most normal use is this path.)</p>
+                    <p><span class="yes">YES session</span>, AND the Google account email matches your authorized email → log you in. (Most normal use is this path.) Your email is verified with Google <em>once</em> at sign-in and then cached in the signed 30-day session, so an expiring Google access token no longer forces a re-login (ADR-032).</p>
                     <p><span class="no">YES session</span>, but the email <strong>doesn't</strong> match → 403 Unauthorized page (the single-user lockdown).</p>
                 </div>
             </div>
@@ -735,7 +738,10 @@ flowchart TD
                         lockdown), <strong>002</strong> (four-gate dev
                         bypass), <strong>003</strong> (validator cookie
                         narrow scope, SUPERSEDED), <strong>004</strong>
-                        (broaden validator to GET-only routes).
+                        (broaden validator to GET-only routes),
+                        <strong>032</strong> (cache verified identity in
+                        the signed session — fixes the recurring forced
+                        re-login).
                     </p>
                 </div>
             </details>
