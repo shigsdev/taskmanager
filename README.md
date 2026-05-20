@@ -354,6 +354,43 @@ npm run test:e2e:prod
 Covers: auth preflight, home/goals page renders, `/api/tasks` shape check,
 `/healthz` reports real SHA. Tests live in `tests/e2e-prod/`.
 
+### Re-running missed cron jobs
+
+Four cron jobs fire between 00:01 and 00:05 every night:
+`tomorrow_roll`, `promote_due_today`, `realign_tiers`, and
+`recurring_spawn`. If Railway has an outage at midnight and the
+scheduler misses the fire, the four jobs silently skip until the
+next 24h cycle — tasks in Tomorrow stay in Tomorrow, today-due
+items don't promote, etc.
+
+To replay them manually, on your laptop with the project checked
+out and `pip install -r requirements.txt` done:
+
+```bash
+# Preview what would run (no writes persist)
+railway run python scripts/run_missed_crons.py --dry-run
+
+# Real run — all four in scheduler order (00:01 → 00:05)
+railway run python scripts/run_missed_crons.py
+
+# Subset (e.g. just recurring spawn)
+railway run python scripts/run_missed_crons.py --only recurring_spawn
+
+# Spawn for a back-dated day (only meaningful for recurring_spawn)
+railway run python scripts/run_missed_crons.py --date 2026-05-19
+```
+
+`railway run` injects the prod `DATABASE_URL` + `DIGEST_TZ` into
+your local Python so the script touches the production database
+directly — no deploy is required. Every job logs start, finish,
+and rowcount at WARNING through the standard logging chain, so
+the run shows up in `/api/debug/logs` alongside real scheduler
+firings.
+
+The 07:00 `daily_digest` is intentionally NOT covered by this
+script — use `POST /api/digest/send` for that (avoids accidental
+re-sends if you re-run the script).
+
 ### Standards
 
 See `CLAUDE.md` for coding standards, quality gates, security rules, and
