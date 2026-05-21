@@ -688,11 +688,45 @@ def _register_cli_commands(app: Flask) -> None:
 
 def _start_digest_scheduler(app: Flask) -> None:
     """Start APScheduler to send the daily digest email."""
+    import logging as _logging
+
     from apscheduler.schedulers.background import BackgroundScheduler
 
+    import health as _health
+
+    _log = _logging.getLogger(__name__)
+
+    # Audit fix #179 (2026-05-21): the env-var parse used to raise
+    # ValueError on a malformed `DIGEST_TIME` (e.g. "07:00:00", "7am", or
+    # "" — any operator typo). That crashed `create_app` during gunicorn
+    # boot, and the container went into restart-loop with an opaque
+    # traceback in Railway logs and no signal on /healthz (which never
+    # got to run). Wrap the parse in try/except, default to 07:00, log
+    # a WARNING that surfaces in /api/debug/logs, and expose the
+    # resolved time on /healthz so a misconfigured deploy is loud.
     digest_time = os.environ.get("DIGEST_TIME", "07:00")
-    hour, minute = (int(x) for x in digest_time.split(":"))
+    fell_back = False
+    try:
+        parts = digest_time.split(":")
+        if len(parts) != 2:
+            raise ValueError(f"expected HH:MM format, got {digest_time!r}")
+        hour, minute = int(parts[0]), int(parts[1])
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            raise ValueError(
+                f"hour must be 0-23 and minute must be 0-59, got {digest_time!r}"
+            )
+    except (ValueError, TypeError) as e:
+        _log.warning(
+            "DIGEST_TIME=%r is malformed (%s); falling back to 07:00. "
+            "Set DIGEST_TIME to a 24-hour HH:MM value (e.g. '07:00', '19:30') "
+            "to silence this warning.",
+            digest_time, e,
+        )
+        hour, minute = 7, 0
+        fell_back = True
+
     tz = os.environ.get("DIGEST_TZ", "America/New_York")
+    _health.register_digest_schedule(hour, minute, tz, fell_back=fell_back)
 
     def _send_scheduled_digest():
         with app.app_context():

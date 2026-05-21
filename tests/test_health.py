@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 import health
 
 # --- check_database ----------------------------------------------------------
@@ -589,6 +591,138 @@ class TestSchedulerJobsRegistered:
             assert "5" in str(minute)
         finally:
             self._cleanup()
+
+
+class TestDigestTimeBootValidation:
+    """Audit fix #179 (2026-05-21): a malformed ``DIGEST_TIME`` env var
+    used to raise ValueError inside ``_start_digest_scheduler`` and
+    crash gunicorn boot. The container then restart-looped with no
+    /healthz visibility on the cause. The fix wraps the parse in
+    try/except, falls back to 07:00 with a WARNING log, and exposes
+    the resolved time on /healthz via ``register_digest_schedule``.
+    """
+
+    def _cleanup(self):
+        import contextlib
+
+        import health as _health
+        if _health._scheduler is not None:
+            with contextlib.suppress(Exception):
+                _health._scheduler.shutdown(wait=False)
+            _health._scheduler = None
+        _health._digest_schedule = None
+        with contextlib.suppress(Exception):
+            _health.HEARTBEAT_PATH.unlink(missing_ok=True)
+
+    @pytest.mark.parametrize(
+        "bad_value",
+        ["07:00:00", "7am", "", "99:99", "abc", "7", ":", "-1:30", "07:60"],
+    )
+    def test_malformed_digest_time_does_not_raise(self, app, monkeypatch, bad_value, caplog):
+        """Every malformed shape must coerce to 07:00, log a WARNING,
+        and surface ``fell_back: True`` on /healthz."""
+        import logging
+
+        from app import _start_digest_scheduler
+
+        monkeypatch.setenv("DIGEST_TIME", bad_value)
+        monkeypatch.setenv("DIGEST_TZ", "America/New_York")
+
+        with caplog.at_level(logging.WARNING):
+            try:
+                _start_digest_scheduler(app)
+                import health as _health
+                assert _health._digest_schedule is not None
+                assert _health._digest_schedule["hour"] == 7
+                assert _health._digest_schedule["minute"] == 0
+                assert _health._digest_schedule["fell_back"] is True
+                assert _health._digest_schedule["tz"] == "America/New_York"
+                assert _health._digest_schedule["display"] == "07:00 America/New_York"
+            finally:
+                self._cleanup()
+
+        warning_msgs = [r.message for r in caplog.records if r.levelno >= logging.WARNING]
+        assert any(
+            "DIGEST_TIME" in m and "malformed" in m and "07:00" in m
+            for m in warning_msgs
+        ), f"expected DIGEST_TIME fallback warning, got {warning_msgs!r}"
+
+    @pytest.mark.parametrize(
+        "good_value,expected_hour,expected_minute",
+        [("07:00", 7, 0), ("19:30", 19, 30), ("00:01", 0, 1), ("23:59", 23, 59)],
+    )
+    def test_well_formed_digest_time_is_not_flagged(
+        self, app, monkeypatch, good_value, expected_hour, expected_minute, caplog,
+    ):
+        """Valid values must NOT trigger the fallback warning. Operator
+        sees ``fell_back: False`` so deploy-validation reports can
+        distinguish "running at user-configured time" from "running at
+        the default because the env var was junk"."""
+        import logging
+
+        from app import _start_digest_scheduler
+
+        monkeypatch.setenv("DIGEST_TIME", good_value)
+        monkeypatch.setenv("DIGEST_TZ", "America/New_York")
+
+        with caplog.at_level(logging.WARNING):
+            try:
+                _start_digest_scheduler(app)
+                import health as _health
+                assert _health._digest_schedule is not None
+                assert _health._digest_schedule["hour"] == expected_hour
+                assert _health._digest_schedule["minute"] == expected_minute
+                assert _health._digest_schedule["fell_back"] is False
+                expected_display = f"{expected_hour:02d}:{expected_minute:02d} America/New_York"
+                assert _health._digest_schedule["display"] == expected_display
+            finally:
+                self._cleanup()
+
+        fallback_warnings = [
+            r for r in caplog.records
+            if r.levelno >= logging.WARNING
+            and "DIGEST_TIME" in r.message
+            and "malformed" in r.message
+        ]
+        assert fallback_warnings == [], (
+            f"valid DIGEST_TIME={good_value!r} should NOT log the malformed fallback "
+            f"warning, but got {[r.message for r in fallback_warnings]!r}"
+        )
+
+    def test_healthz_exposes_digest_scheduled_at(self, app, db, monkeypatch):
+        """The /healthz report must include the resolved
+        ``digest_scheduled_at`` payload so deploy-validation can flag a
+        fallback at deploy time, not via a surprised user later."""
+        from app import _start_digest_scheduler
+
+        monkeypatch.setenv("DIGEST_TIME", "08:15")
+        monkeypatch.setenv("DIGEST_TZ", "America/New_York")
+        try:
+            _start_digest_scheduler(app)
+            with app.app_context():
+                report = health.run_health_checks(app, db)
+        finally:
+            self._cleanup()
+
+        assert "digest_scheduled_at" in report
+        payload = report["digest_scheduled_at"]
+        assert payload is not None
+        assert payload["hour"] == 8
+        assert payload["minute"] == 15
+        assert payload["fell_back"] is False
+        assert payload["tz"] == "America/New_York"
+
+    def test_healthz_digest_scheduled_at_is_none_when_scheduler_never_ran(self, app, db):
+        """In non-scheduler workers (gunicorn pre-fork only runs the
+        scheduler in one worker), ``digest_scheduled_at`` is None.
+        That's intentional — the report shape must not crash for those
+        workers."""
+        # Explicitly reset to None so test order can't pollute.
+        health._digest_schedule = None
+        with app.app_context():
+            report = health.run_health_checks(app, db)
+        assert "digest_scheduled_at" in report
+        assert report["digest_scheduled_at"] is None
 
 
 # --- check_tls_expiry (#5) ---------------------------------------------------
