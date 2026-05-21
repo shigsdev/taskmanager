@@ -5,7 +5,7 @@ Wires up Google OAuth + single-user lockdown, the database, and migrations.
 from __future__ import annotations
 
 import os
-from datetime import date, timedelta
+from datetime import timedelta
 
 from dotenv import load_dotenv
 from flask import Flask, redirect, render_template, session, url_for
@@ -38,6 +38,7 @@ from auth import log_bypass_startup_banner, login_required
 from logging_service import configure_logging
 from models import TaskStatus, Tier, db
 from task_service import list_tasks
+from utils import local_today_date
 
 load_dotenv()
 
@@ -504,16 +505,19 @@ def create_app(config: dict | None = None) -> Flask:
     def print_page(email: str):  # noqa: ARG001
         today_tasks = list_tasks(tier=Tier.TODAY, status=TaskStatus.ACTIVE)
         week_tasks = list_tasks(tier=Tier.THIS_WEEK, status=TaskStatus.ACTIVE)
+        # Audit fix #180 (2026-05-20): use DIGEST_TZ today, not server UTC —
+        # at 9pm ET, today's tasks would otherwise render as "overdue".
+        today = local_today_date()
         overdue = [
             t for t in list_tasks(status=TaskStatus.ACTIVE)
-            if t.due_date and t.due_date < date.today() and t.tier != Tier.TODAY
+            if t.due_date and t.due_date < today and t.tier != Tier.TODAY
         ]
         return render_template(
             "print.html",
             today_tasks=today_tasks,
             week_tasks=week_tasks,
             overdue_tasks=overdue,
-            print_date=date.today(),
+            print_date=today,
         )
 
     @app.route("/logout", methods=["POST", "GET"])
@@ -567,15 +571,18 @@ def create_app(config: dict | None = None) -> Flask:
                 "created_at": p.created_at.isoformat(),
             }
 
+        # Audit fix #180 (2026-05-20): use DIGEST_TZ today, not server UTC —
+        # a 9pm ET backup would otherwise stamp tomorrow's date.
+        today = local_today_date()
         backup = {
-            "exported_at": date.today().isoformat(),
+            "exported_at": today.isoformat(),
             "tasks": [serialize_task(t) for t in all_tasks],
             "goals": [serialize_goal(g) for g in all_goals],
             "projects": [serialize_project(p) for p in all_projects],
         }
         resp = _jsonify(backup)
         resp.headers["Content-Disposition"] = (
-            f"attachment; filename=taskmanager-backup-{date.today()}.json"
+            f"attachment; filename=taskmanager-backup-{today}.json"
         )
         return resp
 

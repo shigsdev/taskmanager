@@ -932,6 +932,50 @@ class TestVoiceCreateTasksFromCandidates:
             assert tasks[0].project_id is None
 
 
+class TestVoicePromptTZDriftFix180:
+    """Audit fix #180 (2026-05-20): _call_claude_api_voice used
+    UTC ``date.today()`` for the ``Today:`` line in the prompt. At
+    9pm ET, Claude would resolve "tomorrow" against UTC's next-day,
+    stamping due_date one day later than the user meant.
+    """
+
+    def test_prompt_uses_local_today_date(self, monkeypatch):
+        from datetime import date
+
+        from scan_service import _call_claude_api_voice
+
+        pinned = date(2026, 5, 20)
+        monkeypatch.setattr(
+            "scan_service.local_today_date", lambda: pinned,
+            raising=False,
+        )
+        # The import inside _call_claude_api_voice is local — patch the
+        # module the helper resolves against.
+        import utils as _utils
+        monkeypatch.setattr(_utils, "local_today_date", lambda: pinned)
+
+        captured = {}
+
+        def fake_post(api_key, prompt, max_tokens):  # noqa: ARG001
+            captured["prompt"] = prompt
+            # Minimal Claude-shaped response: empty candidates list.
+            return {"content": [{"text": "[]"}]}
+
+        monkeypatch.setattr("scan_service._post_to_claude", fake_post)
+
+        out = _call_claude_api_voice(
+            api_key="sk-test",
+            transcript="something tomorrow",
+            projects=[],
+            goals=[],
+        )
+        assert out == []
+        # The pinned local date should appear in the prompt — both at the
+        # "Today's date is" header and the inline "against today's date"
+        # reference. Strict positive: the ET date is present.
+        assert "2026-05-20" in captured["prompt"]
+
+
 class TestVoicePromptSelfConsistency:
     """#137 Sub-PR C: prompt-template self-consistency.
 
