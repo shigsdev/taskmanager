@@ -83,7 +83,7 @@ drift. Highest priority.
 - **Risk:** Low. Pattern is already established in #128.
 - **Effort:** S.
 
-### [ ] PR 2 — DIGEST_TIME boot validation
+### [x] PR 2 — DIGEST_TIME boot validation — SHIPPED 2026-05-21 (SHA c3713e8d)
 
 - **Item:** #179
 - **Theme:** Container crash-on-boot if `DIGEST_TIME` env var malformed.
@@ -427,7 +427,7 @@ pass AND post-deploy validation + prod smoke pass.
 
 ### Phase 1 — Correctness
 - [x] PR 1 — TZ-drift sweep #2 (#178, #180) — shipped 2026-05-20, SHA f85fc4c2, 37/37 prod smoke green
-- [ ] PR 2 — DIGEST_TIME boot validation (#179)
+- [x] PR 2 — DIGEST_TIME boot validation (#179) — shipped 2026-05-21, SHA c3713e8d, 37/37 prod smoke green
 - [ ] PR 3 — Realign cron preserves overdue-TODAY (#170)
 - [ ] PR 4 — Recurring template integrity (#171, #173, #177)
 - [ ] PR 5 — Voice-memo goal category mapping (#172)
