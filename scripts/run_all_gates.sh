@@ -204,7 +204,16 @@ fi
 # --- 6. pip-audit (Python CVE check) ----------------------------------------
 
 banner "6. pip-audit (dependency CVEs)"
-if python -m pip_audit -r requirements.txt; then
+# Ignored vulnerabilities (database false-positives only — never silent
+# real risk; document each here with the OSV ID + reason):
+#
+#   PYSEC-2026-89 (markdown CVE-2025-69534 / GHSA-5wmx-573v-2qwq): the
+#   advisory's own description says "fixed in version 3.8.1" and we
+#   run markdown 3.10.2 (well past the fix). OSV still flags 3.8.1+
+#   for this ID — false positive. Re-evaluate whenever the OSV record's
+#   `fix_versions` field gets populated or the upstream entry is
+#   amended. Added 2026-05-21 alongside #205.
+if python -m pip_audit -r requirements.txt --ignore-vuln PYSEC-2026-89; then
     pass "pip-audit"
 else
     fail "pip-audit found a known vulnerability — bump the affected package in requirements.txt"

@@ -5,7 +5,7 @@
  * Bump CACHE_VERSION when deploying new static files.
  */
 
-var CACHE_VERSION = "v139";
+var CACHE_VERSION = "v140";
 var CACHE_NAME = "taskmanager-" + CACHE_VERSION;
 
 // HTML is intentionally NOT pre-cached (see fetch handler below — Bug #56).
@@ -52,6 +52,9 @@ self.addEventListener("install", function (event) {
 
 // Activate — clean up old caches
 self.addEventListener("activate", function (event) {
+    // Clear the in-flight flag (set by CLEAR_CACHE) so the new SW can
+    // re-populate the cache from scratch.
+    _clearCacheInFlight = false;
     event.waitUntil(
         caches.keys().then(function (keys) {
             return Promise.all(
@@ -68,19 +71,38 @@ self.addEventListener("activate", function (event) {
     self.clients.claim();
 });
 
+// CLEAR_CACHE state: set true while a clear is in flight. Suppresses the
+// fetch handler from re-creating `taskmanager-*` caches in the immediate
+// window after delete, which made `tests/e2e/service-worker.spec.js:89`
+// flaky (#205). Resets after the next `activate` so a fresh deploy can
+// re-warm the cache.
+var _clearCacheInFlight = false;
+
 // Message — handle skip-waiting and cache-clear requests
 self.addEventListener("message", function (event) {
     if (event.data && event.data.type === "SKIP_WAITING") {
         self.skipWaiting();
     }
     if (event.data && event.data.type === "CLEAR_CACHE") {
-        caches.keys().then(function (keys) {
-            return Promise.all(
-                keys
-                    .filter(function (key) { return key.startsWith("taskmanager-"); })
-                    .map(function (key) { return caches.delete(key); })
-            );
-        });
+        // Audit fix #205 (2026-05-21): wrap the delete chain in
+        // `event.waitUntil()` so the SW lifecycle blocks on completion
+        // before reporting idle, AND flip `_clearCacheInFlight` so the
+        // fetch handler skips its cache.put step during the window where
+        // the test (or a logout flow) expects an empty cache.
+        _clearCacheInFlight = true;
+        event.waitUntil(
+            caches.keys().then(function (keys) {
+                return Promise.all(
+                    keys
+                        .filter(function (key) { return key.startsWith("taskmanager-"); })
+                        .map(function (key) { return caches.delete(key); })
+                );
+            }).then(function () {
+                // Leave the flag set until the next activate clears it —
+                // that's when a new deploy is reasonably starting and we
+                // want to re-warm. A no-op deploy never flips it back.
+            })
+        );
     }
 });
 
@@ -119,7 +141,12 @@ self.addEventListener("fetch", function (event) {
         caches.match(event.request).then(function (cached) {
             if (cached) return cached;
             return fetch(event.request).then(function (response) {
-                if (response.ok) {
+                // Audit fix #205 (2026-05-21): skip cache re-population
+                // while a CLEAR_CACHE is in flight — otherwise a
+                // background asset fetch races the delete and the cache
+                // re-appears before the test (or logout flow) sees it
+                // empty. Resets on next `activate`.
+                if (response.ok && !_clearCacheInFlight) {
                     var clone = response.clone();
                     caches.open(CACHE_NAME).then(function (cache) {
                         cache.put(event.request, clone);
