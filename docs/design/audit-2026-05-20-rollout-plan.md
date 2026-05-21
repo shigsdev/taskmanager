@@ -64,7 +64,7 @@ re-order, update this doc.
 User-impact items: silent data loss, cron-batch crashes, off-by-one TZ
 drift. Highest priority.
 
-### [ ] PR 1 — TZ-drift sweep #2
+### [x] PR 1 — TZ-drift sweep #2 — SHIPPED 2026-05-20 (SHA f85fc4c2)
 
 - **Items:** #178, #180
 - **Theme:** Continuation of PR63's #128 fix. Replace 7 lingering UTC
@@ -426,7 +426,7 @@ Mark each PR as it ships. A PR is ✅ only after BOTH pre-deploy gates
 pass AND post-deploy validation + prod smoke pass.
 
 ### Phase 1 — Correctness
-- [ ] PR 1 — TZ-drift sweep #2 (#178, #180)
+- [x] PR 1 — TZ-drift sweep #2 (#178, #180) — shipped 2026-05-20, SHA f85fc4c2, 37/37 prod smoke green
 - [ ] PR 2 — DIGEST_TIME boot validation (#179)
 - [ ] PR 3 — Realign cron preserves overdue-TODAY (#170)
 - [ ] PR 4 — Recurring template integrity (#171, #173, #177)
