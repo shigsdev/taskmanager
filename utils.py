@@ -39,6 +39,38 @@ def local_today_date() -> date:
         return date.today()
 
 
+def local_date_from_dt(dt: datetime | None) -> date | None:
+    """Return the ``DIGEST_TZ`` date for a tz-aware datetime.
+
+    Audit fix #178 (2026-05-20): ``dt.date()`` returns the UTC date when
+    ``dt`` is stored as UTC by SQLAlchemy (default for
+    ``db.DateTime(timezone=True)`` on Postgres). Same drift class as
+    ``date.today()`` — at 11pm ET, ``dt.date()`` returns next day, which
+    breaks any "what local date did this happen on" calculation
+    (triage staleness, calendar bucketing, etc.).
+
+    Mirrors the inline ZoneInfo conversion already used in
+    ``recurring_service.spawn_today_tasks`` (~line 443-459) — extracted
+    here so both call sites share one helper.
+
+    Returns ``None`` when ``dt`` is ``None``.
+    """
+    if dt is None:
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+        tz_name = os.environ.get("DIGEST_TZ", "America/New_York")
+        # Tz-naive timestamps (shouldn't happen with timezone=True columns
+        # but defend anyway) are assumed UTC before conversion.
+        if dt.tzinfo is None:
+            from datetime import UTC
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(ZoneInfo(tz_name)).date()
+    except Exception:  # noqa: BLE001
+        # ZoneInfo / tzdata unavailable → fall back to server local date.
+        return dt.date()
+
+
 class ValidationError(Exception):
     """Raised when user input fails validation. Routes map this to HTTP 422."""
 

@@ -461,11 +461,17 @@ def backfill_today_tomorrow_due_date(email: str):  # noqa: ARG001
     Idempotent: re-running is a no-op once everything's in sync.
     Auth: X-Debug-Token. Returns: {"updated_today": N, "updated_tomorrow": N}.
     """
-    from datetime import date, timedelta
+    from datetime import timedelta
 
     from models import Task, TaskStatus, Tier, db
+    from utils import local_today_date
 
-    today = date.today()  # local server tz; matches _local_today_date used elsewhere
+    # Audit fix #180 (2026-05-20): the old code used `date.today()` (server
+    # UTC) with a comment claiming it matched `_local_today_date` — it did
+    # NOT. After 8pm ET, server UTC has rolled to tomorrow, so today's
+    # tasks would skip the backfill until next morning. Use the shared
+    # DIGEST_TZ helper now.
+    today = local_today_date()
     tomorrow = today + timedelta(days=1)
 
     today_rows = list(db.session.scalars(

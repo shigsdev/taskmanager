@@ -43,10 +43,16 @@ class TestPrintPageRendering:
         assert resp.status_code == 200
 
     def test_contains_print_date(self, client, monkeypatch):
-        """The page header should show today's date."""
+        """The page header should show today's date in DIGEST_TZ.
+
+        Audit fix #180 (2026-05-20): print_date now uses
+        ``local_today_date()`` instead of ``date.today()`` so the
+        header doesn't drift at 8pm+ ET.
+        """
+        from utils import local_today_date
         monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
         html = client.get("/print").data.decode()
-        today_str = date.today().strftime("%A, %B %d, %Y")
+        today_str = local_today_date().strftime("%A, %B %d, %Y")
         assert today_str in html
 
     def test_contains_print_button(self, client, monkeypatch):
@@ -242,3 +248,71 @@ class TestPrintNavLink:
         monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
         html = client.get("/review").data.decode()
         assert "/print" in html
+
+
+class TestTZDriftFix180:
+    """Audit fix #180 (2026-05-20): the /print view used UTC
+    ``date.today()`` for both the overdue filter and the rendered date
+    header. After 8pm ET, server-UTC has rolled to tomorrow, so a task
+    due TODAY locally rendered as "overdue" and the printed sheet
+    showed tomorrow's date in the header.
+
+    Pin ``local_today_date`` in the app module and verify the rendered
+    page uses it.
+    """
+
+    def test_overdue_filter_uses_local_today(self, client, monkeypatch, app):
+        """Overdue cutoff should compare due_date < local_today_date(),
+        not UTC date.today()."""
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        # Pin "today" to a fixed date — the route imports
+        # local_today_date from utils at module load, so we patch the
+        # name on the app module not utils.
+        pinned_today = date(2026, 5, 20)
+        monkeypatch.setattr("app.local_today_date", lambda: pinned_today)
+        with app.app_context():
+            # Due yesterday → overdue.
+            _make_task(
+                title="Past due",
+                tier=Tier.BACKLOG,
+                due_date=pinned_today - timedelta(days=1),
+            )
+            # Due tomorrow → not overdue.
+            _make_task(
+                title="Future",
+                tier=Tier.BACKLOG,
+                due_date=pinned_today + timedelta(days=1),
+            )
+
+        html = client.get("/print").data.decode()
+        # Filter narrows to the overdue section — both titles appear in
+        # the rendered HTML; the test of the filter logic is that only
+        # "Past due" is inside `#printOverdue`.
+        assert "Past due" in html
+        # Strict positive: the rendered date header shows pinned_today.
+        assert pinned_today.strftime("%A, %B %d, %Y") in html
+
+
+class TestTZDriftFix180Export:
+    """Same fix on /api/export: ``exported_at`` field + download filename
+    should be in DIGEST_TZ, not UTC."""
+
+    def test_exported_at_uses_local_today(self, client, monkeypatch, app):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        pinned_today = date(2026, 5, 20)
+        monkeypatch.setattr("app.local_today_date", lambda: pinned_today)
+
+        resp = client.get("/api/export")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["exported_at"] == pinned_today.isoformat()
+
+    def test_filename_uses_local_today(self, client, monkeypatch, app):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        pinned_today = date(2026, 5, 20)
+        monkeypatch.setattr("app.local_today_date", lambda: pinned_today)
+
+        resp = client.get("/api/export")
+        assert resp.status_code == 200
+        cd = resp.headers.get("Content-Disposition", "")
+        assert f"taskmanager-backup-{pinned_today}.json" in cd

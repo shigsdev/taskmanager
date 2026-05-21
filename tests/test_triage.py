@@ -16,7 +16,7 @@ per branch — keeps the suite tight):
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from models import Task, TaskStatus, TaskType, Tier, db
 from triage_service import compute_triage_suggestions
@@ -210,3 +210,74 @@ class TestApiContract:
         # login_required redirects unauthenticated requests; assert it's
         # NOT a 200 (could be 302, 401, or 403 depending on path).
         assert resp.status_code != 200
+
+
+class TestTZDriftFix178:
+    """Audit fix #178 (2026-05-20): `task.updated_at.date()` returned the
+    UTC component even though `today` was already in DIGEST_TZ. A task
+    updated at 11pm ET (3am UTC next day) bucketed as updated-tomorrow-UTC
+    → ``days_since_update = -1`` → no threshold could ever trigger.
+    """
+
+    def test_late_evening_eastern_update_buckets_as_local_date(
+        self, app, monkeypatch
+    ):
+        """11pm ET on day X (= 3am UTC day X+1) must bucket as day X
+        when staleness is computed against ``today_local``."""
+        monkeypatch.setenv("DIGEST_TZ", "America/New_York")
+        # Pin "today" to a fixed date so the test isn't time-sensitive.
+        # Use a date 8 days after the update → expects "stale inbox".
+        monkeypatch.setattr(
+            "triage_service.local_today_date", lambda: date(2026, 5, 28)
+        )
+        with app.app_context():
+            task = Task(
+                title="LateNight inbox",
+                type=TaskType.WORK,
+                tier=Tier.INBOX,
+                status=TaskStatus.ACTIVE,
+            )
+            db.session.add(task)
+            db.session.flush()
+            # 3am UTC on May 21 = 11pm ET on May 20 (during EDT, UTC-4).
+            # Pre-fix: `.date()` returned 2026-05-21 → days_since_update
+            # = 7 → does NOT trigger > 7 threshold.
+            # Post-fix: local-TZ date = 2026-05-20 → days_since_update
+            # = 8 → triggers the stale-inbox suggestion.
+            task.updated_at = datetime(2026, 5, 21, 3, 0, tzinfo=UTC)
+            db.session.commit()
+            out = compute_triage_suggestions()
+
+        titles = [s["title"] for s in out]
+        assert "LateNight inbox" in titles
+        # Find the suggestion for our task and assert the staleness count.
+        ours = next(s for s in out if s["title"] == "LateNight inbox")
+        assert ours["days_stale"] == 8
+        assert ours["suggested_action"] == "move"
+        assert ours["suggested_tier"] == "backlog"
+
+    def test_borderline_late_evening_update_does_not_qualify(
+        self, app, monkeypatch
+    ):
+        """Same TZ scenario but at the exact 7-day boundary — still
+        not stale. Ensures we didn't accidentally over-shift."""
+        monkeypatch.setenv("DIGEST_TZ", "America/New_York")
+        monkeypatch.setattr(
+            "triage_service.local_today_date", lambda: date(2026, 5, 27)
+        )
+        with app.app_context():
+            task = Task(
+                title="Borderline late",
+                type=TaskType.WORK,
+                tier=Tier.INBOX,
+                status=TaskStatus.ACTIVE,
+            )
+            db.session.add(task)
+            db.session.flush()
+            # 11pm ET May 20 = 3am UTC May 21. Local date is May 20.
+            # May 27 - May 20 = 7 days. Threshold is > 7. Does NOT qualify.
+            task.updated_at = datetime(2026, 5, 21, 3, 0, tzinfo=UTC)
+            db.session.commit()
+            out = compute_triage_suggestions()
+
+        assert all(s["title"] != "Borderline late" for s in out)

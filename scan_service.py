@@ -625,8 +625,11 @@ def _call_claude_api_voice(
 ) -> list[dict[str, Any]]:
     """Make the Claude API call for voice-memo parsing. Separated for
     testability — tests can patch this instead of the HTTP layer."""
-    from datetime import date as _date
-    today_iso = _date.today().isoformat()
+    # Audit fix #180 (2026-05-20): use DIGEST_TZ today, not server UTC —
+    # at 9pm ET, Claude would otherwise resolve "tomorrow" against UTC
+    # Tuesday and stamp due_date one day later than the user meant.
+    from utils import local_today_date
+    today_iso = local_today_date().isoformat()
 
     # Render the titles as a comma-separated list for the prompt. If
     # empty, use the explicit word "(none)" so Claude doesn't get

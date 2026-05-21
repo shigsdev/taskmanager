@@ -28,7 +28,7 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from models import Task, TaskStatus, Tier, db
-from utils import local_today_date
+from utils import local_date_from_dt, local_today_date
 
 # Thresholds (days) — tunable in one place. Tracked separately from the
 # tier enum so adding a new tier doesn't silently miss a heuristic.
@@ -77,9 +77,13 @@ def compute_triage_suggestions() -> list[dict]:
     suggestions: list[dict] = []
 
     for task in db.session.scalars(stmt):
-        # Use updated_at (datetime, tz-aware) → date in the same tz
-        # mental model the rest of the app uses for staleness.
-        updated_date = task.updated_at.date() if task.updated_at else today
+        # Audit fix #178 (2026-05-20): `task.updated_at.date()` returned the
+        # UTC date even though we already had `today` in DIGEST_TZ. A task
+        # updated at 11pm ET (3am UTC next day) bucketed as
+        # `updated_date = tomorrow`, so `days_since_update = -1` and no
+        # threshold could ever trigger. Use the helper that mirrors the
+        # `local_today_date()` convention.
+        updated_date = local_date_from_dt(task.updated_at) or today
         days_since_update = (today - updated_date).days
 
         if task.tier == Tier.INBOX and days_since_update > INBOX_STALE_DAYS:
