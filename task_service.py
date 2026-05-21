@@ -785,6 +785,14 @@ def realign_tiers_with_due_dates() -> int:
     - INBOX: still needs triage; auto-route would skip the user
     - FREEZER: explicit user park; outranks the date
     - non-ACTIVE: archived/cancelled stay where they ended
+    - TODAY with a past due_date (#170): a task the user left in the
+      Today panel as an unfinished-yesterday nag. `_tier_for_due_date`
+      maps a past date to THIS_WEEK or BACKLOG, so without this guard
+      the 00:03 cron silently demotes "I didn't finish this" tasks off
+      the Today panel overnight with no notification. Inverse of the
+      drift #108 fixes — that one corrects tasks that drifted OUT of
+      alignment; this one preserves a deliberate placement. The task
+      stays in Today until the user acts on it.
 
     Returns the number of rows updated. Idempotent — re-running
     when nothing has drifted is a no-op.
@@ -792,6 +800,7 @@ def realign_tiers_with_due_dates() -> int:
     from sqlalchemy.orm import Session
 
     skip_tiers = _FROZEN_TIERS | {Tier.INBOX}
+    today = _local_today_date()
     updated = 0
     with Session(db.engine) as session:
         rows = session.scalars(
@@ -802,6 +811,11 @@ def realign_tiers_with_due_dates() -> int:
         ).all()
         for t in rows:
             if t.tier in skip_tiers:
+                continue
+            # #170: keep an overdue task that the user parked in TODAY
+            # visible in the Today panel as a nag — don't let the cron
+            # quietly demote it to BACKLOG / THIS_WEEK overnight.
+            if t.tier == Tier.TODAY and t.due_date < today:
                 continue
             # Compute the "right" tier for this due_date as of today.
             # Inline computation so we don't have to import + monkey-
