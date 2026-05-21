@@ -118,7 +118,7 @@ All secrets live in the Railway dashboard — never committed to git.
 | `SENDGRID_API_KEY` | SendGrid API key for digest delivery |
 | `DIGEST_TO_EMAIL` | Recipient email for the daily digest |
 | `DIGEST_FROM_EMAIL` | Sender email (default: noreply@taskmanager.app) |
-| `DIGEST_TIME` | Time of day digest is sent (default `07:00`) |
+| `DIGEST_TIME` | Time of day digest is sent in 24-hour `HH:MM` format (default `07:00`). Malformed values (e.g. `7am`, `07:00:00`, empty) fall back to `07:00` with a WARNING log + `digest_scheduled_at.fell_back: true` on `/healthz` (#179). |
 | `DIGEST_TZ` | IANA timezone for the digest scheduler (default `America/New_York`) |
 | `APP_URL` | Public base URL of the deployed app, embedded as a clickable link in the digest email body. Optional — link is omitted if unset. |
 | `GOOGLE_VISION_API_KEY` | Google Cloud Vision API key for OCR |

@@ -54,6 +54,36 @@ def register_scheduler(scheduler: Any) -> None:
     _scheduler = scheduler
 
 
+# Audit fix #179 (2026-05-21): surface the resolved DIGEST_TIME on /healthz
+# so the operator can see whether a malformed env var got coerced to the
+# default. Populated by ``_start_digest_scheduler`` in ``app.py`` after
+# the env-var parse. ``None`` until the scheduler has registered (and
+# in non-scheduler workers — gunicorn pre-fork only runs the scheduler
+# in one worker).
+_digest_schedule: dict | None = None
+
+
+def register_digest_schedule(hour: int, minute: int, tz: str, *, fell_back: bool) -> None:
+    """Record the resolved DIGEST_TIME for /healthz exposure.
+
+    Args:
+        hour, minute: The 24-hour-clock time the daily digest fires at.
+        tz: The IANA timezone name (e.g. ``America/New_York``).
+        fell_back: True iff the operator-provided ``DIGEST_TIME`` was
+            unparseable and we coerced to the 07:00 default. Surfacing
+            this lets the deploy-validation reports loudly flag a
+            misconfigured env var instead of silently hiding it.
+    """
+    global _digest_schedule  # noqa: PLW0603
+    _digest_schedule = {
+        "hour": hour,
+        "minute": minute,
+        "tz": tz,
+        "fell_back": fell_back,
+        "display": f"{hour:02d}:{minute:02d} {tz}",
+    }
+
+
 def write_scheduler_heartbeat(scheduler: Any) -> None:
     """Persist a small snapshot of scheduler state to disk.
 
@@ -598,6 +628,11 @@ def run_health_checks(app: Any, db: Any) -> dict:
         "critical_failed": critical_failed,
         "git_sha": os.environ.get("RAILWAY_GIT_COMMIT_SHA", "dev"),
         "started_at": _STARTED_AT,
+        # Audit fix #179: resolved DIGEST_TIME so operator can spot a
+        # malformed env var that got coerced to the 07:00 default.
+        # `None` in workers that don't host the scheduler (gunicorn
+        # pre-fork — only one worker runs it).
+        "digest_scheduled_at": _digest_schedule,
         "checks": checks,
     }
 
