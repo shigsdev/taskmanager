@@ -364,3 +364,139 @@ class TestRealignTiersWithDueDates:
         """POST without a debug token = 302/401/403/405."""
         resp = client.post("/api/debug/realign-tiers")
         assert resp.status_code in (302, 401, 403, 405)
+
+
+class TestRealignPreservesOverdueToday:
+    """#170 (PR 3, 2026-05-21): the 00:03 realign cron must NOT demote a
+    TODAY task with a past due_date. `_tier_for_due_date` maps a past
+    date to THIS_WEEK or BACKLOG, so without the guard the cron
+    silently moved "I didn't finish this yesterday" tasks off the
+    Today panel overnight with no notification. Inverse of #108 — that
+    fix corrects genuine drift; this preserves a deliberate placement.
+    """
+
+    def test_overdue_today_task_stays_in_today(self, app):
+        """due_date 7 days ago, tier=TODAY → realign leaves it alone.
+
+        Without the #170 guard `_tier_for_due_date` would return
+        BACKLOG (a date a week back is outside this/next Mon-Sat) and
+        the task would silently leave the Today panel."""
+        from datetime import timedelta
+
+        from models import Task, TaskStatus, TaskType, Tier, db
+        from task_service import _local_today_date, realign_tiers_with_due_dates
+        with app.app_context():
+            week_ago = _local_today_date() - timedelta(days=7)
+            t = Task(
+                title="Overdue, kept in Today as a nag",
+                type=TaskType.WORK,
+                tier=Tier.TODAY,
+                status=TaskStatus.ACTIVE,
+                due_date=week_ago,
+            )
+            db.session.add(t)
+            db.session.commit()
+            tid = t.id
+            realign_tiers_with_due_dates()
+            db.session.expire_all()
+            t2 = db.session.get(Task, tid)
+            assert t2.tier == Tier.TODAY
+
+    def test_recently_overdue_today_task_still_within_this_week_stays_in_today(
+        self, app
+    ):
+        """due_date 2 days ago (still inside this Mon-Sat) → without the
+        guard `_tier_for_due_date` returns THIS_WEEK; with it the task
+        stays in TODAY. Covers the other branch of the past-date map."""
+        from datetime import timedelta
+
+        from models import Task, TaskStatus, TaskType, Tier, db
+        from task_service import _local_today_date, realign_tiers_with_due_dates
+        with app.app_context():
+            two_days_ago = _local_today_date() - timedelta(days=2)
+            t = Task(
+                title="Recently overdue, kept in Today",
+                type=TaskType.WORK,
+                tier=Tier.TODAY,
+                status=TaskStatus.ACTIVE,
+                due_date=two_days_ago,
+            )
+            db.session.add(t)
+            db.session.commit()
+            tid = t.id
+            realign_tiers_with_due_dates()
+            db.session.expire_all()
+            t2 = db.session.get(Task, tid)
+            assert t2.tier == Tier.TODAY
+
+    def test_on_day_today_task_stays_in_today(self, app):
+        """due_date == today, tier=TODAY → already correct, no change.
+        Confirms the guard doesn't accidentally break the happy path."""
+        from models import Task, TaskStatus, TaskType, Tier, db
+        from task_service import _local_today_date, realign_tiers_with_due_dates
+        with app.app_context():
+            today = _local_today_date()
+            t = Task(
+                title="Due today, in Today",
+                type=TaskType.WORK,
+                tier=Tier.TODAY,
+                status=TaskStatus.ACTIVE,
+                due_date=today,
+            )
+            db.session.add(t)
+            db.session.commit()
+            tid = t.id
+            realign_tiers_with_due_dates()
+            db.session.expire_all()
+            t2 = db.session.get(Task, tid)
+            assert t2.tier == Tier.TODAY
+
+    def test_future_dated_today_task_still_realigns(self, app):
+        """due_date == tomorrow, tier=TODAY → the #170 guard only
+        protects PAST dates. A TODAY task whose date drifted to the
+        future is genuine drift and must still re-route to TOMORROW."""
+        from datetime import timedelta
+
+        from models import Task, TaskStatus, TaskType, Tier, db
+        from task_service import _local_today_date, realign_tiers_with_due_dates
+        with app.app_context():
+            tomorrow = _local_today_date() + timedelta(days=1)
+            t = Task(
+                title="Future-dated, in Today by mistake",
+                type=TaskType.WORK,
+                tier=Tier.TODAY,
+                status=TaskStatus.ACTIVE,
+                due_date=tomorrow,
+            )
+            db.session.add(t)
+            db.session.commit()
+            tid = t.id
+            realign_tiers_with_due_dates()
+            db.session.expire_all()
+            t2 = db.session.get(Task, tid)
+            assert t2.tier == Tier.TOMORROW
+
+    def test_overdue_non_today_task_still_realigns(self, app):
+        """The #170 guard is scoped to tier==TODAY only. A THIS_WEEK
+        task with a past due_date is genuine drift and must still move
+        to BACKLOG — the guard must not over-reach to other tiers."""
+        from datetime import timedelta
+
+        from models import Task, TaskStatus, TaskType, Tier, db
+        from task_service import _local_today_date, realign_tiers_with_due_dates
+        with app.app_context():
+            long_ago = _local_today_date() - timedelta(days=30)
+            t = Task(
+                title="Overdue This Week task",
+                type=TaskType.WORK,
+                tier=Tier.THIS_WEEK,
+                status=TaskStatus.ACTIVE,
+                due_date=long_ago,
+            )
+            db.session.add(t)
+            db.session.commit()
+            tid = t.id
+            realign_tiers_with_due_dates()
+            db.session.expire_all()
+            t2 = db.session.get(Task, tid)
+            assert t2.tier == Tier.BACKLOG
