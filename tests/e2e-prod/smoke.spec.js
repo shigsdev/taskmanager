@@ -360,17 +360,30 @@ test.describe("Prod smoke — feature surfaces", () => {
     test("apiFetch wires hard-recovery via api_helpers (#112 + #113)", async ({ page }) => {
         // Stale-tab "Failed to fetch" recovery — PR47 added retry +
         // prompt; PR49 dropped the opaqueredirect check (false-positive)
-        // and routed the recovery path through _hardRecover() which
-        // unregisters the SW first. Regression catches a future revert.
+        // and routed recovery through _hardRecover() which unregisters
+        // the SW first.
+        //
+        // #191 (PR 11, 2026-05-22): the recovery wiring moved OUT of
+        // app.js — app.js used to carry a verbatim copy of apiFetch, it
+        // now aliases the single shared window.apiFetch from
+        // api_client.js. So the recovery tokens are asserted against
+        // api_client.js (where the logic lives) and app.js is checked
+        // to confirm it no longer carries a duplicate. Real behavioural
+        // coverage is the Jest suite api_client.test.js.
+        const apiClient = await page.request.get("/static/api_client.js");
+        expect(apiClient.status()).toBe(200);
+        const clientText = await apiClient.text();
+        // recovery path uses _hardRecover (SW-unregister-then-reload)
+        expect(clientText).toContain("_hardRecover");
+        // auto-retry-once flag still present
+        expect(clientText).toContain("_retried");
+        // PR49 invariant: the opaqueredirect prompt stays removed.
+        expect(clientText).not.toContain('redirect: "manual"');
+        // #191: app.js must NOT carry its own copy anymore.
         const appJs = await page.request.get("/static/app.js");
-        const text = await appJs.text();
-        // PR49: recovery path uses _hardRecover (SW-unregister-then-reload)
-        expect(text).toContain("_hardRecover");
-        // Auto-retry-once flag still present
-        expect(text).toContain("_retried");
-        // PR49 invariant: opaqueredirect prompt was REMOVED (was firing
-        // false-positives). If this comes back, something regressed.
-        expect(text).not.toContain('redirect: "manual"');
+        const appText = await appJs.text();
+        expect(appText).toContain("const apiFetch = window.apiFetch");
+        expect(appText).not.toMatch(/function\s+_hardRecover\b/);
         // api_helpers.js (PR49) also served + cached
         const apiH = await page.request.get("/static/api_helpers.js");
         expect(apiH.status()).toBe(200);
