@@ -213,10 +213,16 @@ banner "6. pip-audit (dependency CVEs)"
 #   for this ID — false positive. Re-evaluate whenever the OSV record's
 #   `fix_versions` field gets populated or the upstream entry is
 #   amended. Added 2026-05-21 alongside #205.
-if python -m pip_audit -r requirements.txt --ignore-vuln PYSEC-2026-89; then
+#
+# #163 (2026-05-22): audit requirements-dev.txt, not requirements.txt —
+# it `-r`-includes requirements.txt so this covers BOTH the runtime and
+# the dev/test deps (pytest, ruff, …) in one pass. A bare `pip-audit`
+# would instead sweep in unrelated co-installed tooling (MCP servers,
+# etc.) that this repo doesn't ship.
+if python -m pip_audit -r requirements-dev.txt --ignore-vuln PYSEC-2026-89; then
     pass "pip-audit"
 else
-    fail "pip-audit found a known vulnerability — bump the affected package in requirements.txt"
+    fail "pip-audit found a known vulnerability — bump the affected package in requirements.txt / requirements-dev.txt"
     exit 1
 fi
 
