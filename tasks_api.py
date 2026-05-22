@@ -8,7 +8,7 @@ from flask import Blueprint, jsonify, request
 
 from auth import login_required
 from models import Task, TaskStatus, TaskType, Tier
-from rate_limit import limiter
+from rate_limit import OUTBOUND_FETCH, limiter
 from task_service import (
     ValidationError,
     bulk_update_tasks,
@@ -335,7 +335,7 @@ class _TitleParser(html.parser.HTMLParser):
 
 @bp.post("/url-preview")
 @login_required
-@limiter.limit("30 per minute")  # #184: each call holds a worker on an outbound fetch
+@limiter.limit(OUTBOUND_FETCH)  # #184: each call holds a worker on an outbound fetch
 def url_preview(email: str):  # noqa: ARG001
     """Fetch the <title> of a URL server-side and return it.
 

@@ -330,22 +330,28 @@ class TestRateLimiterConfig:
         (paid). 20/min is well below the 200/min global default."""
         import inspect
 
+        import rate_limit
         import scan_api
 
         source = inspect.getsource(scan_api.upload)
-        assert "limiter.limit" in source
-        assert "20" in source
+        # #203: the rate is now the named PAID_API constant, not a magic
+        # string — assert the decorator references it AND the constant
+        # still resolves to the expected 20/min.
+        assert "limiter.limit(PAID_API)" in source
+        assert rate_limit.PAID_API == "20 per minute"
 
     def test_voice_memo_upload_has_per_route_limit(self):
         """PR64 #124: voice-memo upload calls Whisper (paid) — same
         rationale as scan/upload."""
         import inspect
 
+        import rate_limit
         import voice_api
 
         source = inspect.getsource(voice_api.upload)
-        assert "limiter.limit" in source
-        assert "20" in source
+        # #203: rate is the named PAID_API constant now.
+        assert "limiter.limit(PAID_API)" in source
+        assert rate_limit.PAID_API == "20 per minute"
 
     # --- PR 9 (#182/#183/#184): paid / worker-holding routes that the
     # #124 sweep missed. The limiter is disabled in TESTING (see
@@ -358,21 +364,27 @@ class TestRateLimiterConfig:
         import inspect
 
         import digest_api
+        import rate_limit
 
         source = inspect.getsource(digest_api.send_now)
-        assert "limiter.limit" in source
-        assert "5 per minute" in source
+        # #203: rate is the named LLM_HEAVY constant now.
+        assert "limiter.limit(LLM_HEAVY)" in source
+        assert rate_limit.LLM_HEAVY == "5 per minute"
 
     def test_transcript_routes_have_per_route_limit(self):
         """#183: both transcript routes flow through Claude (paid)."""
         import inspect
 
         import import_api
+        import rate_limit
 
         for fn in (import_api.parse_transcript, import_api.upload_transcript):
             source = inspect.getsource(fn)
-            assert "limiter.limit" in source, f"{fn.__name__} missing limiter"
-            assert "5 per minute" in source
+            # #203: rate is the named LLM_HEAVY constant now.
+            assert "limiter.limit(LLM_HEAVY)" in source, (
+                f"{fn.__name__} missing limiter"
+            )
+        assert rate_limit.LLM_HEAVY == "5 per minute"
 
     def test_url_preview_has_per_route_limit(self):
         """#184: /api/tasks/url-preview holds a Gunicorn worker for up
@@ -380,11 +392,13 @@ class TestRateLimiterConfig:
         legit use) keeps it from being a flood / scan vector."""
         import inspect
 
+        import rate_limit
         import tasks_api
 
         source = inspect.getsource(tasks_api.url_preview)
-        assert "limiter.limit" in source
-        assert "30 per minute" in source
+        # #203: rate is the named OUTBOUND_FETCH constant now.
+        assert "limiter.limit(OUTBOUND_FETCH)" in source
+        assert rate_limit.OUTBOUND_FETCH == "30 per minute"
 
 
 # --- No sensitive data leakage ------------------------------------------------

@@ -22,7 +22,7 @@ from flask import Blueprint, jsonify, request
 
 from auth import login_required
 from models import ReflectionInputMode
-from rate_limit import limiter
+from rate_limit import PAID_API, limiter
 from reflection_service import (
     analyze_reflection,
     apply_selected_actions,
@@ -69,7 +69,7 @@ def _serialize(reflection) -> dict:
 
 @bp.post("")
 @login_required
-@limiter.limit("20 per minute")  # paid: Whisper (audio) + Claude
+@limiter.limit(PAID_API)  # paid: Whisper (audio) + Claude
 def submit(email: str):  # noqa: ARG001
     """Submit a reflection. Accepts EITHER multipart/form-data with an
     'audio' file field OR a JSON body ``{"text": "..."}``.

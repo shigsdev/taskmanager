@@ -6,7 +6,7 @@ import uuid
 from flask import Blueprint, jsonify, request
 
 from auth import login_required
-from models import Project, ProjectStatus, ProjectType  # noqa: F401
+from models import Project, ProjectType
 from project_service import (
     ValidationError,
     bulk_delete_projects,

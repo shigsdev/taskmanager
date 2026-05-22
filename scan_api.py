@@ -12,7 +12,7 @@ from flask import Blueprint, jsonify, request
 
 from auth import login_required
 from import_service import create_projects_from_import
-from rate_limit import limiter
+from rate_limit import PAID_API, limiter
 from scan_service import (
     create_goals_from_candidates,
     create_tasks_from_candidates,
@@ -51,7 +51,7 @@ ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 @bp.post("/upload")
 @login_required
-@limiter.limit("20 per minute")  # PR64 #124: scan/upload calls Vision + Claude (paid)
+@limiter.limit(PAID_API)  # PR64 #124: scan/upload calls Vision + Claude (paid)
 def upload(email: str):  # noqa: ARG001
     """Upload an image and get task candidates.
 

@@ -16,9 +16,14 @@ module.exports = {
     "**/tests/js/**/*.test.js",
   ],
 
-  // Coverage configuration
+  // Coverage configuration (#202). The Jest-tested pure-logic modules:
+  // every `*_helpers.js` dual-export plus the standalone ones. Keeps
+  // `npm test -- --coverage` honest about what's actually exercised.
   collectCoverageFrom: [
+    "static/*_helpers.js",
+    "static/api_client.js",
     "static/parse_capture.js",
+    "static/task_detail_payload.js",
   ],
   coverageDirectory: "coverage-js",
   coverageReporters: ["text", "text-summary"],

@@ -13,7 +13,7 @@ from flask import Blueprint, Response, jsonify, request
 
 from auth import login_required
 from digest_service import build_digest, build_digest_html, send_digest
-from rate_limit import limiter
+from rate_limit import LLM_HEAVY, limiter
 
 bp = Blueprint("digest_api", __name__, url_prefix="/api/digest")
 
@@ -35,7 +35,7 @@ def preview(email: str):  # noqa: ARG001
 
 @bp.post("/send")
 @login_required
-@limiter.limit("5 per minute")  # #182: each call hits paid SendGrid
+@limiter.limit(LLM_HEAVY)  # #182: each call hits paid SendGrid
 def send_now(email: str):  # noqa: ARG001
     """Send the digest email immediately.
 
