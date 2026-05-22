@@ -170,7 +170,7 @@ drift. Highest priority.
   pattern of #137 sub-PR C.
 - **Effort:** S.
 
-### [ ] PR 6 — Reflection-apply correctness
+### [x] PR 6 — Reflection-apply correctness — SHIPPED 2026-05-21 (SHA 1b0c26c0)
 
 - **Items:** #174, #181
 - **Theme:** Both touch `reflection_service.apply_selected_actions`.
@@ -431,7 +431,7 @@ pass AND post-deploy validation + prod smoke pass.
 - [x] PR 3 — Realign cron preserves overdue-TODAY (#170) — shipped 2026-05-21, SHA 57a76d34, 37/37 prod smoke green
 - [x] PR 4 — Recurring template integrity (#171, #173, #177) — shipped 2026-05-21, SHA 660c3ddc, 37/37 prod smoke green
 - [x] PR 5 — Voice-memo goal category mapping (#172) — shipped 2026-05-21, SHA df140a9f, 37/37 prod smoke green
-- [ ] PR 6 — Reflection-apply correctness (#174, #181)
+- [x] PR 6 — Reflection-apply correctness (#174, #181) — shipped 2026-05-21, SHA 1b0c26c0, 37/37 prod smoke green
 - [ ] PR 7 — PATCH status cascades to subtasks (#176)
 - [ ] PR 8 — Recycle purge FK cleanup (#175)
 
