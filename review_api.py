@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import uuid
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify
 
 from auth import login_required
 from models import Task
 from review_service import review_task, stale_tasks
 from task_service import ValidationError, serialize_task
+from utils import validate_json_body
 
 bp = Blueprint("review_api", __name__, url_prefix="/api/review")
 
@@ -37,6 +38,7 @@ def index(email: str):  # noqa: ARG001
 
 @bp.post("/<uuid:task_id>")
 @login_required
+@validate_json_body
 def act(email: str, task_id: uuid.UUID):  # noqa: ARG001
     """Apply a review action to a task.
 
@@ -44,9 +46,7 @@ def act(email: str, task_id: uuid.UUID):  # noqa: ARG001
     """
     from models import db
 
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
 
     action = data.get("action")
     if action not in ("keep", "freeze", "delete", "snooze"):

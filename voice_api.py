@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from auth import login_required
 from rate_limit import PAID_API, limiter
@@ -23,7 +23,7 @@ from scan_service import (
     parse_tasks_from_text,
     parse_voice_memo_to_tasks,
 )
-from utils import validate_upload
+from utils import validate_json_body, validate_upload
 from voice_service import (
     ALLOWED_AUDIO_TYPES,
     WHISPER_MAX_UPLOAD_BYTES,
@@ -171,6 +171,7 @@ def upload(email: str):  # noqa: ARG001
 
 @bp.post("/confirm")
 @login_required
+@validate_json_body
 def confirm(email: str):  # noqa: ARG001
     """Confirm task candidates and create them in the inbox.
 
@@ -186,9 +187,7 @@ def confirm(email: str):  # noqa: ARG001
     Records the batch in ImportLog with a "voice_..." source prefix so
     the recycle bin / undo flow can distinguish voice-memo batches.
     """
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
 
     candidates = data.get("candidates", [])
     if not isinstance(candidates, list):

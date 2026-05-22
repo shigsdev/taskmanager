@@ -4,7 +4,7 @@ from __future__ import annotations
 import html.parser
 import uuid
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from auth import login_required
 from models import Task, TaskStatus, TaskType, Tier
@@ -28,6 +28,7 @@ from task_service import (
 # caller / test patching ``tasks_api._serialize_repeat`` stays unaffected.
 from task_service import _serialize_repeat as _serialize_repeat  # noqa: F401
 from utils import enum_or_400 as _enum_or_400
+from utils import validate_json_body
 
 bp = Blueprint("tasks_api", __name__, url_prefix="/api/tasks")
 
@@ -89,10 +90,9 @@ def index(email: str):  # noqa: ARG001 (email injected by login_required)
 
 @bp.post("")
 @login_required
+@validate_json_body
 def create(email: str):  # noqa: ARG001
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
     # #207: capture-bar "@project" hint. parse_capture.js lifts the raw
     # @token into `project_hint`; resolve it here to a project_id by
     # case-insensitive substring match. An explicit `project_id` in the
@@ -124,10 +124,9 @@ def show(email: str, task_id: uuid.UUID):  # noqa: ARG001
 
 @bp.patch("/<uuid:task_id>")
 @login_required
+@validate_json_body
 def patch(email: str, task_id: uuid.UUID):  # noqa: ARG001
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
     try:
         task = update_task(task_id, data)
     except ValidationError as e:
@@ -211,6 +210,7 @@ def duplicate(email: str, task_id: uuid.UUID):  # noqa: ARG001
 
 @bp.patch("/bulk")
 @login_required
+@validate_json_body
 def bulk_update(email: str):  # noqa: ARG001
     """Apply the same ``updates`` to multiple tasks in one call.
 
@@ -234,9 +234,7 @@ def bulk_update(email: str):  # noqa: ARG001
     Errors on one task don't roll back others — bulk ops are
     best-effort. See :func:`task_service.bulk_update_tasks`.
     """
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
 
     task_ids_raw = data.get("task_ids")
     updates = data.get("updates")
@@ -266,15 +264,14 @@ def bulk_update(email: str):  # noqa: ARG001
 
 @bp.post("/reorder")
 @login_required
+@validate_json_body
 def reorder(email: str):  # noqa: ARG001
     """Bulk-update sort_order for tasks within a tier.
 
     Expects JSON: {"tier": "today", "task_ids": ["id1", "id2", ...]}
     The order of task_ids determines the new sort_order values.
     """
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
 
     tier_val = data.get("tier")
     task_ids = data.get("task_ids")
@@ -336,14 +333,13 @@ class _TitleParser(html.parser.HTMLParser):
 @bp.post("/url-preview")
 @login_required
 @limiter.limit(OUTBOUND_FETCH)  # #184: each call holds a worker on an outbound fetch
+@validate_json_body
 def url_preview(email: str):  # noqa: ARG001
     """Fetch the <title> of a URL server-side and return it.
 
     The browser never talks to external sites — all fetching is done here.
     """
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
 
     url = (data.get("url") or "").strip()
     if not url.startswith(("http://", "https://")):

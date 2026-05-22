@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from auth import login_required
 from import_service import create_projects_from_import
@@ -21,7 +21,7 @@ from scan_service import (
     parse_projects_from_text,
     parse_tasks_from_text,
 )
-from utils import validate_upload
+from utils import validate_json_body, validate_upload
 
 # Scan modes. Clients pass ``parse_as`` in the upload form-data and
 # ``kind`` in the confirm JSON. We accept plural or singular for both
@@ -166,6 +166,7 @@ def upload(email: str):  # noqa: ARG001
 
 @bp.post("/confirm")
 @login_required
+@validate_json_body
 def confirm(email: str):  # noqa: ARG001
     """Confirm task candidates and create them in the inbox.
 
@@ -177,9 +178,7 @@ def confirm(email: str):  # noqa: ARG001
         ]
     }
     """
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
 
     candidates = data.get("candidates", [])
     if not isinstance(candidates, list):

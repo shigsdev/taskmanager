@@ -8,9 +8,10 @@ import os
 import re
 import uuid
 from datetime import date, datetime
+from functools import wraps
 from typing import Any
 
-from flask import jsonify
+from flask import g, jsonify, request
 
 
 def local_today_date() -> date:
@@ -94,6 +95,31 @@ def enum_or_400(enum_cls, value):
         return enum_cls(value), None
     except ValueError:
         return None, (jsonify({"error": f"invalid filter value: {value}"}), 400)
+
+
+def validate_json_body(fn):
+    """Decorator: require a JSON *object* request body, stash it on g.
+
+    Wraps a route so it can assume the request carried a JSON object.
+    On a missing / non-object body it short-circuits with
+    ``{"error": "JSON body required"}, 400`` — the standard shape the
+    28 strict routes previously open-coded. The route reads the parsed
+    body via ``flask.g.json_body``.
+
+    #196. Use ONLY on routes that genuinely require a body. Routes that
+    accept an optional/empty body (``request.get_json(silent=True) or
+    {}``) must NOT use this.
+    """
+
+    @wraps(fn)
+    def _wrapped(*args, **kwargs):
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"error": "JSON body required"}), 400
+        g.json_body = data
+        return fn(*args, **kwargs)
+
+    return _wrapped
 
 
 # --- Service-layer coercion helpers ------------------------------------------

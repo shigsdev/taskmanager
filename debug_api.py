@@ -18,12 +18,13 @@ import re
 from datetime import UTC, datetime, timedelta
 from functools import wraps
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 from sqlalchemy import select
 
 from auth import login_required
 from logging_service import scrub_sensitive
 from models import AppLog, db
+from utils import validate_json_body
 
 # PR62 audit fix #24: strip C0 control characters (0x00-0x1F) and DEL
 # (0x7F) from user-supplied log fields so an attacker can't inject
@@ -290,6 +291,7 @@ def get_logs(email: str):  # noqa: ARG001
 
 @bp.post("/client-error")
 @debug_auth_required
+@validate_json_body
 def client_error(email: str):  # noqa: ARG001
     """Receive a browser-side error report.
 
@@ -307,9 +309,7 @@ def client_error(email: str):  # noqa: ARG001
     and the page URL so we can correlate with server logs via the
     route field.
     """
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
 
     # PR62 audit fix #12: cap each user-controlled field length BEFORE
     # any concatenation. The DBLogHandler trims at 10/20 KB but that's

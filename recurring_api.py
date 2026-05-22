@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import uuid
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from auth import login_required
 from models import RecurringTask
@@ -35,6 +35,7 @@ from recurring_service import (
     spawn_today_tasks,
     update_recurring,
 )
+from utils import validate_json_body
 
 bp = Blueprint("recurring_api", __name__, url_prefix="/api/recurring")
 
@@ -71,10 +72,9 @@ def index(email: str):  # noqa: ARG001
 
 @bp.post("")
 @login_required
+@validate_json_body
 def create(email: str):  # noqa: ARG001
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
     try:
         rt = create_recurring(data)
     except ValidationError as e:
@@ -93,10 +93,9 @@ def show(email: str, rt_id: uuid.UUID):  # noqa: ARG001
 
 @bp.patch("/<uuid:rt_id>")
 @login_required
+@validate_json_body
 def patch(email: str, rt_id: uuid.UUID):  # noqa: ARG001
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
     try:
         rt = update_recurring(rt_id, data)
     except ValidationError as e:
@@ -116,6 +115,7 @@ def destroy(email: str, rt_id: uuid.UUID):  # noqa: ARG001
 
 @bp.patch("/bulk")
 @login_required
+@validate_json_body
 def bulk_patch(email: str):  # noqa: ARG001
     """#63 (2026-04-26): bulk-update multiple recurring templates.
 
@@ -129,9 +129,7 @@ def bulk_patch(email: str):  # noqa: ARG001
 
     Returns ``{"updated": N, "errors": [{"id": uuid, "error": ...}]}``.
     """
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
     ids = data.get("template_ids")
     updates = data.get("updates")
     if not isinstance(ids, list) or not ids:
@@ -164,11 +162,10 @@ def bulk_patch(email: str):  # noqa: ARG001
 
 @bp.delete("/bulk")
 @login_required
+@validate_json_body
 def bulk_delete(email: str):  # noqa: ARG001
     """#63: bulk-delete (soft) recurring templates."""
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
     ids = data.get("template_ids")
     if not isinstance(ids, list) or not ids:
         return jsonify({"error": "template_ids must be a non-empty list"}), 422

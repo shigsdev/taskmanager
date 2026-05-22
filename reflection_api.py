@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from auth import login_required
 from models import ReflectionInputMode
@@ -31,7 +31,7 @@ from reflection_service import (
     list_reflections,
     save_reflection,
 )
-from utils import validate_upload
+from utils import validate_json_body, validate_upload
 from voice_service import (
     ALLOWED_AUDIO_TYPES,
     WHISPER_MAX_UPLOAD_BYTES,
@@ -178,6 +178,7 @@ def submit(email: str):  # noqa: ARG001
 
 @bp.post("/<uuid:reflection_id>/confirm")
 @login_required
+@validate_json_body
 def confirm(email: str, reflection_id):  # noqa: ARG001
     """Apply the user-confirmed actions for a reflection.
 
@@ -190,9 +191,7 @@ def confirm(email: str, reflection_id):  # noqa: ARG001
     if reflection is None:
         return jsonify({"error": "Reflection not found"}), 404
 
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
     actions = data.get("actions", [])
     if not isinstance(actions, list):
         return jsonify({"error": "actions must be a list"}), 422

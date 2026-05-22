@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from auth import login_required
 from goal_service import (
@@ -18,6 +18,7 @@ from goal_service import (
 )
 from models import Goal, GoalCategory, GoalPriority, GoalStatus
 from utils import enum_or_400 as _enum_or_400
+from utils import validate_json_body
 
 bp = Blueprint("goals_api", __name__, url_prefix="/api/goals")
 
@@ -84,10 +85,9 @@ def index(email: str):  # noqa: ARG001
 
 @bp.post("")
 @login_required
+@validate_json_body
 def create(email: str):  # noqa: ARG001
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
     try:
         goal = create_goal(data)
     except ValidationError as e:
@@ -106,10 +106,9 @@ def show(email: str, goal_id: uuid.UUID):  # noqa: ARG001
 
 @bp.patch("/<uuid:goal_id>")
 @login_required
+@validate_json_body
 def patch(email: str, goal_id: uuid.UUID):  # noqa: ARG001
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
     try:
         goal = update_goal(goal_id, data)
     except ValidationError as e:

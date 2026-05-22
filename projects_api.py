@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from auth import login_required
 from models import Project, ProjectType
@@ -19,6 +19,7 @@ from project_service import (
     seed_default_projects,
     update_project,
 )
+from utils import validate_json_body
 
 bp = Blueprint("projects_api", __name__, url_prefix="/api/projects")
 
@@ -66,10 +67,9 @@ def index(email: str):  # noqa: ARG001
 
 @bp.post("")
 @login_required
+@validate_json_body
 def create(email: str):  # noqa: ARG001
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
     try:
         project = create_project(data)
     except ValidationError as e:
@@ -88,10 +88,9 @@ def show(email: str, project_id: uuid.UUID):  # noqa: ARG001
 
 @bp.patch("/<uuid:project_id>")
 @login_required
+@validate_json_body
 def patch(email: str, project_id: uuid.UUID):  # noqa: ARG001
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
     try:
         project = update_project(project_id, data)
     except ValidationError as e:
@@ -111,6 +110,7 @@ def destroy(email: str, project_id: uuid.UUID):  # noqa: ARG001
 
 @bp.post("/reorder")
 @login_required
+@validate_json_body
 def reorder(email: str):  # noqa: ARG001
     """Bulk-update priority_order from a drag-and-drop reorder.
 
@@ -118,9 +118,7 @@ def reorder(email: str):  # noqa: ARG001
     single type group (work or personal), in the new top-to-bottom order.
     Each id gets `priority_order = index`. Other type's projects untouched.
     """
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
     ids = data.get("ordered_ids")
     if not isinstance(ids, list):
         return jsonify({"error": "ordered_ids must be a list", "field": "ordered_ids"}), 422
@@ -137,6 +135,7 @@ def reorder(email: str):  # noqa: ARG001
 
 @bp.patch("/bulk")
 @login_required
+@validate_json_body
 def bulk_update(email: str):  # noqa: ARG001
     """#90 (PR35): apply the same `updates` to multiple projects in
     one call. Mirrors /api/tasks/bulk semantics.
@@ -144,9 +143,7 @@ def bulk_update(email: str):  # noqa: ARG001
     Body: ``{"project_ids": [uuid, ...], "updates": {...}}``.
     Returns ``{"updated": N, "not_found": [...], "errors": [...]}``.
     """
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
     ids_raw = data.get("project_ids")
     updates = data.get("updates")
     if not isinstance(ids_raw, list) or not ids_raw:
@@ -168,11 +165,10 @@ def bulk_update(email: str):  # noqa: ARG001
 
 @bp.delete("/bulk")
 @login_required
+@validate_json_body
 def bulk_delete(email: str):  # noqa: ARG001
     """#90 (PR35): bulk-archive (soft-delete) projects."""
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
     ids_raw = data.get("project_ids")
     if not isinstance(ids_raw, list) or not ids_raw:
         return jsonify({"error": "project_ids must be a non-empty list"}), 422

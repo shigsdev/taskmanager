@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import io
 
-from flask import Blueprint, abort, jsonify, request, send_file
+from flask import Blueprint, abort, g, jsonify, request, send_file
 
 from auth import login_required
 from import_service import (
@@ -35,7 +35,7 @@ from import_service import (
     parse_transcript_text,
 )
 from rate_limit import LLM_HEAVY, limiter
-from utils import validate_upload
+from utils import validate_json_body, validate_upload
 
 bp = Blueprint("import_api", __name__, url_prefix="/api/import")
 
@@ -47,15 +47,14 @@ MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 @bp.post("/tasks/parse")
 @login_required
+@validate_json_body
 def parse_tasks(email: str):  # noqa: ARG001
     """Parse pasted OneNote text into task candidates.
 
     Expects JSON body: {"text": "...pasted OneNote content..."}
     Returns candidates with duplicate flags.
     """
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
 
     text = data.get("text", "")
     if not isinstance(text, str) or not text.strip():
@@ -133,6 +132,7 @@ def upload_tasks_xlsx(email: str):  # noqa: ARG001
 
 @bp.post("/tasks/confirm")
 @login_required
+@validate_json_body
 def confirm_tasks(email: str):  # noqa: ARG001
     """Confirm task candidates and create them in Inbox.
 
@@ -142,9 +142,7 @@ def confirm_tasks(email: str):  # noqa: ARG001
         "source": "onenote_2026_04_06"
     }
     """
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
 
     candidates = data.get("candidates", [])
     if not isinstance(candidates, list):
@@ -168,6 +166,7 @@ def confirm_tasks(email: str):  # noqa: ARG001
 @bp.post("/transcript/parse")
 @login_required
 @limiter.limit(LLM_HEAVY)  # #183: parse_transcript_text calls paid Claude
+@validate_json_body
 def parse_transcript(email: str):  # noqa: ARG001
     """Extract action-item candidates from a pasted meeting transcript.
 
@@ -175,9 +174,7 @@ def parse_transcript(email: str):  # noqa: ARG001
     Returns candidates with duplicate flags. Confirm via the existing
     /api/import/tasks/confirm endpoint with source="transcript_import".
     """
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
 
     text = data.get("text", "")
     if not isinstance(text, str) or not text.strip():
@@ -264,6 +261,7 @@ def parse_goals(email: str):  # noqa: ARG001
 
 @bp.post("/goals/confirm")
 @login_required
+@validate_json_body
 def confirm_goals(email: str):  # noqa: ARG001
     """Confirm goal candidates and create them.
 
@@ -273,9 +271,7 @@ def confirm_goals(email: str):  # noqa: ARG001
         "source": "excel_goals_2026_04_06"
     }
     """
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
 
     candidates = data.get("candidates", [])
     if not isinstance(candidates, list):
@@ -298,10 +294,11 @@ def confirm_goals(email: str):  # noqa: ARG001
 
 @bp.post("/projects/parse")
 @login_required
+@validate_json_body
 def parse_projects(email: str):  # noqa: ARG001
     """Parse pasted text (one name per line) into project candidates."""
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict) or "text" not in data:
+    data = g.json_body
+    if "text" not in data:
         return jsonify({"error": "JSON body with 'text' required"}), 400
 
     text = data.get("text", "")
@@ -344,11 +341,10 @@ def upload_projects(email: str):  # noqa: ARG001
 
 @bp.post("/projects/confirm")
 @login_required
+@validate_json_body
 def confirm_projects(email: str):  # noqa: ARG001
     """Confirm project candidates and create them."""
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "JSON body required"}), 400
+    data = g.json_body
 
     candidates = data.get("candidates", [])
     if not isinstance(candidates, list):
