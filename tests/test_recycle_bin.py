@@ -510,6 +510,155 @@ class TestUndoRestorePurge:
         }
 
 
+class TestCrossEntityPurgeFKsPR8:
+    """PR 8 (#175): the 4 cross-entity link FKs gain ON DELETE SET NULL
+    so purging a goal / project / parent-task from the recycle bin
+    can't ForeignKeyViolation against a Project / RecurringTask /
+    subtask that still references it.
+
+    SQLite-vs-Postgres note (#53 class): SQLite does NOT enforce FK
+    constraints unless ``PRAGMA foreign_keys=ON`` is set per-connection.
+    The metadata test below is the always-on drift gate; the
+    behavioural tests explicitly enable the pragma so the
+    create_all-built SQLite schema's ON DELETE SET NULL is actually
+    exercised. On prod Postgres the rule is enforced unconditionally.
+    """
+
+    def _fk_ondelete(self, model, column: str) -> str | None:
+        """Return the ondelete rule on model.column's foreign key."""
+        fks = list(model.__table__.c[column].foreign_keys)
+        assert fks, f"{model.__name__}.{column} has no foreign key"
+        return fks[0].ondelete
+
+    def test_link_fks_declare_ondelete_set_null(self, app):
+        """Drift gate: all 4 link FKs (+ the WeeklyFocus.goal_id
+        reference they mirror) must declare ON DELETE SET NULL in the
+        model metadata. A revert of the models.py change fails here."""
+        from models import Project, RecurringTask, Task, WeeklyFocus
+        assert self._fk_ondelete(Project, "goal_id") == "SET NULL"
+        assert self._fk_ondelete(RecurringTask, "project_id") == "SET NULL"
+        assert self._fk_ondelete(RecurringTask, "goal_id") == "SET NULL"
+        assert self._fk_ondelete(Task, "parent_id") == "SET NULL"
+        # The pattern this PR mirrors — already had it.
+        assert self._fk_ondelete(WeeklyFocus, "goal_id") == "SET NULL"
+
+    def test_deleting_goal_set_nulls_project_link(self, app):
+        """With FK enforcement on, deleting a goal must SET NULL the
+        Project.goal_id that pointed at it — not raise IntegrityError."""
+        import sqlalchemy as sa
+
+        from models import Project, ProjectType
+        with app.app_context():
+            db.session.execute(sa.text("PRAGMA foreign_keys=ON"))
+            goal = Goal(title="g", category=GoalCategory.WORK,
+                        priority=GoalPriority.SHOULD)
+            db.session.add(goal)
+            db.session.flush()
+            proj = Project(name="p", type=ProjectType.WORK, goal_id=goal.id)
+            db.session.add(proj)
+            db.session.commit()
+            pid = proj.id
+
+            db.session.delete(goal)
+            db.session.commit()  # pre-fix: IntegrityError here
+
+            db.session.expire_all()
+            assert db.session.get(Project, pid).goal_id is None
+
+    def test_deleting_goal_and_project_set_nulls_recurring_links(self, app):
+        """Deleting a goal/project SET NULLs the RecurringTask FKs."""
+        import sqlalchemy as sa
+
+        from models import (
+            Project,
+            ProjectType,
+            RecurringFrequency,
+            RecurringTask,
+        )
+        with app.app_context():
+            db.session.execute(sa.text("PRAGMA foreign_keys=ON"))
+            goal = Goal(title="g", category=GoalCategory.WORK,
+                        priority=GoalPriority.SHOULD)
+            proj = Project(name="p", type=ProjectType.WORK)
+            db.session.add_all([goal, proj])
+            db.session.flush()
+            rt = RecurringTask(
+                title="rt", frequency=RecurringFrequency.DAILY,
+                type=TaskType.WORK, goal_id=goal.id, project_id=proj.id,
+            )
+            db.session.add(rt)
+            db.session.commit()
+            rtid = rt.id
+
+            db.session.delete(goal)
+            db.session.delete(proj)
+            db.session.commit()  # pre-fix: IntegrityError
+
+            db.session.expire_all()
+            fresh = db.session.get(RecurringTask, rtid)
+            assert fresh.goal_id is None
+            assert fresh.project_id is None
+
+    def test_deleting_parent_task_set_nulls_subtask_link(self, app):
+        """Deleting a parent task SET NULLs the subtask's parent_id."""
+        import sqlalchemy as sa
+        with app.app_context():
+            db.session.execute(sa.text("PRAGMA foreign_keys=ON"))
+            parent = Task(title="parent", type=TaskType.WORK, tier=Tier.TODAY)
+            db.session.add(parent)
+            db.session.flush()
+            sub = Task(title="sub", type=TaskType.WORK, tier=Tier.TODAY,
+                       parent_id=parent.id)
+            db.session.add(sub)
+            db.session.commit()
+            sid = sub.id
+
+            db.session.delete(parent)
+            db.session.commit()  # pre-fix: IntegrityError
+
+            db.session.expire_all()
+            assert db.session.get(Task, sid).parent_id is None
+
+    def test_purge_batch_with_cross_entity_links_no_crash(self, app):
+        """Integration: a batch whose goal is referenced by an
+        out-of-batch Project + RecurringTask must purge cleanly — the
+        DB-level ON DELETE SET NULL handles the dangling refs that
+        purge_batch's manual null-out never covered."""
+        import sqlalchemy as sa
+
+        from models import (
+            Project,
+            ProjectType,
+            RecurringFrequency,
+            RecurringTask,
+        )
+        with app.app_context():
+            db.session.execute(sa.text("PRAGMA foreign_keys=ON"))
+            bid = _make_batch(goal_titles=["batched goal"])
+            goal = db.session.scalar(select(Goal).where(Goal.batch_id == bid))
+
+            # Out-of-batch rows that reference the soon-to-be-purged goal.
+            proj = Project(name="links the goal", type=ProjectType.WORK,
+                           goal_id=goal.id)
+            rt = RecurringTask(
+                title="also links it", frequency=RecurringFrequency.DAILY,
+                type=TaskType.WORK, goal_id=goal.id,
+            )
+            db.session.add_all([proj, rt])
+            db.session.commit()
+            pid, rtid = proj.id, rt.id
+
+            recycle_service.undo_batch(bid)
+            # Pre-fix: this raised ForeignKeyViolation → opaque 422.
+            result = recycle_service.purge_batch(bid, "DELETE")
+            assert result["goals_purged"] == 1
+
+            db.session.expire_all()
+            # The goal is gone; its referencers survived with nulled FKs.
+            assert db.session.get(Project, pid).goal_id is None
+            assert db.session.get(RecurringTask, rtid).goal_id is None
+
+
 # --- Listing / summary -------------------------------------------------------
 
 

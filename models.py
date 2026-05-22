@@ -193,8 +193,11 @@ class Project(db.Model):
     status: Mapped[ProjectStatus] = mapped_column(
         Enum(ProjectStatus), nullable=False, default=ProjectStatus.NOT_STARTED
     )
+    # #175 (2026-05-21): ON DELETE SET NULL so purging a goal from the
+    # recycle bin doesn't ForeignKeyViolation against a Project that
+    # links to it. Mirrors WeeklyFocus.goal_id.
     goal_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("goals.id"), nullable=True
+        Uuid, ForeignKey("goals.id", ondelete="SET NULL"), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # #62 (2026-04-26): renamed from `sort_order`. Drag-and-drop on the
@@ -267,8 +270,11 @@ class Task(db.Model):
         DateTime(timezone=True), default=_now, onupdate=_now
     )
 
+    # #175 (2026-05-21): ON DELETE SET NULL so purging a parent task
+    # from the recycle bin doesn't ForeignKeyViolation against its
+    # subtask rows (a purged subtask's siblings / a purged parent).
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("tasks.id"), nullable=True
+        Uuid, ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True
     )
     recurring_task_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("recurring_tasks.id"), nullable=True
@@ -320,11 +326,14 @@ class RecurringTask(db.Model):
     day_of_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
     week_of_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
     type: Mapped[TaskType] = mapped_column(Enum(TaskType), nullable=False)
+    # #175 (2026-05-21): ON DELETE SET NULL on both FKs so purging a
+    # project or goal from the recycle bin doesn't ForeignKeyViolation
+    # against a RecurringTask template that links to it.
     project_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("projects.id"), nullable=True
+        Uuid, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
     goal_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("goals.id"), nullable=True
+        Uuid, ForeignKey("goals.id", ondelete="SET NULL"), nullable=True
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     checklist: Mapped[list | None] = mapped_column(JSONType, nullable=True, default=list)
