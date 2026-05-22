@@ -235,7 +235,7 @@ drift. Highest priority.
 
 ## Phase 2 — Security + doc
 
-### [ ] PR 9 — Security hardening sweep
+### [x] PR 9 — Security hardening sweep — SHIPPED 2026-05-22 (SHA 158580f1)
 
 - **Items:** #182, #183, #184, #185, #186, #187, #189
 - **Theme:** Seven small input/limit guards in one focused PR. Decisions
@@ -436,7 +436,7 @@ pass AND post-deploy validation + prod smoke pass.
 - [x] PR 8 — Recycle purge FK cleanup (#175) — shipped 2026-05-21, SHA dfc9902e, 37/37 prod smoke green
 
 ### Phase 2 — Security + doc
-- [ ] PR 9 — Security hardening sweep (#182, #183, #184, #185, #186, #187, #189)
+- [x] PR 9 — Security hardening sweep (#182, #183, #184, #185, #186, #187, #189) — shipped 2026-05-22, SHA 158580f1, 37/37 prod smoke green
 - [ ] PR 10 — Doc-only batch (#188, #190)
 
 ### Phase 3 — Drift prevention + refactors
