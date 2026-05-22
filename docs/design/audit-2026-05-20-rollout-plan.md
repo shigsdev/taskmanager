@@ -308,7 +308,7 @@ drift. Highest priority.
 Lower urgency; can pause between PRs if Phase 1+2 work surfaces other
 priorities. None depend on each other except where noted.
 
-### [ ] PR 11 — Drift-prevention sweep
+### [x] PR 11 — Drift-prevention sweep — SHIPPED 2026-05-22 (SHA 6eeba9c2 + prod-smoke fix 253c57e1)
 
 - **Items:** #191, #192, #193
 - **Theme:** Three drift-prevention items that share the SW + apiFetch
@@ -440,7 +440,7 @@ pass AND post-deploy validation + prod smoke pass.
 - [x] PR 10 — Doc-only batch (#188, #190) — shipped 2026-05-22, SHA 0f06f3bd, 37/37 prod smoke green
 
 ### Phase 3 — Drift prevention + refactors
-- [ ] PR 11 — Drift-prevention sweep (#191, #192, #193)
+- [x] PR 11 — Drift-prevention sweep (#191, #192, #193) — shipped 2026-05-22, SHA 6eeba9c2 (+ prod-smoke fix 253c57e1), 37/37 prod smoke green
 - [ ] PR 12 — Helper consolidation (#194, #195, #197)
 - [ ] PR 13 — Larger refactors (#196, #198, #199, #200)
 - [ ] PR 14 — Small cleanups (#201, #202, #203)
