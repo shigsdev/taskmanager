@@ -219,11 +219,25 @@ def confirm(email: str):  # noqa: ARG001
             skipped_empty += 1
             continue
         if route == "goal":
+            # #172 (2026-05-21): use the explicit `category` field Claude
+            # now emits (one of the 5 GoalCategory enum values), NOT
+            # `type` (which is the task work/personal axis). The old code
+            # read `c.get("type")` — since "personal" is not a goal
+            # category it always fell through to "work", so every
+            # voice-dictated goal silently bucketed under Work. The
+            # `_normalise_voice_candidates` step already coerces an
+            # unknown/missing category to "personal_growth", so the
+            # value here is guaranteed valid; the `in (...)` guard is
+            # belt-and-braces against a candidate that bypassed
+            # normalisation.
+            category = c.get("category")
+            if category not in (
+                "health", "personal_growth", "relationships", "work", "bau",
+            ):
+                category = "personal_growth"
             goal_candidates.append({
                 "title": title,
-                "category": c.get("type") if c.get("type") in (
-                    "health", "personal_growth", "relationships", "work", "bau",
-                ) else "work",
+                "category": category,
                 "priority": c.get("priority") or "should",
                 "included": c.get("included", True),
             })

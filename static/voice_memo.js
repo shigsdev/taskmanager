@@ -550,6 +550,36 @@
         });
         row.appendChild(goalSel);
 
+        // #172 (2026-05-21): goal-category dropdown. Claude now infers
+        // a `category` for every candidate (one of the 5 GoalCategory
+        // values). It is ONLY consumed server-side when the candidate
+        // is routed to a goal — but, like the type/tier dropdowns, it
+        // is always rendered so the user can correct it before (or
+        // after) cycling the route badge to GOAL. Previously voice-
+        // dictated goals were mis-bucketed: voice_api read the task
+        // `type` ("personal") as a goal category, which is never valid,
+        // so every dictated goal silently landed under "work".
+        const catSel = document.createElement("select");
+        catSel.className = "voice-candidate-category";
+        catSel.title = "Goal category (applied when this item is routed to a goal)";
+        [
+            ["health", "Health"],
+            ["personal_growth", "Personal growth"],
+            ["relationships", "Relationships"],
+            ["work", "Work"],
+            ["bau", "BAU"],
+        ].forEach(([v, label]) => {
+            const opt = document.createElement("option");
+            opt.value = v;
+            opt.textContent = label;
+            if ((candidate.category || "personal_growth") === v) opt.selected = true;
+            catSel.appendChild(opt);
+        });
+        catSel.addEventListener("change", function () {
+            currentCandidates[idx].category = catSel.value;
+        });
+        row.appendChild(catSel);
+
         // #37: unresolved-hint indicator. If Claude cited a project
         // or goal that doesn't match any of the user's actual
         // records, show the hint text as a small muted note so the

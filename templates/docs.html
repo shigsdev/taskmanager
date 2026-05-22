@@ -215,6 +215,16 @@ https://example.com/foo
                 the same import pipelines used by the Excel importers
                 (so they get a recycle-bin batch you can undo).
             </p>
+            <p>
+                Every candidate also carries a <strong>goal category</strong>
+                (<code>health</code>, <code>personal_growth</code>,
+                <code>relationships</code>, <code>work</code>, or
+                <code>bau</code>) that the parser infers from the item's
+                topic. It is applied only when the candidate is routed to
+                a goal — the review row has a category dropdown so you can
+                correct it before confirming. When the topic is unclear
+                the category defaults to <code>personal_growth</code>.
+            </p>
 
             <h3>Size and duration limits</h3>
             <ul>

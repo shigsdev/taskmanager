@@ -567,6 +567,82 @@ class TestVoiceConfirm:
             assert len(projects) == 1
             assert projects[0].is_active is True
 
+    def test_goal_route_uses_explicit_category_not_task_type(
+        self, client, monkeypatch, app,
+    ):
+        """#172 (2026-05-21): a voice candidate routed to a goal must
+        land with the `category` Claude inferred — NOT the task `type`.
+        The old code read `c.get("type")`; since "personal" is not a
+        goal category it always fell through to "work", so every
+        voice-dictated personal goal silently bucketed under Work.
+        """
+        _bypass_auth(monkeypatch)
+
+        resp = client.post(
+            "/api/voice-memo/confirm",
+            json={
+                "candidates": [
+                    {
+                        "title": "Read 12 books this year",
+                        "route": "goal",
+                        "type": "personal",       # task-axis type
+                        "category": "personal_growth",  # goal category
+                        "included": True,
+                    },
+                    {
+                        "title": "Run a half marathon",
+                        "route": "goal",
+                        "type": "personal",
+                        "category": "health",
+                        "included": True,
+                    },
+                ]
+            },
+        )
+        assert resp.status_code == 201
+
+        from models import Goal, GoalCategory, db
+        with app.app_context():
+            books = db.session.query(Goal).filter_by(
+                title="Read 12 books this year",
+            ).one()
+            marathon = db.session.query(Goal).filter_by(
+                title="Run a half marathon",
+            ).one()
+            # Pre-fix BOTH would have been GoalCategory.WORK.
+            assert books.category == GoalCategory.PERSONAL_GROWTH
+            assert marathon.category == GoalCategory.HEALTH
+
+    def test_goal_route_missing_category_defaults_to_personal_growth(
+        self, client, monkeypatch, app,
+    ):
+        """#172: a goal candidate with no `category` (e.g. an older
+        client that doesn't send it, or Claude omitting it) defaults
+        to personal_growth — never the old silent 'work'."""
+        _bypass_auth(monkeypatch)
+
+        resp = client.post(
+            "/api/voice-memo/confirm",
+            json={
+                "candidates": [
+                    {
+                        "title": "Learn watercolor painting",
+                        "route": "goal",
+                        "type": "personal",
+                        "included": True,
+                    },
+                ]
+            },
+        )
+        assert resp.status_code == 201
+
+        from models import Goal, GoalCategory, db
+        with app.app_context():
+            goal = db.session.query(Goal).filter_by(
+                title="Learn watercolor painting",
+            ).one()
+            assert goal.category == GoalCategory.PERSONAL_GROWTH
+
     def test_empty_title_is_skipped_and_warned(self, client, monkeypatch):
         """PR24 TD-2: candidates with an empty title (e.g. user said
         "goal:" with nothing after it) used to be silently dropped by
@@ -736,7 +812,8 @@ class TestVoiceNormaliser:
     def test_preserves_valid_inference_end_to_end(self):
         """Baseline #36 shape still passes through unchanged, with #37
         additions (project_id, goal_id, is_task) set to safe defaults
-        when no hints are supplied."""
+        when no hints are supplied. #172 added `category` — when Claude
+        omits it the normaliser fills the personal_growth default."""
         from scan_service import _normalise_voice_candidates
         result = _normalise_voice_candidates([
             {"title": "Pick up meds", "type": "personal",
@@ -752,7 +829,44 @@ class TestVoiceNormaliser:
             "goal_hint": None,
             "goal_id": None,
             "is_task": True,
+            "category": "personal_growth",
         }
+
+    # --- #172 category normalisation ------------------------------------
+
+    def test_valid_category_preserved(self):
+        """#172: a valid GoalCategory value from Claude survives
+        normalisation unchanged."""
+        from scan_service import _normalise_voice_candidates
+        for cat in ("health", "personal_growth", "relationships", "work", "bau"):
+            result = _normalise_voice_candidates([
+                {"title": "x", "type": "personal", "tier": "inbox",
+                 "category": cat},
+            ])
+            assert result[0]["category"] == cat
+
+    def test_unknown_category_coerced_to_personal_growth(self):
+        """#172: a hallucinated / missing category coerces to the
+        neutral default — same fallback the image goals-parse prompt
+        uses. 'personal' (a task TYPE, the value the OLD buggy code
+        passed) is NOT a valid category and must coerce."""
+        from scan_service import _normalise_voice_candidates
+        for bad in ("personal", "garbage", "", None):
+            result = _normalise_voice_candidates([
+                {"title": "x", "type": "personal", "tier": "inbox",
+                 "category": bad},
+            ])
+            assert result[0]["category"] == "personal_growth", (
+                f"category {bad!r} should coerce to personal_growth"
+            )
+
+    def test_missing_category_key_defaults(self):
+        """#172: Claude omitting the key entirely → default applied."""
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates([
+            {"title": "x", "type": "work", "tier": "inbox"},
+        ])
+        assert result[0]["category"] == "personal_growth"
 
     # --- #37 hint resolution --------------------------------------------
 
@@ -1105,6 +1219,59 @@ class TestVoicePromptSelfConsistency:
             assert item["tier"] in _VOICE_VALID_TIERS, (
                 f"prompt example uses invalid tier: {item['tier']}"
             )
+
+    def test_prompt_example_every_item_has_a_category(self):
+        """#172 (2026-05-21): every example item must carry a `category`
+        key so Claude learns to emit it for every item. A missing key
+        in the example teaches Claude the field is optional."""
+        import json
+        import re
+        prompt = self._format_prompt()
+        match = re.search(r"Output:\s*(\[.*?\])\s*Transcript:", prompt, re.DOTALL)
+        items = json.loads(match.group(1))
+        for item in items:
+            assert "category" in item, (
+                f"prompt example item {item['title']!r} missing `category`"
+            )
+
+    def test_prompt_example_category_values_are_all_valid(self):
+        """#172: example categories must all be real GoalCategory enum
+        values — otherwise the prompt teaches Claude a value the server
+        coerces away (same bug class as the tier test above)."""
+        import json
+        import re
+
+        from scan_service import _VOICE_VALID_CATEGORIES
+        prompt = self._format_prompt()
+        match = re.search(r"Output:\s*(\[.*?\])\s*Transcript:", prompt, re.DOTALL)
+        items = json.loads(match.group(1))
+        for item in items:
+            assert item["category"] in _VOICE_VALID_CATEGORIES, (
+                f"prompt example uses invalid category: {item['category']!r}"
+            )
+
+    def test_prompt_lists_all_five_goal_categories(self):
+        """#172: the prompt's category rule must enumerate all 5
+        GoalCategory enum values so Claude has the full vocabulary.
+        Guards against a future edit dropping one (the way the image
+        goals-parse prompt drifted and lost 'bau')."""
+        from scan_service import _VOICE_PARSE_PROMPT, _VOICE_VALID_CATEGORIES
+        for cat in _VOICE_VALID_CATEGORIES:
+            assert f'"{cat}"' in _VOICE_PARSE_PROMPT, (
+                f"prompt category rule missing enum value: {cat}"
+            )
+
+    def test_voice_valid_categories_matches_goal_category_enum(self):
+        """#172: the _VOICE_VALID_CATEGORIES allowlist must stay in
+        lockstep with the GoalCategory enum — a new enum member that
+        isn't added here would be silently coerced to personal_growth."""
+        from models import GoalCategory
+        from scan_service import _VOICE_VALID_CATEGORIES
+        enum_values = {c.value for c in GoalCategory}
+        assert enum_values == _VOICE_VALID_CATEGORIES, (
+            f"drift: _VOICE_VALID_CATEGORIES={_VOICE_VALID_CATEGORIES} "
+            f"vs GoalCategory={enum_values}"
+        )
 
     def test_prompt_example_demonstrates_explicit_project_phrasing(self):
         """The example must SHOW Claude an explicit-phrasing case so
