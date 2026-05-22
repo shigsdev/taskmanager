@@ -117,7 +117,7 @@ drift. Highest priority.
 - **Risk:** Low. Single-function tightening of an existing rule.
 - **Effort:** S.
 
-### [ ] PR 4 — Recurring template integrity
+### [x] PR 4 — Recurring template integrity — SHIPPED 2026-05-21 (SHA 660c3ddc)
 
 - **Items:** #171, #173, #177
 - **Theme:** Three independent recurring-template defects, all in the
@@ -429,7 +429,7 @@ pass AND post-deploy validation + prod smoke pass.
 - [x] PR 1 — TZ-drift sweep #2 (#178, #180) — shipped 2026-05-20, SHA f85fc4c2, 37/37 prod smoke green
 - [x] PR 2 — DIGEST_TIME boot validation (#179) — shipped 2026-05-21, SHA c3713e8d, 37/37 prod smoke green
 - [x] PR 3 — Realign cron preserves overdue-TODAY (#170) — shipped 2026-05-21, SHA 57a76d34, 37/37 prod smoke green
-- [ ] PR 4 — Recurring template integrity (#171, #173, #177)
+- [x] PR 4 — Recurring template integrity (#171, #173, #177) — shipped 2026-05-21, SHA 660c3ddc, 37/37 prod smoke green
 - [ ] PR 5 — Voice-memo goal category mapping (#172)
 - [ ] PR 6 — Reflection-apply correctness (#174, #181)
 - [ ] PR 7 — PATCH status cascades to subtasks (#176)
