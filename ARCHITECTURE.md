@@ -143,7 +143,10 @@ component is added, a data flow changes, or a security boundary shifts.
 - **SendGrid** — outbound daily digest email to work Outlook.
 - **Google Vision API** — OCR for the image scan feature. Server-side only.
 - **Anthropic Claude API** — parses OCR text into discrete task or goal
-  candidates. Server-side only.
+  candidates. Server-side only. Every Claude call goes through one
+  shared client, `claude_client.call_claude` (#195) — model ids
+  (`SONNET`/`HAIKU`) and the egress wiring live there, not inlined per
+  service.
 - **Work Outlook** — receives the daily digest. Air-gapped from the app;
   digest is the only bridge.
 - **GitHub repo** (`shigsdev/taskmanager`) — source of truth. Push to main

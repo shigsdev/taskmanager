@@ -267,8 +267,9 @@
 
         const formData = new FormData();
         // Filename matters less than content_type but we set both so the
-        // server can log meaningful info.
-        const ext = mimeTypeToExt(mimeType);
+        // server can log meaningful info. #197: mimeTypeToExt now lives
+        // in voice_memo_helpers.js (Jest-tested).
+        const ext = window.voiceMemoHelpers.mimeTypeToExt(mimeType);
         formData.append("audio", blob, "memo." + ext);
 
         let data;
@@ -308,15 +309,6 @@
         // Strip any existing prefix and replace.
         const text = el.textContent.replace(/^[^\s]+\s/, "");
         el.textContent = prefix + text;
-    }
-
-    function mimeTypeToExt(mimeType) {
-        const mt = (mimeType || "").toLowerCase().split(";")[0];
-        if (mt.indexOf("mp4") !== -1) return "mp4";
-        if (mt.indexOf("mpeg") !== -1) return "mp3";
-        if (mt.indexOf("ogg") !== -1) return "ogg";
-        if (mt.indexOf("wav") !== -1) return "wav";
-        return "webm";
     }
 
     // --- Review -------------------------------------------------------------

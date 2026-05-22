@@ -451,26 +451,13 @@ def _build_plan_prompt(
 
 
 def _post_to_claude(api_key: str, prompt: str, max_tokens: int) -> dict[str, Any]:
-    from egress import EgressError, safe_call_api
+    # #195: thin delegator over the shared claude_client. Name +
+    # signature preserved for existing patch(...) test mocks.
+    from claude_client import HAIKU, call_claude
 
-    try:
-        return safe_call_api(
-            url="https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": "claude-haiku-4-5-20251001",
-                "max_tokens": max_tokens,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-            timeout_sec=60,
-            vendor="Claude",
-        )
-    except EgressError as e:
-        raise RuntimeError(str(e)) from e
+    return call_claude(
+        api_key=api_key, prompt=prompt, max_tokens=max_tokens, model=HAIKU,
+    )
 
 
 def _parse_claude_response(raw_text: str) -> list[dict]:

@@ -35,6 +35,7 @@ from import_service import (
     parse_transcript_text,
 )
 from rate_limit import limiter
+from utils import validate_upload
 
 bp = Blueprint("import_api", __name__, url_prefix="/api/import")
 
@@ -79,23 +80,12 @@ def upload_tasks(email: str):  # noqa: ARG001
     Accepts multipart/form-data with a 'file' field (.docx).
     Returns candidates with duplicate flags.
     """
-    if "file" not in request.files:
-        return jsonify({"error": "No file provided"}), 400
-
-    file = request.files["file"]
-    if not file.filename:
-        return jsonify({"error": "No filename"}), 400
-
-    if not file.filename.lower().endswith(".docx"):
-        return jsonify({"error": "Only .docx files are supported"}), 422
-
-    file_bytes = file.read()
-
-    if len(file_bytes) > MAX_FILE_SIZE:
-        return jsonify({"error": "File too large (max 5MB)"}), 413
-
-    if not file_bytes:
-        return jsonify({"error": "Empty file"}), 400
+    file_bytes, _ct, err = validate_upload(
+        request, field_name="file", max_bytes=MAX_FILE_SIZE,
+        allowed_extensions={".docx"},
+    )
+    if err:
+        return jsonify(err[0]), err[1]
 
     try:
         candidates = parse_onenote_docx(file_bytes)
@@ -121,18 +111,12 @@ def upload_tasks_xlsx(email: str):  # noqa: ARG001
     linked_project, notes, url. linked_* matched case-insensitively at
     create time.
     """
-    if "file" not in request.files:
-        return jsonify({"error": "No file provided"}), 400
-    file = request.files["file"]
-    if not file.filename:
-        return jsonify({"error": "No filename"}), 400
-    if not file.filename.lower().endswith(".xlsx"):
-        return jsonify({"error": "Only .xlsx files are supported"}), 422
-    file_bytes = file.read()
-    if len(file_bytes) > MAX_FILE_SIZE:
-        return jsonify({"error": "File too large (max 5MB)"}), 413
-    if not file_bytes:
-        return jsonify({"error": "Empty file"}), 400
+    file_bytes, _ct, err = validate_upload(
+        request, field_name="file", max_bytes=MAX_FILE_SIZE,
+        allowed_extensions={".xlsx"},
+    )
+    if err:
+        return jsonify(err[0]), err[1]
 
     try:
         candidates = parse_excel_tasks(file_bytes)
@@ -224,22 +208,12 @@ def upload_transcript(email: str):  # noqa: ARG001
     UTF-8 (replacing undecodable bytes) and runs the same extraction as
     /transcript/parse.
     """
-    if "file" not in request.files:
-        return jsonify({"error": "No file provided"}), 400
-
-    file = request.files["file"]
-    if not file.filename:
-        return jsonify({"error": "No filename"}), 400
-
-    name_lc = file.filename.lower()
-    if not (name_lc.endswith(".md") or name_lc.endswith(".txt")):
-        return jsonify({"error": "Only .md or .txt files are supported"}), 422
-
-    file_bytes = file.read()
-    if len(file_bytes) > MAX_FILE_SIZE:
-        return jsonify({"error": "File too large (max 5MB)"}), 413
-    if not file_bytes:
-        return jsonify({"error": "Empty file"}), 400
+    file_bytes, _ct, err = validate_upload(
+        request, field_name="file", max_bytes=MAX_FILE_SIZE,
+        allowed_extensions={".md", ".txt"},
+    )
+    if err:
+        return jsonify(err[0]), err[1]
 
     text = file_bytes.decode("utf-8", errors="replace")
 
@@ -267,23 +241,12 @@ def parse_goals(email: str):  # noqa: ARG001
     Accepts multipart/form-data with a 'file' field (.xlsx).
     Returns goal candidates with duplicate flags.
     """
-    if "file" not in request.files:
-        return jsonify({"error": "No file provided"}), 400
-
-    file = request.files["file"]
-    if not file.filename:
-        return jsonify({"error": "No filename"}), 400
-
-    if not file.filename.lower().endswith(".xlsx"):
-        return jsonify({"error": "Only .xlsx files are supported"}), 422
-
-    file_bytes = file.read()
-
-    if len(file_bytes) > MAX_FILE_SIZE:
-        return jsonify({"error": "File too large (max 5MB)"}), 413
-
-    if not file_bytes:
-        return jsonify({"error": "Empty file"}), 400
+    file_bytes, _ct, err = validate_upload(
+        request, field_name="file", max_bytes=MAX_FILE_SIZE,
+        allowed_extensions={".xlsx"},
+    )
+    if err:
+        return jsonify(err[0]), err[1]
 
     try:
         candidates = parse_excel_goals(file_bytes)
@@ -359,18 +322,12 @@ def parse_projects(email: str):  # noqa: ARG001
 @login_required
 def upload_projects(email: str):  # noqa: ARG001
     """Parse uploaded Excel file (.xlsx) into project candidates."""
-    if "file" not in request.files:
-        return jsonify({"error": "No file provided"}), 400
-    file = request.files["file"]
-    if not file.filename:
-        return jsonify({"error": "No filename"}), 400
-    if not file.filename.lower().endswith(".xlsx"):
-        return jsonify({"error": "Only .xlsx files are supported"}), 422
-    file_bytes = file.read()
-    if len(file_bytes) > MAX_FILE_SIZE:
-        return jsonify({"error": "File too large (max 5MB)"}), 413
-    if not file_bytes:
-        return jsonify({"error": "Empty file"}), 400
+    file_bytes, _ct, err = validate_upload(
+        request, field_name="file", max_bytes=MAX_FILE_SIZE,
+        allowed_extensions={".xlsx"},
+    )
+    if err:
+        return jsonify(err[0]), err[1]
 
     try:
         candidates = parse_excel_projects(file_bytes)

@@ -145,30 +145,43 @@ def validate_upload(
     request,
     *,
     field_name: str,
-    allowed_mime: frozenset[str] | set[str],
     max_bytes: int,
+    allowed_mime: frozenset[str] | set[str] | None = None,
+    allowed_extensions: frozenset[str] | set[str] | None = None,
 ):
     """Common upload validation for multipart/form-data file fields.
 
-    Used by ``voice_api`` and ``scan_api`` (and any future upload route)
-    to enforce the same checks consistently — see CLAUDE.md Cascade
-    check, "A new file-upload endpoint" row.
+    Used by ``voice_api``, ``scan_api``, ``import_api`` (and any future
+    upload route) to enforce the same checks consistently — see
+    CLAUDE.md Cascade check, "A new file-upload endpoint" row.
 
     Performs in order:
       1. Field is present in ``request.files``
       2. Filename is non-empty
-      3. Content-Type matches an allowed MIME (after stripping codec
-         parameters; iOS Safari sends ``audio/mp4;codecs=mp4a.40.2``)
+      3. File TYPE matches — by Content-Type MIME (``allowed_mime``) OR
+         by filename extension (``allowed_extensions``); see below
       4. Body fits inside ``max_bytes``
       5. Body is non-empty
 
+    Type validation has two modes — pass exactly one:
+
+    * ``allowed_mime`` — match the Content-Type header (after stripping
+      codec params; iOS Safari sends ``audio/mp4;codecs=mp4a.40.2``).
+      Right for media uploads (audio, image) where the browser sets a
+      reliable Content-Type.
+    * ``allowed_extensions`` — match the filename extension (#194).
+      Right for document imports (``.docx`` / ``.xlsx`` / ``.md`` /
+      ``.txt``) where the browser's Content-Type is unreliable.
+
     Args:
         request: Flask ``flask.request`` proxy (passed in for testability).
-        field_name: e.g. ``"audio"`` or ``"image"``.
+        field_name: e.g. ``"audio"``, ``"image"``, ``"file"``.
+        max_bytes: Hard cap on body size in bytes.
         allowed_mime: Set of base MIME types (no codec params); incoming
             content type is normalized via :func:`_normalize_mime` before
             matching.
-        max_bytes: Hard cap on body size in bytes.
+        allowed_extensions: Set of lowercased file extensions including
+            the leading dot, e.g. ``{".xlsx", ".docx"}``.
 
     Returns:
         ``(audio_bytes, content_type, None)`` on success — caller uses
@@ -182,30 +195,49 @@ def validate_upload(
     The tuple-of-error-or-success pattern matches the existing
     ``enum_or_400`` helper above, keeping route code straight-line.
     """
+    if allowed_mime is None and allowed_extensions is None:
+        raise ValueError(
+            "validate_upload: pass allowed_mime or allowed_extensions"
+        )
+
     if field_name not in request.files:
-        return None, None, ({"error": f"No {field_name} file provided"}, 400)
+        return None, None, ({"error": f"No {field_name} provided"}, 400)
 
     file = request.files[field_name]
     if not file.filename:
         return None, None, ({"error": "No filename"}, 400)
 
     raw_content_type = file.content_type or ""
-    base_type = _normalize_mime(raw_content_type)
-    if base_type not in allowed_mime:
-        return None, None, (
-            {
-                "error": f"Unsupported {field_name} type: {raw_content_type}",
-                "allowed": sorted(allowed_mime),
-            },
-            422,
-        )
+    if allowed_extensions is not None:
+        # Extension mode (#194) — document imports. The browser's
+        # Content-Type for .md/.txt/.docx/.xlsx is unreliable, so match
+        # the filename extension instead.
+        name_lc = file.filename.lower()
+        if not any(name_lc.endswith(ext) for ext in allowed_extensions):
+            return None, None, (
+                {
+                    "error": f"Unsupported {field_name} type: {file.filename}",
+                    "allowed": sorted(allowed_extensions),
+                },
+                422,
+            )
+    else:
+        base_type = _normalize_mime(raw_content_type)
+        if base_type not in allowed_mime:
+            return None, None, (
+                {
+                    "error": f"Unsupported {field_name} type: {raw_content_type}",
+                    "allowed": sorted(allowed_mime),
+                },
+                422,
+            )
 
     body = file.read()
     if len(body) > max_bytes:
         mb = max_bytes // 1024 // 1024
         actual_mb = len(body) // 1024 // 1024
         return None, None, (
-            {"error": f"{field_name.capitalize()} file too large ({actual_mb} MB; max {mb} MB)"},
+            {"error": f"{field_name.capitalize()} too large ({actual_mb} MB; max {mb} MB)"},
             413,
         )
 

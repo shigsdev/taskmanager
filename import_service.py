@@ -329,28 +329,14 @@ def _call_claude_for_transcript(api_key: str, transcript: str) -> list[Any]:
     layer. Returns the raw list of objects parsed from Claude's reply
     (caller does the cleaning/coercion).
     """
-    from egress import EgressError, safe_call_api
+    # #195: route through the shared claude_client instead of an
+    # inline egress.safe_call_api block.
+    from claude_client import SONNET, call_claude
 
     prompt = _TRANSCRIPT_PROMPT.format(transcript=transcript)
-    try:
-        data = safe_call_api(
-            url="https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": "claude-sonnet-4-6",
-                "max_tokens": 2048,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-            timeout_sec=60,
-            vendor="Claude",
-        )
-    except EgressError as e:
-        raise RuntimeError(str(e)) from e
-
+    data = call_claude(
+        api_key=api_key, prompt=prompt, max_tokens=2048, model=SONNET,
+    )
     content = data.get("content", [{}])[0].get("text", "")
     return _extract_transcript_json_array(content)
 

@@ -323,33 +323,20 @@ def _serialize_active(t: Task, today: date) -> dict:
 
 
 def _post_to_claude(api_key: str, prompt: str, max_tokens: int) -> dict[str, Any]:
-    from egress import EgressError, safe_call_api
+    # #195: thin delegator over the shared claude_client. Name +
+    # signature preserved for existing patch(...) test mocks.
+    #
+    # 180s timeout — user reported ReadTimeout at 90s 2026-05-09 (real
+    # repro: 100 tasks + 4 weeks history + 12k max_tokens of JSON
+    # output = the model can take 60-150s end-to-end). Anthropic
+    # recommends the streaming endpoint for max_tokens > ~4k; switching
+    # to that is filed as a follow-up. 180s buys headroom meanwhile.
+    from claude_client import HAIKU, call_claude
 
-    try:
-        return safe_call_api(
-            url="https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": "claude-haiku-4-5-20251001",
-                "max_tokens": max_tokens,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-            # 180s — user reported ReadTimeout at 90s 2026-05-09 (real
-            # repro: 100 tasks + 4 weeks history + 12k max_tokens of
-            # JSON output = the model can take 60-150s end-to-end).
-            # Anthropic's official recommendation is to use the streaming
-            # endpoint for max_tokens > ~4k; we should switch to that
-            # (filed as a follow-up). 180s buys headroom in the
-            # meantime.
-            timeout_sec=180,
-            vendor="Claude",
-        )
-    except EgressError as e:
-        raise RuntimeError(str(e)) from e
+    return call_claude(
+        api_key=api_key, prompt=prompt, max_tokens=max_tokens,
+        model=HAIKU, timeout_sec=180,
+    )
 
 
 def _parse_claude_response(raw_text: str) -> dict:

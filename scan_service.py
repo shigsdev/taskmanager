@@ -175,27 +175,18 @@ def _call_claude_api(api_key: str, ocr_text: str) -> list[str]:
 
 
 def _post_to_claude(*, api_key: str, prompt: str, max_tokens: int) -> dict[str, Any]:
-    """Shared Claude API caller — used by both task and goal extraction."""
-    from egress import EgressError, safe_call_api
+    """Shared Claude API caller — used by both task and goal extraction.
 
-    try:
-        return safe_call_api(
-            url="https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": "claude-sonnet-4-6",
-                "max_tokens": max_tokens,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-            timeout_sec=60,
-            vendor="Claude",
-        )
-    except EgressError as e:
-        raise RuntimeError(str(e)) from e
+    #195: a thin delegator over ``claude_client.call_claude`` (the one
+    shared Anthropic client). Kept as a named function with this exact
+    signature so existing ``patch("scan_service._post_to_claude")``
+    test mocks keep working.
+    """
+    from claude_client import SONNET, call_claude
+
+    return call_claude(
+        api_key=api_key, prompt=prompt, max_tokens=max_tokens, model=SONNET,
+    )
 
 
 def _extract_json_array(text: str) -> list[str]:
