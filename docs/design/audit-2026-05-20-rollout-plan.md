@@ -1,5 +1,21 @@
 # Audit 2026-05-20 — Rollout Plan
 
+> **STATUS 2026-05-22 — PR 1–11 SHIPPED, PR 12–14 DEFERRED FOR REVIEW.**
+> All 12 bugs (#170–#181), all 9 security items (#182–#190), and all 3
+> drift-prevention items (#191–#193) are fixed, deployed GREEN, and
+> prod-smoke verified. The remaining 3 PRs (#194–#203, the "larger
+> refactors" + cleanups tier) were deliberately NOT shipped in the
+> autonomous overnight run — they are multi-file refactors
+> (claude_client 6-service extraction, a 26-site JSON-body decorator,
+> a canonical serializer with /api/export data-loss risk, etc.) where
+> reviewing the *approach* before merge adds real value and a
+> context-fatigued unattended merge adds real risk. They are the
+> lowest-urgency tier (pure tech debt, zero user-facing bugs).
+> Recommendation: tackle PR 12–14 in a fresh session — say "go" and
+> they run one at a time through the same pipeline.
+> See "Tracking checklist" near the bottom for the exact done/deferred
+> split.
+
 **Source:** 34 OPEN backlog rows filed 2026-05-20 by a three-agent audit pass
 (commit `51dd22e` on `main`).
 
@@ -441,9 +457,41 @@ pass AND post-deploy validation + prod smoke pass.
 
 ### Phase 3 — Drift prevention + refactors
 - [x] PR 11 — Drift-prevention sweep (#191, #192, #193) — shipped 2026-05-22, SHA 6eeba9c2 (+ prod-smoke fix 253c57e1), 37/37 prod smoke green
-- [ ] PR 12 — Helper consolidation (#194, #195, #197)
-- [ ] PR 13 — Larger refactors (#196, #198, #199, #200)
-- [ ] PR 14 — Small cleanups (#201, #202, #203)
+- [ ] PR 12 — Helper consolidation (#194, #195, #197) — **DEFERRED** for review
+- [ ] PR 13 — Larger refactors (#196, #198, #199, #200) — **DEFERRED** for review
+- [ ] PR 14 — Small cleanups (#201, #202, #203) — **DEFERRED** (not started; trivial, but bundled with the deferred batch)
+
+**Deferred-PR notes (code-read findings to feed the fresh session):**
+- **#194** (import_api upload validation) — the rollout plan assumed
+  `utils.validate_upload` fits. Code-read: it validates Content-Type
+  **MIME**, but the 5 import_api sites validate by file **extension**
+  (`.xlsx`/`.docx`/`.md`/`.txt`). So the fix needs either an
+  `allowed_extensions` mode added to `validate_upload` OR a new
+  sibling helper. Decision needed before coding.
+- **#195** (claude_client extraction) — code-read found FOUR
+  near-identical `_post_to_claude` functions (scan_service,
+  inbox_categorize_service, weekly_focus_service,
+  weekly_planner_service) + import_service's inline `safe_call_api` +
+  multiple JSON extractors. Models hardcoded: `claude-sonnet-4-6` and
+  `claude-haiku-4-5-20251001`. **Low-risk approach:** new
+  `claude_client.py` owns the HTTP mechanics + named model constants
+  (`SONNET`, `HAIKU`) + a shared JSON extractor; each service keeps
+  its `_post_to_claude` *name* as a 1-line delegator so the existing
+  `patch("X._post_to_claude")` test mocks keep working unchanged.
+- **#197** (anti-pattern-#3 helpers) — `voice_memo.js mimeTypeToExt`
+  is the clean win (pure, branchy → dual-export `_helpers.js` + Jest).
+  `scan.js compressImage` — only the resize-dimension math
+  (`longest > MAX → scale`) is unit-testable; the Canvas/FileReader
+  plumbing isn't (jsdom). `import.js _selectFrom` is borderline
+  trivial DOM construction — marginal extraction value.
+- **#196** (JSON-body decorator, 26 sites) — biggest blast radius;
+  will churn ~30 test fixtures for the new error shape.
+- **#200** (canonical Task serializer) — carries /api/export silent
+  data-loss risk; needs the round-trip test written FIRST.
+- **#198 / #199 / #201 / #202 / #203** — genuinely low-risk
+  (data-dict extraction, table-driven scheduler registration, an
+  unused-import delete, a Jest config widening, named rate-limit
+  constants). Safe to batch quickly in the fresh session.
 
 ---
 
