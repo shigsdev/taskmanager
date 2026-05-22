@@ -152,6 +152,7 @@ EXPECTED_STATIC_FILES = (
     "static/projects.js",
     "static/calendar.js",
     "static/recurring.js",
+    "static/inbox_categorize_helpers.js",  # #208 — Jest-importable due-date helpers
     "static/inbox_categorize.js",
     "static/plan.js",
     "static/tier_helpers.js",

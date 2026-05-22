@@ -964,7 +964,7 @@ Skip this line (too short)</pre>
                 <li><strong>Tier</strong> — Today, Tomorrow, This Week, Next Week, Backlog, or Freezer. Never "Inbox" (that's the source).</li>
                 <li><strong>Project</strong> — picked from your active projects, or null if nothing fits.</li>
                 <li><strong>Goal</strong> — picked from your in-progress / not-started goals, or null. If a project is suggested, Claude usually mirrors that project's goal.</li>
-                <li><strong>Due date</strong> — only set if the task title implies one (e.g. "Pay rent by 15th"); otherwise null.</li>
+                <li><strong>Due date</strong> — Claude sets one only when the task title implies it (e.g. "Pay rent by 15th"). When it doesn't, a row whose tier is <strong>Today</strong> or <strong>Tomorrow</strong> still pre-fills the date input with that tier's date, so you can see what the <a href="#tiers">tier&nbsp;→&nbsp;date auto-fill</a> will stamp on apply — switch the Tier dropdown and it re-derives. Other tiers leave the date blank unless you set one.</li>
                 <li><strong>Type</strong> — Work or Personal.</li>
                 <li><strong>Reason</strong> — one short sentence explaining the most-influential signal.</li>
             </ul>

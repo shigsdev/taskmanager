@@ -126,7 +126,7 @@
         tr.appendChild(td(tierSelect(s.suggested_tier), "auto-categorize-tier"));
         tr.appendChild(td(projectSelect(s.suggested_project_id, s.suggested_type), "auto-categorize-project"));
         tr.appendChild(td(goalSelect(s.suggested_goal_id, s.suggested_type), "auto-categorize-goal"));
-        tr.appendChild(td(dueInput(s.suggested_due_date), "auto-categorize-due"));
+        tr.appendChild(td(dueInput(s.suggested_due_date, s.suggested_tier), "auto-categorize-due"));
         tr.appendChild(td(typeSelect(s.suggested_type), "auto-categorize-type"));
         tr.appendChild(td(rowApplyBtn(), "auto-categorize-actions"));
 
@@ -153,6 +153,26 @@
                     goalCell.innerHTML = "";
                     goalCell.appendChild(goalSelect(prevGoalVal, newType));
                 }
+            });
+        }
+        // #208 (2026-05-22): re-derive the due placeholder when the
+        // tier changes. An explicit value (Claude's date, or one the
+        // user typed — no data-auto flag) is left untouched; an empty
+        // or auto-derived input snaps to the new tier's auto-fill date
+        // (Today → today, Tomorrow → tomorrow, other tiers → cleared).
+        var tierSel = tr.querySelector('select[data-field="tier"]');
+        if (tierSel) {
+            tierSel.addEventListener("change", function () {
+                var dueEl = tr.querySelector('input[data-field="due_date"]');
+                var H = window.inboxCategorizeHelpers;
+                if (!dueEl || !H) { return; }
+                var explicit = dueEl.dataset.auto === "1" ? "" : dueEl.value;
+                var resolved = H.resolveDueForTier(
+                    explicit, tierSel.value, _todayIso(),
+                );
+                dueEl.value = resolved.value;
+                if (resolved.auto) { dueEl.dataset.auto = "1"; }
+                else { delete dueEl.dataset.auto; }
             });
         }
         // #117 cascade on this row too — same pattern as the detail
@@ -246,11 +266,43 @@
         return makeSelect(options, current || "", "goal");
     }
 
-    function dueInput(current) {
+    // Today as local "YYYY-MM-DD". Uses the shared dateHelpers (loaded
+    // app-wide via base.html) so the modal's derived dates match every
+    // other local-date computation in the app.
+    function _todayIso() {
+        if (window.dateHelpers && window.dateHelpers.localIsoDate) {
+            return window.dateHelpers.localIsoDate();
+        }
+        var d = new Date();
+        return (
+            d.getFullYear()
+            + "-" + String(d.getMonth() + 1).padStart(2, "0")
+            + "-" + String(d.getDate()).padStart(2, "0")
+        );
+    }
+
+    // #208 (2026-05-22): the due input now pre-fills from the tier when
+    // Claude didn't suggest a date — Today → today, Tomorrow → tomorrow
+    // — so the user SEES the date the server's tier→date auto-fill will
+    // stamp. A derived placeholder carries data-auto="1"; readRow omits
+    // those from the PATCH so the server produces the authoritative
+    // date. A real value (Claude's suggestion, or one the user types)
+    // has no data-auto flag and IS sent.
+    function dueInput(current, tier) {
         var input = document.createElement("input");
         input.type = "date";
         input.dataset.field = "due_date";
-        if (current) { input.value = current; }
+        var H = window.inboxCategorizeHelpers;
+        var resolved = H
+            ? H.resolveDueForTier(current, tier, _todayIso())
+            : { value: current || "", auto: false };
+        if (resolved.value) { input.value = resolved.value; }
+        if (resolved.auto) { input.dataset.auto = "1"; }
+        // A manual edit turns the value into the user's explicit intent
+        // — drop the auto flag so readRow sends it verbatim.
+        input.addEventListener("input", function () {
+            delete input.dataset.auto;
+        });
         return input;
     }
 
@@ -337,12 +389,25 @@
         };
         var project = get("project");
         var goal = get("goal");
-        var due = get("due_date");
         // Server treats "" as no-change; null clears. Client policy:
         // empty selects mean "leave null on the server".
         payload.project_id = project || null;
         payload.goal_id = goal || null;
-        payload.due_date = due || null;
+        // #208 (2026-05-22): only send due_date when it's a real,
+        // explicit value. An empty field OR an auto-derived placeholder
+        // is OMITTED so the server's tier→date auto-fill
+        // (_auto_fill_tier_due_date) runs and stamps the authoritative
+        // date. Sending `due_date: null` would suppress that auto-fill
+        // — the original bug: every auto-categorized Today task landed
+        // with no due date.
+        var dueEl = tr.querySelector('input[data-field="due_date"]');
+        var dueVal = dueEl ? dueEl.value : "";
+        var dueAuto = dueEl ? dueEl.dataset.auto === "1" : false;
+        var H = window.inboxCategorizeHelpers;
+        var sendDue = H
+            ? H.shouldSendDue(dueVal, dueAuto)
+            : (Boolean(dueVal) && !dueAuto);
+        if (sendDue) { payload.due_date = dueVal; }
         return payload;
     }
 
