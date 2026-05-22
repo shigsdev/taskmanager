@@ -540,23 +540,11 @@ def create_app(config: dict | None = None) -> Flask:
         """Download a full JSON backup of all tasks, goals, and projects."""
         from goal_service import list_goals
         from project_service import list_projects
+        from task_service import serialize_task
 
         all_tasks = list_tasks(status=None)  # all statuses
         all_goals = list_goals()
         all_projects = list_projects()
-
-        def serialize_task(t):
-            return {
-                "id": str(t.id), "title": t.title, "tier": t.tier.value,
-                "type": t.type.value, "status": t.status.value,
-                "project_id": str(t.project_id) if t.project_id else None,
-                "goal_id": str(t.goal_id) if t.goal_id else None,
-                "due_date": t.due_date.isoformat() if t.due_date else None,
-                "url": t.url, "notes": t.notes, "checklist": t.checklist,
-                "sort_order": t.sort_order,
-                "created_at": t.created_at.isoformat(),
-                "updated_at": t.updated_at.isoformat(),
-            }
 
         def serialize_goal(g):
             return {
@@ -581,7 +569,12 @@ def create_app(config: dict | None = None) -> Flask:
         today = local_today_date()
         backup = {
             "exported_at": today.isoformat(),
-            "tasks": [serialize_task(t) for t in all_tasks],
+            # #200: canonical export serializer derives its keys from
+            # Task.__table__.columns, so a full backup includes EVERY
+            # column — the old inline serializer silently dropped
+            # parent_id, cancellation_reason, last_reviewed, batch_id,
+            # recurring_task_id and planner_ignore.
+            "tasks": [serialize_task(t, view="export") for t in all_tasks],
             "goals": [serialize_goal(g) for g in all_goals],
             "projects": [serialize_project(p) for p in all_projects],
         }
@@ -763,96 +756,49 @@ def _start_digest_scheduler(app: Flask) -> None:
         replace_existing=True,
     )
 
-    # Backlog #27: auto-roll Tomorrow → Today at the user's local
-    # midnight. The user put the task in Tomorrow with the intent of
-    # working on it tomorrow-now-today; rolling at 00:00 makes the
-    # Today panel reflect that intent without a manual move. Uses the
-    # same timezone as the digest so behaviour is predictable from
-    # the user's POV.
-    def _roll_tomorrow_to_today():
-        with app.app_context():
-            from task_service import roll_tomorrow_to_today
-            roll_tomorrow_to_today()
-
-    scheduler.add_job(
-        _roll_tomorrow_to_today,
-        "cron",
-        hour=0,
-        minute=1,  # 1 past midnight so we're clearly past the boundary
-        id="tomorrow_roll",
-        replace_existing=True,
-    )
-
-    # Backlog #46: promote planning-tier tasks (this_week / next_week /
-    # backlog) with due_date=today to TODAY. Closes the "task due today
-    # shows in This Week but not Today" gap. Runs at 00:02 — sandwiched
-    # between the 00:01 tomorrow_roll and the 00:05 recurring_spawn so
-    # the day's task ordering is: Tomorrow → Today, then this_week-due-
-    # today → Today, then spawn recurring (which #38 dedups against
-    # tasks already in today/this_week).
-    def _promote_due_today():
-        with app.app_context():
-            from task_service import promote_due_today_tasks
-            promote_due_today_tasks()
-
-    scheduler.add_job(
-        _promote_due_today,
-        "cron",
-        hour=0,
-        minute=2,
-        id="promote_due_today",
-        replace_existing=True,
-    )
-
-    # #108 (PR43, 2026-04-27): nightly tier-vs-due-date realignment.
-    # The 00:01 + 00:02 jobs above only handle "due today" — they
-    # don't address the broader drift where a task set days ago with
-    # due_date=tomorrow now has tier=this_week (because it was IN
-    # this_week relative to that day). Runs at 00:03 — after the two
-    # specific-tier jobs but before recurring_spawn, so any drift is
-    # corrected before spawn-time dedup looks at the board.
-    def _realign_tiers():
-        with app.app_context():
-            from task_service import realign_tiers_with_due_dates
-            realign_tiers_with_due_dates()
-
-    scheduler.add_job(
-        _realign_tiers,
-        "cron",
-        hour=0,
-        minute=3,
-        id="realign_tiers_with_due_dates",
-        replace_existing=True,
-    )
-
-    # Backlog #35: auto-spawn recurring task instances on their fire
-    # day. Paired with #32's preview cards — previews show "this is
-    # coming Friday," and this cron materialises them on Friday
-    # morning so the user sees a real, checkable card in Today
-    # instead of still-a-preview in This Week.
+    # Four nightly maintenance crons — same shape (run a service fn in
+    # an app context), so table-driven (#199). Minute column encodes the
+    # ordering: roll → promote → realign → spawn, so the board is fully
+    # reconciled before recurring tasks materialise. Per-cron rationale:
     #
-    # Runs at 00:05 local so it's well past the 00:01 tomorrow_roll
-    # and any DST-edge jitter. spawn_today_tasks() is idempotent
-    # (title-match suppression), so re-running manually via
-    # /api/recurring/spawn later the same day is a safe no-op.
-    #
-    # Paired collision safety: the spawned Task's created_at.date()
-    # == today (DIGEST_TZ via the #33 TZ fix in compute_previews_in_range),
-    # so the This Week preview for the same fire_date gets suppressed
-    # via the #34 filter — no double-render.
-    def _spawn_recurring_for_today():
-        with app.app_context():
-            from recurring_service import spawn_today_tasks
-            spawn_today_tasks()
+    # - 00:01 tomorrow_roll (#27): auto-roll Tomorrow → Today at the
+    #   user's local midnight, so the Today panel reflects the user's
+    #   "work on it tomorrow" intent without a manual move. 1 past
+    #   midnight so we're clearly past the day boundary.
+    # - 00:02 promote_due_today (#46): promote planning-tier tasks
+    #   (this_week / next_week / backlog) with due_date=today to TODAY,
+    #   closing the "task due today shows in This Week but not Today" gap.
+    # - 00:03 realign_tiers_with_due_dates (#108, PR43): nightly tier-vs-
+    #   due-date realignment for the broader drift the 00:01/00:02 jobs
+    #   don't cover — e.g. a task set days ago with due_date=tomorrow
+    #   that now still has tier=this_week. Runs before recurring_spawn so
+    #   drift is corrected before spawn-time dedup looks at the board.
+    # - 00:05 recurring_spawn (#35): materialise recurring task instances
+    #   on their fire day (the real card behind #32's preview cards).
+    #   Well past 00:01 + any DST-edge jitter; spawn_today_tasks() is
+    #   idempotent (title-match suppression) so a manual re-run via
+    #   /api/recurring/spawn the same day is a safe no-op.
+    _NIGHTLY_CRONS = [
+        # (job_id, hour, minute, "module:function")
+        ("tomorrow_roll", 0, 1, "task_service:roll_tomorrow_to_today"),
+        ("promote_due_today", 0, 2, "task_service:promote_due_today_tasks"),
+        ("realign_tiers_with_due_dates", 0, 3, "task_service:realign_tiers_with_due_dates"),
+        ("recurring_spawn", 0, 5, "recurring_service:spawn_today_tasks"),
+    ]
 
-    scheduler.add_job(
-        _spawn_recurring_for_today,
-        "cron",
-        hour=0,
-        minute=5,
-        id="recurring_spawn",
-        replace_existing=True,
-    )
+    def _make_cron_runner(spec):
+        module_name, func_name = spec.split(":")
+        def _run():
+            with app.app_context():
+                import importlib
+                getattr(importlib.import_module(module_name), func_name)()
+        return _run
+
+    for job_id, hour, minute, spec in _NIGHTLY_CRONS:
+        scheduler.add_job(
+            _make_cron_runner(spec), "cron",
+            hour=hour, minute=minute, id=job_id, replace_existing=True,
+        )
 
     # Heartbeat job. Gunicorn runs multiple workers but post_worker_init
     # only starts the scheduler in worker 1 (to avoid duplicate emails),

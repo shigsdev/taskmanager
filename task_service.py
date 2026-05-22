@@ -5,8 +5,9 @@ All mutations commit on success. All validation failures raise
 """
 from __future__ import annotations
 
+import enum
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -49,6 +50,133 @@ def _parse_checklist(value: Any) -> list:
     if not isinstance(value, list):
         raise ValidationError("checklist must be a list", "checklist")
     return value
+
+
+# --- Canonical Task serializer (#200) ----------------------------------------
+
+
+def _serialize_repeat(task: Task) -> dict | None:
+    """Build the repeat object from a task's linked RecurringTask template.
+
+    Canonical home for the repeat-payload logic (#200). ``tasks_api`` keeps
+    a thin re-export so its own call sites / test patches are unaffected.
+    """
+    rt = task.recurring_task if task.recurring_task_id else None
+    if rt is None or not rt.is_active:
+        return None
+    result = {
+        "template_id": str(rt.id),  # added for #32 preview-click lookup
+        "frequency": rt.frequency.value,
+    }
+    if rt.day_of_week is not None:
+        result["day_of_week"] = rt.day_of_week
+    if rt.day_of_month is not None:
+        result["day_of_month"] = rt.day_of_month
+    if rt.week_of_month is not None:
+        result["week_of_month"] = rt.week_of_month
+    # #101 (PR30): expose the optional sunset date on the task payload
+    # so the detail-panel form can pre-populate it.
+    if rt.end_date is not None:
+        result["end_date"] = rt.end_date.isoformat()
+    return result
+
+
+def _column_value(value: Any) -> Any:
+    """Coerce a raw SQLAlchemy column value to a JSON-safe primitive.
+
+    UUID → str, date/datetime → ISO string, Enum → its ``.value``,
+    everything else (str, int, bool, list, dict, None) passes through.
+    """
+    if value is None:
+        return None
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, enum.Enum):
+        return value.value
+    return value
+
+
+def serialize_task(task: Task, *, view: str = "full") -> dict:
+    """Canonical Task→dict. view ∈ {"full","review","export"}.
+
+    Single source of truth for Task serialization (#200) — replaces three
+    hand-written, drifted serializers (``tasks_api._serialize``,
+    ``review_api._serialize``, and ``app.export_data``'s inline
+    ``serialize_task``). The export view dropped columns silently before
+    this consolidation, so a "full backup" lost data.
+
+    - ``view="export"`` includes EVERY column on the ``Task`` model,
+      derived from ``Task.__table__.columns`` so it can never drift —
+      adding a future Task column automatically appears in the backup.
+      No computed relationship fields (repeat / subtask counts) are
+      included: a full export must not trigger N+1 subtask queries.
+    - ``view="full"`` reproduces ``tasks_api._serialize`` — the complete
+      API payload including ``repeat``, ``subtask_count``, ``subtask_done``.
+    - ``view="review"`` reproduces ``review_api._serialize`` — the subset
+      the weekly-review flow needs.
+    """
+    if view == "export":
+        # Derive the column list from the model so a new Task column is
+        # captured automatically (drift-gated by test_task_serializer).
+        return {
+            col.name: _column_value(getattr(task, col.name))
+            for col in Task.__table__.columns
+        }
+
+    if view == "review":
+        return {
+            "id": str(task.id),
+            "title": task.title,
+            "tier": task.tier.value,
+            "type": task.type.value,
+            "status": task.status.value,
+            "project_id": str(task.project_id) if task.project_id else None,
+            "goal_id": str(task.goal_id) if task.goal_id else None,
+            "due_date": task.due_date.isoformat() if task.due_date else None,
+            "notes": task.notes,
+            "checklist": task.checklist or [],
+            "last_reviewed": (
+                task.last_reviewed.isoformat() if task.last_reviewed else None
+            ),
+            "created_at": task.created_at.isoformat(),
+            "updated_at": task.updated_at.isoformat(),
+        }
+
+    if view != "full":
+        raise ValueError(f"unknown serializer view: {view!r}")
+
+    active_subtasks = [
+        s for s in task.subtasks if s.status == TaskStatus.ACTIVE
+    ]
+    done_subtasks = [
+        s for s in task.subtasks if s.status == TaskStatus.ARCHIVED
+    ]
+    return {
+        "id": str(task.id),
+        "title": task.title,
+        "tier": task.tier.value,
+        "type": task.type.value,
+        "status": task.status.value,
+        "parent_id": str(task.parent_id) if task.parent_id else None,
+        "project_id": str(task.project_id) if task.project_id else None,
+        "goal_id": str(task.goal_id) if task.goal_id else None,
+        "due_date": task.due_date.isoformat() if task.due_date else None,
+        "url": task.url,
+        "notes": task.notes,
+        "cancellation_reason": task.cancellation_reason,
+        "checklist": task.checklist or [],
+        "sort_order": task.sort_order,
+        "last_reviewed": (
+            task.last_reviewed.isoformat() if task.last_reviewed else None
+        ),
+        "repeat": _serialize_repeat(task),
+        "subtask_count": len(active_subtasks) + len(done_subtasks),
+        "subtask_done": len(done_subtasks),
+        "created_at": task.created_at.isoformat(),
+        "updated_at": task.updated_at.isoformat(),
+    }
 
 
 # --- Tier auto-fill helpers (#28) --------------------------------------------

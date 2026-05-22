@@ -37,11 +37,28 @@ def _read(path: Path) -> str:
 
 
 def _scheduler_job_ids() -> list[str]:
-    """Scrape every ``scheduler.add_job(..., id="...")`` from app.py."""
+    """Scrape every scheduler job id from app.py.
+
+    Two shapes are recognised:
+    - ``scheduler.add_job(..., id="<job_id>")`` — the direct form used by
+      ``daily_digest`` and ``scheduler_heartbeat``.
+    - ``("<job_id>", hour, minute, "module:func")`` rows of the
+      ``_NIGHTLY_CRONS`` table (#199) — the four nightly maintenance
+      crons are table-driven, so their ids live as the first element of
+      a 4-tuple rather than behind a literal ``id=`` kwarg.
+    """
     text = _read(REPO / "app.py")
     # add_job(...) can span multiple lines; match the id= kwarg anywhere
     # in the call. Cheap and sufficient — we only have a handful.
-    return re.findall(r'id=["\']([^"\']+)["\']', text)
+    ids = re.findall(r'id=["\']([^"\']+)["\']', text)
+    # _NIGHTLY_CRONS table rows: ("job_id", H, M, "module:function").
+    # The "module:function" string at the end disambiguates these tuples
+    # from any other 4-element literal in the file.
+    ids += re.findall(
+        r'\(\s*["\']([^"\']+)["\']\s*,\s*\d+\s*,\s*\d+\s*,\s*["\'][\w.]+:[\w.]+["\']\s*\)',
+        text,
+    )
+    return ids
 
 
 def _flask_routes() -> list[str]:

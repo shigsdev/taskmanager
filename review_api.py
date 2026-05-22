@@ -13,27 +13,18 @@ from flask import Blueprint, jsonify, request
 from auth import login_required
 from models import Task
 from review_service import review_task, stale_tasks
-from task_service import ValidationError
+from task_service import ValidationError, serialize_task
 
 bp = Blueprint("review_api", __name__, url_prefix="/api/review")
 
 
 def _serialize(task: Task) -> dict:
-    return {
-        "id": str(task.id),
-        "title": task.title,
-        "tier": task.tier.value,
-        "type": task.type.value,
-        "status": task.status.value,
-        "project_id": str(task.project_id) if task.project_id else None,
-        "goal_id": str(task.goal_id) if task.goal_id else None,
-        "due_date": task.due_date.isoformat() if task.due_date else None,
-        "notes": task.notes,
-        "checklist": task.checklist or [],
-        "last_reviewed": task.last_reviewed.isoformat() if task.last_reviewed else None,
-        "created_at": task.created_at.isoformat(),
-        "updated_at": task.updated_at.isoformat(),
-    }
+    """Thin wrapper over the canonical serializer (#200).
+
+    Kept as a 1-liner so this module's call sites and any test patching
+    ``review_api._serialize`` stay unaffected by the consolidation.
+    """
+    return serialize_task(task, view="review")
 
 
 @bp.get("")
