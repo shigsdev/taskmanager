@@ -277,7 +277,7 @@ drift. Highest priority.
   experience.
 - **Effort:** M.
 
-### [ ] PR 10 — Doc-only batch
+### [x] PR 10 — Doc-only batch — SHIPPED 2026-05-22 (SHA 0f06f3bd)
 
 - **Items:** #188, #190
 - **Theme:** Documentation truth-up. No code changes.
@@ -437,7 +437,7 @@ pass AND post-deploy validation + prod smoke pass.
 
 ### Phase 2 — Security + doc
 - [x] PR 9 — Security hardening sweep (#182, #183, #184, #185, #186, #187, #189) — shipped 2026-05-22, SHA 158580f1, 37/37 prod smoke green
-- [ ] PR 10 — Doc-only batch (#188, #190)
+- [x] PR 10 — Doc-only batch (#188, #190) — shipped 2026-05-22, SHA 0f06f3bd, 37/37 prod smoke green
 
 ### Phase 3 — Drift prevention + refactors
 - [ ] PR 11 — Drift-prevention sweep (#191, #192, #193)
