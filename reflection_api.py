@@ -205,14 +205,31 @@ def confirm(email: str, reflection_id):  # noqa: ARG001
     try:
         summary = apply_selected_actions(reflection, actions)
     except Exception:
+        # #174 (2026-05-21): apply_selected_actions is now exception-safe
+        # — every step captures its own failure in summary["errors"] and
+        # the function always returns a summary. This catch-all is a
+        # genuine last resort (e.g. a bug in the summary-building itself)
+        # and should almost never fire.
         logger.exception("Reflection apply crashed unexpectedly")
         return jsonify({"error": "Apply failed (unexpected)"}), 500
 
+    # #174: surface partial success. apply_selected_actions records
+    # per-step failures in summary["errors"] rather than aborting — so
+    # a non-empty errors list means SOME actions landed and some did
+    # not. Return 207 Multi-Status in that case so the client (and any
+    # future automation) can tell "fully applied" from "partially
+    # applied" without diffing the counts. `applied_at` is None when the
+    # final audit-record commit itself failed — guard the .isoformat().
+    status = 207 if summary.get("errors") else 200
     return jsonify({
         "id": str(reflection.id),
         "summary": summary,
-        "applied_at": reflection.applied_at.isoformat(),
-    }), 200
+        "applied_at": (
+            reflection.applied_at.isoformat()
+            if reflection.applied_at is not None
+            else None
+        ),
+    }), status
 
 
 @bp.get("")

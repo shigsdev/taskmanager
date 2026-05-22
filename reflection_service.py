@@ -635,17 +635,37 @@ def apply_selected_actions(
             deletes.append(a)
 
     # 1. Create projects + goals first so tasks can link to them.
-    proj_objs = create_projects_from_import(
-        [_project_candidate(a) for a in creates["project"]],
-        source="reflection_project",
-    )
-    summary["created"]["project"] = len(proj_objs)
+    #
+    # #174 (2026-05-21): each create step is wrapped in its own
+    # try/except — mirroring the update/delete loops below. Before this,
+    # a failure inside any import creator bubbled straight out of
+    # apply_selected_actions; the route's catch-all then returned an
+    # opaque 500 and the partial `summary` (what DID land) was lost.
+    # Now a create-step failure is captured in summary["errors"], the
+    # session is rolled back, and the remaining steps still run.
+    try:
+        proj_objs = create_projects_from_import(
+            [_project_candidate(a) for a in creates["project"]],
+            source="reflection_project",
+        )
+        summary["created"]["project"] = len(proj_objs)
+    except Exception as e:  # noqa: BLE001 — surface, don't crash batch
+        db.session.rollback()
+        summary["errors"].append(
+            f"create projects: {type(e).__name__}: {e}"
+        )
 
-    goal_objs = create_goals_from_import(
-        [_goal_candidate(a) for a in creates["goal"]],
-        source="reflection_goal",
-    )
-    summary["created"]["goal"] = len(goal_objs)
+    try:
+        goal_objs = create_goals_from_import(
+            [_goal_candidate(a) for a in creates["goal"]],
+            source="reflection_goal",
+        )
+        summary["created"]["goal"] = len(goal_objs)
+    except Exception as e:  # noqa: BLE001
+        db.session.rollback()
+        summary["errors"].append(
+            f"create goals: {type(e).__name__}: {e}"
+        )
 
     # Build name→id maps INCLUDING rows just created so a task's
     # project_hint / goal_hint can resolve to brand-new entities too.
@@ -674,10 +694,16 @@ def apply_selected_actions(
             "goal_id": _resolve_ref(f.get("goal_hint"), goal_index) or "",
             "included": True,
         })
-    task_objs = create_tasks_from_candidates(
-        task_candidates, source_prefix="reflection"
-    )
-    summary["created"]["task"] = len(task_objs)
+    try:
+        task_objs = create_tasks_from_candidates(
+            task_candidates, source_prefix="reflection"
+        )
+        summary["created"]["task"] = len(task_objs)
+    except Exception as e:  # noqa: BLE001
+        db.session.rollback()
+        summary["errors"].append(
+            f"create tasks: {type(e).__name__}: {e}"
+        )
 
     # 3. Updates.
     for a in updates:
@@ -689,7 +715,9 @@ def apply_selected_actions(
         payload = dict(a.get("payload") or a.get("fields") or {})
         try:
             if entity == "task":
-                _apply_task_link_hints(payload, project_index, goal_index)
+                _apply_task_link_hints(
+                    payload, project_index, goal_index, summary
+                )
                 from task_service import update_task
                 ok = update_task(rid, payload) is not None
             elif entity == "goal":
@@ -737,9 +765,22 @@ def apply_selected_actions(
         else:
             summary["errors"].append(f"delete {entity} {rid}: not found")
 
-    reflection.applied_actions = {"actions": actions, "summary": summary}
-    reflection.applied_at = datetime.now(UTC)
-    db.session.commit()
+    # Persist the audit record. #174: wrap so a failure here also lands
+    # in summary["errors"] instead of bubbling to an opaque 500 —
+    # apply_selected_actions never raises, so the route always has a
+    # summary to return. On failure `applied_at` stays None; the route
+    # guards the .isoformat() access accordingly.
+    try:
+        reflection.applied_actions = {"actions": actions, "summary": summary}
+        reflection.applied_at = datetime.now(UTC)
+        db.session.commit()
+    except Exception as e:  # noqa: BLE001
+        db.session.rollback()
+        reflection.applied_at = None
+        summary["errors"].append(
+            f"failed to persist reflection audit record: "
+            f"{type(e).__name__}: {e}"
+        )
     return summary
 
 
@@ -747,15 +788,46 @@ def _apply_task_link_hints(
     payload: dict[str, Any],
     project_index: dict[str, uuid.UUID],
     goal_index: dict[str, uuid.UUID],
+    summary: dict[str, Any],
 ) -> None:
     """Translate project_hint/goal_hint in an update payload into the
-    project_id/goal_id keys update_task understands."""
+    project_id/goal_id keys update_task understands.
+
+    #181 (2026-05-21): when a hint does NOT resolve — Claude proposed a
+    stale or hallucinated project/goal name — the old code set
+    ``payload["project_id"] = None``. ``update_task`` treats an
+    explicit ``None`` as "clear this field", so an unresolved hint
+    SILENTLY wiped the task's existing project/goal link (same
+    silent-payload-drop class as #57, but originating server-side from
+    the AI rather than the client). Now: a hint that resolves sets the
+    id; a hint that does NOT resolve has its key popped entirely —
+    ``update_task``'s "absent key = no change" semantics then preserves
+    the original link — and a non-empty unresolved hint is surfaced in
+    ``summary["errors"]`` so the user sees what happened.
+    """
     if "project_hint" in payload:
-        resolved = _resolve_ref(payload.pop("project_hint"), project_index)
-        payload["project_id"] = resolved
+        hint = payload.pop("project_hint")
+        resolved = _resolve_ref(hint, project_index)
+        if resolved is not None:
+            payload["project_id"] = resolved
+        elif isinstance(hint, str) and hint.strip():
+            # Non-empty hint that matched nothing — a real miss worth
+            # telling the user about. (An empty/None hint just means
+            # "no project hint" — pop silently, no warning.)
+            summary["errors"].append(
+                f"project_hint {hint.strip()!r} not found — "
+                f"kept the task's existing project"
+            )
     if "goal_hint" in payload:
-        resolved = _resolve_ref(payload.pop("goal_hint"), goal_index)
-        payload["goal_id"] = resolved
+        hint = payload.pop("goal_hint")
+        resolved = _resolve_ref(hint, goal_index)
+        if resolved is not None:
+            payload["goal_id"] = resolved
+        elif isinstance(hint, str) and hint.strip():
+            summary["errors"].append(
+                f"goal_hint {hint.strip()!r} not found — "
+                f"kept the task's existing goal"
+            )
 
 
 def _project_candidate(a: dict[str, Any]) -> dict[str, Any]:

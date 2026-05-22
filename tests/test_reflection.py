@@ -392,6 +392,205 @@ class TestApplyActions:
             assert summary["errors"]
 
 
+class TestApplyActionsCorrectnessPR6:
+    """PR 6 (#174, #181): reflection-apply correctness.
+
+    #174 — a failure inside a create step used to bubble out of
+           apply_selected_actions → opaque 500, partial summary lost.
+    #181 — an unresolved project_hint/goal_hint on an UPDATE silently
+           CLEARED the task's existing FK (update_task reads explicit
+           None as "clear this field").
+    """
+
+    # --- #181: unresolved hint must not clear the existing FK ---
+
+    def test_stale_project_hint_keeps_existing_project(self, app):
+        """A reflection UPDATE whose project_hint matches nothing must
+        leave the task's existing project_id intact — and surface the
+        miss in summary["errors"]."""
+        proj_id, _goal_id, task_id = _seed(app)
+        with app.app_context():
+            from reflection_service import (
+                apply_selected_actions,
+                save_reflection,
+            )
+            reflection = save_reflection(
+                transcript="x",
+                input_mode=ReflectionInputMode.TYPED,
+                proposed={"explicit": [], "suggested": []},
+            )
+            summary = apply_selected_actions(
+                reflection,
+                [{"op": "update", "entity": "task", "id": task_id,
+                  "payload": {"project_hint": "Nonexistent Project XYZ",
+                              "notes": "touched"}}],
+            )
+            # The update itself succeeded (notes changed)...
+            assert summary["updated"]["task"] == 1
+            # ...but the task's project_id is UNCHANGED, not wiped.
+            task = db.session.get(Task, __import__("uuid").UUID(task_id))
+            assert str(task.project_id) == proj_id, (
+                "stale project_hint must NOT clear the existing project"
+            )
+            assert task.notes == "touched"
+            # And the miss is surfaced.
+            assert any(
+                "project_hint" in e and "not found" in e
+                for e in summary["errors"]
+            ), f"expected a project_hint miss in errors, got {summary['errors']}"
+
+    def test_resolved_goal_hint_sets_goal_id(self, app):
+        """The happy path still works — a hint that DOES match resolves
+        to the goal_id."""
+        _proj_id, goal_id, task_id = _seed(app)
+        with app.app_context():
+            from reflection_service import (
+                apply_selected_actions,
+                save_reflection,
+            )
+            reflection = save_reflection(
+                transcript="x",
+                input_mode=ReflectionInputMode.TYPED,
+                proposed={"explicit": [], "suggested": []},
+            )
+            summary = apply_selected_actions(
+                reflection,
+                [{"op": "update", "entity": "task", "id": task_id,
+                  "payload": {"goal_hint": "Run a half marathon"}}],
+            )
+            assert summary["updated"]["task"] == 1
+            task = db.session.get(Task, __import__("uuid").UUID(task_id))
+            assert str(task.goal_id) == goal_id
+            # A resolved hint produces no error.
+            assert not any("goal_hint" in e for e in summary["errors"])
+
+    def test_empty_project_hint_is_silent_no_change(self, app):
+        """An empty/blank project_hint is just "no hint" — pop it
+        silently, no warning, leave the FK alone."""
+        proj_id, _goal_id, task_id = _seed(app)
+        with app.app_context():
+            from reflection_service import (
+                apply_selected_actions,
+                save_reflection,
+            )
+            reflection = save_reflection(
+                transcript="x",
+                input_mode=ReflectionInputMode.TYPED,
+                proposed={"explicit": [], "suggested": []},
+            )
+            summary = apply_selected_actions(
+                reflection,
+                [{"op": "update", "entity": "task", "id": task_id,
+                  "payload": {"project_hint": "", "notes": "edited"}}],
+            )
+            assert summary["updated"]["task"] == 1
+            task = db.session.get(Task, __import__("uuid").UUID(task_id))
+            assert str(task.project_id) == proj_id
+            # Empty hint → no warning (only non-empty misses warn).
+            assert not any("project_hint" in e for e in summary["errors"])
+
+    # --- #174: a create-step failure is captured, not bubbled ---
+
+    def test_create_failure_is_captured_not_raised(self, app):
+        """When one create step raises, apply_selected_actions must NOT
+        propagate — it records the failure in summary["errors"], the
+        other steps still run, and a summary is always returned."""
+        with app.app_context():
+            from reflection_service import (
+                apply_selected_actions,
+                save_reflection,
+            )
+            reflection = save_reflection(
+                transcript="x",
+                input_mode=ReflectionInputMode.TYPED,
+                proposed={"explicit": [], "suggested": []},
+            )
+            actions = [
+                {"op": "create", "entity": "project",
+                 "fields": {"name": "Good Project", "type": "work"}},
+                {"op": "create", "entity": "goal",
+                 "fields": {"title": "Boom goal",
+                            "category": "work", "priority": "should"}},
+                {"op": "create", "entity": "task",
+                 "fields": {"title": "Good task", "type": "work",
+                            "tier": "inbox"}},
+            ]
+            # Make ONLY the goal-create step blow up.
+            with patch(
+                "import_service.create_goals_from_import",
+                side_effect=RuntimeError("simulated goal-create failure"),
+            ):
+                summary = apply_selected_actions(reflection, actions)
+
+            # Did not raise — summary returned.
+            assert isinstance(summary, dict)
+            # The good steps still landed.
+            assert summary["created"]["project"] == 1
+            assert summary["created"]["task"] == 1
+            # The failed step is 0 + recorded.
+            assert summary["created"]["goal"] == 0
+            assert any(
+                "create goals" in e and "simulated goal-create failure" in e
+                for e in summary["errors"]
+            ), f"goal-create failure missing from errors: {summary['errors']}"
+
+    def test_confirm_returns_207_when_summary_has_errors(
+        self, app, client, monkeypatch,
+    ):
+        """The route returns 207 Multi-Status (not opaque 500, not a
+        clean 200) when apply produced partial errors — so the client
+        can distinguish fully-applied from partially-applied."""
+        _bypass_auth(monkeypatch)
+        with app.app_context():
+            from reflection_service import save_reflection
+            reflection = save_reflection(
+                transcript="x",
+                input_mode=ReflectionInputMode.TYPED,
+                proposed={"explicit": [], "suggested": []},
+            )
+            rid = str(reflection.id)
+
+        with patch(
+            "import_service.create_goals_from_import",
+            side_effect=RuntimeError("boom"),
+        ):
+            resp = client.post(
+                f"/api/reflection/{rid}/confirm",
+                json={"actions": [
+                    {"op": "create", "entity": "goal",
+                     "fields": {"title": "G", "category": "work",
+                                "priority": "should"}},
+                ]},
+            )
+        assert resp.status_code == 207
+        body = resp.get_json()
+        assert body["summary"]["errors"], "errors should be populated"
+        # applied_at is still present (the audit commit itself succeeded).
+        assert "applied_at" in body
+
+    def test_confirm_returns_200_when_clean(self, app, client, monkeypatch):
+        """No errors → plain 200, unchanged from the original contract."""
+        _bypass_auth(monkeypatch)
+        with app.app_context():
+            from reflection_service import save_reflection
+            reflection = save_reflection(
+                transcript="x",
+                input_mode=ReflectionInputMode.TYPED,
+                proposed={"explicit": [], "suggested": []},
+            )
+            rid = str(reflection.id)
+        resp = client.post(
+            f"/api/reflection/{rid}/confirm",
+            json={"actions": [
+                {"op": "create", "entity": "task",
+                 "fields": {"title": "Clean task", "type": "work",
+                            "tier": "inbox"}},
+            ]},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["summary"]["errors"] == []
+
+
 # --- reflection_api endpoints ------------------------------------------------
 
 
