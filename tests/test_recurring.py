@@ -321,6 +321,271 @@ class TestRecurringUpdate:
         assert resp.status_code == 404
 
 
+class TestRecurringTemplateIntegrityPR4:
+    """PR 4 (#171, #173, #177): three recurring-system integrity fixes.
+
+    #171 — days_of_week / week_of_month dropped by the payload builders
+           (task_service._apply_repeat/_update_repeat, voice candidate)
+           so MULTI_DAY_OF_WEEK + MONTHLY_NTH_WEEKDAY were unsavable.
+    #173 — update_recurring let a frequency change land without its
+           dependent fields, crashing the 00:05 spawn cron.
+    #177 — start_date > end_date saved silently; template never fired.
+    """
+
+    # --- #171: payload builders forward days_of_week / week_of_month ---
+
+    def test_apply_repeat_forwards_days_of_week(self, app):
+        """task_service._apply_repeat must forward days_of_week so a
+        MULTI_DAY_OF_WEEK template created off a task saves instead of
+        raising 422 inside create_recurring."""
+        from models import Task, TaskStatus, Tier
+        from task_service import _apply_repeat
+        with app.app_context():
+            task = Task(
+                title="MWF standup",
+                type=TaskType.WORK,
+                tier=Tier.TODAY,
+                status=TaskStatus.ACTIVE,
+            )
+            db.session.add(task)
+            db.session.commit()
+            _apply_repeat(task, {
+                "frequency": "multi_day_of_week",
+                "days_of_week": [0, 2, 4],  # Mon / Wed / Fri
+            })
+            db.session.commit()
+            assert task.recurring_task_id is not None
+            rt = db.session.get(RecurringTask, task.recurring_task_id)
+            assert rt.frequency == RecurringFrequency.MULTI_DAY_OF_WEEK
+            assert rt.days_of_week == [0, 2, 4]
+
+    def test_update_repeat_forwards_days_of_week(self, app):
+        """task_service._update_repeat must forward days_of_week on the
+        update path too."""
+        from models import Task, TaskStatus, Tier
+        from task_service import _apply_repeat, _update_repeat
+        with app.app_context():
+            task = Task(
+                title="Editable recurring",
+                type=TaskType.WORK,
+                tier=Tier.TODAY,
+                status=TaskStatus.ACTIVE,
+            )
+            db.session.add(task)
+            db.session.commit()
+            # Seed a daily template, then update it to multi_day_of_week.
+            _apply_repeat(task, {"frequency": "daily"})
+            db.session.commit()
+            _update_repeat(task, {
+                "frequency": "multi_day_of_week",
+                "days_of_week": [1, 3],  # Tue / Thu
+            })
+            db.session.commit()
+            rt = db.session.get(RecurringTask, task.recurring_task_id)
+            assert rt.frequency == RecurringFrequency.MULTI_DAY_OF_WEEK
+            assert rt.days_of_week == [1, 3]
+
+    def test_voice_candidate_multi_day_of_week_creates_real_template(self, app):
+        """A voice memo dictating 'every Mon/Wed/Fri' produces a real
+        MULTI_DAY_OF_WEEK template — previously the candidate's
+        days_of_week was dropped, create_recurring raised 422, and the
+        caller silently returned None (task lost)."""
+        from recurring_service import create_recurring_template_from_voice_candidate
+        with app.app_context():
+            rt = create_recurring_template_from_voice_candidate({
+                "title": "Gym MWF",
+                "type": "personal",
+                "repeat": {
+                    "frequency": "multi_day_of_week",
+                    "days_of_week": [0, 2, 4],
+                },
+            })
+            assert rt is not None, "voice candidate should produce a template, not None"
+            assert rt.frequency == RecurringFrequency.MULTI_DAY_OF_WEEK
+            assert rt.days_of_week == [0, 2, 4]
+
+    def test_voice_candidate_monthly_nth_weekday_creates_real_template(self, app):
+        """Voice memo for an Nth-weekday schedule ('first Monday of the
+        month') needs week_of_month forwarded too."""
+        from recurring_service import create_recurring_template_from_voice_candidate
+        with app.app_context():
+            rt = create_recurring_template_from_voice_candidate({
+                "title": "Monthly review",
+                "type": "work",
+                "repeat": {
+                    "frequency": "monthly_nth_weekday",
+                    "week_of_month": 1,
+                    "day_of_week": 0,  # first Monday
+                },
+            })
+            assert rt is not None
+            assert rt.frequency == RecurringFrequency.MONTHLY_NTH_WEEKDAY
+            assert rt.week_of_month == 1
+            assert rt.day_of_week == 0
+
+    # --- #173: frequency change re-validates dependent fields ---
+
+    def test_patch_frequency_to_monthly_date_without_day_of_month_422(
+        self, authed_client, app,
+    ):
+        """daily → monthly_date with no day_of_month must be rejected —
+        otherwise _template_fires_on later crashes on min(None, ...)."""
+        with app.app_context():
+            rt = _make_recurring(frequency=RecurringFrequency.DAILY)
+            rt_id = str(rt.id)
+        resp = authed_client.patch(
+            f"/api/recurring/{rt_id}", json={"frequency": "monthly_date"},
+        )
+        assert resp.status_code == 422
+        assert "day_of_month" in (resp.get_json().get("error") or "").lower()
+
+    def test_patch_frequency_to_multi_day_without_days_422(
+        self, authed_client, app,
+    ):
+        """daily → multi_day_of_week with no days_of_week must be rejected."""
+        with app.app_context():
+            rt = _make_recurring(frequency=RecurringFrequency.DAILY)
+            rt_id = str(rt.id)
+        resp = authed_client.patch(
+            f"/api/recurring/{rt_id}", json={"frequency": "multi_day_of_week"},
+        )
+        assert resp.status_code == 422
+        assert "days_of_week" in (resp.get_json().get("error") or "").lower()
+
+    def test_patch_clearing_day_of_month_on_monthly_template_422(
+        self, authed_client, app,
+    ):
+        """Validating the RESOLVED state (not the patch payload) also
+        catches clearing a required field on an unchanged frequency."""
+        with app.app_context():
+            rt = _make_recurring(
+                frequency=RecurringFrequency.MONTHLY_DATE, day_of_month=15,
+            )
+            rt_id = str(rt.id)
+        resp = authed_client.patch(
+            f"/api/recurring/{rt_id}", json={"day_of_month": None},
+        )
+        assert resp.status_code == 422
+
+    def test_patch_valid_frequency_change_still_works(self, authed_client, app):
+        """The guard must not block a frequency change that DOES supply
+        its dependent fields in the same PATCH."""
+        with app.app_context():
+            rt = _make_recurring(frequency=RecurringFrequency.DAILY)
+            rt_id = str(rt.id)
+        resp = authed_client.patch(
+            f"/api/recurring/{rt_id}",
+            json={"frequency": "monthly_date", "day_of_month": 10},
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["frequency"] == "monthly_date"
+        assert body["day_of_month"] == 10
+
+    def test_rejected_patch_does_not_persist_partial_state(
+        self, authed_client, app,
+    ):
+        """A 422'd frequency change must roll back — the template stays
+        exactly as it was, not half-mutated."""
+        with app.app_context():
+            rt = _make_recurring(frequency=RecurringFrequency.DAILY)
+            rt_id = str(rt.id)
+        authed_client.patch(
+            f"/api/recurring/{rt_id}", json={"frequency": "monthly_date"},
+        )
+        with app.app_context():
+            rt2 = db.session.get(RecurringTask, __import__("uuid").UUID(rt_id))
+            assert rt2.frequency == RecurringFrequency.DAILY, (
+                "rejected frequency change must not persist"
+            )
+
+    def test_template_fires_on_monthly_date_with_none_day_does_not_crash(
+        self, app,
+    ):
+        """Defense-in-depth: a legacy MONTHLY_DATE row with no
+        day_of_month must return False, not raise TypeError."""
+        from recurring_service import _template_fires_on
+        with app.app_context():
+            # Build the broken row directly (bypassing create_recurring's
+            # validation) to simulate a legacy/corrupt template.
+            rt = RecurringTask(
+                title="Legacy broken monthly",
+                frequency=RecurringFrequency.MONTHLY_DATE,
+                type=TaskType.WORK,
+                day_of_month=None,
+            )
+            db.session.add(rt)
+            db.session.commit()
+            # Must not raise.
+            assert _template_fires_on(rt, date(2026, 5, 21)) is False
+
+    def test_spawn_isolates_one_bad_template_from_the_batch(self, app):
+        """A single malformed template must not crash the whole spawn
+        batch — every other template still materialises its task."""
+        from recurring_service import spawn_today_tasks
+        with app.app_context():
+            # One good daily template + one broken monthly_date row.
+            good = RecurringTask(
+                title="Good daily",
+                frequency=RecurringFrequency.DAILY,
+                type=TaskType.WORK,
+            )
+            bad = RecurringTask(
+                title="Broken monthly",
+                frequency=RecurringFrequency.MONTHLY_DATE,
+                type=TaskType.WORK,
+                day_of_month=None,  # would crash min(None, last_day)
+            )
+            db.session.add_all([good, bad])
+            db.session.commit()
+            # Should not raise — bad row skipped, good row spawned.
+            spawned = spawn_today_tasks(target_date=date(2026, 5, 21))
+            titles = [t.title for t in spawned]
+            assert "Good daily" in titles
+
+    # --- #177: start_date / end_date cross-field invariant ---
+
+    def test_create_recurring_start_after_end_422(self, authed_client):
+        """create with start_date > end_date is rejected up front."""
+        resp = authed_client.post(
+            "/api/recurring",
+            json={
+                "title": "Backwards window",
+                "type": "work",
+                "frequency": "daily",
+                "start_date": "2026-06-01",
+                "end_date": "2026-05-01",
+            },
+        )
+        assert resp.status_code == 422
+        assert "end_date" in (resp.get_json().get("error") or "").lower()
+
+    def test_update_recurring_start_after_end_422(self, authed_client, app):
+        """update that would leave start_date > end_date is rejected."""
+        with app.app_context():
+            rt = _make_recurring(frequency=RecurringFrequency.DAILY)
+            rt_id = str(rt.id)
+        resp = authed_client.patch(
+            f"/api/recurring/{rt_id}",
+            json={"start_date": "2026-06-01", "end_date": "2026-05-01"},
+        )
+        assert resp.status_code == 422
+
+    def test_create_recurring_start_equals_end_ok(self, authed_client):
+        """start_date == end_date is a valid single-day window."""
+        resp = authed_client.post(
+            "/api/recurring",
+            json={
+                "title": "One-day window",
+                "type": "work",
+                "frequency": "daily",
+                "start_date": "2026-05-21",
+                "end_date": "2026-05-21",
+            },
+        )
+        assert resp.status_code in (200, 201)
+
+
 class TestRecurringDelete:
     """Verify soft-deleting (disabling) recurring templates."""
 
