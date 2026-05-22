@@ -11,6 +11,7 @@ from models import Task, TaskStatus, TaskType, Tier
 from task_service import (
     ValidationError,
     bulk_update_tasks,
+    cancel_parent_task,
     complete_parent_task,
     create_task,
     delete_task,
@@ -176,6 +177,28 @@ def complete(email: str, task_id: uuid.UUID):  # noqa: ARG001
     complete_subs = bool(data.get("complete_subtasks"))
     try:
         task = complete_parent_task(task_id, complete_subtasks=complete_subs)
+    except ValidationError as e:
+        return jsonify({"error": str(e), "field": e.field}), 422
+    if task is None:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(_serialize(task))
+
+
+@bp.post("/<uuid:task_id>/cancel")
+@login_required
+def cancel(email: str, task_id: uuid.UUID):  # noqa: ARG001
+    """Cancel a task. #176 mirror of /complete: for parent tasks with
+    open subtasks, pass ``{"cancel_subtasks": true}`` to cancel them
+    too, or omit to get a 422 with the count of open subtasks. An
+    optional ``{"cancellation_reason": "..."}`` is stored on the parent.
+    """
+    data = request.get_json(silent=True) or {}
+    cancel_subs = bool(data.get("cancel_subtasks"))
+    reason = data.get("cancellation_reason")
+    try:
+        task = cancel_parent_task(
+            task_id, cancel_subtasks=cancel_subs, reason=reason
+        )
     except ValidationError as e:
         return jsonify({"error": str(e), "field": e.field}), 422
     if task is None:

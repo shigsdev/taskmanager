@@ -1053,6 +1053,120 @@ def test_complete_parent_no_subtasks_works(authed_client, app):
     assert resp.get_json()["status"] == "archived"
 
 
+# --- #176: POST /api/tasks/<id>/cancel — cascade to open subtasks ----------
+
+
+class TestCancelParentTaskPR7:
+    """PR 7 (#176): the cancel path used to be a plain
+    ``PATCH {status: "cancelled"}`` that left open subtasks ACTIVE
+    under a cancelled parent. New ``/cancel`` endpoint mirrors
+    ``/complete``: prompts (422) on open subtasks, cascades when
+    ``cancel_subtasks`` is passed.
+    """
+
+    def test_cancel_parent_warns_about_open_subtasks(self, authed_client, app):
+        """Open subtasks + no flag → 422, same as /complete."""
+        parent_id = authed_client.post(
+            "/api/tasks", json={"title": "Parent", "type": "work"},
+        ).get_json()["id"]
+        authed_client.post(
+            "/api/tasks",
+            json={"title": "Sub", "type": "work", "parent_id": parent_id},
+        )
+        resp = authed_client.post(f"/api/tasks/{parent_id}/cancel")
+        assert resp.status_code == 422
+        assert "open subtask" in resp.get_json()["error"]
+
+    def test_cancel_parent_with_flag_cascades_to_subtasks(
+        self, authed_client, app,
+    ):
+        """cancel_subtasks=True → parent AND open subtasks become
+        CANCELLED. This is the core #176 fix — pre-fix the subtask
+        stayed ACTIVE."""
+        parent_id = authed_client.post(
+            "/api/tasks", json={"title": "Parent", "type": "work"},
+        ).get_json()["id"]
+        sub_id = authed_client.post(
+            "/api/tasks",
+            json={"title": "Sub", "type": "work", "parent_id": parent_id},
+        ).get_json()["id"]
+
+        resp = authed_client.post(
+            f"/api/tasks/{parent_id}/cancel",
+            json={"cancel_subtasks": True,
+                  "cancellation_reason": "scope cut"},
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["status"] == "cancelled"
+        assert body["cancellation_reason"] == "scope cut"
+
+        # The subtask must ALSO be cancelled — no orphan under a
+        # cancelled parent.
+        sub = authed_client.get(f"/api/tasks/{sub_id}").get_json()
+        assert sub["status"] == "cancelled"
+
+    def test_cancel_parent_no_subtasks_works(self, authed_client, app):
+        """No subtasks → straight cancel, reason stored."""
+        task_id = authed_client.post(
+            "/api/tasks", json={"title": "Solo", "type": "work"},
+        ).get_json()["id"]
+        resp = authed_client.post(
+            f"/api/tasks/{task_id}/cancel",
+            json={"cancellation_reason": "no longer needed"},
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["status"] == "cancelled"
+        assert body["cancellation_reason"] == "no longer needed"
+
+    def test_cancel_parent_no_reason_is_null(self, authed_client, app):
+        """Omitted / blank reason → cancellation_reason is null."""
+        task_id = authed_client.post(
+            "/api/tasks", json={"title": "Solo", "type": "work"},
+        ).get_json()["id"]
+        resp = authed_client.post(f"/api/tasks/{task_id}/cancel")
+        assert resp.status_code == 200
+        assert resp.get_json()["cancellation_reason"] is None
+
+    def test_cancel_unknown_task_404(self, authed_client, app):
+        import uuid as _uuid
+        resp = authed_client.post(f"/api/tasks/{_uuid.uuid4()}/cancel")
+        assert resp.status_code == 404
+
+    def test_cancel_endpoint_requires_auth(self, client):
+        import uuid as _uuid
+        resp = client.post(f"/api/tasks/{_uuid.uuid4()}/cancel")
+        assert resp.status_code != 200
+
+    def test_cancel_parent_task_service_direct(self, app):
+        """Unit-level: cancel_parent_task raises ValidationError on
+        open subtasks without the flag (the contract the route's 422
+        depends on)."""
+        from models import Task, TaskStatus, TaskType, Tier, db
+        from task_service import ValidationError, cancel_parent_task
+        with app.app_context():
+            parent = Task(title="P", type=TaskType.WORK, tier=Tier.TODAY,
+                          status=TaskStatus.ACTIVE)
+            db.session.add(parent)
+            db.session.flush()
+            sub = Task(title="S", type=TaskType.WORK, tier=Tier.TODAY,
+                       status=TaskStatus.ACTIVE, parent_id=parent.id)
+            db.session.add(sub)
+            db.session.commit()
+            pid, sid = parent.id, sub.id
+
+            import pytest
+            with pytest.raises(ValidationError):
+                cancel_parent_task(pid)
+
+            # With the flag, both end CANCELLED.
+            cancel_parent_task(pid, cancel_subtasks=True, reason="x")
+            db.session.expire_all()
+            assert db.session.get(Task, pid).status == TaskStatus.CANCELLED
+            assert db.session.get(Task, sid).status == TaskStatus.CANCELLED
+
+
 def test_patch_cannot_set_self_as_parent(authed_client, app):
     resp = authed_client.post("/api/tasks", json={"title": "Task", "type": "work"})
     task_id = resp.get_json()["id"]

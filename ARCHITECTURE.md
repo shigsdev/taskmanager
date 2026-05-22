@@ -501,6 +501,7 @@ the code.
 /api/tasks
 /api/tasks/<uuid:task_id>
 /api/tasks/<uuid:task_id>/complete
+/api/tasks/<uuid:task_id>/cancel         # #176 — cancel + cascade to open subtasks
 /api/tasks/<uuid:task_id>/duplicate     # #143 — clone to TOMORROW
 /api/tasks/<uuid:task_id>/subtasks
 /api/tasks/bulk                        # #21

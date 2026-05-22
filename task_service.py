@@ -583,6 +583,46 @@ def complete_parent_task(task_id: uuid.UUID, complete_subtasks: bool = False) ->
     return task
 
 
+def cancel_parent_task(
+    task_id: uuid.UUID,
+    *,
+    cancel_subtasks: bool = False,
+    reason: str | None = None,
+) -> Task | None:
+    """Cancel a parent task, cascading to its open subtasks.
+
+    #176 (2026-05-21): the cancel path used to be a plain
+    ``PATCH {status: "cancelled"}`` through ``update_task`` — which set
+    the parent's status but left open subtasks ACTIVE under a cancelled
+    parent (orphaned, still showing the now-dead parent-link badge).
+    The complete path already had ``complete_parent_task``; this is the
+    missing mirror for cancel.
+
+    Mirrors ``complete_parent_task``: if the parent has open subtasks
+    and ``cancel_subtasks`` is False, raise a ValidationError so the UI
+    can prompt. When ``cancel_subtasks`` is True, the open subtasks are
+    set to CANCELLED alongside the parent. ``reason`` is stored on the
+    parent's ``cancellation_reason``; subtasks inherit the CANCELLED
+    status only (no per-subtask reason — they were collateral).
+    """
+    task = get_task(task_id)
+    if task is None:
+        return None
+    open_subtasks = list_subtasks(task_id)
+    if open_subtasks and not cancel_subtasks:
+        raise ValidationError(
+            f"{len(open_subtasks)} open subtask(s) — cancel all or close individually first",
+            "subtasks",
+        )
+    if cancel_subtasks:
+        for sub in open_subtasks:
+            sub.status = TaskStatus.CANCELLED
+    task.status = TaskStatus.CANCELLED
+    task.cancellation_reason = (reason or "").strip() or None
+    db.session.commit()
+    return task
+
+
 def delete_task(task_id: uuid.UUID) -> bool:
     """Soft-delete by setting status to DELETED. Returns False if not found.
 
