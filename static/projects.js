@@ -217,9 +217,14 @@ async function onCardDrop(e) {
     const ids = Array.from(list.querySelectorAll(".project-card[data-id]"))
         .map((el) => el.dataset.id);
     try {
-        await fetch("/api/projects/reorder", {
+        // #192 (2026-05-22): was a raw fetch() — the one call site in
+        // projects.js that bypassed the shared apiFetch (every other
+        // call here already uses it). Raw fetch misses the stale-tab
+        // TypeError retry + recovery prompt, so a project-reorder on a
+        // long-idle tab silently failed. apiFetch sets the JSON
+        // Content-Type itself.
+        await apiFetch("/api/projects/reorder", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ordered_ids: ids }),
         });
         // Reload to pick up new priority_order values from the server.

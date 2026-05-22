@@ -854,3 +854,66 @@ class _MockSocket:
 
     def __exit__(self, *args):
         return None
+
+
+class TestAppShellScriptCoveragePR11:
+    """#193 (PR 11): every JS file a template loads via <script src>
+    must be in BOTH sw.js's APP_SHELL (so it's in the offline cache)
+    and health.EXPECTED_STATIC_FILES (so a build that drops it fails
+    the health check). 6 page scripts — goals/review/scan/settings/
+    recycle_bin/swipe — had drifted out of both lists. This is the
+    mechanical drift gate that keeps them in sync.
+    """
+
+    def _referenced_scripts(self) -> set[str]:
+        """Every `static/<name>.js` referenced by a <script src> in any
+        template."""
+        import re
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        pat = re.compile(r"filename=['\"]([a-z0-9_]+\.js)['\"]")
+        found: set[str] = set()
+        for tpl in (root / "templates").glob("*.html"):
+            found.update(pat.findall(tpl.read_text(encoding="utf-8")))
+        return found
+
+    def _app_shell_scripts(self) -> set[str]:
+        import re
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        sw = (root / "static" / "sw.js").read_text(encoding="utf-8")
+        block = sw.split("APP_SHELL = [", 1)[1].split("];", 1)[0]
+        return set(re.findall(r"([a-z0-9_]+\.js)", block))
+
+    def test_every_referenced_script_is_in_app_shell(self):
+        referenced = self._referenced_scripts()
+        app_shell = self._app_shell_scripts()
+        missing = referenced - app_shell
+        assert not missing, (
+            f"templates load these JS files but sw.js APP_SHELL does "
+            f"not cache them: {sorted(missing)}"
+        )
+
+    def test_every_referenced_script_is_in_expected_static_files(self):
+        import health
+        referenced = self._referenced_scripts()
+        expected = {
+            p.split("/")[-1]
+            for p in health.EXPECTED_STATIC_FILES
+            if p.endswith(".js")
+        }
+        missing = referenced - expected
+        assert not missing, (
+            f"templates load these JS files but "
+            f"health.EXPECTED_STATIC_FILES omits them: {sorted(missing)}"
+        )
+
+    def test_the_six_pr11_scripts_are_now_covered(self):
+        """Explicit regression assertion for the exact 6 files #193
+        identified, so the fix can't be partially reverted unnoticed."""
+        app_shell = self._app_shell_scripts()
+        for name in (
+            "goals.js", "review.js", "scan.js",
+            "settings.js", "recycle_bin.js", "swipe.js",
+        ):
+            assert name in app_shell, f"{name} dropped from APP_SHELL"

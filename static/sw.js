@@ -5,7 +5,7 @@
  * Bump CACHE_VERSION when deploying new static files.
  */
 
-var CACHE_VERSION = "v143";
+var CACHE_VERSION = "v144";
 var CACHE_NAME = "taskmanager-" + CACHE_VERSION;
 
 // HTML is intentionally NOT pre-cached (see fetch handler below — Bug #56).
@@ -35,6 +35,18 @@ var APP_SHELL = [
     "/static/reflection.js",
     "/static/goal_filter_helpers.js",
     "/static/date_helpers.js",
+    // #193 (2026-05-22): these 6 page scripts are referenced by their
+    // templates' <script src> but were never added here — so they
+    // missed the offline app-shell cache (and the health.py
+    // EXPECTED_STATIC_FILES build check). test_app_shell_covers_all_
+    // referenced_scripts is the drift gate that keeps this list and
+    // the templates in sync from now on.
+    "/static/goals.js",
+    "/static/review.js",
+    "/static/scan.js",
+    "/static/settings.js",
+    "/static/recycle_bin.js",
+    "/static/swipe.js",
     "/static/manifest.json",
     "/static/favicon.svg",
 ];

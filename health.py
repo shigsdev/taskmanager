@@ -161,6 +161,15 @@ EXPECTED_STATIC_FILES = (
     "static/reflection.js",          # #165 — Weekly Reflection page
     "static/goal_filter_helpers.js",
     "static/date_helpers.js",
+    # #193 (2026-05-22): 6 page scripts referenced by templates but
+    # never listed here (or in sw.js APP_SHELL). Kept in sync by the
+    # test_app_shell_covers_all_referenced_scripts drift gate.
+    "static/goals.js",
+    "static/review.js",
+    "static/scan.js",
+    "static/settings.js",
+    "static/recycle_bin.js",
+    "static/swipe.js",
     "static/manifest.json",
     "static/favicon.svg",  # #45 — browser tab icon
 )
