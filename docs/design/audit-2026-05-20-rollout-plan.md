@@ -1,20 +1,19 @@
 # Audit 2026-05-20 — Rollout Plan
 
-> **STATUS 2026-05-22 — PR 1–11 SHIPPED, PR 12–14 DEFERRED FOR REVIEW.**
-> All 12 bugs (#170–#181), all 9 security items (#182–#190), and all 3
-> drift-prevention items (#191–#193) are fixed, deployed GREEN, and
-> prod-smoke verified. The remaining 3 PRs (#194–#203, the "larger
-> refactors" + cleanups tier) were deliberately NOT shipped in the
-> autonomous overnight run — they are multi-file refactors
-> (claude_client 6-service extraction, a 26-site JSON-body decorator,
-> a canonical serializer with /api/export data-loss risk, etc.) where
-> reviewing the *approach* before merge adds real value and a
-> context-fatigued unattended merge adds real risk. They are the
-> lowest-urgency tier (pure tech debt, zero user-facing bugs).
-> Recommendation: tackle PR 12–14 in a fresh session — say "go" and
-> they run one at a time through the same pipeline.
-> See "Tracking checklist" near the bottom for the exact done/deferred
-> split.
+> **STATUS 2026-05-22 — ALL 15 PRs SHIPPED. AUDIT COMPLETE.**
+> Every one of the 34 audited rows (#170–#203) is fixed, deployed
+> GREEN, 5-min-monitor clean, and prod-smoke verified (37/37). The
+> bug tier (#170–#181), security tier (#182–#190), drift-prevention
+> tier (#191–#193) shipped as PR 1–11; the tech-debt tier (#194–#203)
+> shipped 2026-05-22 as PR 12–15:
+> - **PR 12** (SHA 78e4345) — #194, #195, #197: helper consolidation.
+> - **PR 13** (SHA 384f1d3) — #198, #199, #200: schema-dict split,
+>   table-driven crons, canonical Task serializer (fixed a real
+>   /api/export data-loss bug — 6 columns were silently dropped).
+> - **PR 14** (SHA f38519f) — #201, #202, #203: small cleanups.
+> - **PR 15** (SHA 12a01d1) — #196: the @validate_json_body decorator,
+>   27 strict route sites migrated (8 optional-body routes left as-is).
+> See "Tracking checklist" near the bottom — all rows checked.
 
 **Source:** 34 OPEN backlog rows filed 2026-05-20 by a three-agent audit pass
 (commit `51dd22e` on `main`).
@@ -457,9 +456,10 @@ pass AND post-deploy validation + prod smoke pass.
 
 ### Phase 3 — Drift prevention + refactors
 - [x] PR 11 — Drift-prevention sweep (#191, #192, #193) — shipped 2026-05-22, SHA 6eeba9c2 (+ prod-smoke fix 253c57e1), 37/37 prod smoke green
-- [ ] PR 12 — Helper consolidation (#194, #195, #197) — **DEFERRED** for review
-- [ ] PR 13 — Larger refactors (#196, #198, #199, #200) — **DEFERRED** for review
-- [ ] PR 14 — Small cleanups (#201, #202, #203) — **DEFERRED** (not started; trivial, but bundled with the deferred batch)
+- [x] PR 12 — Helper consolidation (#194, #195, #197) — shipped 2026-05-22, SHA 78e4345, 37/37 prod smoke green
+- [x] PR 13 — Larger refactors (#198, #199, #200) — shipped 2026-05-22, SHA 384f1d3, 37/37 prod smoke green
+- [x] PR 14 — Small cleanups (#201, #202, #203) — shipped 2026-05-22, SHA f38519f, 37/37 prod smoke green
+- [x] PR 15 — JSON-body decorator (#196) — shipped 2026-05-22, SHA 12a01d1, 37/37 prod smoke green (split into its own PR per the risk note below)
 
 **Deferred-PR notes (code-read findings to feed the fresh session):**
 - **#194** (import_api upload validation) — the rollout plan assumed
