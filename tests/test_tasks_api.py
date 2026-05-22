@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 
 import auth
-from models import Task, TaskStatus, TaskType, Tier, db
+from models import Project, ProjectType, Task, TaskStatus, TaskType, Tier, db
 
 
 def _make_task(**overrides) -> Task:
@@ -14,6 +14,15 @@ def _make_task(**overrides) -> Task:
     db.session.add(task)
     db.session.commit()
     return task
+
+
+def _make_project(name: str, **overrides) -> Project:
+    fields = {"name": name, "type": ProjectType.WORK}
+    fields.update(overrides)
+    project = Project(**fields)
+    db.session.add(project)
+    db.session.commit()
+    return project
 
 
 # --- Auth --------------------------------------------------------------------
@@ -142,6 +151,99 @@ def test_create_task_422_invalid_sort_order(authed_client):
 def test_create_task_400_no_json_body(authed_client):
     resp = authed_client.post("/api/tasks", data="not json", content_type="text/plain")
     assert resp.status_code == 400
+
+
+# --- #207: capture-bar @project hint ----------------------------------------
+
+
+def test_create_task_project_hint_unique_match(authed_client, app):
+    with app.app_context():
+        proj = _make_project("IPPM Audit")
+        proj_id = str(proj.id)
+    resp = authed_client.post(
+        "/api/tasks",
+        json={"title": "Prep deck", "type": "work", "project_hint": "audit"},
+    )
+    assert resp.status_code == 201
+    body = resp.get_json()
+    # Case-insensitive substring: "audit" matched "IPPM Audit".
+    assert body["project_id"] == proj_id
+    assert "warning" not in body
+
+
+def test_create_task_project_hint_no_match_warns(authed_client, app):
+    with app.app_context():
+        _make_project("Roadmaps")
+    resp = authed_client.post(
+        "/api/tasks",
+        json={"title": "Prep deck", "type": "work", "project_hint": "audit"},
+    )
+    # Task is still created — just without a project — plus a warning.
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert body["project_id"] is None
+    assert "warning" in body
+    assert "No active project" in body["warning"]
+    assert "audit" in body["warning"]
+
+
+def test_create_task_project_hint_ambiguous_warns(authed_client, app):
+    with app.app_context():
+        _make_project("IPPM Audit")
+        _make_project("BAU Audit")
+    resp = authed_client.post(
+        "/api/tasks",
+        json={"title": "Prep deck", "type": "work", "project_hint": "audit"},
+    )
+    # Two matches → too vague to pick → no project + ambiguity warning.
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert body["project_id"] is None
+    assert "warning" in body
+    assert "matches 2 projects" in body["warning"]
+
+
+def test_create_task_project_hint_explicit_project_id_wins(authed_client, app):
+    with app.app_context():
+        explicit = _make_project("Roadmaps")
+        _make_project("IPPM Audit")
+        explicit_id = str(explicit.id)
+    resp = authed_client.post(
+        "/api/tasks",
+        json={
+            "title": "Prep deck", "type": "work",
+            "project_id": explicit_id, "project_hint": "audit",
+        },
+    )
+    assert resp.status_code == 201
+    body = resp.get_json()
+    # An explicit project_id is never overridden by a hint.
+    assert body["project_id"] == explicit_id
+    assert "warning" not in body
+
+
+def test_create_task_project_hint_ignores_inactive_projects(authed_client, app):
+    with app.app_context():
+        _make_project("Old Audit", is_active=False)
+    resp = authed_client.post(
+        "/api/tasks",
+        json={"title": "Prep deck", "type": "work", "project_hint": "audit"},
+    )
+    assert resp.status_code == 201
+    body = resp.get_json()
+    # The only "audit" project is inactive — treated as no match.
+    assert body["project_id"] is None
+    assert "No active project" in body["warning"]
+
+
+def test_resolve_project_hint_blank_is_noop():
+    # A blank/whitespace hint resolves to nothing with no warning —
+    # the route never calls resolve for an absent hint, but guard it.
+    from task_service import resolve_project_hint
+
+    assert resolve_project_hint("") == (None, None)
+    assert resolve_project_hint("   ") == (None, None)
+    assert resolve_project_hint(None) == (None, None)
 
 
 # --- GET list ----------------------------------------------------------------

@@ -7,6 +7,7 @@
  *
  * Parsing order (critical for avoiding prefix collisions):
  *   1. URL detection
+ *   1b. @project hint (#207)
  *   2. Repeat shortcuts (#daily, #weekdays, #weekly, #monthly)
  *   3. Type shortcuts (#personal, #work)
  *   4. Tier shortcuts (#today, #week, #backlog, #freezer)
@@ -24,6 +25,33 @@ function parseCapture(text) {
         var remaining = text.replace(urlMatch[0], "").trim();
         result.title = remaining || urlMatch[0];
         result._titleProvided = remaining.length > 0;
+    }
+
+    // 1b. @project hint (#207). A single @token of letters/digits
+    //     anywhere in the text — e.g. "@Audit" — is lifted out as a
+    //     project hint. parseCapture cannot know project names (it's a
+    //     pure client-side function), so it only extracts the raw
+    //     token; the server resolves it to a project_id by
+    //     case-insensitive substring match in POST /api/tasks.
+    //     Detected AFTER URL extraction so an "@" inside a URL path
+    //     (e.g. /@handle) isn't mistaken for a project hint. The
+    //     "(^|[^\w@])" prefix — a captured leading char rather than a
+    //     lookbehind, for older-Safari (<16.4) safety — requires the
+    //     "@" to sit at the start or after a non-word char, so
+    //     "user@example" (an email) does NOT match.
+    var projMatch = result.title.match(/(^|[^\w@])@([A-Za-z0-9]+)/);
+    if (projMatch) {
+        result.project_hint = projMatch[2];
+        result.title = result.title
+            // Drop "@token" but keep the captured leading char. A
+            // function replacer avoids "$"-substitution surprises.
+            .replace(projMatch[0], function () { return projMatch[1]; })
+            // "Foo (@bar)" leaves an empty "()" behind once @bar is
+            // gone — drop empty brackets + collapse the double space.
+            .replace(/\(\s*\)/g, "")
+            .replace(/\[\s*\]/g, "")
+            .replace(/\s{2,}/g, " ")
+            .trim();
     }
 
     // 2. Repeat shortcuts (BEFORE tier — longer tags like #weekly

@@ -128,6 +128,25 @@
                 nothing's left, the URL itself becomes the title.
             </p>
 
+            <h3>Project hint</h3>
+            <p>
+                An <code>@</code>-token assigns the task to a project —
+                e.g. <code>@audit</code>. The text after the
+                <code>@</code> is matched
+                <strong>case-insensitively</strong> against your active
+                project names as a <strong>substring</strong>, so
+                <code>@audit</code> finds a project named
+                <em>"IPPM Audit"</em>. The <code>@</code>-token is
+                stripped from the title.
+            </p>
+            <ul>
+                <li>One project hint per capture — the first <code>@</code>-token wins.</li>
+                <li>The token is letters and digits only; it ends at the first space or punctuation (so <code>(@audit)</code> works too).</li>
+                <li>If the token matches <strong>no</strong> active project — or matches <strong>two or more</strong> — the task is still created, just without a project, and the capture bar shows a brief notice so you know the hint didn't take.</li>
+                <li>An explicit project assigned elsewhere is never overridden by a hint.</li>
+                <li>A task assigned to a project <strong>inherits that project's goal</strong> automatically (when you didn't set a goal yourself).</li>
+            </ul>
+
             <h3>Matching rules</h3>
             <ul>
                 <li>Hints are <strong>case-insensitive</strong> — <code>#TODAY</code> works.</li>
@@ -138,8 +157,8 @@
 
             <h3>What hints do NOT do</h3>
             <ul>
-                <li>No project or goal hints — assign those via the detail panel or bulk toolbar.</li>
-                <li>No due-date hints (<code>due:2026-05-01</code>, <code>@friday</code>, etc.) — set in the detail panel.</li>
+                <li>No goal hints — assign a goal via the detail panel or bulk toolbar (or let it inherit from an <code>@project</code> hint).</li>
+                <li>No due-date hints (<code>due:2026-05-01</code>, etc.) — set the due date in the detail panel.</li>
                 <li>No priority / notes / checklist hints.</li>
                 <li>Anything that isn't <code>#</code>-prefixed stays in the title verbatim.</li>
             </ul>
@@ -159,6 +178,10 @@ Call mom #tomorrow
 
 Take meds #daily #personal
   → title: "Take meds", type: Personal, repeats daily
+
+Prep deck for review @audit #today
+  → title: "Prep deck for review", tier: Today,
+    project: matched to "IPPM Audit" (substring of @audit)
 
 Read article https://example.com/foo #personal
   → title: "Read article", type: Personal,

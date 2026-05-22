@@ -263,6 +263,50 @@ def _update_repeat(task: Task, repeat: dict | None) -> None:
 # --- CRUD --------------------------------------------------------------------
 
 
+def resolve_project_hint(hint: str) -> tuple[uuid.UUID | None, str | None]:
+    """Resolve a capture-bar ``@project`` hint to a project_id (#207).
+
+    The capture parser (``parse_capture.js``) can only lift the raw
+    ``@token`` out of the typed text — it has no knowledge of project
+    names — so the actual name resolution happens here, server-side,
+    keeping project names the single source of truth.
+
+    Matching is **case-insensitive substring** against ACTIVE project
+    names. Returns ``(project_id, warning)``:
+
+    * exactly one match  → ``(id, None)``
+    * no match           → ``(None, "<warning>")``
+    * two or more        → ``(None, "<ambiguous warning>")`` — too vague
+      to pick one safely, so the caller creates the task with no project
+
+    The warning string is user-facing (surfaced by the capture bar);
+    ``None`` means "nothing to tell the user".
+    """
+    from models import Project
+
+    cleaned = (hint or "").strip()
+    if not cleaned:
+        return None, None
+    needle = cleaned.lower()
+    projects = list(
+        db.session.scalars(select(Project).where(Project.is_active.is_(True)))
+    )
+    matches = [p for p in projects if needle in p.name.lower()]
+    if len(matches) == 1:
+        return matches[0].id, None
+    if not matches:
+        return None, (
+            f'No active project matches "@{cleaned}" — '
+            "task created without a project."
+        )
+    names = ", ".join(p.name for p in matches[:3])
+    suffix = "…" if len(matches) > 3 else ""
+    return None, (
+        f'"@{cleaned}" matches {len(matches)} projects ({names}{suffix}) — '
+        "task created without a project. Use a more specific hint."
+    )
+
+
 def create_task(data: dict) -> Task:
     title = (data.get("title") or "").strip()
     if not title:

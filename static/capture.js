@@ -45,12 +45,20 @@
         }
 
         try {
-            await apiFetch("/api/tasks", {
+            const created = await apiFetch("/api/tasks", {
                 method: "POST",
                 body: JSON.stringify(parsed),
             });
             input.value = "";
             await loadTasks();
+            // #207: the server resolves an `@project` hint to a real
+            // project by case-insensitive substring match. When it
+            // can't (no match, or ambiguous) it returns a `warning` —
+            // surface it so the user knows the tag didn't take. The
+            // task itself was still created (just without a project).
+            if (created && created.warning) {
+                alert(created.warning);
+            }
         } catch (err) {
             alert("Capture failed: " + err.message);
         }

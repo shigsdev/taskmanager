@@ -19,6 +19,7 @@ from task_service import (
     get_task,
     list_subtasks,
     list_tasks,
+    resolve_project_hint,
     update_task,
 )
 from utils import enum_or_400 as _enum_or_400
@@ -127,11 +128,24 @@ def create(email: str):  # noqa: ARG001
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return jsonify({"error": "JSON body required"}), 400
+    # #207: capture-bar "@project" hint. parse_capture.js lifts the raw
+    # @token into `project_hint`; resolve it here to a project_id by
+    # case-insensitive substring match. An explicit `project_id` in the
+    # payload always wins — the hint only fills an empty slot.
+    project_warning = None
+    hint = data.pop("project_hint", None)
+    if hint and not data.get("project_id"):
+        resolved_id, project_warning = resolve_project_hint(hint)
+        if resolved_id is not None:
+            data["project_id"] = resolved_id
     try:
         task = create_task(data)
     except ValidationError as e:
         return jsonify({"error": str(e), "field": e.field}), 422
-    return jsonify(_serialize(task)), 201
+    body = _serialize(task)
+    if project_warning:
+        body["warning"] = project_warning
+    return jsonify(body), 201
 
 
 @bp.get("/<uuid:task_id>")

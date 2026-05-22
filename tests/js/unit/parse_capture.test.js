@@ -300,3 +300,70 @@ describe("parseCapture — edge cases", () => {
         expect(r.url).toBe("https://example.com/page#section");
     });
 });
+
+// ---------------------------------------------------------------------------
+// #207 — @project hint. parseCapture only lifts the raw @token; the
+// server resolves it to a project_id by case-insensitive substring match.
+// ---------------------------------------------------------------------------
+
+describe("parseCapture — @project hint", () => {
+    test("basic @token is extracted and stripped from the title", () => {
+        const r = parseCapture("Prep deck @audit");
+        expect(r.project_hint).toBe("audit");
+        expect(r.title).toBe("Prep deck");
+    });
+
+    test("token case is preserved (server lowercases for matching)", () => {
+        const r = parseCapture("Prep deck @Audit");
+        expect(r.project_hint).toBe("Audit");
+    });
+
+    test("@token in parens — empty () left behind is cleaned up", () => {
+        const r = parseCapture("TPC Update Tracking (@Audit)");
+        expect(r.project_hint).toBe("Audit");
+        expect(r.title).toBe("TPC Update Tracking");
+    });
+
+    test("digits are allowed in the token", () => {
+        const r = parseCapture("Plan @Q3");
+        expect(r.project_hint).toBe("Q3");
+        expect(r.title).toBe("Plan");
+    });
+
+    test("no @token — project_hint is absent", () => {
+        const r = parseCapture("Just a plain task");
+        expect(r.project_hint).toBeUndefined();
+    });
+
+    test("an email address is NOT mistaken for a project hint", () => {
+        // The @ is preceded by a word char — the lookbehind rejects it.
+        const r = parseCapture("Email bob@example.com about it");
+        expect(r.project_hint).toBeUndefined();
+        expect(r.title).toBe("Email bob@example.com about it");
+    });
+
+    test("an @ inside a URL is not a project hint (URL parsed first)", () => {
+        const r = parseCapture("Reply on https://x.com/@handle soon");
+        expect(r.project_hint).toBeUndefined();
+        expect(r.url).toBe("https://x.com/@handle");
+    });
+
+    test("first @token wins when several are present", () => {
+        const r = parseCapture("Task @alpha @beta");
+        expect(r.project_hint).toBe("alpha");
+    });
+
+    test("@project coexists with #tier and #type hints", () => {
+        const r = parseCapture("Plan rollout @roadmaps #today #work");
+        expect(r.project_hint).toBe("roadmaps");
+        expect(r.tier).toBe("today");
+        expect(r.type).toBe("work");
+        expect(r.title).toBe("Plan rollout");
+    });
+
+    test("token ends at the first punctuation/space", () => {
+        const r = parseCapture("Sync @audit, then ship");
+        expect(r.project_hint).toBe("audit");
+        expect(r.title).toBe("Sync , then ship");
+    });
+});
