@@ -499,6 +499,21 @@ Each item must be a JSON object with these keys:
   reflection / journaling / venting / status observation without a
   next action. Reflective non-tasks still need a title (summarise
   the thought) so the user can review and decide.
+- category: one of "health", "personal_growth", "relationships",
+  "work", "bau". This is the GOAL category — used only when the
+  speaker explicitly routes the item to a goal (says "goal:" /
+  "new goal" / similar). Infer the best fit from the item's topic:
+  * "health" — fitness, exercise, diet, sleep, medical, wellbeing
+  * "relationships" — family, friends, partner, social connection
+  * "personal_growth" — learning, reading, skills, hobbies,
+    mindfulness, career development
+  * "work" — job deliverables, projects, professional objectives
+  * "bau" — operational / maintenance / "business as usual" upkeep
+    that is not growth or a deliverable
+  Always emit a category for every item. When unclear, use
+  "personal_growth". Note this is DISTINCT from `type` ("work" /
+  "personal") — a personal-type item can still have a "work"
+  category goal, and vice versa, though that is rare.
 
 Rules:
 - Split independent tasks into separate items; consolidate fragments
@@ -518,29 +533,32 @@ Output:
 [
   {{"title": "Pick up prescriptions", "type": "personal",
     "tier": "tomorrow", "due_date": "2026-04-21",
-    "project_hint": null, "goal_hint": null, "is_task": true}},
+    "project_hint": null, "goal_hint": null, "is_task": true,
+    "category": "health"}},
   {{"title": "Finish Q2 OKR deck", "type": "work",
     "tier": "this_week", "due_date": "2026-04-24",
     "project_hint": "Q2 OKRs", "goal_hint": null,
-    "is_task": true}},
+    "is_task": true, "category": "work"}},
   {{"title": "Email Sarah", "type": "work",
     "tier": "inbox", "due_date": null,
     "project_hint": "Launch site", "goal_hint": null,
-    "is_task": true}},
+    "is_task": true, "category": "work"}},
   {{"title": "Redesign the homepage hero", "type": "work",
     "tier": "backlog", "due_date": null,
-    "project_hint": null, "goal_hint": null, "is_task": true}},
+    "project_hint": null, "goal_hint": null, "is_task": true,
+    "category": "work"}},
   {{"title": "New logo work", "type": "work",
     "tier": "inbox", "due_date": null,
     "project_hint": "Launch site", "goal_hint": null,
-    "is_task": true}},
+    "is_task": true, "category": "work"}},
   {{"title": "5K run this weekend", "type": "personal",
     "tier": "this_week", "due_date": null,
     "project_hint": null, "goal_hint": "Run a half marathon",
-    "is_task": true}},
+    "is_task": true, "category": "health"}},
   {{"title": "Feeling scattered today", "type": "personal",
     "tier": "inbox", "due_date": null,
-    "project_hint": null, "goal_hint": null, "is_task": false}}
+    "project_hint": null, "goal_hint": null, "is_task": false,
+    "category": "personal_growth"}}
 ]
 
 Transcript:
@@ -669,6 +687,14 @@ _VOICE_VALID_TIERS = {"inbox", "today", "tomorrow", "this_week", "next_week", "b
 # to "inbox" (matched the user's "missing categories" report). "freezer"
 # is deliberately omitted — it's a parking lot the user explicitly opts
 # into via the detail panel, not something to auto-assign from voice.
+# #172 (2026-05-21): the GOAL category for items the user routes to a
+# goal. Must match the GoalCategory enum (models.py). Anything else
+# coerces to the neutral "personal_growth" default — the same fallback
+# the image goals-parse prompt uses.
+_VOICE_VALID_CATEGORIES = {
+    "health", "personal_growth", "relationships", "work", "bau",
+}
+_VOICE_DEFAULT_CATEGORY = "personal_growth"
 
 
 def _resolve_voice_hint(
@@ -780,6 +806,12 @@ def _normalise_voice_candidates(
         if tier_val not in _VOICE_VALID_TIERS:
             tier_val = "inbox"
 
+        # #172: goal category — used by voice_api only when the item is
+        # routed to a goal. Coerce unknowns to the neutral default.
+        category_val = item.get("category")
+        if category_val not in _VOICE_VALID_CATEGORIES:
+            category_val = _VOICE_DEFAULT_CATEGORY
+
         due_date: str | None = None
         raw_due = item.get("due_date")
         if isinstance(raw_due, str):
@@ -833,6 +865,7 @@ def _normalise_voice_candidates(
             "goal_hint": goal_hint if isinstance(goal_hint, str) else None,
             "goal_id": goal_id,
             "is_task": is_task,
+            "category": category_val,  # #172
         })
     return out
 
