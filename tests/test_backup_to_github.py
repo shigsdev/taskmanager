@@ -133,6 +133,49 @@ class TestRetentionPruning:
             assert new_file.exists() is True
 
 
+# --- #164: keep the DB password out of pg_dump's argv -----------------------
+
+
+class TestSplitDbUrl:
+    """split_db_url() must strip the password out of the connection URL
+    (so it never lands in pg_dump's argv / `ps aux`) while preserving
+    every other connection component."""
+
+    def test_password_is_extracted_and_removed_from_url(self, backup_module):
+        url = "postgresql://app_user:s3cr3t@db.railway.app:5432/railway"
+        sanitized, password = backup_module.split_db_url(url)
+        assert password == "s3cr3t"
+        # The password must not survive anywhere in the sanitized URL.
+        assert "s3cr3t" not in sanitized
+        # ...but every other component must.
+        assert sanitized == "postgresql://app_user@db.railway.app:5432/railway"
+
+    def test_query_params_are_preserved(self, backup_module):
+        url = "postgresql://u:p@host:5432/db?sslmode=require&connect_timeout=10"
+        sanitized, password = backup_module.split_db_url(url)
+        assert password == "p"
+        assert "p@host" not in sanitized
+        assert sanitized.endswith("?sslmode=require&connect_timeout=10")
+        assert "@host:5432/db" in sanitized
+
+    def test_url_without_password_is_unchanged(self, backup_module):
+        # Local trust-auth URLs carry no password — nothing to strip.
+        url = "postgresql://localhost:5432/taskmanager"
+        sanitized, password = backup_module.split_db_url(url)
+        assert password == ""
+        assert sanitized == url
+
+    def test_percent_encoded_password_is_decoded(self, backup_module):
+        # PGPASSWORD wants the literal value, so a %-encoded password
+        # in the URL must be url-decoded on the way out.
+        url = "postgresql://u:p%40ss%2Fword@host:5432/db"
+        sanitized, password = backup_module.split_db_url(url)
+        assert password == "p@ss/word"
+        # The raw (still-encoded) secret must not linger in the URL.
+        assert "p%40ss%2Fword" not in sanitized
+        assert sanitized == "postgresql://u@host:5432/db"
+
+
 # --- Tolerance helper -------------------------------------------------------
 
 

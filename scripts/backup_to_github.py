@@ -75,25 +75,57 @@ def _require_env(name: str) -> str:
     return val
 
 
+def split_db_url(database_url: str) -> tuple[str, str]:
+    """Split a Postgres URL into ``(url_without_password, password)``.
+
+    #164: pg_dump reads the password from the ``PGPASSWORD`` env var, so
+    we keep it out of the subprocess argv — argv is world-readable via
+    ``ps aux`` on a shared host, and a leaked DATABASE_URL is full DB
+    access. Everything else (user, host, port, dbname, query params such
+    as ``sslmode``) stays in the URL, which pg_dump still accepts as its
+    connection argument.
+
+    Returns the password url-decoded (PGPASSWORD wants the literal
+    value); an empty string when the URL carries no password.
+    """
+    from urllib.parse import unquote, urlparse, urlunparse
+
+    parsed = urlparse(database_url)
+    password = unquote(parsed.password) if parsed.password else ""
+    host = parsed.hostname or ""
+    netloc = f"{parsed.username}@{host}" if parsed.username else host
+    if parsed.port:
+        netloc = f"{netloc}:{parsed.port}"
+    sanitized = urlunparse(parsed._replace(netloc=netloc))
+    return sanitized, password
+
+
 def run_pg_dump(database_url: str, out_path: Path) -> dict:
     """Run pg_dump --format=custom and write to out_path. Returns
     {"size_bytes": N, "elapsed_sec": N}."""
     started = datetime.datetime.now(datetime.UTC)
     sys.stdout.write(f"[backup] pg_dump → {out_path.name} (binary={PG_DUMP_BIN})\n")
+    # #164: keep the password out of argv. pg_dump still gets the
+    # connection URL (user/host/port/dbname/sslmode) but the password
+    # rides in the PGPASSWORD env var, which is not visible in `ps aux`.
+    sanitized_url, password = split_db_url(database_url)
+    dump_env = {**os.environ}
+    if password:
+        dump_env["PGPASSWORD"] = password
     # PG_DUMP_BIN is an env var the trusted workflow YAML sets to a
     # fixed absolute path (/usr/lib/postgresql/18/bin/pg_dump), with a
     # hardcoded "pg_dump" literal fallback. Not user-controlled. No
     # shell=True. Bare trailing nosemgrep (matched-line suppression).
     _dump_cmd = [
         PG_DUMP_BIN, f"--format={DUMP_FORMAT}",
-        "--file", str(out_path), database_url,
+        "--file", str(out_path), sanitized_url,
     ]
     # PG_DUMP_BIN: trusted fixed env path from the workflow YAML,
     # hardcoded "pg_dump" fallback, no shell=True. Bare nosemgrep —
     # `nosemgrep: <text>` would be parsed as a rule-id list.
     proc = subprocess.run(  # noqa: S603
         _dump_cmd,  # nosemgrep
-        capture_output=True, text=True, check=False,
+        capture_output=True, text=True, check=False, env=dump_env,
     )
     elapsed = (datetime.datetime.now(datetime.UTC) - started).total_seconds()
     if proc.returncode != 0:
