@@ -80,99 +80,18 @@ _loadFilterPrefs();
 
 // --- API helpers -------------------------------------------------------------
 
-// PR52 #115: singleton recovery prompt. Multiple concurrent fetch
-// failures (e.g. visibilitychange fan-out fails 5 loaders at once)
-// would each fire their own confirm() — the user hits 5 OKs in a
-// row. Gate via a module-level flag so only ONE prompt is shown
-// per recovery cycle. Reset the flag after the user dismisses or
-// the page reloads.
-let _recoveryPromptShown = false;
-function _maybePromptRecovery(message) {
-    if (_recoveryPromptShown) return;
-    _recoveryPromptShown = true;
-    // eslint-disable-next-line no-alert
-    const ok = confirm(message);
-    if (ok) {
-        _hardRecover();  // navigation kills _recoveryPromptShown anyway
-    } else {
-        // User dismissed — let them try again; reset after a beat.
-        setTimeout(() => { _recoveryPromptShown = false; }, 5_000);
-    }
-}
-
-// PR49 #113: hard-recover from a stuck SW. location.reload() can hang
-// when the SW controller is in a weird state — its fetch handler may
-// intercept the navigation and never resolve. Unregistering the SW
-// first guarantees the next navigation goes straight to the network.
-// URL builder + retry/classify logic lives in api_helpers.js (Jest-tested).
-async function _hardRecover() {
-    try {
-        if ("serviceWorker" in navigator) {
-            const regs = await navigator.serviceWorker.getRegistrations();
-            await Promise.all(regs.map((r) => r.unregister().catch(() => {})));
-        }
-    } catch (_) { /* never block recovery on unregister failure */ }
-    window.location.href = window.apiHelpers.buildRecoveryUrl(window.location);
-}
-
-async function apiFetch(url, opts = {}) {
-    // PR47 #112 + PR49 #113: stale-tab fetch failure recovery.
-    // Causes for "TypeError: Failed to fetch" on a long-idle tab:
-    //  (a) Mobile browser killed the page's network connection during
-    //      tab suspension; first wake-up fetch dies before reconnect.
-    //  (b) Service worker controller went stale during sleep.
-    //  (c) Flask OAuth session expired (30d sliding) — redirect to
-    //      /login/google → cross-origin → browser blocks.
-    // Recovery: auto-retry once on TypeError. If retry also fails,
-    // prompt to reload via _hardRecover() (unregisters SW first so
-    // the reload can't hang on a stuck SW).
-    //
-    // PR47 originally added redirect:"manual" + opaqueredirect detection
-    // for case (c). PR49 dropped that branch — it false-positived on
-    // legitimate sessions (some 3xx in normal flow gets read as opaque
-    // redirect). Use the default redirect behavior; if a session 302
-    // genuinely surfaces, the cross-origin block falls through to the
-    // TypeError path which has the same recovery prompt.
-    let resp;
-    try {
-        resp = await fetch(url, {
-            headers: { "Content-Type": "application/json", ...opts.headers },
-            ...opts,
-        });
-    } catch (err) {
-        // Auto-retry once before bothering the user — covers the
-        // "stale-tab first-wake" class, which usually succeeds on
-        // retry once the connection / SW rebinds.
-        if (err && err.name === "TypeError" && !opts._retried) {
-            await new Promise((r) => setTimeout(r, 250));
-            return apiFetch(url, { ...opts, _retried: true });
-        }
-        // PR52 #115: single-prompt during recovery. Without this guard,
-        // the visibilitychange fan-out (loadTasks + loadGoals +
-        // loadProjects + loadCompletedTasks + loadCancelledTasks) can
-        // each fail concurrently and each fire its own prompt — user
-        // hits OK five times. Once one prompt is showing, suppress the
-        // others; once the user accepts ONE recovery, fire it once.
-        _maybePromptRecovery(
-            "Network request failed (this can happen on a tab that's " +
-            "been idle for a while). Reload the page to recover?"
-        );
-        throw err;
-    }
-    if (resp.status === 204) return null;
-    // 401/403 — actual auth failure. Surface a clean message instead of
-    // dumping a JSON parse + raw statusText. Still throw so callers can
-    // decide what to do; default UX is the alert in submitCapture etc.
-    if (resp.status === 401 || resp.status === 403) {
-        _maybePromptRecovery("Authentication failed. Reload to sign in again?");
-        throw new Error("Authentication required");
-    }
-    if (!resp.ok) {
-        const body = await resp.json().catch(() => ({}));
-        throw new Error(body.error || resp.statusText);
-    }
-    return resp.json();
-}
+// #191 (2026-05-22): app.js used to define its OWN apiFetch +
+// _hardRecover + _maybePromptRecovery — a verbatim copy of what
+// static/api_client.js exports as window.apiFetch. Two copies of the
+// stale-tab recovery + retry + recovery-prompt logic inevitably drift
+// (a fix lands in one, not the other). api_client.js is loaded
+// synchronously in <head> (base.html) before every page script, so
+// window.apiFetch is always defined by the time this runs. Alias it
+// to the bare name `apiFetch` so the ~60 existing call sites in this
+// file keep working unchanged, now routed through the single shared
+// implementation. The shared module owns _hardRecover /
+// _maybePromptRecovery internally — they are no longer needed here.
+const apiFetch = window.apiFetch;
 
 // --- Data loading ------------------------------------------------------------
 

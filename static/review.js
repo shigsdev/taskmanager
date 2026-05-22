@@ -36,17 +36,15 @@
 
     // --- Helpers ----------------------------------------------------------------
 
-    async function apiFetch(url, opts) {
-        const resp = await fetch(url, {
-            headers: { "Content-Type": "application/json" },
-            ...opts,
-        });
-        if (!resp.ok) {
-            const body = await resp.json().catch(() => ({}));
-            throw new Error(body.error || resp.statusText);
-        }
-        return resp.json();
-    }
+    // #192 (2026-05-22): use the shared window.apiFetch from
+    // static/api_client.js instead of this file's own primitive copy.
+    // The local version had NO stale-tab TypeError retry and NO
+    // recovery prompt — so a long-idle /review tab silently failed
+    // (the #112/#113/#115 fixes never reached it). api_client.js loads
+    // synchronously in <head> before this IIFE runs, so window.apiFetch
+    // is always defined here. Aliased to the bare name so the call
+    // sites below stay unchanged.
+    const apiFetch = window.apiFetch;
 
     function escapeHtml(str) {
         const div = document.createElement("div");
