@@ -35,7 +35,7 @@ import uuid
 from flask import Blueprint, jsonify, request
 
 from auth import login_required
-from rate_limit import limiter
+from rate_limit import LLM_HEAVY, limiter
 from weekly_focus_service import (
     clear_slot,
     get_displayed_focus,
@@ -119,7 +119,7 @@ def set_slots(email: str):  # noqa: ARG001
 
 @bp.post("/<int:slot_order>/plan")
 @login_required
-@limiter.limit("5 per minute")
+@limiter.limit(LLM_HEAVY)
 def plan(slot_order: int, email: str):  # noqa: ARG001
     """Run the AI planner for this slot's focus statement.
 

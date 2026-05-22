@@ -34,7 +34,7 @@ from import_service import (
     parse_project_names_text,
     parse_transcript_text,
 )
-from rate_limit import limiter
+from rate_limit import LLM_HEAVY, limiter
 from utils import validate_upload
 
 bp = Blueprint("import_api", __name__, url_prefix="/api/import")
@@ -167,7 +167,7 @@ def confirm_tasks(email: str):  # noqa: ARG001
 
 @bp.post("/transcript/parse")
 @login_required
-@limiter.limit("5 per minute")  # #183: parse_transcript_text calls paid Claude
+@limiter.limit(LLM_HEAVY)  # #183: parse_transcript_text calls paid Claude
 def parse_transcript(email: str):  # noqa: ARG001
     """Extract action-item candidates from a pasted meeting transcript.
 
@@ -200,7 +200,7 @@ def parse_transcript(email: str):  # noqa: ARG001
 
 @bp.post("/transcript/upload")
 @login_required
-@limiter.limit("5 per minute")  # #183: same paid-Claude path as /parse
+@limiter.limit(LLM_HEAVY)  # #183: same paid-Claude path as /parse
 def upload_transcript(email: str):  # noqa: ARG001
     """Extract action-item candidates from an uploaded .md or .txt file.
 

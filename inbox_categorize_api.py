@@ -20,14 +20,14 @@ from flask import Blueprint, jsonify
 
 from auth import login_required
 from inbox_categorize_service import categorize_inbox
-from rate_limit import limiter
+from rate_limit import LLM_HEAVY, limiter
 
 bp = Blueprint("inbox_categorize_api", __name__, url_prefix="/api/inbox")
 
 
 @bp.post("/categorize")
 @login_required
-@limiter.limit("5 per minute")
+@limiter.limit(LLM_HEAVY)
 def categorize(email: str):  # noqa: ARG001
     """Run the auto-categorize pass on the user's INBOX tasks."""
     try:

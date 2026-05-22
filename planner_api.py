@@ -29,7 +29,7 @@ from flask import Blueprint, jsonify, request
 
 from auth import login_required
 from models import Task, db
-from rate_limit import limiter
+from rate_limit import LLM_HEAVY, limiter
 from weekly_planner_service import compute_weekly_plan
 
 bp = Blueprint("planner_api", __name__, url_prefix="/api/planner")
@@ -37,7 +37,7 @@ bp = Blueprint("planner_api", __name__, url_prefix="/api/planner")
 
 @bp.post("/weekly")
 @login_required
-@limiter.limit("5 per minute")
+@limiter.limit(LLM_HEAVY)
 def weekly(email: str):  # noqa: ARG001
     """Generate a Mon–Sun plan for the requested week."""
     body = request.get_json(silent=True) or {}

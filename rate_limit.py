@@ -27,3 +27,20 @@ limiter = Limiter(
     default_limits=["200 per minute"],
     storage_uri="memory://",
 )
+
+# --- Named per-route rate limits (#203) -------------------------------------
+# The rate STRINGS live here so the policy is in one place, not duplicated
+# as magic strings across ~10 @limiter.limit(...) decorators. Each route
+# keeps its own one-line comment explaining the route-specific reason.
+#
+# LLM_HEAVY — routes that fan out to a paid LLM (Claude) or paid email
+#   (SendGrid) on every call: transcript parse/upload, inbox categorize,
+#   weekly planner + focus, digest send.
+LLM_HEAVY = "5 per minute"
+# PAID_API — paid third-party calls with a little more headroom: the
+#   Whisper / Google-Vision-backed upload routes (voice memo, image scan,
+#   reflection audio).
+PAID_API = "20 per minute"
+# OUTBOUND_FETCH — not a paid API; caps a route that holds a worker on a
+#   server-side outbound fetch (tasks url-preview).
+OUTBOUND_FETCH = "30 per minute"
