@@ -184,6 +184,10 @@ def _apply_repeat(task: Task, repeat: dict) -> None:
         "type": task.type.value,
         "frequency": repeat.get("frequency"),
         "day_of_week": repeat.get("day_of_week"),
+        # #171 (2026-05-21): days_of_week was missing — MULTI_DAY_OF_WEEK
+        # templates created via the task-detail repeat panel hit the
+        # required-field check and raised 422.
+        "days_of_week": repeat.get("days_of_week"),
         "day_of_month": repeat.get("day_of_month"),
         "week_of_month": repeat.get("week_of_month"),
         "project_id": str(task.project_id) if task.project_id else None,
@@ -227,6 +231,10 @@ def _update_repeat(task: Task, repeat: dict | None) -> None:
             "type": task.type.value,
             "frequency": repeat.get("frequency"),
             "day_of_week": repeat.get("day_of_week"),
+            # #171 (2026-05-21): days_of_week was missing here too — the
+            # update path dropped it, so editing a MULTI_DAY_OF_WEEK
+            # template through the task-detail panel raised 422.
+            "days_of_week": repeat.get("days_of_week"),
             "day_of_month": repeat.get("day_of_month"),
             "week_of_month": repeat.get("week_of_month"),
             "project_id": str(task.project_id) if task.project_id else None,

@@ -169,28 +169,25 @@ def _nth_weekday_of_month(target_date: date) -> int:
     return (target_date.day - 1) // 7 + 1
 
 
-# --- CRUD --------------------------------------------------------------------
+def _validate_frequency_dependent_fields(
+    frequency: RecurringFrequency,
+    *,
+    day_of_week: int | None,
+    days_of_week: list[int] | None,
+    day_of_month: int | None,
+    week_of_month: int | None,
+) -> None:
+    """Raise ValidationError if a frequency's required dependent fields
+    are missing.
 
-
-def create_recurring(data: dict) -> RecurringTask:
-    """Create a new recurring task template."""
-    title = (data.get("title") or "").strip()
-    if not title:
-        raise ValidationError("title is required", "title")
-
-    frequency = _parse_enum(RecurringFrequency, data.get("frequency"), "frequency")
-    if frequency is None:
-        raise ValidationError("frequency is required", "frequency")
-
-    task_type = _parse_enum(TaskType, data.get("type"), "type")
-    if task_type is None:
-        raise ValidationError("type is required", "type")
-
-    day_of_week = _parse_day_of_week(data.get("day_of_week"))
-    days_of_week = _parse_days_of_week(data.get("days_of_week"))
-    day_of_month = _parse_day_of_month(data.get("day_of_month"))
-    week_of_month = _parse_week_of_month(data.get("week_of_month"))
-
+    #173 (2026-05-21): ``create_recurring`` validated this inline, but
+    ``update_recurring`` was field-at-a-time and never re-checked — so
+    PATCH ``{frequency: "monthly_date"}`` on a template that started
+    ``daily`` (no ``day_of_month``) saved fine, then the 00:05 spawn
+    cron's ``_template_fires_on`` blew up on ``min(None, last_day)``
+    and crashed the WHOLE batch (no per-template isolation). Extracted
+    here so both create + update enforce the same invariant.
+    """
     if (
         frequency in (RecurringFrequency.WEEKLY, RecurringFrequency.DAY_OF_WEEK)
         and day_of_week is None
@@ -213,12 +210,65 @@ def create_recurring(data: dict) -> RecurringTask:
     if frequency == RecurringFrequency.MONTHLY_NTH_WEEKDAY:
         if week_of_month is None:
             raise ValidationError(
-                "week_of_month required for monthly_nth_weekday frequency", "week_of_month"
+                "week_of_month required for monthly_nth_weekday frequency",
+                "week_of_month",
             )
         if day_of_week is None:
             raise ValidationError(
-                "day_of_week required for monthly_nth_weekday frequency", "day_of_week"
+                "day_of_week required for monthly_nth_weekday frequency",
+                "day_of_week",
             )
+
+
+def _validate_date_window(start_date: date | None, end_date: date | None) -> None:
+    """Raise ValidationError if start_date is after end_date.
+
+    #177 (2026-05-21): ``_parse_start_date`` and ``_parse_end_date``
+    validated each field in isolation — there was no cross-field
+    invariant. A user (or voice-memo Claude) creating
+    ``{start_date: 2026-06-01, end_date: 2026-05-01}`` saved fine, and
+    ``_template_fires_on`` then returned False for every date — the
+    template silently never fired. Catch it at write-time instead.
+    """
+    if start_date is not None and end_date is not None and start_date > end_date:
+        raise ValidationError(
+            "start_date must be on or before end_date", "end_date"
+        )
+
+
+# --- CRUD --------------------------------------------------------------------
+
+
+def create_recurring(data: dict) -> RecurringTask:
+    """Create a new recurring task template."""
+    title = (data.get("title") or "").strip()
+    if not title:
+        raise ValidationError("title is required", "title")
+
+    frequency = _parse_enum(RecurringFrequency, data.get("frequency"), "frequency")
+    if frequency is None:
+        raise ValidationError("frequency is required", "frequency")
+
+    task_type = _parse_enum(TaskType, data.get("type"), "type")
+    if task_type is None:
+        raise ValidationError("type is required", "type")
+
+    day_of_week = _parse_day_of_week(data.get("day_of_week"))
+    days_of_week = _parse_days_of_week(data.get("days_of_week"))
+    day_of_month = _parse_day_of_month(data.get("day_of_month"))
+    week_of_month = _parse_week_of_month(data.get("week_of_month"))
+
+    _validate_frequency_dependent_fields(
+        frequency,
+        day_of_week=day_of_week,
+        days_of_week=days_of_week,
+        day_of_month=day_of_month,
+        week_of_month=week_of_month,
+    )
+
+    start_date = _parse_start_date(data.get("start_date"))  # #147
+    end_date = _parse_end_date(data.get("end_date"))  # #101
+    _validate_date_window(start_date, end_date)  # #177
 
     rt = RecurringTask(
         title=title,
@@ -234,8 +284,8 @@ def create_recurring(data: dict) -> RecurringTask:
         checklist=data.get("checklist") if isinstance(data.get("checklist"), list) else None,
         url=data.get("url") or None,
         subtasks_snapshot=_clean_subtasks_snapshot(data.get("subtasks_snapshot")),
-        end_date=_parse_end_date(data.get("end_date")),  # #101
-        start_date=_parse_start_date(data.get("start_date")),  # #147
+        end_date=end_date,  # #101
+        start_date=start_date,  # #147
     )
     db.session.add(rt)
     db.session.commit()
@@ -313,6 +363,31 @@ def update_recurring(rt_id: uuid.UUID, data: dict) -> RecurringTask | None:
     if "start_date" in data:  # #147 (2026-05-02)
         rt.start_date = _parse_start_date(data["start_date"])
 
+    # #173 (2026-05-21): validate the template's RESOLVED state — not
+    # the patch payload — so a frequency change that leaves a required
+    # dependent field missing (e.g. daily → monthly_date with no
+    # day_of_month) is rejected here instead of crashing the 00:05
+    # spawn cron later. Validating the resolved state also catches the
+    # inverse: clearing day_of_month on an already-monthly_date row.
+    #
+    # The validation runs AFTER the field mutations above, so on failure
+    # we must roll back — otherwise the dirty `rt` lingers in the
+    # session and a later flush in the same request would persist a
+    # state we just rejected.
+    try:
+        _validate_frequency_dependent_fields(
+            rt.frequency,
+            day_of_week=rt.day_of_week,
+            days_of_week=rt.days_of_week,
+            day_of_month=rt.day_of_month,
+            week_of_month=rt.week_of_month,
+        )
+        # #177: same cross-field date-window invariant as create_recurring.
+        _validate_date_window(rt.start_date, rt.end_date)
+    except ValidationError:
+        db.session.rollback()
+        raise
+
     db.session.commit()
     return rt
 
@@ -360,6 +435,13 @@ def _template_fires_on(rt: RecurringTask, target: date) -> bool:
         return weekday in (rt.days_of_week or [])
 
     if rt.frequency == RecurringFrequency.MONTHLY_DATE:
+        # #173 (2026-05-21) defense-in-depth: a MONTHLY_DATE template
+        # with no day_of_month is invalid (create/update validation now
+        # rejects it), but if a legacy row slipped through, `min(None,
+        # last_day)` raised TypeError and crashed the whole spawn batch.
+        # Treat a None day_of_month as "never fires" instead of crashing.
+        if rt.day_of_month is None:
+            return False
         # PR63 audit fix #127: clamp to month-end. A user who picks
         # day_of_month=31 (or 30, or 29) used to get silently skipped
         # months — Feb has no 31st, so a "fires on the 31st" template
@@ -389,13 +471,33 @@ def tasks_due_today(*, target_date: date | None = None) -> list[RecurringTask]:
     templates. Now uses the same ``local_today_date`` (DIGEST_TZ) helper
     every other "today" path uses.
     """
+    import logging
+
     from utils import local_today_date
     today = target_date or local_today_date()
+    log = logging.getLogger(__name__)
 
     stmt = select(RecurringTask).where(RecurringTask.is_active.is_(True))
     all_active = list(db.session.scalars(stmt))
 
-    return [rt for rt in all_active if _template_fires_on(rt, today)]
+    # #173 (2026-05-21): per-template try/except so a single malformed
+    # template (e.g. a legacy row with an invalid frequency/field combo
+    # that predates the create+update validation) can't crash the whole
+    # spawn batch — every OTHER template would lose its task that
+    # morning. Skip the bad row, log it loudly so /api/debug/logs
+    # surfaces it, keep going.
+    due: list[RecurringTask] = []
+    for rt in all_active:
+        try:
+            if _template_fires_on(rt, today):
+                due.append(rt)
+        except Exception as e:  # noqa: BLE001
+            log.error(
+                "recurring template %s (%r) raised in _template_fires_on; "
+                "skipping it for %s — %s: %s",
+                rt.id, rt.title, today, type(e).__name__, e,
+            )
+    return due
 
 
 def compute_previews_in_range(
@@ -714,12 +816,19 @@ def create_recurring_template_from_voice_candidate(
     ) else "personal"
 
     # Build the data dict in the same shape create_recurring expects.
+    # #171 (2026-05-21): days_of_week + week_of_month were missing here,
+    # so a voice memo dictating "every Monday Wednesday Friday"
+    # (MULTI_DAY_OF_WEEK) or an Nth-weekday schedule (MONTHLY_NTH_WEEKDAY)
+    # hit create_recurring's required-field check, raised 422, and the
+    # candidate was silently dropped (the caller swallows exceptions).
     data = {
         "title": title,
         "type": type_str,
         "frequency": freq_str,
         "day_of_week": repeat.get("day_of_week"),
+        "days_of_week": repeat.get("days_of_week"),
         "day_of_month": repeat.get("day_of_month"),
+        "week_of_month": repeat.get("week_of_month"),
         "end_date": repeat.get("end_date"),
     }
     # Forward project / goal hints if Claude resolved them.
