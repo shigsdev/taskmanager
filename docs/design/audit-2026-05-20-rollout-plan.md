@@ -194,7 +194,7 @@ drift. Highest priority.
   careful test coverage.
 - **Effort:** M.
 
-### [ ] PR 7 — PATCH status cascades to subtasks (decision B)
+### [x] PR 7 — PATCH status cascades to subtasks (decision B) — SHIPPED 2026-05-21 (SHA 7955e6ec)
 
 - **Item:** #176
 - **Theme:** Detail-panel Save with `status: archived/cancelled` leaves
@@ -432,7 +432,7 @@ pass AND post-deploy validation + prod smoke pass.
 - [x] PR 4 — Recurring template integrity (#171, #173, #177) — shipped 2026-05-21, SHA 660c3ddc, 37/37 prod smoke green
 - [x] PR 5 — Voice-memo goal category mapping (#172) — shipped 2026-05-21, SHA df140a9f, 37/37 prod smoke green
 - [x] PR 6 — Reflection-apply correctness (#174, #181) — shipped 2026-05-21, SHA 1b0c26c0, 37/37 prod smoke green
-- [ ] PR 7 — PATCH status cascades to subtasks (#176)
+- [x] PR 7 — PATCH status cascades to subtasks (#176) — shipped 2026-05-21, SHA 7955e6ec, 37/37 prod smoke green
 - [ ] PR 8 — Recycle purge FK cleanup (#175)
 
 ### Phase 2 — Security + doc
