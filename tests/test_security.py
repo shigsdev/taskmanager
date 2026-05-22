@@ -281,8 +281,19 @@ class TestRateLimiterConfig:
     """Verify rate limiter is configured in the app factory."""
 
     def test_limiter_disabled_in_testing(self, app):
-        """Rate limiter is not applied in TESTING mode."""
+        """Rate limiter enforcement is OFF in tests.
+
+        PR 9 (2026-05-21): the old assertion only checked
+        ``TESTING is True``, which did NOT actually prove rate limiting
+        was inert — the per-route ``@limiter.limit`` decorators enforce
+        even when ``limiter.init_app`` is skipped, and ``RATELIMIT_ENABLED``
+        is only read during ``init_app`` (skipped). conftest flips the
+        Limiter instance's ``enabled`` flag — the one switch the
+        decorator path honours. Assert that, so the test means what it
+        says."""
         assert app.config.get("TESTING") is True
+        import rate_limit
+        assert rate_limit.limiter.enabled is False
 
     def test_limiter_module_exists(self):
         """PR64 #124: limiter lives in rate_limit.py so route blueprints
@@ -335,6 +346,45 @@ class TestRateLimiterConfig:
         source = inspect.getsource(voice_api.upload)
         assert "limiter.limit" in source
         assert "20" in source
+
+    # --- PR 9 (#182/#183/#184): paid / worker-holding routes that the
+    # #124 sweep missed. The limiter is disabled in TESTING (see
+    # test_limiter_disabled_in_testing), so — like the #124 tests above
+    # — these verify the decorator is present via source inspection.
+
+    def test_digest_send_has_per_route_limit(self):
+        """#182: POST /api/digest/send calls paid SendGrid on every
+        hit; a stolen 30-day cookie shouldn't be able to burn quota."""
+        import inspect
+
+        import digest_api
+
+        source = inspect.getsource(digest_api.send_now)
+        assert "limiter.limit" in source
+        assert "5 per minute" in source
+
+    def test_transcript_routes_have_per_route_limit(self):
+        """#183: both transcript routes flow through Claude (paid)."""
+        import inspect
+
+        import import_api
+
+        for fn in (import_api.parse_transcript, import_api.upload_transcript):
+            source = inspect.getsource(fn)
+            assert "limiter.limit" in source, f"{fn.__name__} missing limiter"
+            assert "5 per minute" in source
+
+    def test_url_preview_has_per_route_limit(self):
+        """#184: /api/tasks/url-preview holds a Gunicorn worker for up
+        to 5s per outbound fetch — generous 30/min cap (human-paced
+        legit use) keeps it from being a flood / scan vector."""
+        import inspect
+
+        import tasks_api
+
+        source = inspect.getsource(tasks_api.url_preview)
+        assert "limiter.limit" in source
+        assert "30 per minute" in source
 
 
 # --- No sensitive data leakage ------------------------------------------------

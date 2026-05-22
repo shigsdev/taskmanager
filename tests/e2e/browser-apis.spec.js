@@ -120,30 +120,32 @@ test.describe("Update banner", () => {
 });
 
 test.describe("Logout clears SW cache", () => {
-    test("logout link has click handler that sends CLEAR_CACHE", async ({
+    test("logout is a POST form with the CLEAR_CACHE submit handler", async ({
         page,
     }) => {
-        // Navigate with ?nosw=1 — we only need to verify the click
-        // handler is wired up, not that the SW actually receives it
-        // (the SW tests cover the CLEAR_CACHE message separately)
+        // #185 (2026-05-21): logout is now a POST <form> button, not an
+        // <a> — a GET /logout was a state-mutating-GET CSRF surface.
+        // Navigate with ?nosw=1 — we only verify the handler is wired,
+        // not that the SW receives it (SW tests cover CLEAR_CACHE).
         await page.goto("/?nosw=1");
         await page.waitForLoadState("networkidle");
 
-        // Verify the logout link exists and has the expected href
-        const logoutLink = page.locator('a[href*="/logout"]');
-        await expect(logoutLink).toHaveCount(1);
+        // The logout control is a POST form pointing at /logout, with a
+        // submit button — NOT a GET <a href>.
+        const logoutForm = page.locator('form[action*="/logout"]');
+        await expect(logoutForm).toHaveCount(1);
+        await expect(logoutForm).toHaveAttribute("method", /post/i);
+        await expect(
+            page.locator('form[action*="/logout"] button[type="submit"]'),
+        ).toHaveCount(1);
 
-        // Verify the click handler is attached by checking the base.html
-        // script wires up the event listener on logout links
-        const hasHandler = await page.evaluate(() => {
-            const link = document.querySelector('a[href*="/logout"]');
-            if (!link) return false;
-            // The handler is attached via addEventListener in base.html,
-            // which we can't directly inspect. But we can verify the
-            // script ran by checking the querySelectorAll result
-            const links = document.querySelectorAll('a[href*="/logout"]');
-            return links.length > 0;
-        });
-        expect(hasHandler).toBe(true);
+        // No GET <a href="/logout"> remains — the CSRF surface is gone.
+        await expect(page.locator('a[href*="/logout"]')).toHaveCount(0);
+
+        // base.html wires the CLEAR_CACHE submit handler onto the form.
+        const formPresent = await page.evaluate(
+            () => document.querySelectorAll('form[action*="/logout"]').length > 0,
+        );
+        expect(formPresent).toBe(true);
     });
 });

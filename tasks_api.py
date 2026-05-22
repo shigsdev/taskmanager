@@ -8,6 +8,7 @@ from flask import Blueprint, jsonify, request
 
 from auth import login_required
 from models import Task, TaskStatus, TaskType, Tier
+from rate_limit import limiter
 from task_service import (
     ValidationError,
     bulk_update_tasks,
@@ -302,6 +303,15 @@ def reorder(email: str):  # noqa: ARG001
     if not tier_val or not isinstance(task_ids, list):
         return jsonify({"error": "tier and task_ids required"}), 422
 
+    # #187 (2026-05-21): cap the payload, mirroring bulk_update's 200-id
+    # limit. reorder does N independent get_task() + SET per id, so an
+    # unbounded list eats a worker; MAX_CONTENT_LENGTH alone would allow
+    # ~600k UUIDs through.
+    if len(task_ids) > 200:
+        return jsonify({
+            "error": f"too many task_ids ({len(task_ids)}); max 200 per call",
+        }), 422
+
     try:
         Tier(tier_val)
     except ValueError:
@@ -346,6 +356,7 @@ class _TitleParser(html.parser.HTMLParser):
 
 @bp.post("/url-preview")
 @login_required
+@limiter.limit("30 per minute")  # #184: each call holds a worker on an outbound fetch
 def url_preview(email: str):  # noqa: ARG001
     """Fetch the <title> of a URL server-side and return it.
 

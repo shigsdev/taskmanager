@@ -134,6 +134,52 @@ class TestRequestIdValidation:
             _before_request()
             assert g.request_id == good_id
 
+    def test_control_chars_trigger_fresh_uuid(self, app):
+        """#186 (2026-05-21): the old guard was `raw.isascii()`, which
+        returns True for control chars (\\x00-\\x1f, \\x7f, \\t). Those
+        landed verbatim in app_logs.request_id and could forge a fake
+        log line in a plain-text scan. The strict allowlist rejects
+        them. (\\n / \\r are blocked even earlier — Werkzeug refuses to
+        build a request with a newline in a header value — so they
+        can't reach this code; the non-newline control chars below are
+        the realistic vector the old isascii() guard let through.)"""
+        from flask import g
+
+        from logging_service import _before_request
+
+        for attack in (
+            "abc\x00null",
+            "abc\x7fdel",
+            "abc\x1bescape",
+            "abc\tfake",
+            "has spaces",
+            "semi;colon",
+            "slash/inject",
+        ):
+            with app.test_request_context(
+                "/", headers={"X-Request-ID": attack},
+            ):
+                _before_request()
+                assert g.request_id != attack, (
+                    f"control/unsafe X-Request-ID {attack!r} must be rejected"
+                )
+                assert len(g.request_id) == 36  # fell back to a UUID
+
+    def test_safe_punctuation_in_header_preserved(self, app):
+        """#186: the allowlist still accepts the chars a UUID / sane
+        correlation id legitimately uses — alphanumerics, dot, dash,
+        underscore."""
+        from flask import g
+
+        from logging_service import _before_request
+
+        good_id = "Req_2026-05-21.abc123"
+        with app.test_request_context(
+            "/", headers={"X-Request-ID": good_id},
+        ):
+            _before_request()
+            assert g.request_id == good_id
+
 
 # --- DBLogHandler ------------------------------------------------------------
 

@@ -136,6 +136,11 @@ def bulk_patch(email: str):  # noqa: ARG001
     updates = data.get("updates")
     if not isinstance(ids, list) or not ids:
         return jsonify({"error": "template_ids must be a non-empty list"}), 422
+    # #187 (2026-05-21): 200-id cap, mirroring tasks_api.bulk_update.
+    if len(ids) > 200:
+        return jsonify({
+            "error": f"too many template_ids ({len(ids)}); max 200 per call",
+        }), 422
     if not isinstance(updates, dict) or not updates:
         return jsonify({"error": "updates must be a non-empty dict"}), 422
     try:
@@ -167,6 +172,11 @@ def bulk_delete(email: str):  # noqa: ARG001
     ids = data.get("template_ids")
     if not isinstance(ids, list) or not ids:
         return jsonify({"error": "template_ids must be a non-empty list"}), 422
+    # #187 (2026-05-21): 200-id cap, mirroring tasks_api.bulk_update.
+    if len(ids) > 200:
+        return jsonify({
+            "error": f"too many template_ids ({len(ids)}); max 200 per call",
+        }), 422
     try:
         parsed_ids = [uuid.UUID(s) for s in ids]
     except (TypeError, ValueError):

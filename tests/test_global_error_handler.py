@@ -82,15 +82,22 @@ class TestUncaughtExceptionHandler:
         assert "not verified" in body["error"]
         assert body["type"] == "EgressError"
 
-    def test_sqlalchemy_data_error_returns_422(self, app, authed_client):
-        """SQLAlchemy DataError (wraps psycopg's InvalidTextRepresentation,
-        which is what hit us in #52) should map to 422 with the
-        underlying psycopg message — NOT a blank "Save failed:"."""
+    def test_sqlalchemy_data_error_returns_422_without_leaking_orig(
+        self, app, authed_client,
+    ):
+        """SQLAlchemy DataError still maps to 422, but #189 (2026-05-21):
+        the response must NOT echo the raw psycopg `e.orig` text — that
+        leaks column / constraint / enum names (and sometimes the
+        offending value). #52 originally surfaced it on purpose so the
+        operator could debug; #189 sanitizes it. The full detail is
+        still logged server-side; the operator correlates via the
+        request_id, which is both inline in the message and a
+        top-level response field."""
         from sqlalchemy.exc import DataError
 
         @app.route("/api/_test/dataerror", methods=["GET"])
         def _data_err():  # noqa: ARG001
-            # Simulate the exact #52 failure mode
+            # Simulate the exact #52 failure mode.
             class FakeOrig(Exception):
                 def __str__(self):
                     return "invalid input value for enum projecttype: \"PERSONAL\""
@@ -102,12 +109,14 @@ class TestUncaughtExceptionHandler:
         assert resp.status_code == 422
         body = resp.get_json()
         assert body is not None
-        # The user-facing message must include the actual cause, not a
-        # generic "save failed". This is what would have prevented #52
-        # from blocking the user with a blank error.
-        assert "invalid input value" in body["error"]
-        assert "projecttype" in body["error"]
-        assert "PERSONAL" in body["error"]
+        # The raw psycopg detail must NOT reach the client.
+        assert "invalid input value" not in body["error"]
+        assert "projecttype" not in body["error"]
+        assert "PERSONAL" not in body["error"]
+        # It IS a recognizable DB-error message + correlatable id.
+        assert "Database error" in body["error"]
+        assert "request_id" in body["error"]
+        assert isinstance(body.get("request_id"), str)
 
     def test_response_includes_request_id_when_available(self, app, authed_client):
         """Every error response should include the request_id so the

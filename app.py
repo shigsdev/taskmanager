@@ -520,8 +520,13 @@ def create_app(config: dict | None = None) -> Flask:
             print_date=today,
         )
 
-    @app.route("/logout", methods=["POST", "GET"])
+    @app.route("/logout", methods=["POST"])
     def logout():
+        # #185 (2026-05-21): POST-only. A GET /logout was a
+        # state-mutating-GET — a malicious page with
+        # <img src="https://.../logout"> could silently log the user
+        # out (SameSite=Lax does NOT block top-level cross-origin GET).
+        # The navbar "Log out" control is now a POST <form> button.
         session.clear()
         return redirect(url_for("login_page"))
 

@@ -2194,3 +2194,31 @@ class TestArchivedTaskUnarchiveOnDetailSave:
         # it; archived task stays out of the default list.
         active_titles = [t["title"] for t in authed_client.get("/api/tasks").get_json()]
         assert "x" not in active_titles
+
+
+class TestReorderCapPR9:
+    """#187 (PR 9): /api/tasks/reorder gained the 200-id cap that
+    bulk_update already enforced. reorder does N independent
+    get_task() + SET, so an unbounded payload eats a worker."""
+
+    def test_reorder_over_200_ids_rejected(self, authed_client, app):
+        import uuid as _uuid
+        ids = [str(_uuid.uuid4()) for _ in range(201)]
+        resp = authed_client.post(
+            "/api/tasks/reorder",
+            json={"tier": "today", "task_ids": ids},
+        )
+        assert resp.status_code == 422
+        assert "too many" in resp.get_json()["error"].lower()
+
+    def test_reorder_at_200_ids_not_rejected_by_cap(self, authed_client, app):
+        """Exactly 200 ids must pass the cap check (unknown ids are
+        just no-ops downstream). The cap is the only thing under test."""
+        import uuid as _uuid
+        ids = [str(_uuid.uuid4()) for _ in range(200)]
+        resp = authed_client.post(
+            "/api/tasks/reorder",
+            json={"tier": "today", "task_ids": ids},
+        )
+        if resp.status_code == 422:
+            assert "too many" not in resp.get_json().get("error", "").lower()

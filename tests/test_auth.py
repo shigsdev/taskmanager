@@ -200,11 +200,20 @@ def test_login_page_renders(client):
 def test_logout_clears_session_and_redirects(client):
     with client.session_transaction() as sess:
         sess["something"] = "value"
-    resp = client.get("/logout")
+    # #185 (2026-05-21): logout is POST-only now.
+    resp = client.post("/logout")
     assert resp.status_code == 302
     assert "/login" in resp.headers["Location"]
     with client.session_transaction() as sess:
         assert "something" not in sess
+
+
+def test_logout_get_is_rejected(client):
+    """#185: a GET /logout must NOT clear the session — it was a
+    state-mutating-GET CSRF surface (<img src=.../logout> logs you
+    out). POST-only now → 405 Method Not Allowed."""
+    resp = client.get("/logout")
+    assert resp.status_code == 405
 
 
 def test_healthz_is_public(client):
