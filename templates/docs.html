@@ -318,7 +318,7 @@ https://example.com/foo
             <h3>Modes</h3>
             <ul>
                 <li><strong>Tasks</strong> — candidates land in Inbox after confirmation. One candidate per extracted line.</li>
-                <li><strong>Goals</strong> — candidates become Goal rows with default category=work, priority=should, status=not_started. Edit any on the review screen before confirming.</li>
+                <li><strong>Goals</strong> — candidates become Goal rows. Claude assigns each goal a <strong>category</strong> (one of <code>health</code>, <code>personal_growth</code>, <code>relationships</code>, <code>work</code>, <code>bau</code> — falling back to <code>personal_growth</code> when the text is unclear) and a <strong>priority</strong> (falling back to <code>need_more_info</code>). New goals start <code>status=not_started</code>. Edit any field on the review screen before confirming.</li>
                 <li><strong>Projects</strong> — candidates become Project rows with default type=work, status=not_started, color=per-type default (Work blue / Personal green). Edit any on the review screen before confirming. Same recycle-bin batch undo as the other modes.</li>
             </ul>
 
@@ -540,7 +540,7 @@ Skip this line (too short)</pre>
                 back to the default. Matches are case-insensitive.
             </p>
             <ul>
-                <li><code>category</code>: <code>health</code>, <code>personal_growth</code>, <code>relationships</code>, <code>work</code>. Default: <code>work</code>.</li>
+                <li><code>category</code>: <code>health</code>, <code>personal_growth</code>, <code>relationships</code>, <code>work</code>, <code>bau</code>. Default: <code>work</code>.</li>
                 <li><code>priority</code>: <code>must</code>, <code>should</code>, <code>could</code>, <code>need_more_info</code>. Default: <code>should</code>.</li>
                 <li><code>status</code>: <code>not_started</code>, <code>in_progress</code>, <code>done</code>, <code>on_hold</code>. Default: <code>not_started</code>.</li>
                 <li><code>actions</code>: free-text.</li>

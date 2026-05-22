@@ -497,6 +497,30 @@ class TestParseGoalsFromText:
             assert parse_goals_from_text("   \n  ") == []
 
 
+class TestGoalParsePromptCoversAllCategories:
+    """#206 drift gate: the image goal-parse prompt must enumerate every
+    GoalCategory value, so a future enum addition can't silently drop a
+    category from the scan flow — the exact gap that left ``bau`` out of
+    the prompt for ~a month after #68 added it to the enum."""
+
+    def test_prompt_lists_every_goal_category(self):
+        from scan_service import _GOAL_PARSE_PROMPT
+
+        for cat in GoalCategory:
+            assert f'"{cat.value}"' in _GOAL_PARSE_PROMPT, (
+                f"_GOAL_PARSE_PROMPT omits the {cat.value!r} category — "
+                f"add it so scanned goals can be classified into it"
+            )
+
+    def test_prompt_unclear_fallback_is_a_real_category(self):
+        from scan_service import _GOAL_PARSE_PROMPT
+
+        # The documented "If category is unclear, use X" fallback must
+        # itself be a valid GoalCategory value.
+        assert 'use "personal_growth"' in _GOAL_PARSE_PROMPT
+        assert "personal_growth" in {c.value for c in GoalCategory}
+
+
 # --- Goal creation from candidates -------------------------------------------
 
 

@@ -409,7 +409,7 @@ def parse_excel_goals(file_bytes: bytes) -> list[dict[str, Any]]:
 
     Expected columns (case-insensitive, matched by header row):
     - title (required)
-    - category: health, personal_growth, relationships, work
+    - category: health, personal_growth, relationships, work, bau
     - priority: must, should, could, need_more_info
     - actions: free text
     - target_quarter: e.g. "Q2 2026"

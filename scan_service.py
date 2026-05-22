@@ -252,7 +252,7 @@ GOALS — larger-scope objectives, not daily to-do items.
 
 Each goal must be a JSON object with these keys:
 - title: short goal statement (under 200 characters, required)
-- category: one of "health", "personal_growth", "relationships", "work"
+- category: one of "health", "personal_growth", "relationships", "work", "bau"
 - priority: one of "must", "should", "could", "need_more_info"
 - target_quarter: optional free-text like "Q2 2026", or null
 - actions: optional short string of concrete steps, or null
