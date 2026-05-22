@@ -6,6 +6,21 @@ import pytest
 import auth
 from app import create_app
 from models import db as _db
+from rate_limit import limiter as _limiter
+
+# PR 9 (2026-05-21): rate limiting is a prod concern, exercised in prod
+# — never in unit tests. The per-route `@limiter.limit` decorators are
+# enforced under the test client even though `limiter.init_app` is
+# skipped for TESTING apps (the decorator's own check fires regardless),
+# AND the `RATELIMIT_ENABLED` config key is only consulted during
+# `init_app` — which is skipped — so it can't disable enforcement here.
+# Flipping the Limiter instance's `enabled` flag off is the one switch
+# that the decorator path actually honours. Set once at import; the
+# test process never wants live rate limiting. Without this a test
+# class with more calls to one endpoint than its per-route limit
+# flakes with a 429 (PR 9's tight "5 per minute" transcript limit hit
+# this — TestTranscriptUploadAPI makes 7 calls).
+_limiter.enabled = False
 
 
 @pytest.fixture

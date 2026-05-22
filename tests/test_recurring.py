@@ -1696,3 +1696,41 @@ class TestStartDateSunrise:
         rows = resp.get_json()
         row = next(r for r in rows if r["id"] == rt_id)
         assert row["start_date"] == "2026-05-04"
+
+
+class TestRecurringBulkCapPR9:
+    """#187 (PR 9): recurring_api bulk_patch + bulk_delete gained the
+    200-id cap that tasks_api.bulk_update already enforced — they had
+    none, and MAX_CONTENT_LENGTH alone allows hundreds of thousands of
+    UUIDs through."""
+
+    def test_bulk_patch_over_200_ids_rejected(self, authed_client):
+        import uuid as _uuid
+        ids = [str(_uuid.uuid4()) for _ in range(201)]
+        resp = authed_client.patch(
+            "/api/recurring/bulk",
+            json={"template_ids": ids, "updates": {"is_active": False}},
+        )
+        assert resp.status_code == 422
+        assert "too many" in resp.get_json()["error"].lower()
+
+    def test_bulk_delete_over_200_ids_rejected(self, authed_client):
+        import uuid as _uuid
+        ids = [str(_uuid.uuid4()) for _ in range(201)]
+        resp = authed_client.delete(
+            "/api/recurring/bulk",
+            json={"template_ids": ids},
+        )
+        assert resp.status_code == 422
+        assert "too many" in resp.get_json()["error"].lower()
+
+    def test_bulk_patch_at_200_ids_passes_cap(self, authed_client):
+        """Exactly 200 ids clears the cap (unknown ids → per-id 'not
+        found' downstream, which is fine — the cap is what's tested)."""
+        import uuid as _uuid
+        ids = [str(_uuid.uuid4()) for _ in range(200)]
+        resp = authed_client.patch(
+            "/api/recurring/bulk",
+            json={"template_ids": ids, "updates": {"is_active": False}},
+        )
+        assert resp.status_code == 200

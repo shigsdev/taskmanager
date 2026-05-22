@@ -979,6 +979,10 @@ body {
 .btn-link {
     background: none;
     border: none;
+    /* #185: font-family inherit so a <button class="btn-link"> (the
+       logout control) matches the surrounding <a> nav items rather
+       than falling back to the UA button font. */
+    font-family: inherit;
     color: var(--text-muted);
     font-size: 0.85rem;
     cursor: pointer;
@@ -986,6 +990,10 @@ body {
     padding: 4px 8px;
 }
 .btn-link:hover { color: var(--text); }
+
+/* #185: keep the inline logout <form> from introducing block-level
+   layout in the nav — it should behave like the sibling <a> tabs. */
+.logout-form { display: inline; margin: 0; }
 
 /* === Login / Unauthorized === */
 .login, .unauthorized {

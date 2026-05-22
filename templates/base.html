@@ -66,7 +66,11 @@
             <a href="{{ url_for('print_page') }}" class="nav-tab {% if active_page == 'print' %}active{% endif %}">Print</a>
             <a href="{{ url_for('docs_page') }}" class="nav-tab {% if active_page == 'docs' %}active{% endif %}">Help</a>
             <span class="inbox-badge" id="inboxBadge" title="Inbox items">0</span>
-            <a href="{{ url_for('logout') }}" class="btn-link">Log out</a>
+            {# #185: logout is POST-only (no state-mutating GET). Inline
+               form so the navbar control stays a single "Log out" item. #}
+            <form method="POST" action="{{ url_for('logout') }}" class="logout-form">
+                <button type="submit" class="btn-link" id="logoutBtn">Log out</button>
+            </form>
             {% endblock %}
         </nav>
     </header>
@@ -180,9 +184,11 @@
             });
         })();
     }
-    // Clear SW cache on logout so stale authenticated pages aren't served
-    document.querySelectorAll('a[href*="/logout"]').forEach(function (link) {
-        link.addEventListener("click", function () {
+    // Clear SW cache on logout so stale authenticated pages aren't served.
+    // #185: logout is now a POST <form> — listen on the form's submit
+    // event (fires before navigation) rather than an <a> click.
+    document.querySelectorAll('form[action*="/logout"]').forEach(function (form) {
+        form.addEventListener("submit", function () {
             if (navigator.serviceWorker && navigator.serviceWorker.controller) {
                 navigator.serviceWorker.controller.postMessage({ type: "CLEAR_CACHE" });
             }

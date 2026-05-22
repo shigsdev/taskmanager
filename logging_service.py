@@ -110,6 +110,12 @@ _SCRUB_COMBINED_RE: re.Pattern[str] = re.compile(
     re.IGNORECASE,
 )
 
+# #186 (2026-05-21): the strict allowlist for an accepted client-supplied
+# X-Request-ID. Alphanumerics + the only punctuation a UUID or a sane
+# correlation id ever contains. Rejects control chars (newlines etc.)
+# that `str.isascii()` would have let through — see make_request_id.
+_REQUEST_ID_RE: re.Pattern[str] = re.compile(r"[A-Za-z0-9._\-]+")
+
 
 def _scrub_replace(m: re.Match[str]) -> str:
     """Single dispatcher for the combined scrub regex. PR71 perf #10."""
@@ -406,12 +412,21 @@ def _before_request() -> None:
     ``request_id`` is either a sane ``X-Request-ID`` header value (if
     the caller sent one — useful for log correlation across clients)
     or a freshly minted UUID. We accept the client-supplied value only
-    if it is short (≤64 chars) and ASCII; otherwise we generate our
-    own. Without this filter, any pre-auth caller could inject
-    arbitrary strings of arbitrary length into the app_logs table.
+    if it is short (≤64 chars) and contains nothing but the safe
+    correlation-id character set; otherwise we generate our own.
+
+    #186 (2026-05-21): the old guard was ``raw.isascii()`` — but
+    ``str.isascii()`` returns True for ``\\n``, ``\\r``, ``\\x00``-``\\x1f``
+    and ``\\x7f``. An attacker could send ``X-Request-ID: abc\\nfake-line``
+    and the literal newline landed in ``app_logs.request_id``, then got
+    concatenated into the ``combined`` field on ``/api/debug/logs`` —
+    forging what looks like a separate log line in a plain-text scan.
+    PR62's #24 fix scrubbed control chars from the client-error path
+    but missed this one. Now: a strict allowlist (alphanumerics + the
+    three punctuation chars a UUID / sane correlation id ever uses).
     """
     raw = request.headers.get("X-Request-ID", "")
-    if raw and len(raw) <= 64 and raw.isascii():
+    if raw and len(raw) <= 64 and _REQUEST_ID_RE.fullmatch(raw):
         g.request_id = raw
     else:
         g.request_id = str(uuid.uuid4())

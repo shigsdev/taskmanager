@@ -153,9 +153,10 @@ def _shape_message(e: Exception) -> str:
 
     - ``EgressError`` (egress.safe_call_api wrapper): the message is
       already vendor + status + sanitized detail. Pass through.
-    - ``sqlalchemy.exc.DataError``: usually wraps a Postgres data-type
-      failure (e.g. invalid enum value — bug #52). Strip the SQL-context
-      noise; surface the underlying psycopg message.
+    - ``sqlalchemy.exc.DataError`` / ``IntegrityError`` etc.: a generic
+      "Database error" string + the request_id, so the operator can
+      correlate to the full detail in the server logs. We deliberately
+      do NOT echo ``e.orig`` (the raw psycopg message) — see #189.
     - Anything else: ``"<TypeName>: <safe excerpt>"``. We do NOT include
       the full str(e) because it can include SQL fragments, file paths,
       or vendor query strings.
@@ -165,14 +166,24 @@ def _shape_message(e: Exception) -> str:
     if type_name == "EgressError":
         return str(e)
 
-    # SQLAlchemy DataError / IntegrityError / ProgrammingError — surface
-    # the orig (the underlying psycopg error message), trimmed.
+    # SQLAlchemy DataError / IntegrityError / ProgrammingError.
     orig = getattr(e, "orig", None)
     if orig is not None:
-        # SQLAlchemy wraps the psycopg exception in `e.orig`. The
-        # diagnostic message is usually the first line.
-        first_line = str(orig).split("\n", 1)[0].strip()
-        return f"Database error: {first_line[:200]}"
+        # #189 (2026-05-21): the old code returned the first line of
+        # `e.orig` — the raw Postgres diagnostic, which leaks column
+        # names, constraint names, and sometimes the offending value to
+        # the client. #52 added that on purpose so the operator could
+        # see *why* a save failed, but it's a real information-leak if
+        # the threat model ever widens past single-user. The full
+        # `e.orig` is still logged server-side by the global handler;
+        # the operator looks it up via
+        # `/api/debug/logs?search=<request_id>`. The request_id is also
+        # a top-level field on the error response — included inline
+        # here too so it survives a bare toast/alert.
+        return (
+            f"Database error — full detail is in the server logs "
+            f"(request_id: {_request_id()})"
+        )
 
     # Default: short class + first 200 chars of message
     msg = str(e).split("\n", 1)[0].strip()[:200]
