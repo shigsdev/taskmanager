@@ -1807,19 +1807,26 @@ body {
         border: none;
         padding: 4px 0;
     }
-    .auto-categorize-table td::before {
-        content: attr(class);
-        display: inline-block;
+    /* #209: per-cell label for the mobile stacked layout. Shown only
+       on cells carrying an explicit data-label (set in
+       inbox_categorize.js) — the title + apply cells have none, so
+       they render label-free. The old rule used `content: attr(class)`
+       which dumped raw class names ("AUTO-CATEGORIZE-TIER") and, on
+       the title cell, rendered a stray label that a lower-specificity
+       `display:none` failed to suppress — the title overlapped it. */
+    .auto-categorize-table td[data-label]::before {
+        content: attr(data-label);
+        display: block;
         font-size: 0.7rem;
         text-transform: uppercase;
+        letter-spacing: 0.04em;
         color: var(--text-muted);
-        width: 60px;
+        margin-bottom: 2px;
     }
     .auto-categorize-title {
         max-width: 100%;
         font-weight: 500;
     }
-    .auto-categorize-title::before { display: none; }
 }
 
 /* #12 — triage suggestions panel above the weekly-review card. Hidden

@@ -122,12 +122,18 @@
     function renderRow(s) {
         var tr = document.createElement("tr");
         tr.dataset.taskId = s.task_id;
+        // The 4th td() arg is the mobile stacked-layout label (becomes
+        // data-label → rendered by the CSS ::before). The title + apply
+        // cells get none — the title is self-evident, the apply button
+        // needs no label. #209: this replaced `content: attr(class)`,
+        // which dumped raw class names ("AUTO-CATEGORIZE-TIER") and,
+        // worse, rendered a stray label over the title cell.
         tr.appendChild(td(textNode(s.title), "auto-categorize-title", s.reason));
-        tr.appendChild(td(tierSelect(s.suggested_tier), "auto-categorize-tier"));
-        tr.appendChild(td(projectSelect(s.suggested_project_id, s.suggested_type), "auto-categorize-project"));
-        tr.appendChild(td(goalSelect(s.suggested_goal_id, s.suggested_type), "auto-categorize-goal"));
-        tr.appendChild(td(dueInput(s.suggested_due_date, s.suggested_tier), "auto-categorize-due"));
-        tr.appendChild(td(typeSelect(s.suggested_type), "auto-categorize-type"));
+        tr.appendChild(td(tierSelect(s.suggested_tier), "auto-categorize-tier", null, "Tier"));
+        tr.appendChild(td(projectSelect(s.suggested_project_id, s.suggested_type), "auto-categorize-project", null, "Project"));
+        tr.appendChild(td(goalSelect(s.suggested_goal_id, s.suggested_type), "auto-categorize-goal", null, "Goal"));
+        tr.appendChild(td(dueInput(s.suggested_due_date, s.suggested_tier), "auto-categorize-due", null, "Due"));
+        tr.appendChild(td(typeSelect(s.suggested_type), "auto-categorize-type", null, "Type"));
         tr.appendChild(td(rowApplyBtn(), "auto-categorize-actions"));
 
         // User-reported 2026-05-12: clicking Personal in the Type
@@ -204,10 +210,13 @@
         });
     }
 
-    function td(child, cls, titleAttr) {
+    function td(child, cls, titleAttr, label) {
         var el = document.createElement("td");
         if (cls) { el.className = cls; }
         if (titleAttr) { el.title = titleAttr; }
+        // #209: data-label drives the mobile stacked-layout cell label
+        // (CSS ::before). Cells without one render with no label.
+        if (label) { el.dataset.label = label; }
         el.appendChild(child);
         return el;
     }
