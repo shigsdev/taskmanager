@@ -212,7 +212,7 @@ drift. Highest priority.
 - **Risk:** Low. Client-only logic change.
 - **Effort:** S.
 
-### [ ] PR 8 — Recycle purge FK cleanup (migration)
+### [x] PR 8 — Recycle purge FK cleanup (migration) — SHIPPED 2026-05-21 (SHA dfc9902e)
 
 - **Item:** #175
 - **Theme:** `recycle_service.purge_batch` nulls Task.project_id +
@@ -433,7 +433,7 @@ pass AND post-deploy validation + prod smoke pass.
 - [x] PR 5 — Voice-memo goal category mapping (#172) — shipped 2026-05-21, SHA df140a9f, 37/37 prod smoke green
 - [x] PR 6 — Reflection-apply correctness (#174, #181) — shipped 2026-05-21, SHA 1b0c26c0, 37/37 prod smoke green
 - [x] PR 7 — PATCH status cascades to subtasks (#176) — shipped 2026-05-21, SHA 7955e6ec, 37/37 prod smoke green
-- [ ] PR 8 — Recycle purge FK cleanup (#175)
+- [x] PR 8 — Recycle purge FK cleanup (#175) — shipped 2026-05-21, SHA dfc9902e, 37/37 prod smoke green
 
 ### Phase 2 — Security + doc
 - [ ] PR 9 — Security hardening sweep (#182, #183, #184, #185, #186, #187, #189)
