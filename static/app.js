@@ -1825,14 +1825,40 @@ async function taskDelete(id) {
 }
 
 // Backlog #25: mark a task cancelled with an optional reason.
+// #176 (2026-05-21): route through POST /api/tasks/<id>/cancel — the
+// mirror of /complete — instead of a plain PATCH {status:cancelled}.
+// The old PATCH set the parent's status but left open subtasks ACTIVE
+// under a cancelled parent (orphaned). /cancel cascades to subtasks.
+// Mirrors taskComplete's open-subtask prompt.
 async function taskCancel(id, reason) {
-    await apiFetch(`${API}/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-            status: "cancelled",
-            cancellation_reason: reason || null,
-        }),
-    });
+    const task = allTasks.find((t) => t.id === id);
+    try {
+        if (task && task.subtask_count > task.subtask_done) {
+            const open = task.subtask_count - task.subtask_done;
+            const ok = confirm(
+                `This task has ${open} open subtask(s).\n\nCancel all subtasks too?`
+            );
+            if (!ok) return;
+            await apiFetch(`${API}/${id}/cancel`, {
+                method: "POST",
+                body: JSON.stringify({
+                    cancel_subtasks: true,
+                    cancellation_reason: reason || null,
+                }),
+            });
+        } else {
+            // No open subtasks (or task not on the active board) — the
+            // server still raises 422 if it turns out there ARE open
+            // subtasks, which is safer than silently orphaning them.
+            await apiFetch(`${API}/${id}/cancel`, {
+                method: "POST",
+                body: JSON.stringify({ cancellation_reason: reason || null }),
+            });
+        }
+    } catch (err) {
+        alert("Cancel failed: " + (err.message || err));
+        return;
+    }
     await loadTasks();
     loadCancelledTasks();
 }
