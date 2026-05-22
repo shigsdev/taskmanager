@@ -130,7 +130,9 @@ class TestArchitectureRoute:
         # The known table headings (each db.Model gets a card)
         assert "<h4>tasks" in body
         assert "<h4>goals" in body
-        assert "<h4>flask_dance_oauth" in body
+        # #188 (2026-05-22): there is NO flask_dance_oauth table —
+        # Flask-Dance uses session storage. It must NOT render a card.
+        assert "<h4>flask_dance_oauth" not in body
 
     def test_fk_columns_get_fk_badge(self, authed_client):
         """#44: foreign-key columns in the per-table cards get a
@@ -224,8 +226,30 @@ class TestBuildPerTableSchema:
             out = build_per_table_schema()
         names = {e["name"] for e in out}
         for known in ("tasks", "goals", "projects", "recurring_tasks",
-                      "app_logs", "import_log", "flask_dance_oauth"):
+                      "app_logs", "import_log"):
             assert known in names, f"missing table {known!r} in per-table schema"
+        # #188 (2026-05-22): flask_dance_oauth is NOT a real table —
+        # removed from _SCHEMA_DESCRIPTIONS. It must not surface here.
+        assert "flask_dance_oauth" not in names
+
+    def test_every_per_table_entry_is_a_real_model_table(self, app):
+        """#188 drift gate: every per-table-schema entry must correspond
+        to an actual db.Model table. The fictional flask_dance_oauth
+        entry violated this — guard so it can't creep back."""
+        from architecture_service import build_per_table_schema
+        from models import db
+        with app.app_context():
+            out = build_per_table_schema()
+            real_tables = {
+                m.local_table.name
+                for m in db.Model.registry.mappers
+                if m.local_table is not None
+            }
+        for e in out:
+            assert e["name"] in real_tables, (
+                f"per-table schema lists {e['name']!r} but it is not a "
+                f"db.Model table"
+            )
 
     def test_each_entry_has_required_fields(self, app):
         from architecture_service import build_per_table_schema

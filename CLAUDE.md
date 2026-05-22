@@ -748,7 +748,7 @@ as ✅ done / ⏭️ N/A:
 | Any code reading or writing env vars | README.md env-var table; `.env.example`; `scripts/docs_sync_check.py` passes (it will catch missed README rows) |
 | A new file-upload endpoint | Use `utils.validate_upload(request, field_name=..., allowed_mime=..., max_bytes=...)` (ADR-025) — handles MIME whitelist with codec-param normalization (incl. iOS Safari colon quirk), size check, empty-file guard, and consistent 400/413/422 error shapes. `MAX_CONTENT_LENGTH` covers the global cap; the helper's `max_bytes` is a tighter per-endpoint refinement. Add oversize + empty + bad-MIME tests at the route level. |
 | A new external API caller (Whisper, Claude, Vision, etc.) | Route through `egress.safe_call_api(url=..., headers=..., vendor=...)` — never raw `requests.post` (ADR-023). Key goes in `Authorization` or vendor-specific header NEVER in URL query string (ADR-007); `scrub_sensitive` regex covers the key format; add a `test_strips_<vendor>_key` test in test_logging.py. If the URL is user-controlled, use `egress.safe_fetch_user_url` instead (SSRF defense per ADR-006). |
-| A new HTTP route that mutates state | `@login_required` (real OAuth — validator cookie won't authenticate POST/PATCH/DELETE/PUT); rate-limited if user-controlled; input validated; CSRF not strictly needed (single-user) but think about it |
+| A new HTTP route that mutates state | `@login_required` (real OAuth — validator cookie won't authenticate POST/PATCH/DELETE/PUT); **declare it POST/PATCH/DELETE/PUT only — NEVER add GET to a `methods=[...]` list on a state-mutating route** (#190). A state-mutating GET is a CSRF surface: `SameSite=Lax` does NOT block top-level cross-origin GETs, so a malicious page's `<img src="https://app/that-route">` silently fires it. This is exactly what #185 fixed on `/logout`. If a mutating action genuinely needs to be reachable from a plain link, make the link a POST `<form>` button. Also: rate-limited if user-controlled (`@limiter.limit(...)` per ADR — see the rate-limit cascade row); input validated; CSRF token not strictly needed (single-user) but think about it |
 | A new HTTP route that reads state | `@login_required`; validator cookie WILL authenticate it on GET — that's intentional but document if the route exposes anything sensitive |
 | A new static asset (CSS/JS/icon) | `static/sw.js` `APP_SHELL` includes it; `health.py` `EXPECTED_STATIC_FILES` includes it; bump `CACHE_VERSION` |
 | A new HTML template / route renderer | Add to nav in `base.html` if user-visible (or capture-bar button if quick-action); set `active_page`; **Phase 6 manual regression** at desktop + mobile — bandit/Playwright don't substitute; **also update `ARCHITECTURE.md`** — new routes change topology and must appear in the Components + Data Flows sections AND the Route catalog (`scripts/arch_sync_check.py` enforces this via `run_all_gates.sh` — your commit will fail without the catalog update). The `/architecture` page (#42) re-renders ARCHITECTURE.md inline AND auto-generates the route catalog from `app.url_map`, so updating ARCHITECTURE.md flows to the live page automatically — no double-write needed for those bits. |
@@ -777,8 +777,17 @@ external APIs, logging, or anything that handles user-controllable input.
 This app is a **single-user personal tool** with:
 
 - One authorized email (configured via `AUTHORIZED_EMAIL`)
-- OAuth session cookies (Google) as the primary auth mechanism, 24h
-  sliding expiry
+- OAuth session cookies (Google) as the primary auth mechanism,
+  **30-day sliding expiry** (`PERMANENT_SESSION_LIFETIME` in `app.py`).
+  Originally 24h; widened to 30 days on 2026-05-05 after the user
+  reported being forced to re-auth ~hourly. The trade-off: a stolen
+  laptop / stolen cookie stays valid for up to a month rather than a
+  day — accepted because the device is the user's personal machine
+  and `AUTHORIZED_EMAIL` still gates every request. OAuth identity is
+  held in the signed (not encrypted) Flask session cookie —
+  Flask-Dance uses its default session storage, there is NO
+  `flask_dance_oauth` DB table and no Fernet-encrypted token column
+  (#188 corrected the docs that claimed otherwise)
 - A long-lived signed validator cookie (`validator_token`) for
   automation — read-only access via the `login_required` GET branch
 - External API keys for Google (Vision, OAuth), OpenAI (Whisper),

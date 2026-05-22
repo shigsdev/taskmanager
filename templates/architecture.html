@@ -256,12 +256,10 @@ flowchart LR
                         <td>One import batch (for recycle-bin undo)</td>
                         <td>Tasks/goals created by an import reference it</td>
                     </tr>
-                    <tr class="group-auth">
-                        <td>flask_dance_oauth</td>
-                        <td>Stored Google OAuth tokens (managed by Flask-Dance)</td>
-                        <td>One stored auth token</td>
-                        <td>—</td>
-                    </tr>
+                    {# #188 (2026-05-22): the `flask_dance_oauth` row was
+                       removed — no such table exists. Flask-Dance uses its
+                       default session storage; OAuth identity lives in the
+                       signed Flask session cookie, not a DB row. #}
                 </tbody>
             </table>
 
@@ -674,10 +672,10 @@ flowchart TD
     Verify -- Invalid/expired --> OAuth
     Verify -- Valid + email matches --> In2([Logged in<br/>via validator cookie])
 
-    OAuth{Google OAuth session?<br/>flask-dance + flask_dance_oauth table}
+    OAuth{Google OAuth session?<br/>flask-dance · session storage}
     OAuth -- No --> Redirect[Redirect to /login/google]
     Redirect --> Callback[Google callback]
-    Callback --> Token[Token stored in<br/>flask_dance_oauth table]
+    Callback --> Token[Token held in signed<br/>Flask session cookie]
     Token --> Userinfo[google.get oauth2/v2/userinfo<br/>get email]
     Userinfo --> Cache[Cache email in signed<br/>session auth_email · ADR-032]
     Cache --> EmailCheck
