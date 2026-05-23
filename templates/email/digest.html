@@ -19,29 +19,7 @@
           </td>
         </tr>
 
-        <!-- Overdue (first; only if any) -->
-        {% if overdue %}
-        <tr>
-          <td style="padding:18px 24px 8px;border-left:4px solid #dc2626;background:#fef2f2;">
-            <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#b91c1c;">Overdue · {{ overdue|length }}</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:0 24px 16px;border-left:4px solid #dc2626;background:#fef2f2;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-              {% for t in overdue %}
-              <tr>
-                <td style="padding:8px 0;border-top:1px solid #fee2e2;font-size:14px;line-height:1.4;color:#1f2937;">
-                  <div style="font-weight:500;">{{ t.title }}</div>
-                  <div style="font-size:12px;color:#991b1b;margin-top:2px;">due {{ t.due_date_pretty }}{% if t.project %} · {{ t.project }}{% endif %}{% if t.goal %} · Goal: {{ t.goal }}{% endif %}</div>
-                </td>
-              </tr>
-              {% endfor %}
-            </table>
-          </td>
-        </tr>
-        {% endif %}
-
+        <!-- Today (#212: moved to lead the digest; Overdue trailer is now at the bottom). -->
         <!-- Today -->
         <tr>
           <td style="padding:18px 24px 8px;">
@@ -137,6 +115,30 @@
             </table>
           </td>
         </tr>
+
+        <!-- Overdue trailer (#212: moved to END so the morning opens
+             forward-looking; only emitted when there IS overdue). -->
+        {% if overdue %}
+        <tr>
+          <td style="padding:18px 24px 8px;border-top:1px solid #e5e7eb;border-left:4px solid #dc2626;background:#fef2f2;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#b91c1c;">⚠ Overdue · {{ overdue|length }}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 24px 16px;border-left:4px solid #dc2626;background:#fef2f2;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              {% for t in overdue %}
+              <tr>
+                <td style="padding:8px 0;border-top:1px solid #fee2e2;font-size:14px;line-height:1.4;color:#1f2937;">
+                  <div style="font-weight:500;">{{ t.title }}</div>
+                  <div style="font-size:12px;color:#991b1b;margin-top:2px;">due {{ t.due_date_pretty }}{% if t.project %} · {{ t.project }}{% endif %}{% if t.goal %} · Goal: {{ t.goal }}{% endif %}</div>
+                </td>
+              </tr>
+              {% endfor %}
+            </table>
+          </td>
+        </tr>
+        {% endif %}
 
         <!-- CTA -->
         {% if app_url %}

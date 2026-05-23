@@ -255,8 +255,10 @@ class TestDigestHtml:
         assert "<script>evil" not in html
         assert "&lt;script&gt;evil" in html
 
-    def test_html_overdue_appears_before_today(self, app):
-        """Reorder per feature design: most urgent items at the top."""
+    def test_html_today_appears_before_overdue(self, app):
+        """#212 (2026-05-23): Today leads the digest; Overdue moved to a
+        warning-style trailer at the END so the morning opens
+        forward-looking. Inversion of the prior order."""
         from digest_service import build_digest_html
 
         with app.app_context():
@@ -267,7 +269,7 @@ class TestDigestHtml:
             )
             _make_task(title="Today Y", tier=Tier.TODAY)
             html = build_digest_html()
-        assert html.index("Overdue X") < html.index("Today Y")
+        assert html.index("Today Y") < html.index("Overdue X")
 
     def test_html_cta_uses_app_url_when_set(self, app, monkeypatch):
         from digest_service import build_digest_html
@@ -390,9 +392,11 @@ class TestSafeAppUrl:
 
 
 class TestDigestPlainTextOrder:
-    """Plain-text digest reorders Overdue ahead of Today (mirrors HTML)."""
+    """#212 (2026-05-23): plain-text digest leads with TODAY'S TASKS;
+    OVERDUE is now a warning-style trailer at the END (and only
+    emitted when there IS overdue). Mirrors the HTML order."""
 
-    def test_overdue_section_appears_before_today_section(self, app):
+    def test_today_section_appears_before_overdue_section(self, app):
         from digest_service import build_digest
 
         with app.app_context():
@@ -403,7 +407,11 @@ class TestDigestPlainTextOrder:
             )
             _make_task(title="Today work", tier=Tier.TODAY)
             body = build_digest()
-        assert body.index("OVERDUE") < body.index("TODAY'S TASKS")
+        # Today leads; OVERDUE trails.
+        assert body.index("TODAY'S TASKS") < body.index("OVERDUE")
+        # The Overdue trailer carries a ⚠ marker so it reads as a
+        # warning, not as a fresh top-of-digest section.
+        assert "⚠ OVERDUE" in body
 
 
 class TestDigestMultipart:

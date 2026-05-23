@@ -181,25 +181,17 @@ def _build_digest_data(target_date: date | None = None) -> dict[str, Any]:
 def build_digest(*, target_date: date | None = None) -> str:
     """Build the plain-text digest body (multipart fallback).
 
-    Order: Overdue → Today → Also due today → Goals → Stats → Footer.
-    Overdue is surfaced first because the most urgent items deserve top
-    placement; older versions buried it below Today.
+    Order (#212, user-flagged 2026-05-23):
+        Today → Also due today → Goals → Stats → ⚠ Overdue → Footer.
+
+    Today's tasks lead because that's what the user is about to act on
+    when they open the email. Overdue moved to the END (warning-style,
+    only emitted when there IS overdue) so the morning starts forward-
+    looking instead of relitigating the past. Older versions surfaced
+    Overdue first; the user prefers the focus-forward order.
     """
     data = _build_digest_data(target_date)
     lines = [f"TASK DIGEST — {data['day_str']}", ""]
-
-    if data["overdue"]:
-        lines.append(f"OVERDUE ({len(data['overdue'])})")
-        for t in data["overdue"]:
-            line = f"[ ] {t['title']}"
-            if t["due_date_iso"]:
-                line += f" — due {t['due_date_iso']}"
-            if t["project"]:
-                line += f" ({t['project']})"
-            if t["goal"]:
-                line += f" [Goal: {t['goal']}]"
-            lines.append(line)
-        lines.append("")
 
     lines.append(f"TODAY'S TASKS ({len(data['today'])})")
     if data["today"]:
@@ -232,6 +224,23 @@ def build_digest(*, target_date: date | None = None) -> str:
         f"{data['cancelled_recent']} cancelled"
     )
     lines.append("")
+
+    # #212: Overdue moved to the END as a warning-style trailer, and
+    # ONLY emitted when there IS overdue — an empty overdue block here
+    # would be pure visual noise (the whole point of the reorder).
+    if data["overdue"]:
+        lines.append(f"⚠ OVERDUE ({len(data['overdue'])})")
+        for t in data["overdue"]:
+            line = f"[ ] {t['title']}"
+            if t["due_date_iso"]:
+                line += f" — due {t['due_date_iso']}"
+            if t["project"]:
+                line += f" ({t['project']})"
+            if t["goal"]:
+                line += f" [Goal: {t['goal']}]"
+            lines.append(line)
+        lines.append("")
+
     lines.append("---")
 
     if data["app_url"]:
