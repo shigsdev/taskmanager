@@ -59,6 +59,24 @@
         applyAllBtn.style.display = "none";
         rowsEl.innerHTML = "";
 
+        // #211: re-sync the board's task cache BEFORE asking the
+        // server to categorize. The Auto-categorize button visibility
+        // is driven by what's rendered under the Inbox panel — if the
+        // user moved/completed inbox items in another tab/device, the
+        // cards on screen are stale, the visible inbox still looks
+        // populated, and the server (correctly) returns count=0,
+        // which surfaces as a confusing "Inbox is empty" message.
+        // Fetching first makes the visible state match the server's
+        // truth before the modal opens.
+        if (typeof window.loadTasks === "function") {
+            try { await window.loadTasks(); } catch (_) { /* non-fatal */ }
+            // Re-run the button-visibility check so the button hides
+            // itself if the refresh emptied the Inbox panel.
+            if (typeof window.updateAutoCategorizeBtn === "function") {
+                window.updateAutoCategorizeBtn();
+            }
+        }
+
         // Fetch the projects + goals lists so the dropdowns can offer
         // overrides even when Claude's suggested ID matches one of them.
         try {
