@@ -1,0 +1,60 @@
+# Weekly dependency-advisory check (#210).
+#
+# Runs every Monday at 13:00 UTC. Re-runs the same pip-audit + npm
+# audit checks `scripts/run_all_gates.sh` runs on every commit — but
+# on a schedule, so a CVE published against an unchanged dependency
+# between commits is caught proactively (the on-commit gate only fires
+# when someone is shipping; it can be weeks between ships).
+#
+# Setup: no new secrets. Reuses SENDGRID_API_KEY (secret) +
+# DIGEST_FROM_EMAIL + DIGEST_TO_EMAIL (vars) — same set the
+# daily-backup workflow already wires up.
+#
+# Manual trigger via the Actions UI ("workflow_dispatch") for one-off
+# verification.
+name: Weekly advisory check
+
+on:
+  schedule:
+    # Mondays 13:00 UTC ≈ 08:00 ET (EST) / 09:00 ET (EDT). Early in
+    # the work week so a finding lands before the day's planning.
+    - cron: "0 13 * * 1"
+  workflow_dispatch: {}
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install pip-audit + dev deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pip-audit
+          # -r requirements-dev.txt itself -r-includes requirements.txt,
+          # so this resolves the full runtime + dev tree pip-audit will
+          # then scan.
+          python -m pip install -r requirements-dev.txt
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install npm deps
+        run: npm ci
+
+      - name: Run advisory check
+        env:
+          SENDGRID_API_KEY:  ${{ secrets.SENDGRID_API_KEY }}
+          DIGEST_FROM_EMAIL: ${{ vars.DIGEST_FROM_EMAIL }}
+          DIGEST_TO_EMAIL:   ${{ vars.DIGEST_TO_EMAIL }}
+        run: python scripts/check_advisories.py
