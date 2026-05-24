@@ -1087,3 +1087,49 @@ test.describe("Auto-categorize Inbox: project dropdown labels", () => {
         }
     });
 });
+
+test.describe("Tier board horizontal overflow (#216 / #138 D-B1)", () => {
+    // Sibling of the prod-smoke "/calendar does not horizontally overflow"
+    // test, but for the home board. Runs in BOTH chromium (desktop 1280×800)
+    // and chromium-mobile (375×812) — those two projects run the same test
+    // files, so this test gives us pre-deploy coverage at both viewports.
+    //
+    // #216 (2026-05-24): `.tier-board` had no explicit
+    // `grid-template-columns` at <900px → implicit single track sized to
+    // MAX-CONTENT → `.task-card .task-quick-actions` (flex-shrink:0, holds
+    // 5+ tier buttons) extended the track ~190px past a 375px viewport.
+    // Fix: `grid-template-columns: minmax(0, 1fr)` (default) + `minmax(0,1fr)
+    // minmax(0,1fr)` at (min-width: 900px). The classic #138 D-B1 pattern.
+    test("home board scrollWidth ≤ innerWidth (current viewport)", async ({ page }) => {
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator(".tier-board")).toBeVisible();
+        // Need at least one task card on the board for the assertion to
+        // be meaningful — quick-actions only render on task-card rows.
+        const cardCount = await page.locator(".tier-board .task-card").count();
+        if (cardCount === 0) test.skip(true, "Seeded data has no tasks on the board.");
+        const overflow = await page.evaluate(() => {
+            const wide = [];
+            const iw = window.innerWidth;
+            for (const el of document.querySelectorAll("*")) {
+                const r = el.getBoundingClientRect();
+                if (r.right > iw + 1 && r.width > 30) {
+                    wide.push({
+                        tag: el.tagName,
+                        cls: (el.className + "").slice(0, 60),
+                        id: el.id,
+                        w: Math.round(r.width),
+                        right: Math.round(r.right),
+                    });
+                    if (wide.length >= 6) break;
+                }
+            }
+            return {
+                scrollWidth: document.documentElement.scrollWidth,
+                innerWidth: iw,
+                wide,
+            };
+        });
+        expect(overflow.scrollWidth, JSON.stringify(overflow)).toBeLessThanOrEqual(overflow.innerWidth);
+    });
+});

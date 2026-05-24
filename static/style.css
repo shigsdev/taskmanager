@@ -416,7 +416,15 @@ body {
 /* === Day strip (#73) === */
 .day-strip {
     display: grid;
-    grid-template-columns: repeat(12, 1fr);
+    /* #216 (2026-05-24): D-B1 again (per #138). `repeat(12, 1fr)` lets
+       each track size to MAX-CONTENT, so 12 cells × ~28px min-content
+       blew past a 375px viewport even though the parent is constrained.
+       `minmax(0, 1fr)` forces each track to the equal-share width
+       and lets the cell content overflow inside the cell instead of
+       widening the row. Found while diagnosing the home board overflow
+       reported as #216 — `.tier-board` fix alone left 24px residual
+       overflow on / at 375px from this strip. */
+    grid-template-columns: repeat(12, minmax(0, 1fr));
     gap: 4px;
     padding: 8px 16px;
     max-width: 1200px;
@@ -454,11 +462,27 @@ body {
     padding: 16px;
     max-width: 1200px;
     margin: 0 auto;
+    /* #216 (2026-05-24): D-B1 class fix (per #138). Without an
+       explicit `grid-template-columns: minmax(0, ...)`, the implicit
+       single-column track at mobile sizes to MAX-CONTENT — so a card
+       child with `.task-quick-actions { flex-shrink: 0 }` (the 5+
+       tier buttons "Today / Tomorrow / This Week / Next Week /
+       Backlog") expands the track past the viewport, pushing every
+       `.tier` and `.task-card` ~190px past the right edge of a 375px
+       phone. User-reported 2026-05-24 ("UI in mobile" — scrolling
+       down revealed horizontal overflow). `minmax(0, 1fr)` constrains
+       the track to the parent's width and forces the flex-wrap on
+       quick-actions to actually kick in; verified live in Phase 6
+       (card width 565→337px in a 375px clamped container; document
+       overflow eliminated). */
+    grid-template-columns: minmax(0, 1fr);
 }
 
 @media (min-width: 900px) {
     .tier-board {
-        grid-template-columns: 1fr 1fr;
+        /* #216: minmax(0, 1fr) instead of plain 1fr — same #138 D-B1
+           reasoning for the two-column desktop layout. */
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     }
     .tier[data-tier="inbox"] {
         grid-column: 1 / -1;
@@ -2357,6 +2381,17 @@ body {
         scrollbar-width: none;          /* Firefox */
         flex-wrap: nowrap;
         white-space: nowrap;
+        /* #216 (2026-05-24): also D-B1 — as a flex child of .nav with
+           `flex-wrap: nowrap`, .nav-links inherits the default
+           `min-width: auto` (= min-content). For 15 nav-tabs at ~40px
+           each that's ~620px, which defeats the `overflow-x: auto`
+           above: the container itself widens to fit min-content,
+           pushing the page's document.scrollWidth past the viewport
+           instead of scrolling internally. `min-width: 0` lets the
+           container shrink to its flex track width so the overflow
+           actually scrolls in-place. Caught by the new pages.spec.js
+           "Tier board horizontal overflow" mobile assertion. */
+        min-width: 0;
     }
     .nav-links::-webkit-scrollbar { display: none; }  /* Chrome/Safari */
     .nav-tab {

@@ -305,6 +305,52 @@ test.describe("Prod smoke — feature surfaces", () => {
         }
     });
 
+    test("/ tasks board does not horizontally overflow at mobile 375×812 (#216 / #138 D-B1)", async ({ page }) => {
+        // Regression for #216: same #138 D-B1 class on the home board.
+        // `.tier-board` used implicit grid columns (no `grid-template-
+        // columns`) at <900px, so the single mobile track sized to
+        // MAX-CONTENT. `.task-card .task-quick-actions` is `flex-shrink:0`
+        // and holds 5+ tier buttons (Today / Tomorrow / This Week /
+        // Next Week / Backlog), pushing the tier card ~190px past the
+        // 375px viewport. Fix: `grid-template-columns: minmax(0, 1fr)`
+        // at the default selector + `minmax(0,1fr) minmax(0,1fr)` at
+        // the `(min-width: 900px)` media query.
+        await page.setViewportSize({ width: 375, height: 812 });
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator(".tier-board")).toBeVisible();
+        // Re-assert viewport in case async loads reset device emulation.
+        await page.setViewportSize({ width: 375, height: 812 });
+        const overflow = await page.evaluate(() => {
+            const wide = [];
+            for (const el of document.querySelectorAll("*")) {
+                const r = el.getBoundingClientRect();
+                if (r.right > 376 && r.width > 50) {
+                    wide.push({
+                        tag: el.tagName,
+                        cls: (el.className + "").slice(0, 50),
+                        id: el.id,
+                        w: Math.round(r.width),
+                        right: Math.round(r.right),
+                    });
+                    if (wide.length >= 5) break;
+                }
+            }
+            return {
+                scrollWidth: document.documentElement.scrollWidth,
+                innerWidth: window.innerWidth,
+                wide,
+            };
+        });
+        if (overflow.scrollWidth > overflow.innerWidth) {
+            throw new Error(
+                `/ board overflowed at mobile: scrollWidth=` +
+                `${overflow.scrollWidth} > innerWidth=` +
+                `${overflow.innerWidth}. Wide: ${JSON.stringify(overflow.wide)}`,
+            );
+        }
+    });
+
     test("touch targets meet 44px floor at mobile 375×812 (#140)", async ({ page }) => {
         // Regression for #140: nav-tab + per-card tier-action buttons +
         // project-filter chips were 31px / 36px tall on mobile, below the
