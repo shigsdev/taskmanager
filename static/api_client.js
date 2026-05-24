@@ -101,7 +101,6 @@
             );
             throw err;
         }
-        if (resp.status === 204) return null;
         // 401/403 — actual auth failure. Surface a clean message instead
         // of dumping a JSON parse + raw statusText. Still throw so the
         // caller can decide what to do.
@@ -113,11 +112,72 @@
             const body = await resp.json().catch(() => ({}));
             throw new Error(body.error || resp.statusText);
         }
-        return resp.json();
+        // #214: cross-tab sync. After a successful task-affecting
+        // mutation, ping every same-origin tab via a BroadcastChannel
+        // so an open `/calendar` (or another `/tasks`) view picks the
+        // change up immediately instead of waiting for its 60s poll.
+        _broadcastIfTaskMutating(opts.method, url);
+        const payload = resp.status === 204 ? null : await resp.json();
+        return payload;
+    }
+
+    // #214: cross-tab sync. ONE shared channel instance per page.
+    // BroadcastChannel intentionally does NOT deliver postMessage to
+    // the channel that posted — so when a same-tab listener uses the
+    // same instance the broadcast came from, it stays silent. Other
+    // tabs (separate channel instances on the same name) DO receive.
+    // That property is load-bearing: in-tab listeners must NOT
+    // re-render the board on a same-tab mutation (it would wipe in-DOM
+    // state like bulk-select checkboxes). Hence calendar.js / app.js
+    // call `window.apiClient.subscribeTasksChanged(handler)`, which
+    // adds the handler to THIS module's `_changeBus` — never a new
+    // instance.
+    let _changeBus = null;
+    const _MUTATING = new Set(["POST", "PATCH", "PUT", "DELETE"]);
+    const _RESYNC_ROUTES = /\/api\/(tasks|recurring|projects|goals)/;
+
+    function _getOrCreateBus() {
+        if (_changeBus !== null) { return _changeBus; }
+        try {
+            // The `typeof window` guard is load-bearing: Node 15+ ships
+            // BroadcastChannel as a global, so the Jest-Node test
+            // environment (testEnvironment: "node") would otherwise
+            // open a real native channel that keeps the event loop
+            // alive — Jest then hangs on exit. Only open in browsers.
+            _changeBus = (typeof window !== "undefined"
+                          && typeof BroadcastChannel !== "undefined")
+                ? new BroadcastChannel("taskmanager:tasks-changed")
+                : false;
+        } catch (_) { _changeBus = false; }
+        return _changeBus;
+    }
+
+    function _broadcastIfTaskMutating(method, url) {
+        const m = (method || "GET").toUpperCase();
+        if (!_MUTATING.has(m)) { return; }
+        if (!_RESYNC_ROUTES.test(url || "")) { return; }
+        const bus = _getOrCreateBus();
+        if (bus) {
+            try { bus.postMessage({ at: Date.now(), method: m, url }); } catch (_) {}
+        }
+    }
+
+    // Subscribe to cross-tab task-mutation broadcasts. Returns an
+    // unsubscribe function (no-op in non-browser environments). The
+    // handler does NOT fire when THIS tab posts (BroadcastChannel
+    // semantics) — only when ANOTHER tab on the same origin posts.
+    function subscribeTasksChanged(handler) {
+        const bus = _getOrCreateBus();
+        if (!bus) { return function () {}; }
+        bus.addEventListener("message", handler);
+        return function () {
+            try { bus.removeEventListener("message", handler); } catch (_) {}
+        };
     }
 
     const api = {
         apiFetch,
+        subscribeTasksChanged,  // #214
         _hardRecover,
         _maybePromptRecovery,
         _resetRecoveryFlag,

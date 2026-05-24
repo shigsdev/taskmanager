@@ -3503,6 +3503,40 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    // #214 (2026-05-23): cross-tab sync. api_client.js broadcasts on
+    // every task-affecting mutation; pick those up here so a change
+    // made on a sibling tab (e.g. /calendar or another /tasks)
+    // reflects immediately on this board without waiting for the 60s
+    // poll below. 150ms debounce so a burst of PATCHes (bulk apply,
+    // auto-categorize Apply-all) collapses to one re-render. The
+    // visibilitychange throttle ABOVE doesn't apply here: a broadcast
+    // is a real signal that data changed, not a tab-switch heuristic.
+    //
+    // CRITICAL — use apiClient.subscribeTasksChanged (the SAME
+    // BroadcastChannel instance the post side uses), NOT a freshly
+    // constructed channel. BroadcastChannel only auto-skips
+    // self-delivery within a single instance: two instances in the
+    // same tab WOULD see each other's messages, so a local PATCH
+    // would loop back here, trigger loadTasks(), and wipe in-DOM
+    // state like bulk-select checkboxes. Regression-tested by
+    // `tests/e2e/pages.spec.js` "Bulk move-up / move-down" — that
+    // test fails if this listener fires on a same-tab broadcast.
+    if (window.apiClient && window.apiClient.subscribeTasksChanged) {
+        let _crossTabTimer = null;
+        window.apiClient.subscribeTasksChanged(() => {
+            if (document.visibilityState !== "visible") return;
+            if (_crossTabTimer) clearTimeout(_crossTabTimer);
+            _crossTabTimer = setTimeout(() => {
+                _crossTabTimer = null;
+                if (typeof loadTasks === "function") loadTasks();
+                if (typeof loadCompletedTasks === "function") loadCompletedTasks();
+                if (typeof loadCancelledTasks === "function") loadCancelledTasks();
+                if (typeof loadGoals === "function") loadGoals();
+                if (typeof loadProjects === "function") loadProjects();
+            }, 150);
+        });
+    }
+
     // PR52 #115: proactive polling for freshness. User-flagged: "is
     // there no way to simply keep the page fresh?" — visibilitychange
     // only fires on tab switch, doesn't help when the user is actively

@@ -335,9 +335,28 @@
             if (document.visibilityState === "visible") renderCalendar();
         }, 60_000);
         // Expose renderCalendar so other modules (or DevTools) can
-        // force a refresh — useful for the future cross-tab consistency
-        // story (websockets / SSE per #160 option C).
+        // force a refresh — useful for the cross-tab consistency
+        // story (#214) and for ad-hoc debugging.
         window.renderCalendar = renderCalendar;
+
+        // #214 (2026-05-23): cross-tab sync. Subscribe through the
+        // SHARED api_client channel (NOT a new BroadcastChannel
+        // instance) — BroadcastChannel's "don't deliver to self"
+        // semantics then guarantees a same-tab mutation here does not
+        // trigger a re-render that would clobber in-DOM state like
+        // bulk-select checkboxes. Other-tab mutations still deliver.
+        // 150ms debounce so a burst of PATCHes (bulk apply,
+        // auto-categorize Apply-all) collapses to one re-render.
+        if (window.apiClient && window.apiClient.subscribeTasksChanged) {
+            let _resyncTimer = null;
+            window.apiClient.subscribeTasksChanged(() => {
+                if (_resyncTimer) clearTimeout(_resyncTimer);
+                _resyncTimer = setTimeout(() => {
+                    _resyncTimer = null;
+                    if (document.visibilityState === "visible") renderCalendar();
+                }, 150);
+            });
+        }
     }
 
     if (document.readyState === "loading") {
