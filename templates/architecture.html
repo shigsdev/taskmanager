@@ -832,6 +832,7 @@ flowchart TD
                     <tr><td>8b</td><td><code>arch_sync_check.py</code></td><td>Every <code>@app.route</code> / <code>@bp.verb</code> / <code>scheduler.add_job(id=)</code> name appears in ARCHITECTURE.md (drift gate)</td></tr>
                     <tr><td>9</td><td><code>semgrep</code></td><td>Flask + OWASP security patterns — Jinja unescaped output, hardcoded secrets, SQL string concat. Cross-platform PATH issue on Win Python 3.14 (#16)</td></tr>
                     <tr><td>10</td><td><code>gitleaks</code></td><td>Secrets in staged content (and full history) via <code>.gitleaks.toml</code> rule pack. Also runs as <code>.githooks/pre-commit</code> hook (#17)</td></tr>
+                    <tr><td>11</td><td>Embedded creds in remote URLs</td><td>Greps <code>git config --get-regexp 'remote.*.url'</code> for the <code>https://user[:token]@…</code> shape that <code>gitleaks</code> doesn't scan (<code>.git/config</code> is local-only). Catches the leak class added 2026-05-24 after a fine-grained PAT was discovered in this repo's origin URL. Full rotation runbook at <code>docs/security/git-credentials.md</code>.</td></tr>
                 </tbody>
             </table>
 

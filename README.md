@@ -403,7 +403,9 @@ bash scripts/run_all_gates.sh
 
 That single command runs **all** pre-deploy gates in sequence — ruff +
 pytest (with 80% coverage floor) + jest + local Playwright + bandit +
-semgrep + gitleaks + pip-audit + npm audit + docs-sync check. It auto-
+semgrep + gitleaks + pip-audit + npm audit + docs-sync check +
+embedded-credentials check on git remote URLs (gate 11, see
+[Git credentials runbook](docs/security/git-credentials.md)). It auto-
 manages the bypass server and exits non-zero on any failure. Skipping
 individual gates is an SOP violation; if a gate genuinely cannot run
 in this environment, document why in a `Gates-skipped: <gate> (<reason>)`
@@ -419,3 +421,11 @@ The native pre-commit hook runs gitleaks against staged content before
 every commit (~200ms) and blocks any potential secret before it hits
 git history. Belt-and-braces on top of gate 10 in `run_all_gates.sh`.
 See ADR-022 for the rationale. Emergency bypass: `git commit --no-verify`.
+
+**Token rotation procedure:** if gate 11 catches an embedded credential
+in a remote URL (e.g. `https://shigsdev:github_pat_…@github.com/...`),
+follow the step-by-step in
+[`docs/security/git-credentials.md`](docs/security/git-credentials.md):
+revoke the leaked token at https://github.com/settings/tokens, re-set
+the remote with SSH or credential-helper-only HTTPS, and audit shell
+scrollback / OneDrive version history / screenshots for other copies.

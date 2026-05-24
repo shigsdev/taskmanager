@@ -362,6 +362,65 @@ else
     exit 1
 fi
 
+# --- 11. No embedded credentials in git remote URLs --------------------------
+
+banner "11. No embedded credentials in git remote URLs"
+# gitleaks scans tracked source files but does NOT scan `.git/config` (it's
+# local-only state, not in the working tree). So a PAT embedded in a remote
+# URL — e.g. `https://shigsdev:github_pat_…@github.com/...` — slips past
+# every other gate while sitting in plaintext on disk + getting echoed by
+# any `git remote -v` / `git config -l` invocation. Real incident
+# 2026-05-24: a PAT was discovered in this repo's origin URL after living
+# there an unknown duration; rotating the token + re-adding the remote
+# without embedded creds fixed it. This gate prevents recurrence — any
+# `remote.<name>.url = https://user[:token]@…` form fails the gate, which
+# means a stray `git remote set-url origin https://token@…` (the typical
+# AI-assistant "fix Authentication failed" anti-pattern) can't slip into
+# day-to-day work silently.
+#
+# Pass shapes:
+#   git@github.com:owner/repo.git          (SSH — preferred)
+#   https://github.com/owner/repo.git      (HTTPS + credential helper)
+# Fail shape:
+#   https://user[:token]@github.com/...
+#
+# Implementation: `git config --get-regexp` lists every remote.*.url; grep
+# matches the `https://[anything-but-@]@` prefix. The `:****@` mask before
+# printing means we NEVER echo the actual secret even on failure.
+# Detect on the UNMODIFIED config output so the regex match is precise.
+# Redact AFTER detection, only for safe printing — the masking-then-
+# matching approach broke `https://user@…` (sed ate the `//` between
+# `https:` and `user`, defeating the awk regex).
+GIT_CRED_LEAK="$(
+    git config --get-regexp '^remote\..*\.url$' 2>/dev/null \
+        | awk '/https:\/\/[^@ ]+@/ { print }'
+)"
+if [ -z "$GIT_CRED_LEAK" ]; then
+    pass "no embedded credentials in git remote URLs"
+else
+    fail "git remote URL contains embedded credentials — ROTATE the token now:"
+    # Redact ONLY the password portion (between : and @) before printing,
+    # so the actual secret never appears on screen. Empty `://user@` —
+    # username-only, no password — passes through unredacted (it's still
+    # a leak shape but there's no secret to mask).
+    while IFS= read -r line; do
+        masked="$(printf '%s\n' "$line" \
+            | sed -E 's|://([^:/]+):[^@]*@|://\1:****@|')"
+        fail "  $masked"
+    done <<< "$GIT_CRED_LEAK"
+    fail ""
+    fail "Full rotation procedure: docs/security/git-credentials.md"
+    fail "Quick fix:"
+    fail "  1. Revoke the leaked token at https://github.com/settings/tokens"
+    fail "  2. Re-set the remote without embedded creds:"
+    fail "       git remote set-url origin git@github.com:owner/repo.git   # SSH (preferred)"
+    fail "       OR"
+    fail "       git remote set-url origin https://github.com/owner/repo.git"
+    fail "       git config --global credential.helper manager             # one-time"
+    fail "  3. Audit shell history / OneDrive versions / screenshots for other copies"
+    exit 1
+fi
+
 # --- Summary ----------------------------------------------------------------
 
 banner "ALL GATES GREEN"
