@@ -388,7 +388,10 @@ body {
     border-style: solid;
 }
 @media (max-width: 700px) {
-    .calendar-layout { grid-template-columns: 1fr; }
+    /* #217 (2026-05-24): D-B1 — bare `1fr` lets the single track size
+       to MAX-CONTENT (a long task title in the Unscheduled aside
+       pushes the page past viewport). `minmax(0, 1fr)` clamps it. */
+    .calendar-layout { grid-template-columns: minmax(0, 1fr); }
 }
 .calendar-cell-empty {
     color: var(--text-muted);
@@ -414,7 +417,10 @@ body {
     cursor: default;
 }
 @media (max-width: 700px) {
-    .calendar-row { grid-template-columns: repeat(2, 1fr); }
+    /* #217 (2026-05-24): D-B1 — same minmax(0, ...) clamp as the
+       desktop selector above. Without this, a 2-col mobile row with
+       a long task title in one cell pushes the row past viewport. */
+    .calendar-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* === Day strip (#73) === */
@@ -3200,6 +3206,24 @@ body {
     padding: 1px 5px;
     border-radius: 3px;
     font-size: 0.88em;
+    /* #217 (2026-05-24): an unbreakable inline `<code>` (a long path
+       or function signature) pushes /docs past viewport on mobile
+       375 — 469px wide code element was the offender. `overflow-wrap:
+       anywhere` lets the browser break inside the token at any
+       character when no natural break point fits. Confined to inline
+       code in docs prose; <pre.docs-example> blocks already have
+       `overflow-x: auto` so they scroll inside their bounds. */
+    overflow-wrap: anywhere;
+}
+/* #217 (2026-05-24): cover ALL <pre> inside .docs-content (not just
+   the .docs-example variant) — Backups section in docs.html has
+   plain <pre><code>ssh-keygen --% -t ed25519...</code></pre> blocks
+   that overflow without an overflow-x scroller. <pre> preserves
+   whitespace so `overflow-wrap` on inner <code> doesn't help —
+   block-level scroller is the right tool. */
+.docs-content pre {
+    max-width: 100%;
+    overflow-x: auto;
 }
 .docs-content pre.docs-example {
     background: var(--bg-subtle, #f6f8fa);
@@ -3225,7 +3249,10 @@ body {
 
 @media (max-width: 768px) {
     .docs-page {
-        grid-template-columns: 1fr;
+        /* #217 (2026-05-24): D-B1 — was `1fr`, but a long <pre>/<code>
+           or unbreakable URL in the docs prose pushes the single
+           track past viewport. `minmax(0, ...)` lets it shrink. */
+        grid-template-columns: minmax(0, 1fr);
         gap: 16px;
     }
     .docs-toc {
@@ -3245,6 +3272,15 @@ body {
     border-collapse: collapse;
     font-size: 0.9em;
     margin: 12px 0;
+    /* #217 (2026-05-24): same display:block + overflow-x:auto pattern
+       as .schema-table / .architecture-md table / .column-list. The
+       route catalog has 4 cols (Method, URL, Handler, Notes) — at
+       mobile 375 the URL column alone is ~140px and the row overflows.
+       Block-mode + horizontal scroller keeps the user able to read
+       wide tables without pushing the page. */
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
 }
 .route-catalog th,
 .route-catalog td {
@@ -3317,6 +3353,18 @@ pre.mermaid svg {
 .architecture-md table {
     border-collapse: collapse;
     margin: 12px 0;
+    /* #217 (2026-05-24): the route catalog + gates tables on
+       /architecture are wide (5+ columns × ~120px each = ~600px+);
+       on a 375px viewport they pushed document scrollWidth to 694.
+       `display: block` on the table flips the table-laid-out width
+       to follow the parent block-flow width, AND lets `overflow-x: auto`
+       on the same element actually clip the inner table to a horizontal
+       scroller. (A naive `overflow-x: auto` on a `display: table`
+       element doesn't scroll because the table establishes its own
+       layout context.) max-width: 100% to make it strict. */
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
 }
 .architecture-md table th,
 .architecture-md table td {
@@ -3425,6 +3473,14 @@ table.schema-table {
     border-collapse: collapse;
     margin: 12px 0;
     font-size: 0.95em;
+    /* #217 (2026-05-24): td:first-child has `white-space: nowrap` so
+       long table names like `weekly_focus_slot_content` keep the column
+       intrinsic-width above mobile viewport. Same fix as
+       .architecture-md table above — flip to block + overflow-x to
+       scroll horizontally on narrow viewports. */
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
 }
 table.schema-table th,
 table.schema-table td {
@@ -3536,6 +3592,15 @@ table.column-list {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.9em;
+    /* #217 (2026-05-24): same pattern as .schema-table + .architecture-md
+       table — td:first-child has `white-space: nowrap` so long
+       column-name + types push the row past mobile viewport. Flip
+       to block + overflow-x to scroll the table horizontally on
+       narrow viewports without affecting desktop layout (parent
+       .db-table-detail constrains the visible width at desktop). */
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
 }
 table.column-list th,
 table.column-list td {
@@ -3680,6 +3745,17 @@ table.quality-gates {
     border-collapse: collapse;
     margin: 12px 0;
     font-size: 0.92em;
+    /* #217 (2026-05-24): the quality-gates + drift-gates + known-
+       limitations reference tables run 4-6 columns with code-tagged
+       cells that don't break — table width was 678px on mobile 375
+       (the actual offender pushing /architecture docScrollWidth to
+       694). Same block + overflow-x:auto pattern as the other wide
+       /architecture tables. td:first-child has `white-space: nowrap`
+       so the gate-number column won't shrink — that's intentional;
+       the overflow-x lets the user read the wide table in place. */
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
 }
 table.quality-gates th,
 table.quality-gates td {
