@@ -172,6 +172,7 @@ EXPECTED_STATIC_FILES = (
     "static/settings.js",
     "static/recycle_bin.js",
     "static/swipe.js",
+    "static/utilities.js",  # #222 — /utilities admin actions
     "static/manifest.json",
     "static/favicon.svg",  # #45 — browser tab icon
 )

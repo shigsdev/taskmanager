@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% set active_page = 'utilities' %}
+{% block title %}Utilities — Task Manager{% endblock %}
+
+{% block content %}
+<div class="utilities-page">
+    <h1>Utilities</h1>
+    <p class="utilities-hint">
+        One-shot data cleanups that fix specific historical bugs.
+        Each utility shows a count preview so you can see what'll
+        change before you run it. Re-running a clean utility is a
+        no-op.
+    </p>
+
+    {# Each utility is a self-contained <section> with a count
+       display + Run button + result message. Pattern intentionally
+       repeatable for future utilities (e.g. a "fix stale flags",
+       "re-cascade goals", etc.) without restructuring the page. #}
+    <section class="utility-card" data-utility="clear-stale-next-week-due-dates">
+        <h2>Clear stale Next Week due dates (#220)</h2>
+        <p class="utility-description">
+            Finds active tasks where <code>tier = Next Week</code> AND
+            <code>due_date ≤ today</code>, then clears the due_date so
+            the task moves off the calendar's today/past cells and
+            lands in the Unscheduled aside.
+        </p>
+        <p class="utility-description">
+            Originally caused by the pre-#220 tier-button behavior:
+            clicking "Next Week" on a task changed the tier but didn't
+            clear the old due_date, so the calendar still rendered the
+            task on the old day. The #220 hook prevents this for new
+            punts; this utility cleans up the existing stuck data.
+        </p>
+        <div class="utility-status" data-status>
+            <span class="utility-count-label">Tasks that will be cleaned:</span>
+            <span class="utility-count" data-count>…</span>
+        </div>
+        <button type="button" class="btn btn-primary utility-run-btn"
+                data-run="clear-stale-next-week-due-dates">
+            Run
+        </button>
+        <p class="utility-result" data-result aria-live="polite"></p>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='api_helpers.js') }}"></script>
+<script src="{{ url_for('static', filename='api_client.js') }}"></script>
+<script src="{{ url_for('static', filename='utilities.js') }}"></script>
+{% endblock %}

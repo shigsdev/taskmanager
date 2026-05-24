@@ -4298,3 +4298,71 @@ table.quality-gates code {
     .reflection-done-actions .btn { width: 100%; min-height: 48px; }
     .reflection-mode-tab { font-size: 0.95rem; }
 }
+
+/* === #222 (2026-05-24): /utilities page === */
+.utilities-page {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 16px;
+}
+.utilities-hint {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-bottom: 24px;
+}
+.utility-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    background: var(--surface);
+    box-shadow: var(--shadow-md);
+    margin-bottom: 16px;
+}
+.utility-card h2 {
+    margin: 0 0 8px;
+    font-size: 1.1rem;
+}
+.utility-description {
+    color: var(--text);
+    font-size: 0.9rem;
+    margin: 6px 0 12px;
+}
+.utility-description code {
+    background: var(--surface-sunk);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.88em;
+    /* #217 lesson — long inline tokens shouldn't push the row past
+       viewport on mobile. */
+    overflow-wrap: anywhere;
+}
+.utility-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0 12px;
+    font-size: 0.95rem;
+}
+.utility-count-label { color: var(--text-muted); }
+.utility-count {
+    font-weight: 700;
+    color: var(--accent);
+    min-width: 24px;
+    display: inline-block;
+}
+.utility-count.utility-count-zero {
+    color: var(--text-muted);
+    font-weight: 400;
+}
+.utility-run-btn {
+    /* Inherit .btn-primary styling from the global rule. */
+    min-width: 96px;
+}
+.utility-result {
+    margin: 12px 0 0;
+    font-size: 0.9rem;
+    min-height: 1.2em;  /* reserve space so layout doesn't jump */
+}
+.utility-result.utility-result-ok { color: var(--green, #16a34a); }
+.utility-result.utility-result-err { color: var(--red, #dc2626); }
+

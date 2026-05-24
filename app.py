@@ -32,6 +32,7 @@ import scan_api
 import settings_api
 import tasks_api
 import triage_api
+import utilities_api
 import voice_api
 import weekly_focus_api
 from auth import log_bypass_startup_banner, login_required
@@ -236,6 +237,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(import_api.bp)
     app.register_blueprint(recycle_api.bp)
     app.register_blueprint(settings_api.bp)
+    app.register_blueprint(utilities_api.bp)
     app.register_blueprint(debug_api.bp)
     app.register_blueprint(auth_api.bp)
     app.register_blueprint(voice_api.bp)
@@ -499,6 +501,17 @@ def create_app(config: dict | None = None) -> Flask:
     @login_required
     def recycle_bin_page(email: str):  # noqa: ARG001
         return render_template("recycle_bin.html")
+
+    @app.route("/utilities")
+    @login_required
+    def utilities_page(email: str):  # noqa: ARG001
+        """#222 (2026-05-24): admin-style utilities page. Surfaces
+        one-shot data cleanups (e.g. #220 follow-up backfill) as a
+        UI rather than requiring a curl + admin token. Single-user
+        app — AUTHORIZED_EMAIL gate via @login_required is sufficient
+        auth (no admin-token split needed; the OAuth user IS the
+        admin). Future utility actions go here too."""
+        return render_template("utilities.html")
 
     @app.route("/print")
     @login_required
