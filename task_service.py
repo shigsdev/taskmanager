@@ -612,7 +612,35 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
         task.type = _parse_enum(TaskType, data["type"], "type") or task.type
 
     if "tier" in data:
+        old_tier = task.tier
         task.tier = _parse_enum(Tier, data["tier"], "tier") or task.tier
+        # #220 (2026-05-24): when the user EXPLICITLY punts a task to
+        # NEXT_WEEK from a different tier, clear any stale due_date.
+        # The user-reported scenario: tier=TODAY, due_date=today;
+        # user clicks "Next Week" expecting the task to move OFF the
+        # today cell on /calendar. Tier-only mutation kept due_date
+        # untouched, so the calendar still showed the task on its
+        # original day — the "immediate reflection is not working"
+        # complaint. Clearing the date lands the task in the
+        # Unscheduled aside; user can drag to a specific next-week
+        # day if they want. Skipped when:
+        #   - tier didn't actually change (e.g. PATCH from the same
+        #     panel that just re-saves the existing tier)
+        #   - user explicitly set due_date in the same payload
+        #     (intentional "schedule for X next week")
+        #   - task had no due_date to begin with (no-op)
+        # Mirrors the spirit of _auto_fill_tier_due_date — that hook
+        # auto-FILLS for TODAY/TOMORROW; this one auto-CLEARS for
+        # NEXT_WEEK. THIS_WEEK / BACKLOG / INBOX intentionally NOT
+        # included here — those punts may still want to keep the
+        # existing date as a reminder. Scoped to the reported case.
+        if (
+            task.tier != old_tier
+            and task.tier == Tier.NEXT_WEEK
+            and "due_date" not in data
+            and task.due_date is not None
+        ):
+            task.due_date = None
 
     if "status" in data:
         new_status = _parse_enum(TaskStatus, data["status"], "status") or task.status

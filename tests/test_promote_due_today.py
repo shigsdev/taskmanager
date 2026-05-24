@@ -127,6 +127,127 @@ class TestPromoteDueTodayCron:
         assert second == 0  # task is now in TODAY, not in promotable set
 
 
+# --- #220: tier-punt clears stale due_date ---------------------------------
+
+
+class TestTierPuntClearsStaleDueDate:
+    """#220 (2026-05-24): when user moves a task to NEXT_WEEK via the
+    tier button on the home board, clear the stale due_date so the
+    task moves off the today/yesterday cell on /calendar and lands in
+    Unscheduled. User-reported: "I moved all Sunday tasks to next week
+    and it still shows today on the calendar — immediate reflection
+    is not working." The fix is in `update_task` right after `tier` is
+    parsed: if tier changed TO NEXT_WEEK, no due_date in payload, and
+    task had a due_date, clear it.
+    """
+
+    def test_today_tier_to_next_week_clears_today_due_date(self, app):
+        """The user-reported scenario: tier=TODAY + due_date=today →
+        PATCH {tier: next_week} → due_date cleared."""
+        from task_service import update_task
+        with app.app_context():
+            t = _make_task(title="punt me", tier=Tier.TODAY, due_date=_today())
+            updated = update_task(t.id, {"tier": "next_week"})
+            assert updated is not None
+            assert updated.tier == Tier.NEXT_WEEK
+            assert updated.due_date is None
+
+    def test_tomorrow_tier_to_next_week_clears_due_date(self, app):
+        """Same punt from TOMORROW tier."""
+        from task_service import update_task
+        with app.app_context():
+            tomorrow = _today() + timedelta(days=1)
+            t = _make_task(title="punt me", tier=Tier.TOMORROW, due_date=tomorrow)
+            updated = update_task(t.id, {"tier": "next_week"})
+            assert updated is not None
+            assert updated.tier == Tier.NEXT_WEEK
+            assert updated.due_date is None
+
+    def test_this_week_tier_to_next_week_clears_due_date(self, app):
+        """Punt from THIS_WEEK with a mid-week date → clear; user is
+        moving the task off the current week."""
+        from task_service import update_task
+        with app.app_context():
+            wednesday = _today() + timedelta(days=2)  # something in-week
+            t = _make_task(title="punt me", tier=Tier.THIS_WEEK, due_date=wednesday)
+            updated = update_task(t.id, {"tier": "next_week"})
+            assert updated is not None
+            assert updated.tier == Tier.NEXT_WEEK
+            assert updated.due_date is None
+
+    def test_overdue_today_tier_to_next_week_clears_due_date(self, app):
+        """An overdue today task being punted → clear the past date."""
+        from task_service import update_task
+        with app.app_context():
+            week_ago = _today() - timedelta(days=7)
+            t = _make_task(title="punt me", tier=Tier.TODAY, due_date=week_ago)
+            updated = update_task(t.id, {"tier": "next_week"})
+            assert updated is not None
+            assert updated.tier == Tier.NEXT_WEEK
+            assert updated.due_date is None
+
+    def test_no_due_date_no_change(self, app):
+        """If task had no due_date, hook is a no-op."""
+        from task_service import update_task
+        with app.app_context():
+            t = _make_task(title="dateless", tier=Tier.TODAY, due_date=None)
+            updated = update_task(t.id, {"tier": "next_week"})
+            assert updated is not None
+            assert updated.tier == Tier.NEXT_WEEK
+            assert updated.due_date is None
+
+    def test_explicit_due_date_in_payload_wins(self, app):
+        """If user explicitly sets BOTH tier=next_week AND due_date in
+        the same payload, the explicit due_date wins — do NOT clear."""
+        from task_service import update_task
+        with app.app_context():
+            next_friday = _today() + timedelta(days=12)
+            t = _make_task(title="schedule me", tier=Tier.TODAY, due_date=_today())
+            updated = update_task(t.id, {
+                "tier": "next_week",
+                "due_date": next_friday.isoformat(),
+            })
+            assert updated is not None
+            assert updated.tier == Tier.NEXT_WEEK
+            assert updated.due_date == next_friday
+
+    def test_tier_already_next_week_no_change(self, app):
+        """If tier was ALREADY next_week and PATCH re-saves it (e.g.
+        the panel re-emitted tier as part of a reorder), the existing
+        due_date must be preserved."""
+        from task_service import update_task
+        with app.app_context():
+            next_tuesday = _today() + timedelta(days=8)
+            t = _make_task(title="already there", tier=Tier.NEXT_WEEK, due_date=next_tuesday)
+            updated = update_task(t.id, {"tier": "next_week"})
+            assert updated is not None
+            assert updated.tier == Tier.NEXT_WEEK
+            assert updated.due_date == next_tuesday
+
+    def test_punt_to_this_week_does_NOT_clear(self, app):
+        """Scope: hook only fires for tier→NEXT_WEEK. Tier→THIS_WEEK
+        is a different mental model (re-schedule within the week)
+        and should preserve the date as a reminder."""
+        from task_service import update_task
+        with app.app_context():
+            t = _make_task(title="re-tier", tier=Tier.TODAY, due_date=_today())
+            updated = update_task(t.id, {"tier": "this_week"})
+            assert updated is not None
+            assert updated.tier == Tier.THIS_WEEK
+            assert updated.due_date == _today()
+
+    def test_punt_to_backlog_does_NOT_clear(self, app):
+        """Scope: hook only fires for tier→NEXT_WEEK. BACKLOG keeps
+        the date so the user can see "this was originally due X"."""
+        from task_service import update_task
+        with app.app_context():
+            t = _make_task(title="park", tier=Tier.TODAY, due_date=_today())
+            updated = update_task(t.id, {"tier": "backlog"})
+            assert updated is not None
+            assert updated.tier == Tier.BACKLOG
+            assert updated.due_date == _today()
+
+
 # --- on-write hook in update_task / create_task ----------------------------
 
 
