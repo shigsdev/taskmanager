@@ -393,7 +393,7 @@ class TestAllRoutesExist:
         rules = [r.rule for r in app.url_map.iter_rules()]
         pages = [
             "/", "/goals", "/review", "/scan",
-            "/import", "/settings", "/print",
+            "/import", "/settings", "/utilities", "/print",
             "/login", "/logout", "/healthz",
         ]
         for page in pages:
@@ -418,6 +418,8 @@ class TestAllRoutesExist:
             "/api/settings/status",
             "/api/settings/stats",
             "/api/settings/imports",
+            "/api/utilities/clear-stale-next-week-due-dates",
+            "/api/utilities/clear-stale-next-week-due-dates/count",
         ]
         for api in apis:
             assert api in rules, f"API route '{api}' not registered"

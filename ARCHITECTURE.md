@@ -472,6 +472,7 @@ commit — the check will fail otherwise.
 - `/goals` — goals page
 - `/projects` — projects CRUD page (#24)
 - `/calendar` — 2-week Mon-Sun drag-drop calendar (#73 + #218 — was Mon-Sat) — drop tasks on a day to set due_date
+- `/utilities` — admin-style one-shot data cleanups (#222) — OAuth-gated UI for the backfills previously only triggerable via curl + admin token
 - `/recurring` — recurring template list with multi-select bulk-edit toolbar (#63)
 - `/review` — weekly review swipe + #12 triage-suggestions panel above the review card (heuristic-based stale-task hints from `triage_service.py`, served by `GET /api/triage/suggestions`)
 - `/plan` — weekly planner (post-#12 brainstorm Option A, shipped 2026-05-02). Date picker → `POST /api/planner/weekly` → Claude Haiku reviews ALL active non-frozen tasks + 4 weeks of completion history + recurring fires + goals + projects + freezer items > 60 days → returns structured plan: per-task suggestions (action: keep/move/delete/freeze), day-by-day grouping (Mon–Sun), goal hints (on_track / falling_behind / no_progress / ahead), velocity warning, stale freezer review. User accepts / overrides / ignores per row; "Apply all accepted" routes through canonical `PATCH /api/tasks/<id>`. New `Task.planner_ignore` boolean (auto-resets on any task field change) silences specific tasks until next user touch. Service: `weekly_planner_service.py`. Rate-limited 5/min.
@@ -594,6 +595,10 @@ the code.
 /api/settings/status
 /api/settings/stats
 /api/settings/imports
+
+# utilities_api.py (#222) — OAuth-gated UI wrappers for admin cleanups
+/api/utilities/clear-stale-next-week-due-dates/count   # #222 — preview the count without mutating
+/api/utilities/clear-stale-next-week-due-dates         # #222 — POST: run #220 backfill
 
 # debug_api.py — used by scripts/validate_deploy.py --check-logs
 /api/debug/logs
