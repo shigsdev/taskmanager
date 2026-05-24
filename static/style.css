@@ -2603,9 +2603,16 @@ body {
 .voice-candidate-tier { padding: 6px 4px; flex-shrink: 0; }
 .voice-candidate-date { padding: 5px 6px; flex-shrink: 0; min-width: 135px; }
 /* Backlog #37: project + goal dropdowns per candidate + hint text
-   when Claude cited a name that didn't match any DB record. */
+   when Claude cited a name that didn't match any DB record.
+   #215 (2026-05-24): voice-candidate-category was added by #172 in
+   voice_memo.js but the CSS rule never grew to cover the new select,
+   so the category dropdown rendered with browser defaults and broke
+   the per-row alignment ("Personal growth" wrapped to its own row
+   under the other controls). Same rule as the project/goal pair —
+   no separate behavior, just bring the new sibling into the layout. */
 .voice-candidate-project,
-.voice-candidate-goal {
+.voice-candidate-goal,
+.voice-candidate-category {
     padding: 6px 4px;
     flex-shrink: 0;
     max-width: 160px;
