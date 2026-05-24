@@ -229,15 +229,19 @@ _FROZEN_TIERS = frozenset({Tier.FREEZER})
 
 
 def _tier_for_due_date(due_date: date) -> Tier:
-    """Map a due_date to its natural tier per #72 Mon-Sat week boundaries.
+    """Map a due_date to its natural tier per #218 Mon-Sun ISO week boundaries.
 
     today               → TODAY
     tomorrow            → TOMORROW
-    within this Mon-Sat → THIS_WEEK
-    within next Mon-Sat → NEXT_WEEK
+    within this Mon-Sun → THIS_WEEK
+    within next Mon-Sun → NEXT_WEEK
     anything later      → BACKLOG
-    Sunday handling: a Sunday today maps to "this week = just-ended
-    Mon-Sat" (consistent with the JS _tierDateRange helper).
+
+    #218 (2026-05-24): switched from Mon-Sat (#72) to Mon-Sun. Under the
+    old design a Sunday due_date had no week home and got orphaned to
+    BACKLOG — user-reported. Mirrors the JS tier_helpers.tierForDueDate
+    + app.js _tierDateRange so the board, calendar, and detail-panel
+    tier preview all agree.
     """
     today = _local_today_date()
     tomorrow = today + timedelta(days=1)
@@ -248,12 +252,14 @@ def _tier_for_due_date(due_date: date) -> Tier:
     # JS weekday: Mon=0, Sun=6. Same convention as Python's date.weekday().
     days_since_monday = today.weekday()
     this_monday = today - timedelta(days=days_since_monday)
-    this_saturday = this_monday + timedelta(days=5)
+    # #218: was this_monday + 5 (Saturday). Mon-Sun ISO week ends Sun = +6.
+    this_sunday = this_monday + timedelta(days=6)
     next_monday = this_monday + timedelta(days=7)
-    next_saturday = this_monday + timedelta(days=12)
-    if this_monday <= due_date <= this_saturday:
+    # #218: was this_monday + 12 (next Saturday). Next Mon-Sun ends +13.
+    next_sunday = this_monday + timedelta(days=13)
+    if this_monday <= due_date <= this_sunday:
         return Tier.THIS_WEEK
-    if next_monday <= due_date <= next_saturday:
+    if next_monday <= due_date <= next_sunday:
         return Tier.NEXT_WEEK
     return Tier.BACKLOG
 

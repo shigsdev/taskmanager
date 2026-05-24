@@ -254,10 +254,14 @@ test.describe("Prod smoke — feature surfaces", () => {
     test("/calendar renders day cells + Unscheduled side panel (#94)", async ({ page }) => {
         await page.goto("/calendar?nosw=1");
         await page.waitForLoadState("networkidle");
-        // 12 cells (Mon–Sat × 2 weeks per #72)
+        // #218 (2026-05-24): 14 cells (Mon–Sun × 2 weeks). Was 12 (Mon-Sat
+        // per #72) — old design hid Sunday on the calendar and orphaned
+        // Sunday-dated tasks to BACKLOG. Test asserted the buggy state
+        // with toBe(12), which made fixing the bug require updating
+        // the test alongside the code. Now: full 7-day week ISO layout.
         await expect(page.locator(".calendar-cell").first()).toBeVisible({ timeout: 5_000 });
         const cellCount = await page.locator(".calendar-cell").count();
-        expect(cellCount).toBe(12);
+        expect(cellCount).toBe(14);
         await expect(page.locator("#calendarUnscheduled")).toBeVisible();
     });
 

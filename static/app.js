@@ -295,11 +295,11 @@ const _DAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday",
 // date range that tier covers, for filtering previews. Returns null if
 // the tier isn't a preview-eligible one.
 //
-// #72 (2026-04-26): "this week" = Mon-Sat (Sunday excluded — used as
-// rest/planning day). "Next week" = next Mon-Sat. If today is Sunday,
-// "this week" is the week JUST ENDING (Mon-Sat ending yesterday) so
-// you still see the Saturday/Sunday-prep view; "next week" is the
-// upcoming Mon-Sat.
+// #72 (2026-04-26) / #218 (2026-05-24): "this week" = Mon-Sun (ISO week,
+// updated by #218 — was Mon-Sat under #72 which orphaned Sunday-dated
+// tasks to BACKLOG). "Next week" = next Mon-Sun. On a Sunday "today",
+// THIS_WEEK ENDS today (today is the Sunday cap of the ISO week);
+// NEXT_WEEK is the upcoming Mon-Sun.
 function _tierDateRange(tier) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -307,11 +307,13 @@ function _tierDateRange(tier) {
     const jsDay = today.getDay();
     const daysSinceMonday = (jsDay + 6) % 7;  // Mon=0, Sun=6
     const thisMonday = new Date(today.getTime() - daysSinceMonday * 86400000);
-    const thisSaturday = new Date(thisMonday.getTime() + 5 * 86400000);  // Mon+5 = Sat
+    // #218: Mon-Sun ISO week ends Sunday = Mon+6. Was Mon+5 (Sat) per #72.
+    const thisSunday = new Date(thisMonday.getTime() + 6 * 86400000);
     const nextMonday = new Date(thisMonday.getTime() + 7 * 86400000);
-    const nextSaturday = new Date(thisMonday.getTime() + 12 * 86400000);  // next Mon+5
-    if (tier === "this_week") return [thisMonday, thisSaturday];
-    if (tier === "next_week") return [nextMonday, nextSaturday];
+    // #218: Mon+13 = next Sunday. Was Mon+12 (next Sat) per #72.
+    const nextSunday = new Date(thisMonday.getTime() + 13 * 86400000);
+    if (tier === "this_week") return [thisMonday, thisSunday];
+    if (tier === "next_week") return [nextMonday, nextSunday];
     return null;
 }
 
@@ -494,8 +496,9 @@ async function _openPreviewTemplate(preview) {
 }
 
 // #79 (2026-04-26): date / date-range string for a tier header.
-// "Mon Apr 25" for today/tomorrow; "Apr 21 — Apr 26" for this/next week
-// (Mon-Sat per #72). Year only when crossing a year boundary.
+// "Mon Apr 25" for today/tomorrow; "Apr 21 — Apr 27" for this/next week
+// (Mon-Sun per #218, was Mon-Sat per #72). Year only when crossing a
+// year boundary.
 const _DATE_FMT_DOW_MONTH_DAY = { weekday: "short", month: "short", day: "numeric" };
 const _DATE_FMT_MONTH_DAY = { month: "short", day: "numeric" };
 function _tierHeaderDate(tier) {
@@ -537,10 +540,11 @@ function _updateTierHeaderDate(tier) {
     dateEl.textContent = label;
 }
 
-// #73 (2026-04-26): inline day strip above Today. 12 cells covering
-// this Mon-Sat + next Mon-Sat (per #72 week boundaries). Each cell is
-// a drop target; dropping a task patches due_date — which then auto-
-// routes the tier per #74.
+// #73 (2026-04-26) / #218 (2026-05-24): inline day strip above Today.
+// 14 cells covering this Mon-Sun + next Mon-Sun (was 12 cells Mon-Sat
+// per #72; #218 added Sunday so Sunday-dated tasks have a home). Each
+// cell is a drop target; dropping a task patches due_date — which then
+// auto-routes the tier per #74.
 function _formatDayCellLabel(d) {
     return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
 }
@@ -557,16 +561,18 @@ function renderDayStrip() {
     if (!strip) return;
     strip.innerHTML = "";
 
-    // Compute Mon-Sat for this week + next week.
+    // #218: compute Mon-Sun for this week + next week (was Mon-Sat per #72).
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const daysSinceMonday = (today.getDay() + 6) % 7;
     const thisMonday = new Date(today.getTime() - daysSinceMonday * 86400000);
 
     const todayIso = _isoDate(today);
-    for (let i = 0; i < 12; i++) {
-        // Skip Sundays — week is Mon-Sat per #72. We have 6 days × 2 = 12 cells.
-        const offset = Math.floor(i / 6) * 7 + (i % 6);
+    // #218: 14 cells (7 days × 2 weeks), was 12 cells (6 days × 2 weeks).
+    // Need .day-strip CSS to be repeat(14, ...) — already bumped there.
+    for (let i = 0; i < 14; i++) {
+        // Mon-Sun layout: offset i directly into days-from-this-Monday.
+        const offset = i;
         const d = new Date(thisMonday.getTime() + offset * 86400000);
         const cell = document.createElement("div");
         cell.className = "day-cell";

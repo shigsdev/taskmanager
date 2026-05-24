@@ -278,10 +278,14 @@ body {
 }
 .calendar-row {
     display: grid;
-    /* repeat(6, minmax(0, 1fr)) so a long task title in any one day
-       cell can't expand the whole row past the calendar's available
-       width — same #138 D-B1 class as `.calendar-layout` above. */
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    /* #218 (2026-05-24): 7 cells per week (Mon-Sun), was 6 (Mon-Sat per
+       #72). User-reported "missing Sunday" on /calendar — the #72 design
+       omitted Sunday as a planning/rest pivot day but a real Sunday-dated
+       task had no visible home AND tier auto-route mapped Sunday to
+       BACKLOG. New layout: Mon-Sun (ISO week), Sunday tier-routes into
+       THIS_WEEK / NEXT_WEEK like every other day.
+       minmax(0, 1fr) per #138 D-B1 — see .calendar-layout above. */
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 8px;
 }
 .calendar-cell {
@@ -416,15 +420,12 @@ body {
 /* === Day strip (#73) === */
 .day-strip {
     display: grid;
-    /* #216 (2026-05-24): D-B1 again (per #138). `repeat(12, 1fr)` lets
-       each track size to MAX-CONTENT, so 12 cells × ~28px min-content
-       blew past a 375px viewport even though the parent is constrained.
-       `minmax(0, 1fr)` forces each track to the equal-share width
-       and lets the cell content overflow inside the cell instead of
-       widening the row. Found while diagnosing the home board overflow
-       reported as #216 — `.tier-board` fix alone left 24px residual
-       overflow on / at 375px from this strip. */
-    grid-template-columns: repeat(12, minmax(0, 1fr));
+    /* #216 (2026-05-24): D-B1 — `minmax(0, 1fr)` so a cell's min-content
+       can't blow past the equal-share track width.
+       #218 (2026-05-24): bumped from repeat(12, ...) to repeat(14, ...)
+       — 7 days × 2 weeks (Mon-Sun, was Mon-Sat per #72). The app.js
+       render loop runs i < 14 now. */
+    grid-template-columns: repeat(14, minmax(0, 1fr));
     gap: 4px;
     padding: 8px 16px;
     max-width: 1200px;

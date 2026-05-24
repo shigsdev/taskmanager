@@ -239,6 +239,113 @@ class TestOnWriteHookPromotion:
             assert updated.tier == Tier.THIS_WEEK
 
 
+class TestTierForDueDate:
+    """#218 (2026-05-24): Mon-Sun ISO-week boundary tests for
+    `_tier_for_due_date`. Mirrors the Jest tests in
+    `tests/js/unit/tier_helpers.test.js` so the server-side authoritative
+    decision and the client-side preview agree on every boundary day.
+
+    Was Mon-Sat under #72 — a Sunday due_date orphaned to BACKLOG (the
+    user-reported #218 bug). These tests lock in the Sun-in-this_week
+    / Sun-in-next_week classifications so a future refactor can't
+    quietly regress to the old behavior.
+
+    Each test monkey-patches `_local_today_date` to a known weekday so
+    the boundary math is reproducible regardless of the wall-clock day
+    the test suite runs on.
+    """
+
+    def _patch_today(self, monkeypatch, target_date):
+        from utils import local_today_date  # noqa: F401  for the symbol
+        # _tier_for_due_date imports as `_local_today_date` alias
+        monkeypatch.setattr(
+            "task_service._local_today_date",
+            lambda: target_date,
+        )
+
+    def test_today_returns_today_tier(self, app, monkeypatch):
+        from task_service import _tier_for_due_date
+        with app.app_context():
+            self._patch_today(monkeypatch, date(2026, 5, 6))  # Wed
+            assert _tier_for_due_date(date(2026, 5, 6)) == Tier.TODAY
+
+    def test_tomorrow_returns_tomorrow_tier(self, app, monkeypatch):
+        from task_service import _tier_for_due_date
+        with app.app_context():
+            self._patch_today(monkeypatch, date(2026, 5, 6))  # Wed
+            assert _tier_for_due_date(date(2026, 5, 7)) == Tier.TOMORROW
+
+    def test_this_monday_is_this_week_left_boundary(self, app, monkeypatch):
+        from task_service import _tier_for_due_date
+        with app.app_context():
+            self._patch_today(monkeypatch, date(2026, 5, 6))  # Wed
+            assert _tier_for_due_date(date(2026, 5, 4)) == Tier.THIS_WEEK
+
+    def test_this_sunday_is_this_week_right_boundary(self, app, monkeypatch):
+        """#218 fix: was BACKLOG under #72 Mon-Sat — the user's exact bug."""
+        from task_service import _tier_for_due_date
+        with app.app_context():
+            self._patch_today(monkeypatch, date(2026, 5, 6))  # Wed
+            assert _tier_for_due_date(date(2026, 5, 10)) == Tier.THIS_WEEK
+
+    def test_next_monday_is_next_week_left_boundary(self, app, monkeypatch):
+        from task_service import _tier_for_due_date
+        with app.app_context():
+            self._patch_today(monkeypatch, date(2026, 5, 6))  # Wed
+            assert _tier_for_due_date(date(2026, 5, 11)) == Tier.NEXT_WEEK
+
+    def test_next_sunday_is_next_week_right_boundary(self, app, monkeypatch):
+        """#218 fix: was BACKLOG under #72."""
+        from task_service import _tier_for_due_date
+        with app.app_context():
+            self._patch_today(monkeypatch, date(2026, 5, 6))  # Wed
+            assert _tier_for_due_date(date(2026, 5, 17)) == Tier.NEXT_WEEK
+
+    def test_two_weeks_out_is_backlog(self, app, monkeypatch):
+        from task_service import _tier_for_due_date
+        with app.app_context():
+            self._patch_today(monkeypatch, date(2026, 5, 6))  # Wed
+            # 5/18 is next-next Monday — outside both Mon-Sun windows.
+            assert _tier_for_due_date(date(2026, 5, 18)) == Tier.BACKLOG
+
+    def test_past_date_before_this_monday_is_backlog(self, app, monkeypatch):
+        from task_service import _tier_for_due_date
+        with app.app_context():
+            self._patch_today(monkeypatch, date(2026, 5, 6))  # Wed
+            assert _tier_for_due_date(date(2026, 5, 1)) == Tier.BACKLOG  # Fri prior
+
+    # --- Sunday-today edge (the user's exact reporting state) -----------
+
+    def test_sunday_today_sunday_due_date_is_today_tier(self, app, monkeypatch):
+        from task_service import _tier_for_due_date
+        with app.app_context():
+            self._patch_today(monkeypatch, date(2026, 5, 10))  # Sun
+            assert _tier_for_due_date(date(2026, 5, 10)) == Tier.TODAY
+
+    def test_sunday_today_saturday_due_date_is_this_week(self, app, monkeypatch):
+        """Yesterday (Sat) on a Sunday today → this_week (includes today)."""
+        from task_service import _tier_for_due_date
+        with app.app_context():
+            self._patch_today(monkeypatch, date(2026, 5, 10))  # Sun
+            assert _tier_for_due_date(date(2026, 5, 9)) == Tier.THIS_WEEK
+
+    def test_sunday_today_next_monday_is_tomorrow(self, app, monkeypatch):
+        """today/tomorrow shortcut wins over next_week range."""
+        from task_service import _tier_for_due_date
+        with app.app_context():
+            self._patch_today(monkeypatch, date(2026, 5, 10))  # Sun
+            assert _tier_for_due_date(date(2026, 5, 11)) == Tier.TOMORROW
+
+    def test_sunday_today_next_sunday_is_next_week(self, app, monkeypatch):
+        """#218 critical case: user on a Sunday + due_date set to next
+        Sunday must NOT be BACKLOG. Under #72 Mon-Sat this returned
+        BACKLOG because Sundays were outside every week range."""
+        from task_service import _tier_for_due_date
+        with app.app_context():
+            self._patch_today(monkeypatch, date(2026, 5, 10))  # Sun
+            assert _tier_for_due_date(date(2026, 5, 17)) == Tier.NEXT_WEEK
+
+
 class TestRealignTiersWithDueDates:
     """#108 (PR43): nightly tier-vs-due-date realignment cron.
 
@@ -379,7 +486,7 @@ class TestRealignPreservesOverdueToday:
         """due_date 7 days ago, tier=TODAY → realign leaves it alone.
 
         Without the #170 guard `_tier_for_due_date` would return
-        BACKLOG (a date a week back is outside this/next Mon-Sat) and
+        BACKLOG (a date a week back is outside this/next Mon-Sun) and
         the task would silently leave the Today panel."""
         from datetime import timedelta
 
@@ -405,7 +512,7 @@ class TestRealignPreservesOverdueToday:
     def test_recently_overdue_today_task_still_within_this_week_stays_in_today(
         self, app
     ):
-        """due_date 2 days ago (still inside this Mon-Sat) → without the
+        """due_date 2 days ago (still inside this Mon-Sun) → without the
         guard `_tier_for_due_date` returns THIS_WEEK; with it the task
         stays in TODAY. Covers the other branch of the past-date map."""
         from datetime import timedelta

@@ -1,9 +1,16 @@
 /**
- * /calendar page — 2-week Mon-Sat grid with drop targets per day.
+ * /calendar page — 2-week Mon-Sun grid with drop targets per day.
  * Bigger cells than the inline strip on the main board (#73).
  *
  * Tasks already due that day list inside each cell. Drop a draggable
  * task card here to set its due_date (auto-routes tier per #74).
+ *
+ * #218 (2026-05-24): Sunday was originally excluded per the #72 Mon-Sat
+ * design (Sunday was the planning/rest pivot day with no panel home).
+ * User-reported: "missing sunday and then has taks that i moved to next
+ * week listed as yesterday" — the Mon-Sat layout left Sunday-dated tasks
+ * with no visible cell AND the off-by-one made it hard to drag onto next
+ * week from a Sunday viewpoint. Switched to Mon-Sun ISO week — 14 cells.
  */
 (function () {
     "use strict";
@@ -103,11 +110,12 @@
             previewsByDate[p.fire_date].push(p);
         }
 
-        // 2 weeks × 6 days (Mon-Sat per #72) = 12 cells. Render as 2 rows.
+        // #218: 2 weeks × 7 days (Mon-Sun) = 14 cells. Render as 2 rows.
+        // Was 12 cells (Mon-Sat per #72) — see header comment.
         for (let week = 0; week < 2; week++) {
             const row = document.createElement("div");
             row.className = "calendar-row";
-            for (let dow = 0; dow < 6; dow++) {
+            for (let dow = 0; dow < 7; dow++) {
                 const offset = week * 7 + dow;
                 const d = new Date(thisMonday.getTime() + offset * 86400000);
                 const iso = _isoDate(d);

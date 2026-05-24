@@ -9,10 +9,11 @@
  *
  * Boundaries to lock in:
  *   today / tomorrow shortcuts
- *   this week (Mon-Sat) inclusive on both ends
- *   next week (Mon-Sat) inclusive on both ends
- *   beyond next Saturday → backlog
- *   Sunday "today" handling — this_week is the JUST-ENDED Mon-Sat
+ *   this week (Mon-Sun ISO) inclusive on both ends
+ *   next week (Mon-Sun ISO) inclusive on both ends
+ *   beyond next Sunday → backlog
+ *   Sunday "today" — last day of THIS_WEEK (#218: was just-ended Mon-Sat
+ *                    under #72; orphaned Sunday-dated tasks to BACKLOG)
  *   invalid input → null
  */
 "use strict";
@@ -38,43 +39,47 @@ describe("tierForDueDate — today/tomorrow shortcuts", () => {
     });
 });
 
-describe("tierForDueDate — Mon-Sat boundaries", () => {
-    // Today = Wed 2026-05-06. This week's Mon-Sat = 2026-05-04 to
-    // 2026-05-09. Next week = 2026-05-11 to 2026-05-16.
+describe("tierForDueDate — Mon-Sun ISO-week boundaries (#218)", () => {
+    // Today = Wed 2026-05-06. This week's Mon-Sun = 2026-05-04 to
+    // 2026-05-10. Next week = 2026-05-11 to 2026-05-17.
     const today = localDate("2026-05-06");
 
     test("this Monday → this_week (left boundary)", () => {
         expect(tierForDueDate("2026-05-04", today)).toBe("this_week");
     });
 
-    test("this Saturday → this_week (right boundary)", () => {
+    test("this Saturday → this_week (mid-week)", () => {
         expect(tierForDueDate("2026-05-09", today)).toBe("this_week");
     });
 
-    test("this Sunday (between weeks) → next_week", () => {
-        // Sunday 5/10 isn't in EITHER Mon-Sat range. Falls back to
-        // next_week per the server logic (5/10 < 5/11 nextMonday → backlog?
-        // Actually 5/10 is BEFORE next Monday 5/11. Server returns
-        // BACKLOG for dates outside both ranges. Verify.
-        expect(tierForDueDate("2026-05-10", today)).toBe("backlog");
+    test("this Sunday → this_week (right boundary — #218: was backlog under #72)", () => {
+        // #218: Sunday is now the LAST day of THIS_WEEK. Under the old
+        // Mon-Sat design (#72) a Sunday due_date fell outside both this
+        // and next week ranges and was orphaned to BACKLOG — that's
+        // the bug the user reported.
+        expect(tierForDueDate("2026-05-10", today)).toBe("this_week");
     });
 
     test("next Monday → next_week (left boundary)", () => {
         expect(tierForDueDate("2026-05-11", today)).toBe("next_week");
     });
 
-    test("next Saturday → next_week (right boundary)", () => {
+    test("next Saturday → next_week (mid-week)", () => {
         expect(tierForDueDate("2026-05-16", today)).toBe("next_week");
+    });
+
+    test("next Sunday → next_week (right boundary — #218: was backlog under #72)", () => {
+        expect(tierForDueDate("2026-05-17", today)).toBe("next_week");
     });
 
     test("3 weeks out → backlog", () => {
         expect(tierForDueDate("2026-06-01", today)).toBe("backlog");
     });
 
-    test("yesterday (past) → backlog (no longer in this Mon-Sat range)", () => {
-        // Today Wed 5/6. Yesterday Tue 5/5 is in this Mon-Sat range
-        // (5/4 - 5/9), so it's this_week, NOT backlog.
-        expect(tierForDueDate("2026-05-05", today)).toBe("this_week");
+    test("two days ago on Wed → this_week (in this Mon-Sun range)", () => {
+        // Today Wed 5/6. Mon 5/4 is in this_week range. Still in week,
+        // not backlog.
+        expect(tierForDueDate("2026-05-04", today)).toBe("this_week");
     });
 
     test("date before this Monday → backlog", () => {
@@ -84,16 +89,22 @@ describe("tierForDueDate — Mon-Sat boundaries", () => {
     });
 });
 
-describe("tierForDueDate — Sunday-today edge", () => {
-    // Today = Sun 2026-05-10. Per server convention, this_week is
-    // the JUST-ENDED Mon-Sat (5/4 - 5/9). Next week = 5/11 - 5/16.
+describe("tierForDueDate — Sunday-today edge (#218 fix)", () => {
+    // Today = Sun 2026-05-10. Under #218 Mon-Sun, today is the LAST day
+    // of THIS_WEEK (5/4 - 5/10). Next week = 5/11 - 5/17.
+    // Under the old #72 Mon-Sat, this_week was the just-ENDED 5/4-5/9
+    // (Sunday was the planning pivot, OUTSIDE both weeks).
     const today = localDate("2026-05-10");
 
-    test("Saturday yesterday on Sunday → this_week (just-ended week)", () => {
+    test("today (Sunday) → 'today' (shortcut wins over this_week range)", () => {
+        expect(tierForDueDate("2026-05-10", today)).toBe("today");
+    });
+
+    test("Saturday yesterday on Sunday → this_week", () => {
         expect(tierForDueDate("2026-05-09", today)).toBe("this_week");
     });
 
-    test("Mon of just-ended week on Sunday → this_week", () => {
+    test("Mon of this week on Sunday → this_week", () => {
         expect(tierForDueDate("2026-05-04", today)).toBe("this_week");
     });
 
@@ -106,6 +117,10 @@ describe("tierForDueDate — Sunday-today edge", () => {
 
     test("upcoming Mon on Sunday → 'tomorrow' (today/tomorrow shortcut wins)", () => {
         expect(tierForDueDate("2026-05-11", today)).toBe("tomorrow");
+    });
+
+    test("next Sunday on Sunday-today → next_week (#218: was backlog under #72)", () => {
+        expect(tierForDueDate("2026-05-17", today)).toBe("next_week");
     });
 });
 

@@ -7,7 +7,7 @@
  * to the API.
  *
  * Pulled out of app.js so Jest can exercise the boundary cases
- * (Mon-Sat boundaries, Sunday-today edge, today/tomorrow shortcuts)
+ * (Mon-Sun ISO-week boundaries, today/tomorrow shortcuts)
  * without spinning up a DOM. Per CLAUDE.md anti-pattern #3:
  * non-trivial logic must be unit-testable; a Playwright assertion
  * on the rendered tier dropdown isn't substitute for the helper's
@@ -45,13 +45,15 @@ function _mondayWeekday(d) {
  *
  *   today               → "today"
  *   tomorrow            → "tomorrow"
- *   within this Mon-Sat → "this_week"
- *   within next Mon-Sat → "next_week"
+ *   within this Mon-Sun → "this_week"
+ *   within next Mon-Sun → "next_week"
  *   anything later      → "backlog"
  *
- * Sunday handling: a Sunday "today" maps THIS week to the just-
- * ended Mon-Sat (so a Sat date from "yesterday" still counts as
- * this_week). NEXT week is then the upcoming Mon-Sat.
+ * #218 (2026-05-24): switched from Mon-Sat (#72) to Mon-Sun ISO weeks
+ * so Sunday-dated tasks have a week home instead of being orphaned to
+ * BACKLOG. On a Sunday "today", THIS_WEEK now ENDS today (Mon-Sun, where
+ * today is the Sunday); NEXT_WEEK is the upcoming Mon-Sun. On any other
+ * day, "this week" is the Mon-Sun the current day falls inside.
  *
  * @param {Date|string} dueDate ISO string `YYYY-MM-DD` or Date
  * @param {Date} [todayOverride] for testing only
@@ -82,14 +84,16 @@ function tierForDueDate(dueDate, todayOverride) {
 
     const daysSinceMonday = _mondayWeekday(today);
     const thisMonday = new Date(today.getTime() - daysSinceMonday * _MS_PER_DAY);
-    const thisSaturday = new Date(thisMonday.getTime() + 5 * _MS_PER_DAY);
+    // #218: was thisMonday + 5 (Saturday). Mon-Sun ISO week ends Sunday = +6.
+    const thisSunday = new Date(thisMonday.getTime() + 6 * _MS_PER_DAY);
     const nextMonday = new Date(thisMonday.getTime() + 7 * _MS_PER_DAY);
-    const nextSaturday = new Date(thisMonday.getTime() + 12 * _MS_PER_DAY);
+    // #218: was thisMonday + 12 (next Saturday). Next Mon-Sun ends +13.
+    const nextSunday = new Date(thisMonday.getTime() + 13 * _MS_PER_DAY);
 
-    if (due.getTime() >= thisMonday.getTime() && due.getTime() <= thisSaturday.getTime()) {
+    if (due.getTime() >= thisMonday.getTime() && due.getTime() <= thisSunday.getTime()) {
         return "this_week";
     }
-    if (due.getTime() >= nextMonday.getTime() && due.getTime() <= nextSaturday.getTime()) {
+    if (due.getTime() >= nextMonday.getTime() && due.getTime() <= nextSunday.getTime()) {
         return "next_week";
     }
     return "backlog";
@@ -99,7 +103,8 @@ function tierForDueDate(dueDate, todayOverride) {
  * The inverse: pick a default `due_date` for tier=today/tomorrow.
  * Mirrors `task_service._auto_fill_tier_due_date` — only TODAY and
  * TOMORROW have a single canonical date. THIS_WEEK / NEXT_WEEK span
- * 6 days, FREEZER / BACKLOG / INBOX are date-agnostic.
+ * 7 days (Mon-Sun per #218, was 6 days Mon-Sat per #72), FREEZER /
+ * BACKLOG / INBOX are date-agnostic.
  *
  * @param {string} tier
  * @param {Date} [todayOverride]

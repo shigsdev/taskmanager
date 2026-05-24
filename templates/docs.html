@@ -748,8 +748,8 @@ Skip this line (too short)</pre>
             <ul>
                 <li>Date = today → <strong>Today</strong>.</li>
                 <li>Date = tomorrow → <strong>Tomorrow</strong>.</li>
-                <li>Date inside this Mon–Sat → <strong>This Week</strong>.</li>
-                <li>Date inside next Mon–Sat → <strong>Next Week</strong>.</li>
+                <li>Date inside this Mon–Sun → <strong>This Week</strong>.</li>
+                <li>Date inside next Mon–Sun → <strong>Next Week</strong>.</li>
                 <li>Anything later → <strong>Backlog</strong>.</li>
             </ul>
             <p>
@@ -1257,14 +1257,14 @@ Skip this line (too short)</pre>
 
             <h3>Day strip (above Today on the main board)</h3>
             <ul>
-                <li>12 cells: this Mon–Sat plus next Mon–Sat. Today is highlighted; past days dimmed.</li>
+                <li>14 cells: this Mon–Sun plus next Mon–Sun. Today is highlighted; past days dimmed.</li>
                 <li>Drop any task card on a cell → the task gets that calendar date as its <code>due_date</code> and auto-routes (e.g. drop on Tue this week → tier becomes <strong>This Week</strong>).</li>
                 <li>Drop on today's cell → tier becomes <strong>Today</strong>.</li>
             </ul>
 
             <h3><a href="{{ url_for('calendar_page') }}">/calendar</a> page</h3>
             <ul>
-                <li>Larger 2-row Mon–Sat grid. Each cell shows its date header + the existing tasks already due that day.</li>
+                <li>Larger 2-row Mon–Sun grid. Each cell shows its date header + the existing tasks already due that day.</li>
                 <li>Tasks in cells are themselves draggable — drag any task between days to change its <code>due_date</code>.</li>
                 <li>An <strong>Unscheduled</strong> side panel lists every task with no <code>due_date</code>; drop it on a day cell to schedule, or drop a scheduled task back on the panel to clear its date.</li>
             </ul>
@@ -1279,12 +1279,15 @@ Skip this line (too short)</pre>
                 per frame. Stops on drop, drag-end, or pointer-leave.
             </p>
 
-            <h3>Mon–Sat week semantics</h3>
+            <h3>Mon–Sun week semantics</h3>
             <p>
                 "This week" and "next week" both mean Monday through
-                Saturday. Sunday is intentionally excluded — used as
-                a planning / rest day. On Sunday, "this week" refers
-                to the just-ended Mon–Sat block.
+                Sunday (ISO week). On Sunday "today," "this week" is
+                the week ending today, and "next week" is the upcoming
+                Monday through Sunday. Was Mon–Sat in earlier versions
+                (#72 era) — switched to Mon–Sun under #218 (2026-05-24)
+                so Sunday-dated tasks have a week home instead of
+                being orphaned to Backlog.
             </p>
         </section>
 
