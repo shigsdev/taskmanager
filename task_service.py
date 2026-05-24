@@ -1016,6 +1016,53 @@ def roll_tomorrow_to_today() -> int:
         return result.rowcount or 0
 
 
+def backfill_clear_stale_next_week_due_dates() -> int:
+    """#220 follow-up (2026-05-24): one-shot cleanup for tasks that
+    were punted to NEXT_WEEK via the tier button BEFORE the #220 hook
+    shipped — they still carry their old today/past `due_date` because
+    the pre-fix code path didn't clear it. Same data shape my #220
+    hook prevents for future punts.
+
+    Selects tasks where:
+      - tier == NEXT_WEEK
+      - due_date <= today
+      - status == ACTIVE
+
+    …and sets due_date = None on each one. Idempotent — re-running
+    after the data is clean is a no-op.
+
+    Different invariant than `realign_tiers_with_due_dates`:
+      - realign treats due_date as authoritative and re-computes tier.
+        Running that on these stuck tasks would move them OFF
+        NEXT_WEEK (back to today/this_week) — opposite of what the
+        user intended when they clicked "Next Week" in the first place.
+      - This function treats the user's explicit tier choice as
+        authoritative and CLEARS the stale date so the calendar view
+        agrees. Matches the #220 hook's semantics.
+
+    Returns the number of rows updated.
+    """
+    from sqlalchemy.orm import Session
+
+    today = _local_today_date()
+    updated = 0
+    with Session(db.engine) as session:
+        rows = session.scalars(
+            select(Task).where(
+                Task.tier == Tier.NEXT_WEEK,
+                Task.due_date.is_not(None),
+                Task.due_date <= today,
+                Task.status == TaskStatus.ACTIVE,
+            )
+        ).all()
+        for t in rows:
+            t.due_date = None
+            updated += 1
+        if updated:
+            session.commit()
+        return updated
+
+
 def realign_tiers_with_due_dates() -> int:
     """#108 (PR43, 2026-04-27): re-route every active task whose tier
     no longer matches its due_date.

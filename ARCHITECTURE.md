@@ -601,6 +601,7 @@ the code.
 /api/debug/backfill/task-goal-from-project   # #77 — one-shot admin
 /api/debug/backfill/project-colors           # #93 — one-shot admin (per-type default backfill)
 /api/debug/backfill/today-tomorrow-due-date
+/api/debug/backfill/clear-stale-next-week-due-dates  # #220 — one-shot: null out today/past due_date on NEXT_WEEK tasks stuck from pre-#220 tier-button punts
 /api/debug/realign-tiers                     # #108 — one-shot: re-route active tasks whose tier != _tier_for_due_date(due_date)  # #100 — one-shot admin (set due_date on legacy TODAY/TOMORROW rows)
 ```
 

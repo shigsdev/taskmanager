@@ -443,6 +443,37 @@ def realign_tiers(email: str):  # noqa: ARG001
     return jsonify({"updated": n}), 200
 
 
+@bp.post("/backfill/clear-stale-next-week-due-dates")
+@debug_admin_auth_required  # PR65 #126: write endpoint requires admin token
+def backfill_clear_stale_next_week_due_dates_endpoint(email: str):  # noqa: ARG001
+    """#220 follow-up (2026-05-24): one-shot cleanup for tasks that
+    were punted to NEXT_WEEK via the tier button BEFORE the #220 hook
+    shipped — they still carry their old today/past due_date because
+    the pre-fix code path didn't clear it. User-visible symptom: a
+    task with tier=NEXT_WEEK + due_date=today shows on today's cell
+    on /calendar (which buckets by due_date) instead of in the
+    Unscheduled aside.
+
+    Selects active tasks where tier=NEXT_WEEK AND due_date <= today
+    AND status=ACTIVE; sets due_date = None on each. Idempotent —
+    re-running after the data is clean is a no-op.
+
+    Different invariant than /realign-tiers above. realign treats
+    due_date as authoritative and re-computes tier — running it on
+    these stuck tasks would move them OFF NEXT_WEEK (opposite of
+    user intent). This backfill treats the user's explicit tier
+    choice as authoritative and clears the stale date.
+
+    Auth: X-Debug-Token (admin). Returns: {"updated": N}.
+    """
+    from task_service import backfill_clear_stale_next_week_due_dates
+    n = backfill_clear_stale_next_week_due_dates()
+    logger.info(
+        "backfill clear_stale_next_week_due_dates: updated=%d", n
+    )
+    return jsonify({"updated": n}), 200
+
+
 @bp.post("/backfill/today-tomorrow-due-date")
 @debug_admin_auth_required  # PR65 #126: write endpoint requires admin token
 def backfill_today_tomorrow_due_date(email: str):  # noqa: ARG001

@@ -467,6 +467,104 @@ class TestTierForDueDate:
             assert _tier_for_due_date(date(2026, 5, 17)) == Tier.NEXT_WEEK
 
 
+class TestBackfillClearStaleNextWeekDueDates:
+    """#220 follow-up backfill: clear stale today/past due_date on
+    tasks stuck in tier=NEXT_WEEK from pre-#220 punts. Mirrors the
+    realign tests structurally."""
+
+    def test_clears_today_dated_next_week_task(self, app):
+        """The user-reported scenario: tier=NEXT_WEEK +
+        due_date=today → cleared."""
+        from task_service import backfill_clear_stale_next_week_due_dates
+        with app.app_context():
+            t = _make_task(title="stuck", tier=Tier.NEXT_WEEK, due_date=_today())
+            tid = t.id
+            updated = backfill_clear_stale_next_week_due_dates()
+            assert updated == 1
+            db.session.expire_all()
+            t2 = db.session.get(Task, tid)
+            assert t2.tier == Tier.NEXT_WEEK
+            assert t2.due_date is None
+
+    def test_clears_past_dated_next_week_task(self, app):
+        """Punted last week, never updated — date in the past."""
+        from task_service import backfill_clear_stale_next_week_due_dates
+        with app.app_context():
+            week_ago = _today() - timedelta(days=7)
+            t = _make_task(title="ancient", tier=Tier.NEXT_WEEK, due_date=week_ago)
+            tid = t.id
+            updated = backfill_clear_stale_next_week_due_dates()
+            assert updated == 1
+            db.session.expire_all()
+            t2 = db.session.get(Task, tid)
+            assert t2.due_date is None
+
+    def test_leaves_future_dated_next_week_task_alone(self, app):
+        """User explicitly scheduled this task for next Tuesday —
+        that's a valid next_week placement and must not be cleared."""
+        from task_service import backfill_clear_stale_next_week_due_dates
+        with app.app_context():
+            next_tuesday = _today() + timedelta(days=8)
+            t = _make_task(title="scheduled", tier=Tier.NEXT_WEEK, due_date=next_tuesday)
+            tid = t.id
+            updated = backfill_clear_stale_next_week_due_dates()
+            assert updated == 0
+            db.session.expire_all()
+            t2 = db.session.get(Task, tid)
+            assert t2.due_date == next_tuesday
+
+    def test_leaves_other_tiers_alone(self, app):
+        """Scope: ONLY tier=NEXT_WEEK. Other tiers with today's date
+        are different invariants — TODAY+today is correct, THIS_WEEK+
+        today is fine (today is inside this week), BACKLOG+today is
+        a deliberate user choice."""
+        from task_service import backfill_clear_stale_next_week_due_dates
+        with app.app_context():
+            today = _today()
+            t_today = _make_task(title="today", tier=Tier.TODAY, due_date=today)
+            t_thisweek = _make_task(title="thisweek", tier=Tier.THIS_WEEK, due_date=today)
+            t_backlog = _make_task(title="backlog", tier=Tier.BACKLOG, due_date=today)
+            t_inbox = _make_task(title="inbox", tier=Tier.INBOX, due_date=today)
+            updated = backfill_clear_stale_next_week_due_dates()
+            assert updated == 0
+            db.session.expire_all()
+            assert db.session.get(Task, t_today.id).due_date == today
+            assert db.session.get(Task, t_thisweek.id).due_date == today
+            assert db.session.get(Task, t_backlog.id).due_date == today
+            assert db.session.get(Task, t_inbox.id).due_date == today
+
+    def test_leaves_non_active_alone(self, app):
+        """Archived/cancelled next_week tasks are immutable — don't
+        rewrite their due_date even if technically stuck."""
+        from task_service import backfill_clear_stale_next_week_due_dates
+        with app.app_context():
+            today = _today()
+            t = _make_task(
+                title="archived stuck", tier=Tier.NEXT_WEEK,
+                due_date=today, status=TaskStatus.ARCHIVED,
+            )
+            tid = t.id
+            updated = backfill_clear_stale_next_week_due_dates()
+            assert updated == 0
+            db.session.expire_all()
+            assert db.session.get(Task, tid).due_date == today
+
+    def test_idempotent(self, app):
+        """Re-run after clean is a no-op."""
+        from task_service import backfill_clear_stale_next_week_due_dates
+        with app.app_context():
+            _make_task(title="stuck", tier=Tier.NEXT_WEEK, due_date=_today())
+            first = backfill_clear_stale_next_week_due_dates()
+            second = backfill_clear_stale_next_week_due_dates()
+            assert first == 1
+            assert second == 0
+
+    def test_admin_endpoint_requires_token(self, client):
+        """POST without a debug token = 302/401/403/405."""
+        resp = client.post("/api/debug/backfill/clear-stale-next-week-due-dates")
+        assert resp.status_code in (302, 401, 403, 405)
+
+
 class TestRealignTiersWithDueDates:
     """#108 (PR43): nightly tier-vs-due-date realignment cron.
 
