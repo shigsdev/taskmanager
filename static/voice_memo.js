@@ -434,6 +434,17 @@
         });
         typeSel.addEventListener("change", function () {
             currentCandidates[idx].type = typeSel.value;
+            // #221 (2026-05-24): re-filter the project dropdown to the
+            // new type. Projects have a `type` field (work/personal);
+            // a personal task should only see personal projects.
+            // Without this, dictating a personal task (e.g. "Spray the
+            // patio") AND changing type to personal in the review UI
+            // still left the project dropdown listing work projects.
+            // _repopulateProjectsForType is defined below this block
+            // (hoisted by closure access via the row's projSel ref).
+            if (typeof _repopulateProjectsForType === "function") {
+                _repopulateProjectsForType();
+            }
         });
         row.appendChild(typeSel);
 
@@ -480,22 +491,67 @@
         row.appendChild(dateInput);
 
         // #37: project dropdown. Options = "(no project)" + every
-        // active project. Pre-selected to the inferred project_id
-        // (resolved server-side from project_hint).
+        // active project matching the candidate's type (#221 — was
+        // unfiltered, so a personal task showed work projects).
+        // Pre-selected to the inferred project_id (resolved server-
+        // side from project_hint).
         const projSel = document.createElement("select");
         projSel.className = "voice-candidate-project";
         projSel.title = "Link to project";
-        const noneOpt = document.createElement("option");
-        noneOpt.value = "";
-        noneOpt.textContent = "(no project)";
-        projSel.appendChild(noneOpt);
-        availableProjects.forEach((p) => {
-            const opt = document.createElement("option");
-            opt.value = p.id;
-            opt.textContent = p.name;
-            if (candidate.project_id === p.id) opt.selected = true;
-            projSel.appendChild(opt);
-        });
+
+        // #221 (2026-05-24): factored as a helper so the type-change
+        // handler above can re-populate when the user toggles
+        // work↔personal. Same filterProjectsByType helper the home
+        // board uses for the project filter chips (#98 / PR32).
+        function _repopulateProjectsForType() {
+            const currentType = currentCandidates[idx].type;
+            const filtered = window.filterHelpers
+                ? window.filterHelpers.filterProjectsByType(availableProjects, currentType)
+                : availableProjects;
+            // Preserve the currently-selected value if it's still in
+            // the filtered list (e.g. user opened the dropdown then
+            // toggled type back); otherwise clear to "(no project)".
+            const prevValue = projSel.value;
+            // Clear existing options and rebuild.
+            while (projSel.firstChild) projSel.removeChild(projSel.firstChild);
+            const noneOpt = document.createElement("option");
+            noneOpt.value = "";
+            noneOpt.textContent = "(no project)";
+            projSel.appendChild(noneOpt);
+            let restored = false;
+            filtered.forEach((p) => {
+                const opt = document.createElement("option");
+                opt.value = p.id;
+                opt.textContent = p.name;
+                if (p.id === prevValue) { opt.selected = true; restored = true; }
+                projSel.appendChild(opt);
+            });
+            if (!restored) {
+                // Selected project no longer matches the new type —
+                // clear it from the candidate so saving doesn't store
+                // a work project on a personal task (bug #57 class).
+                // Also clear goal_id — it was likely derived from the
+                // now-cleared project's goal_id (cascade per #77), so
+                // leaving it set would persist a stale goal.
+                currentCandidates[idx].project_id = null;
+                currentCandidates[idx].goal_id = null;
+            }
+        }
+        // Initial population for the candidate's inferred type.
+        _repopulateProjectsForType();
+        // After initial population, restore the inferred project_id
+        // if it survives the type filter (server-side resolution
+        // doesn't currently check type — defensive guard here).
+        if (candidate.project_id) {
+            const stillValid = Array.from(projSel.options).some(
+                (o) => o.value === candidate.project_id,
+            );
+            if (stillValid) {
+                projSel.value = candidate.project_id;
+            } else {
+                currentCandidates[idx].project_id = null;
+            }
+        }
         projSel.addEventListener("change", function () {
             currentCandidates[idx].project_id = projSel.value || null;
             // #137 Sub-PR A: cascade goal_id from the selected project,
