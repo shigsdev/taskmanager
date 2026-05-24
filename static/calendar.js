@@ -39,10 +39,24 @@
         });
     }
 
+    // #219 (2026-05-24): stale-render guard. renderCalendar is async
+    // and awaits two apiFetch calls (tasks + recurring previews). If
+    // a second renderCalendar fires WHILE the first is mid-await —
+    // e.g. the visibilitychange handler (#114) on tab focus + the
+    // cross-tab BroadcastChannel subscriber (#214) for a sibling-tab
+    // mutation — both calls clear the grid AT THE TOP, then both
+    // proceed to append rows AFTER their awaits resolve. Net effect:
+    // double-rendered weeks (the user's screenshot showed the current
+    // week repeated under the next-week row). The fix: bump a
+    // monotonic counter on entry, snapshot it, and bail the DOM-mutate
+    // step if a newer call superseded us. The latest call wins —
+    // intermediate stale calls drop silently.
+    let _renderGeneration = 0;
+
     async function renderCalendar() {
+        const myGen = ++_renderGeneration;
         const grid = document.getElementById("calendarGrid");
         if (!grid) return;
-        grid.innerHTML = "";
 
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -98,6 +112,14 @@
                 unscheduled.push(t);
             }
         }
+        // #219: bail if a newer renderCalendar() call started while we
+        // were awaiting the apiFetch calls above — its DOM mutation
+        // will be more current than ours.
+        if (myGen !== _renderGeneration) return;
+        // Clear grid HERE (post-await) so the concurrent-call race
+        // can't double-append. The grid and unscheduled aside are
+        // both populated in the synchronous tail of this function.
+        grid.innerHTML = "";
         // #94 (PR26): render an "Unscheduled" side list so the user has
         // a source to drag FROM. Tasks already in cells are also
         // draggable (between days). Without this, /calendar had nothing

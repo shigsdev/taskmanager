@@ -1088,6 +1088,47 @@ test.describe("Auto-categorize Inbox: project dropdown labels", () => {
     });
 });
 
+test.describe("Calendar concurrent-render race (#219)", () => {
+    // User-reported 2026-05-24 (screenshot showed the current week
+    // repeated under next week). Root cause: renderCalendar is async
+    // and awaits two apiFetch calls. If a second renderCalendar fires
+    // mid-await (visibilitychange #114 + apiClient.subscribeTasksChanged
+    // #214 both call it; the 60s poll #160 too), both calls' DOM
+    // appends land after their awaits. Each call cleared the grid AT
+    // THE TOP, but the actual append-rows step happened after the
+    // awaits — so the late call's appended rows piled on top of the
+    // already-appended rows from an earlier call.
+    //
+    // Fix: generation-counter guard inside renderCalendar — each call
+    // increments and snapshots; only the LATEST call commits to the
+    // DOM. The innerHTML = "" also moved to AFTER the awaits.
+    //
+    // This test fires multiple renderCalendar() concurrently and
+    // asserts the final cell count is still exactly 14 (2 weeks × 7
+    // days per #218). Without the guard the test fails at 28+ cells.
+    test("multiple concurrent renderCalendar() calls produce exactly 14 cells", async ({ page }) => {
+        await page.goto("/calendar?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator(".calendar-cell").first()).toBeVisible({ timeout: 5_000 });
+        // Fire 5 renderCalendar() calls in rapid succession WITHOUT
+        // awaiting between them — same shape as the
+        // visibilitychange/subscribeTasksChanged/setInterval race.
+        await page.evaluate(async () => {
+            const promises = [];
+            for (let i = 0; i < 5; i++) {
+                promises.push(window.renderCalendar());
+            }
+            await Promise.all(promises);
+        });
+        // After all 5 settle, assert exactly 14 cells AND exactly 2
+        // .calendar-row containers. (The user's screenshot showed 3+
+        // rows when the race fired.)
+        await page.waitForTimeout(200);
+        expect(await page.locator(".calendar-cell").count()).toBe(14);
+        expect(await page.locator(".calendar-row").count()).toBe(2);
+    });
+});
+
 test.describe("Tier board horizontal overflow (#216 / #138 D-B1)", () => {
     // Sibling of the prod-smoke "/calendar does not horizontally overflow"
     // test, but for the home board. Runs in BOTH chromium (desktop 1280×800)
