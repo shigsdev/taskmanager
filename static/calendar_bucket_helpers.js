@@ -16,22 +16,40 @@
  *   - DOM mutation (rendering cells, attaching listeners) stays in
  *     calendar.js (covered by Phase 6 + local Playwright).
  *
- * Filter rule (#231): tasks with `parent_id !== null` are subtasks and
- * are EXCLUDED from the calendar render. They appear nested under the
- * parent's detail card on the main board; rendering them as their own
- * top-level rows on /calendar created the visual duplicate the user
- * reported on 2026-05-24 ("I still see Subtasks listed on unscheduled
- * and the day i put them on").
+ * Filter rule (#231, refined 2026-05-25 per user feedback):
+ *
+ *   Subtasks WITH a scheduled day → render on that day's cell, exactly
+ *     like a top-level task. The user explicitly scheduled them; they
+ *     should be visible where they put them.
+ *
+ *   Subtasks WITHOUT a scheduled day → HIDDEN from the calendar. They
+ *     belong nested under the parent's detail card on the home board.
+ *     Listing them in Unscheduled was what produced the user-reported
+ *     duplicate-feeling ("I still see Subtasks listed on unscheduled
+ *     and the day i put them on") — the parent sat on its day cell and
+ *     the unscheduled subtask appeared as a separate Unscheduled row
+ *     that visually felt like the same item in two places.
+ *
+ *   First-pass mistake (now reverted): the original #231 fix filtered
+ *   ALL subtasks out — including ones the user had explicitly scheduled.
+ *   User clarified: "i did not want the subtasks to go away from the
+ *   calender - i just did not want them to show under unscheduled and
+ *   the day i scheduled them. they should be on the day i scheduled
+ *   them."
  *
  * Tier fallback (#100 / PR29): tasks with no `due_date` but with a
  * tier of TODAY or TOMORROW bucket to today / tomorrow's cell. Other
  * tiers (THIS_WEEK / NEXT_WEEK span multiple days; BACKLOG / FREEZER
- * are intentionally undated) fall through to Unscheduled.
+ * are intentionally undated) leave the task without a scheduled day.
  */
 "use strict";
 
 /**
  * Bucket the API task list into `{ byDate: {iso: [task,...]}, unscheduled: [task,...] }`.
+ *
+ * Subtasks (rows with `parent_id` set) are included in `byDate` if they
+ * have a scheduled day, and SUPPRESSED from `unscheduled` otherwise.
+ * Top-level rows always go somewhere.
  *
  * @param {Array<{id, title, parent_id, due_date, tier, ...}>} tasks - raw /api/tasks rows
  * @param {string} todayIso - "YYYY-MM-DD" for "today" (caller computes from local clock)
@@ -41,21 +59,22 @@
 function bucketTasks(tasks, todayIso, tomorrowIso) {
     const byDate = {};
     const unscheduled = [];
-    // #231: subtasks belong with their parent on the main board, not as
-    // their own top-level rows on the calendar.
-    const topLevel = tasks.filter(function (t) { return !t.parent_id; });
-    for (const t of topLevel) {
+    for (const t of tasks) {
         let cellDate = t.due_date;
         if (!cellDate) {
             if (t.tier === "today") cellDate = todayIso;
             else if (t.tier === "tomorrow") cellDate = tomorrowIso;
         }
         if (cellDate) {
+            // Scheduled — top-level OR subtask, render on its day.
             if (!byDate[cellDate]) byDate[cellDate] = [];
             byDate[cellDate].push(t);
-        } else {
+        } else if (!t.parent_id) {
+            // Top-level with no day → Unscheduled aside.
             unscheduled.push(t);
         }
+        // else: subtask with no day → suppressed. It's still visible on
+        // the home board nested under its parent's detail card.
     }
     return { byDate: byDate, unscheduled: unscheduled };
 }

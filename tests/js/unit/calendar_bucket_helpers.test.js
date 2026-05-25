@@ -84,55 +84,94 @@ describe("bucketTasks — tier fallback (#100 / PR29)", () => {
     });
 });
 
-describe("bucketTasks — #231 subtask exclusion", () => {
-    test("subtask (parent_id set) is excluded from the day grid", () => {
+describe("bucketTasks — #231 subtask scheduling rules (refined 2026-05-25)", () => {
+    test("scheduled subtask (parent_id + due_date set) IS rendered on its day, alongside the parent", () => {
+        // User clarification 2026-05-25: "i did not want the subtasks to
+        // go away from the calender ... they should be on the day i
+        // scheduled them." If both parent and subtask happen to share a
+        // due_date, both render on that day's cell — the user did the
+        // explicit scheduling and deserves to see it.
         const tasks = [
             { id: "parent", title: "Ski trip", due_date: "2026-05-28", tier: "this_week", parent_id: null },
             { id: "sub", title: "Buy boots", due_date: "2026-05-28", tier: "this_week", parent_id: "parent" },
         ];
         const { byDate } = bucketTasks(tasks, TODAY, TOMORROW);
-        expect(byDate["2026-05-28"]).toHaveLength(1);
-        expect(byDate["2026-05-28"][0].id).toBe("parent");
+        expect(byDate["2026-05-28"]).toHaveLength(2);
+        const ids = byDate["2026-05-28"].map(t => t.id).sort();
+        expect(ids).toEqual(["parent", "sub"]);
     });
 
-    test("subtask with no due_date is excluded from Unscheduled — does NOT duplicate the parent's slot", () => {
-        // This is the exact bug the user reported on 2026-05-24:
-        // a subtask without its own due_date showed up as a standalone
-        // row in the Unscheduled aside, looking like a duplicate of the
-        // parent (which was on a day cell).
+    test("scheduled subtask on its OWN distinct day renders on that day", () => {
+        // Parent on Thu, subtask explicitly scheduled to Mon — each lands
+        // on its own day.
+        const tasks = [
+            { id: "p", title: "Move", due_date: "2026-05-28", tier: "this_week", parent_id: null },
+            { id: "s", title: "Reserve truck", due_date: "2026-05-25", tier: "today", parent_id: "p" },
+        ];
+        const { byDate } = bucketTasks(tasks, TODAY, TOMORROW);
+        expect(byDate["2026-05-28"]).toHaveLength(1);
+        expect(byDate["2026-05-28"][0].id).toBe("p");
+        expect(byDate["2026-05-25"]).toHaveLength(1);
+        expect(byDate["2026-05-25"][0].id).toBe("s");
+    });
+
+    test("subtask with tier=today (no due_date) renders on today's cell via the tier fallback", () => {
+        // Same tier-fallback rule as for top-level tasks — a subtask
+        // explicitly tier-routed to today/tomorrow is "scheduled" in the
+        // user's mental model even without an explicit date.
+        const tasks = [
+            { id: "p", title: "Ship dark theme", due_date: TODAY, tier: "today", parent_id: null },
+            { id: "s", title: "Audit nav CSS at 375px", due_date: null, tier: "today", parent_id: "p" },
+        ];
+        const { byDate, unscheduled } = bucketTasks(tasks, TODAY, TOMORROW);
+        expect(byDate[TODAY]).toHaveLength(2);
+        expect(unscheduled).toHaveLength(0);
+    });
+
+    test("subtask with NO scheduled day is SUPPRESSED from Unscheduled (the actual user-reported bug)", () => {
+        // Exact 2026-05-25 user repro: an unscheduled subtask (no
+        // due_date, tier=backlog) used to surface as a standalone row in
+        // the Unscheduled aside. The parent was already on a day cell, so
+        // the user saw what felt like the same task in two places. After
+        // the fix, the subtask is hidden from /calendar entirely (it
+        // remains visible nested under its parent's detail card on the
+        // home board).
         const tasks = [
             { id: "parent", title: "Ski trip", due_date: "2026-05-28", tier: "this_week", parent_id: null },
             { id: "sub", title: "Buy boots", due_date: null, tier: "backlog", parent_id: "parent" },
         ];
         const { byDate, unscheduled } = bucketTasks(tasks, TODAY, TOMORROW);
         expect(byDate["2026-05-28"]).toHaveLength(1);
+        expect(byDate["2026-05-28"][0].id).toBe("parent");
         expect(unscheduled).toHaveLength(0);
     });
 
-    test("multiple subtasks under one parent: only the parent renders", () => {
+    test("mixed bag: scheduled subtasks render on their days, unscheduled subtasks are hidden", () => {
         const tasks = [
-            { id: "p", title: "Move", due_date: "2026-06-01", tier: "this_week", parent_id: null },
-            { id: "s1", title: "Pack kitchen", due_date: null, tier: "backlog", parent_id: "p" },
-            { id: "s2", title: "Reserve truck", due_date: "2026-05-30", tier: "this_week", parent_id: "p" },
-            { id: "s3", title: "Forward mail", due_date: null, tier: "today", parent_id: "p" },
+            { id: "p", title: "Move", due_date: "2026-06-01", tier: "next_week", parent_id: null },
+            { id: "s1", title: "Pack kitchen", due_date: null, tier: "backlog", parent_id: "p" },           // hidden
+            { id: "s2", title: "Reserve truck", due_date: "2026-05-30", tier: "this_week", parent_id: "p" }, // visible on 5-30
+            { id: "s3", title: "Forward mail", due_date: null, tier: "today", parent_id: "p" },             // visible today
         ];
         const { byDate, unscheduled } = bucketTasks(tasks, TODAY, TOMORROW);
-        // Only the parent's cell, nothing else.
-        expect(byDate["2026-06-01"]).toHaveLength(1);
+        expect(byDate["2026-06-01"]).toHaveLength(1);                    // parent
         expect(byDate["2026-06-01"][0].id).toBe("p");
-        expect(byDate[TODAY]).toBeUndefined();        // s3 would have landed here
-        expect(byDate["2026-05-30"]).toBeUndefined(); // s2 would have landed here
-        expect(unscheduled).toHaveLength(0);          // s1 would have landed here
+        expect(byDate["2026-05-30"]).toHaveLength(1);                    // s2
+        expect(byDate["2026-05-30"][0].id).toBe("s2");
+        expect(byDate[TODAY]).toHaveLength(1);                           // s3
+        expect(byDate[TODAY][0].id).toBe("s3");
+        expect(unscheduled).toHaveLength(0);                             // s1 suppressed
     });
 
-    test("parent_id === undefined (older serializer) is treated as top-level", () => {
+    test("parent_id === undefined (older serializer) is treated as top-level — still goes to Unscheduled when no day", () => {
         // Defensive: if a task row arrives without a parent_id key at all
-        // (legacy data, partial response), we don't want to filter it out.
+        // (legacy data, partial response), we treat it as top-level.
         const tasks = [
-            { id: "a", title: "Top-level", due_date: "2026-05-28", tier: "this_week" },
+            { id: "a", title: "Top-level no day", due_date: null, tier: "backlog" },
         ];
-        const { byDate } = bucketTasks(tasks, TODAY, TOMORROW);
-        expect(byDate["2026-05-28"]).toHaveLength(1);
+        const { byDate, unscheduled } = bucketTasks(tasks, TODAY, TOMORROW);
+        expect(Object.keys(byDate)).toHaveLength(0);
+        expect(unscheduled).toHaveLength(1);
     });
 
     test("parent_id === null is treated as top-level (the common case)", () => {
