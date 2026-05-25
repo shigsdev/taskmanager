@@ -182,10 +182,16 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .nav-tab:hover { background: rgba(255, 255, 255, 0.15); color: #fff; }
 .nav-tab.active { color: #fff; font-weight: 700; background: rgba(255, 255, 255, 0.22); }
 
-/* Inbox badge — inverted on blue bar (white pill, blue text) */
+/* Inbox badge on the navbar.
+   #224 iter 2: was a white pill with blue text (high contrast vs
+   the original bright-accent navbar). On the dimmed dark-navy
+   navbar that pill became the brightest element on screen.
+   Switched to accent-blue background with white text so it still
+   "calls out" as a count badge but uses the brand-blue rather
+   than full white. */
 .inbox-badge {
-    background: #fff;
-    color: var(--accent);
+    background: var(--accent);
+    color: #fff;
     font-size: 0.75rem;
     font-weight: 700;
     padding: 2px 8px;
@@ -193,7 +199,12 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     min-width: 20px;
     text-align: center;
 }
-.inbox-badge.empty { background: rgba(255, 255, 255, 0.28); color: #fff; }
+.inbox-badge.empty {
+    /* When inbox is empty, fade the badge — neutral muted tone
+       instead of a fake "0 items" attention-grab. */
+    background: var(--surface-raised);
+    color: var(--text-muted);
+}
 
 /* Top-left quick-upload button (shortcut to /scan). Uses both
    .icon-btn and .upload-btn classes, so we must override the
@@ -214,14 +225,22 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .upload-btn:hover { background: rgba(255, 255, 255, 0.15); }
 
-/* Capture bar controls inside the accent-tinted nav — keep white
-   backgrounds so inputs/buttons stay legible against the blue bar.
-   Excludes .upload-btn which needs transparent + white text. */
+/* Capture bar controls inside the navbar.
+   #224 iter 2 (2026-05-25): on the original light theme + bright
+   accent-blue navbar, white backgrounds gave these buttons
+   contrast. On the dimmed dark-navy navbar (#14213d) the white
+   squares were the BRIGHTEST elements on screen — overpowered
+   real content. Switched to a slightly-lighter-than-navbar
+   surface tone so they read as part of the chrome strip without
+   shouting. White hover→subtle lift instead of stark white. */
 .nav .icon-btn:not(.upload-btn) {
-    background: #fff;
-    border-color: rgba(255, 255, 255, 0.6);
+    background: var(--surface-raised);
+    border-color: var(--border-strong);
+    color: var(--text);
 }
-.nav .icon-btn:not(.upload-btn):hover { background: #f1f5ff; }
+.nav .icon-btn:not(.upload-btn):hover {
+    background: var(--border-strong);
+}
 
 /* Log-out link inside the nav — ensure it's readable on the blue bar */
 .nav .btn-link { color: rgba(255, 255, 255, 0.82); padding: 4px 10px; border-radius: var(--radius); }
@@ -1043,6 +1062,20 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     display: flex;
     gap: 8px;
     margin-top: 16px;
+    /* #224 iter 2 (2026-05-25): on mobile 375 the 5 action buttons
+       (Save / Complete / Copy to tomorrow / Cancel task / Delete)
+       overflowed off the right edge — Delete was hidden behind a
+       horizontal scroll. flex-wrap lets the buttons wrap to a 2nd
+       row when they don't fit; each row stays evenly spaced via
+       gap. Same #138 D-B1 family as #216 — buttons with
+       intrinsic width on a fixed-width container need wrap. */
+    flex-wrap: wrap;
+}
+.detail-actions .btn {
+    /* When wrapping, let each button grow a bit so a 2-row layout
+       doesn't leave weird empty space at the end of a row. */
+    flex: 1 1 auto;
+    min-width: 90px;
 }
 
 /* === Buttons === */
