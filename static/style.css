@@ -491,12 +491,23 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     background: transparent;
     color: var(--text-muted, #666);
     padding: 2px 6px;
-    border: 1px dashed var(--border, #ccc);
+    /* #224 iter 3 (2026-05-25): user reported that recurring-template
+       previews look identical to real tasks on the dark theme —
+       making the same task appear "in both a scheduled day and
+       Unscheduled." That illusion is the dashed-border being
+       invisible: the original `var(--border)` resolves to the dark
+       `#30363d` token on dark, which has near-zero contrast against
+       the dark page. Brightened to `var(--text-muted)` (#8b949e) so
+       the dashes show. Italic + lower opacity reinforces the
+       "this is a preview, not a real task" semantic. */
+    border: 1px dashed var(--text-muted, #8b949e);
     border-radius: 3px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     cursor: default;
+    font-style: italic;
+    opacity: 0.75;
 }
 @media (max-width: 700px) {
     /* #217 (2026-05-24): D-B1 — same minmax(0, ...) clamp as the
