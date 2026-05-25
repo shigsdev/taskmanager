@@ -596,9 +596,11 @@ the code.
 /api/settings/stats
 /api/settings/imports
 
-# utilities_api.py (#222) — OAuth-gated UI wrappers for admin cleanups
+# utilities_api.py (#222 + #223) — OAuth-gated UI wrappers for admin cleanups
 /api/utilities/clear-stale-next-week-due-dates/count   # #222 — preview the count without mutating
 /api/utilities/clear-stale-next-week-due-dates         # #222 — POST: run #220 backfill
+/api/utilities/trigger-backup                          # #223 — POST: dispatch daily-backup.yml workflow_dispatch
+/api/utilities/trigger-restore-drill                   # #223 — POST: dispatch monthly-restore-drill.yml workflow_dispatch
 
 # debug_api.py — used by scripts/validate_deploy.py --check-logs
 /api/debug/logs

@@ -144,11 +144,202 @@ class TestUtilitiesPageRenders:
         resp = authed_client.get("/utilities")
         assert resp.status_code == 200
         # Cheap content assertion — the page should at least mention
-        # the only utility currently shipped.
+        # the utilities currently shipped.
         body = resp.get_data(as_text=True)
         assert "Utilities" in body
         assert "clear-stale-next-week-due-dates" in body
+        # #223 cards
+        assert "trigger-backup" in body
+        assert "trigger-restore-drill" in body
 
     def test_page_requires_auth(self, client):
         resp = client.get("/utilities")
         assert resp.status_code in (302, 401, 403)
+
+
+# --- #223 (2026-05-24): backup + restore-drill workflow dispatch ----------
+
+
+class _MockResponse:
+    """Minimal mock for requests.Response — enough for the dispatch
+    helper's resp.status_code / resp.json() / resp.text reads."""
+
+    def __init__(self, status_code: int, json_body: dict | None = None, text: str = ""):
+        self.status_code = status_code
+        self._json = json_body
+        self.text = text
+
+    def json(self):
+        if self._json is None:
+            raise ValueError("no json body")
+        return self._json
+
+
+class TestTriggerBackup:
+    """POST /api/utilities/trigger-backup dispatches daily-backup.yml.
+    Tests use monkeypatch on requests.post — never hits real GitHub."""
+
+    URL = "/api/utilities/trigger-backup"
+
+    def test_requires_auth(self, client):
+        resp = client.post(self.URL)
+        assert resp.status_code in (302, 401, 403)
+
+    def test_rejects_GET(self, client):
+        # Mutating route — must NEVER accept GET (#190 rule).
+        resp = client.get(self.URL)
+        assert resp.status_code in (302, 401, 403, 404, 405)
+
+    def test_missing_env_var_returns_503(self, app, authed_client, monkeypatch):
+        """Without GITHUB_DISPATCH_TOKEN set, the endpoint should
+        return 503 with a setup-instructions message — NOT crash."""
+        monkeypatch.delenv("GITHUB_DISPATCH_TOKEN", raising=False)
+        resp = authed_client.post(self.URL)
+        assert resp.status_code == 503
+        body = resp.get_json()
+        assert "error" in body
+        assert "GITHUB_DISPATCH_TOKEN" in body["error"]
+        # Setup pointer surfaces the runbook.
+        assert "docs/security/git-credentials.md" in body["error"]
+
+    def test_happy_path_returns_actions_url(
+        self, app, authed_client, monkeypatch,
+    ):
+        """When GitHub returns 204 No Content, the endpoint returns
+        {dispatched: true, actions_url: ...}."""
+        monkeypatch.setenv("GITHUB_DISPATCH_TOKEN", "fake_token_value")
+        captured = {}
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["json"] = json
+            return _MockResponse(204)
+
+        monkeypatch.setattr("utilities_api.requests.post", fake_post)
+        resp = authed_client.post(self.URL)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body == {
+            "dispatched": True,
+            "actions_url": "https://github.com/shigsdev/taskmanager/actions",
+        }
+        # Verify the dispatch hit the right workflow + sent the
+        # `ref: main` body GitHub requires.
+        assert "daily-backup.yml/dispatches" in captured["url"]
+        assert captured["json"] == {"ref": "main"}
+        # Token rides in the Authorization header per ADR-007.
+        assert captured["headers"]["Authorization"] == "Bearer fake_token_value"
+
+    def test_github_error_propagates_safely(
+        self, app, authed_client, monkeypatch,
+    ):
+        """When GitHub returns a non-204 (e.g. 401 bad token,
+        422 workflow not found), the endpoint returns 503 with the
+        GitHub message — but the TOKEN never appears in the response."""
+        monkeypatch.setenv("GITHUB_DISPATCH_TOKEN", "fake_token_value")
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            return _MockResponse(
+                401, json_body={"message": "Bad credentials"},
+            )
+
+        monkeypatch.setattr("utilities_api.requests.post", fake_post)
+        resp = authed_client.post(self.URL)
+        assert resp.status_code == 503
+        body = resp.get_json()
+        assert "401" in body["error"]
+        assert "Bad credentials" in body["error"]
+        # CRITICAL: token must NEVER appear in error response.
+        assert "fake_token_value" not in body["error"]
+
+    def test_network_error_returns_503(self, app, authed_client, monkeypatch):
+        """A requests.RequestException (timeout, DNS failure, etc.)
+        surfaces as a 503 with a generic message — no internal
+        details leaked."""
+        import requests as requests_lib
+        monkeypatch.setenv("GITHUB_DISPATCH_TOKEN", "fake_token_value")
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            raise requests_lib.ConnectTimeout("upstream timeout")
+
+        monkeypatch.setattr("utilities_api.requests.post", fake_post)
+        resp = authed_client.post(self.URL)
+        assert resp.status_code == 503
+        body = resp.get_json()
+        assert "network error" in body["error"].lower()
+        # The error type name is OK to surface; the timeout *detail*
+        # is not (and we don't include it).
+        assert "fake_token_value" not in body["error"]
+
+
+class TestTriggerRestoreDrill:
+    """POST /api/utilities/trigger-restore-drill dispatches
+    monthly-restore-drill.yml. Smaller test set — the helper itself
+    is exhaustively covered by TestTriggerBackup; here we just verify
+    this endpoint dispatches the RIGHT workflow file."""
+
+    URL = "/api/utilities/trigger-restore-drill"
+
+    def test_requires_auth(self, client):
+        resp = client.post(self.URL)
+        assert resp.status_code in (302, 401, 403)
+
+    def test_dispatches_restore_drill_workflow(
+        self, app, authed_client, monkeypatch,
+    ):
+        monkeypatch.setenv("GITHUB_DISPATCH_TOKEN", "fake_token_value")
+        captured = {}
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            captured["url"] = url
+            return _MockResponse(204)
+
+        monkeypatch.setattr("utilities_api.requests.post", fake_post)
+        resp = authed_client.post(self.URL)
+        assert resp.status_code == 200
+        assert resp.get_json()["dispatched"] is True
+        # CRITICAL: this endpoint must dispatch the RESTORE-DRILL
+        # workflow, not the backup workflow. A copy-paste bug here
+        # would silently fire backups when the user clicked
+        # restore-drill — caught by this assertion.
+        assert "monthly-restore-drill.yml/dispatches" in captured["url"]
+        assert "daily-backup.yml" not in captured["url"]
+
+
+class TestGitHubRepoOverride:
+    """The GITHUB_REPO env var lets a fork override the dispatch
+    target. Defaults to shigsdev/taskmanager."""
+
+    def test_default_repo_is_shigsdev_taskmanager(
+        self, app, authed_client, monkeypatch,
+    ):
+        monkeypatch.setenv("GITHUB_DISPATCH_TOKEN", "fake")
+        monkeypatch.delenv("GITHUB_REPO", raising=False)
+        captured = {}
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            captured["url"] = url
+            return _MockResponse(204)
+
+        monkeypatch.setattr("utilities_api.requests.post", fake_post)
+        authed_client.post("/api/utilities/trigger-backup")
+        assert "shigsdev/taskmanager" in captured["url"]
+
+    def test_repo_override_redirects_dispatch(
+        self, app, authed_client, monkeypatch,
+    ):
+        monkeypatch.setenv("GITHUB_DISPATCH_TOKEN", "fake")
+        monkeypatch.setenv("GITHUB_REPO", "myfork/taskmanager-fork")
+        captured = {}
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            captured["url"] = url
+            return _MockResponse(204)
+
+        monkeypatch.setattr("utilities_api.requests.post", fake_post)
+        resp = authed_client.post("/api/utilities/trigger-backup")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert "myfork/taskmanager-fork" in captured["url"]
+        assert body["actions_url"] == "https://github.com/myfork/taskmanager-fork/actions"
