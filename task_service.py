@@ -771,11 +771,24 @@ def list_subtasks(parent_id: uuid.UUID) -> list[Task]:
 
 def complete_parent_task(task_id: uuid.UUID, complete_subtasks: bool = False) -> Task | None:
     """Archive a parent task. If it has open subtasks, either archive them too
-    or raise a ValidationError so the UI can prompt the user."""
+    or raise a ValidationError so the UI can prompt the user.
+
+    #230 (2026-05-25): RECURRING-spawn tasks (task.recurring_task_id is not
+    None) SKIP the cascade-or-prompt logic entirely: the parent archives,
+    open subtasks stay ACTIVE. User-requested behavior — subtasks of a
+    recurring task ("hand off X, follow up with Y" under a "Weekly Work
+    Prep") are often independent work that should survive the parent's
+    weekly close-out. Mirror change in `cancel_parent_task` below.
+    """
     task = get_task(task_id)
     if task is None:
         return None
     open_subtasks = list_subtasks(task_id)
+    # #230: recurring-spawn → silently leave subtasks open.
+    if task.recurring_task_id is not None:
+        task.status = TaskStatus.ARCHIVED
+        db.session.commit()
+        return task
     if open_subtasks and not complete_subtasks:
         raise ValidationError(
             f"{len(open_subtasks)} open subtask(s) — complete all or close individually first",
@@ -815,6 +828,15 @@ def cancel_parent_task(
     if task is None:
         return None
     open_subtasks = list_subtasks(task_id)
+    # #230 (2026-05-25): recurring-spawn → silently leave subtasks open
+    # (mirror of the complete_parent_task hook above). User intent: when
+    # I cancel "Weekly Work Prep", the prep-subtasks may still be valid
+    # work to follow through on. Don't bulk-cancel them.
+    if task.recurring_task_id is not None:
+        task.status = TaskStatus.CANCELLED
+        task.cancellation_reason = (reason or "").strip() or None
+        db.session.commit()
+        return task
     if open_subtasks and not cancel_subtasks:
         raise ValidationError(
             f"{len(open_subtasks)} open subtask(s) — cancel all or close individually first",

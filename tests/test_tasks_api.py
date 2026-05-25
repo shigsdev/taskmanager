@@ -1269,6 +1269,213 @@ class TestCancelParentTaskPR7:
             assert db.session.get(Task, sid).status == TaskStatus.CANCELLED
 
 
+class TestRecurringSpawnSkipsSubtaskCascade:
+    """#230 (2026-05-25): recurring-spawn tasks (those with
+    ``recurring_task_id`` set) complete/cancel WITHOUT the
+    "complete subtasks too?" prompt + cascade. User-requested:
+    subtasks of a recurring task often represent independent work
+    that should survive the parent's weekly close-out, not get
+    auto-archived alongside it.
+    """
+
+    def _make_recurring_template(self, app):
+        """Helper: create a RecurringTask row so spawned tasks can
+        reference its ID via Task.recurring_task_id."""
+        from datetime import date
+
+        from models import RecurringTask, TaskType, db
+        t = RecurringTask(
+            title="Weekly Work Prep",
+            type=TaskType.WORK,
+            frequency="weekly",
+            day_of_week=0,
+            start_date=date(2026, 1, 1),
+        )
+        db.session.add(t)
+        db.session.flush()
+        return t.id
+
+    def test_complete_recurring_with_open_subtasks_does_not_raise(self, app):
+        """Recurring + open subtasks → parent archives silently,
+        subtasks STAY active. No ValidationError."""
+        from models import Task, TaskStatus, TaskType, Tier, db
+        from task_service import complete_parent_task
+        with app.app_context():
+            recurring_id = self._make_recurring_template(app)
+            parent = Task(
+                title="Weekly Work Prep",
+                type=TaskType.WORK,
+                tier=Tier.TODAY,
+                status=TaskStatus.ACTIVE,
+                recurring_task_id=recurring_id,
+            )
+            db.session.add(parent)
+            db.session.flush()
+            sub1 = Task(title="prep agenda", type=TaskType.WORK, tier=Tier.TODAY,
+                        status=TaskStatus.ACTIVE, parent_id=parent.id)
+            sub2 = Task(title="prep slides", type=TaskType.WORK, tier=Tier.TODAY,
+                        status=TaskStatus.ACTIVE, parent_id=parent.id)
+            db.session.add_all([sub1, sub2])
+            db.session.commit()
+            pid, s1id, s2id = parent.id, sub1.id, sub2.id
+
+            # Recurring-spawn → no ValidationError, parent archives,
+            # subtasks STAY active.
+            result = complete_parent_task(pid)
+            assert result is not None
+            assert result.status == TaskStatus.ARCHIVED
+
+            db.session.expire_all()
+            assert db.session.get(Task, pid).status == TaskStatus.ARCHIVED
+            assert db.session.get(Task, s1id).status == TaskStatus.ACTIVE
+            assert db.session.get(Task, s2id).status == TaskStatus.ACTIVE
+
+    def test_cancel_recurring_with_open_subtasks_does_not_raise(self, app):
+        """Mirror of complete: cancel on recurring → parent cancels,
+        subtasks stay ACTIVE. Cancellation reason persists on parent."""
+        from models import Task, TaskStatus, TaskType, Tier, db
+        from task_service import cancel_parent_task
+        with app.app_context():
+            recurring_id = self._make_recurring_template(app)
+            parent = Task(
+                title="Weekly Work Prep",
+                type=TaskType.WORK,
+                tier=Tier.TODAY,
+                status=TaskStatus.ACTIVE,
+                recurring_task_id=recurring_id,
+            )
+            db.session.add(parent)
+            db.session.flush()
+            sub = Task(title="prep agenda", type=TaskType.WORK, tier=Tier.TODAY,
+                       status=TaskStatus.ACTIVE, parent_id=parent.id)
+            db.session.add(sub)
+            db.session.commit()
+            pid, sid = parent.id, sub.id
+
+            result = cancel_parent_task(pid, reason="skipping this week")
+            assert result is not None
+            assert result.status == TaskStatus.CANCELLED
+            assert result.cancellation_reason == "skipping this week"
+
+            db.session.expire_all()
+            assert db.session.get(Task, pid).status == TaskStatus.CANCELLED
+            assert db.session.get(Task, sid).status == TaskStatus.ACTIVE
+
+    def test_non_recurring_still_raises_validation_error(self, app):
+        """Regression guard: regular (non-recurring) task with open
+        subtasks STILL raises ValidationError without the cascade flag.
+        The #230 behavior is scoped to recurring-spawn tasks ONLY."""
+        import pytest
+
+        from models import Task, TaskStatus, TaskType, Tier, db
+        from task_service import ValidationError, complete_parent_task
+        with app.app_context():
+            parent = Task(
+                title="Regular parent",
+                type=TaskType.WORK,
+                tier=Tier.TODAY,
+                status=TaskStatus.ACTIVE,
+                recurring_task_id=None,  # NOT a recurring-spawn
+            )
+            db.session.add(parent)
+            db.session.flush()
+            sub = Task(title="sub", type=TaskType.WORK, tier=Tier.TODAY,
+                       status=TaskStatus.ACTIVE, parent_id=parent.id)
+            db.session.add(sub)
+            db.session.commit()
+            pid = parent.id
+
+            with pytest.raises(ValidationError):
+                complete_parent_task(pid)
+
+    def test_non_recurring_cancel_still_raises_validation_error(self, app):
+        """Same regression guard for cancel."""
+        import pytest
+
+        from models import Task, TaskStatus, TaskType, Tier, db
+        from task_service import ValidationError, cancel_parent_task
+        with app.app_context():
+            parent = Task(
+                title="Regular parent",
+                type=TaskType.WORK,
+                tier=Tier.TODAY,
+                status=TaskStatus.ACTIVE,
+                recurring_task_id=None,
+            )
+            db.session.add(parent)
+            db.session.flush()
+            sub = Task(title="sub", type=TaskType.WORK, tier=Tier.TODAY,
+                       status=TaskStatus.ACTIVE, parent_id=parent.id)
+            db.session.add(sub)
+            db.session.commit()
+
+            with pytest.raises(ValidationError):
+                cancel_parent_task(parent.id)
+
+    def test_recurring_no_subtasks_completes_normally(self, app):
+        """Edge case: recurring task with NO subtasks completes the
+        same as a regular task — no cascade decision needed."""
+        from models import Task, TaskStatus, TaskType, Tier, db
+        from task_service import complete_parent_task
+        with app.app_context():
+            recurring_id = self._make_recurring_template(app)
+            t = Task(
+                title="Solo recurring",
+                type=TaskType.WORK,
+                tier=Tier.TODAY,
+                status=TaskStatus.ACTIVE,
+                recurring_task_id=recurring_id,
+            )
+            db.session.add(t)
+            db.session.commit()
+            tid = t.id
+
+            result = complete_parent_task(tid)
+            assert result is not None
+            assert result.status == TaskStatus.ARCHIVED
+
+    def test_recurring_subtasks_stay_visible_in_active_lists(self, app):
+        """End-to-end at the service layer: after a recurring parent
+        completes silently, the orphaned subtask is still ACTIVE in
+        the DB — so the standard list_tasks(status=ACTIVE) filter will
+        surface it for the user via /api/tasks.
+
+        Intentionally NOT using authed_client here. An earlier draft
+        of this test used authed_client to GET /api/tasks; that was
+        leaving a Flask test-client session cookie alive across file
+        boundaries (pytest runs test_tasks_api.py before
+        test_validator_cookie.py alphabetically), and the validator-
+        cookie test's `assert 401` started failing as `200` because
+        the leftover session auth was satisfying the route. The
+        service-layer assertion below is equivalent for what we want
+        to prove and doesn't touch the test client.
+        """
+        from models import Task, TaskStatus, TaskType, Tier, db
+        from task_service import complete_parent_task, list_tasks
+        with app.app_context():
+            recurring_id = self._make_recurring_template(app)
+            parent = Task(
+                title="Weekly Roundup",
+                type=TaskType.WORK,
+                tier=Tier.TODAY,
+                status=TaskStatus.ACTIVE,
+                recurring_task_id=recurring_id,
+            )
+            db.session.add(parent)
+            db.session.flush()
+            sub = Task(title="follow up with Alice",
+                       type=TaskType.WORK, tier=Tier.TODAY,
+                       status=TaskStatus.ACTIVE, parent_id=parent.id)
+            db.session.add(sub)
+            db.session.commit()
+            complete_parent_task(parent.id)
+
+            # The orphaned subtask is still ACTIVE in the DB.
+            db.session.expire_all()
+            active_titles = {t.title for t in list_tasks(status=TaskStatus.ACTIVE)}
+            assert "follow up with Alice" in active_titles
+
+
 def test_patch_cannot_set_self_as_parent(authed_client, app):
     resp = authed_client.post("/api/tasks", json={"title": "Task", "type": "work"})
     task_id = resp.get_json()["id"]
