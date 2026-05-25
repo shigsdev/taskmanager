@@ -96,22 +96,15 @@
         // Use the tier as a fallback date assignment for the unambiguous
         // tiers; THIS_WEEK / NEXT_WEEK span 6 days so we can't pin them
         // to a single cell — those still go to Unscheduled.
+        //
+        // #231 (2026-05-25): the bucketing AND the subtask-exclusion are
+        // pure logic and live in static/calendar_bucket_helpers.js so
+        // Jest can exercise them directly (per CLAUDE.md anti-pattern
+        // #3 — don't string-match source; exercise the path).
         const tomorrowIso = _isoDate(new Date(today.getTime() + 86400000));
-        const byDate = {};
-        const unscheduled = [];
-        for (const t of tasks) {
-            let cellDate = t.due_date;
-            if (!cellDate) {
-                if (t.tier === "today") cellDate = todayIso;
-                else if (t.tier === "tomorrow") cellDate = tomorrowIso;
-            }
-            if (cellDate) {
-                if (!byDate[cellDate]) byDate[cellDate] = [];
-                byDate[cellDate].push(t);
-            } else {
-                unscheduled.push(t);
-            }
-        }
+        const { byDate, unscheduled } = window.calendarBucketHelpers.bucketTasks(
+            tasks, todayIso, tomorrowIso,
+        );
         // #219: bail if a newer renderCalendar() call started while we
         // were awaiting the apiFetch calls above — its DOM mutation
         // will be more current than ours.
@@ -289,6 +282,19 @@
             li.title = t.title;
             li.draggable = true;
             li.dataset.taskId = t.id;
+            // #231 (2026-05-25): click an unscheduled item to open the
+            // task detail panel — mirrors the day-cell item handler
+            // (#153). Without this, the user could only drag tasks
+            // out of the unscheduled list but never SEE what one was
+            // (a long title is ellipsis-truncated in the narrow side
+            // panel) or edit it without leaving the page. Click and
+            // drag are distinguished by the browser natively: a fast
+            // mousedown→mouseup with no movement fires click; movement
+            // fires dragstart/dragend instead.
+            li.classList.add("calendar-task-link");
+            li.addEventListener("click", function () {
+                window.location.href = "/?task=" + encodeURIComponent(t.id);
+            });
             li.addEventListener("dragstart", function (e) {
                 li.classList.add("dragging");
                 if (e.dataTransfer) {
