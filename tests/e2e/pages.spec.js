@@ -656,6 +656,25 @@ test.describe("Tier-column drag updates due_date for today/tomorrow", () => {
 
             // Programmatic drag from today list to tomorrow list, mirroring
             // calendar drag-and-drop test pattern.
+            // #225 (2026-05-24): set up network waits BEFORE dispatching
+            // the drop so we don't race the fire. The cross-tier drop
+            // fires TWO calls — PATCH /api/tasks/<id> (tier change) +
+            // POST /api/tasks/reorder (sort_order save) — and the test
+            // assertion fires a SEPARATE GET via Playwright's
+            // apiRequestContext. On a slow gate run the fixed 700ms
+            // wait wasn't always enough for both calls to clear the
+            // Flask single-threaded server, causing the GET to time
+            // out at 10s with apparent SQLite lock contention. Wait
+            // explicitly for the responses instead.
+            const patchPromise = page.waitForResponse(
+                (resp) => resp.url().includes(`/api/tasks/${task.id}`)
+                    && resp.request().method() === "PATCH",
+                { timeout: 15_000 },
+            );
+            const reorderPromise = page.waitForResponse(
+                (resp) => resp.url().includes("/api/tasks/reorder"),
+                { timeout: 15_000 },
+            );
             await page.evaluate((tid) => {
                 const card = document.querySelector(`.task-card[data-id="${tid}"]`);
                 const tomorrowList = document.querySelector(
@@ -667,7 +686,8 @@ test.describe("Tier-column drag updates due_date for today/tomorrow", () => {
                 tomorrowList.dispatchEvent(new DragEvent("dragover", { dataTransfer: dt, bubbles: true, cancelable: true }));
                 tomorrowList.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
             }, task.id);
-            await page.waitForTimeout(700);
+            await patchPromise;
+            await reorderPromise;
 
             const refetch = await request.get(`/api/tasks/${task.id}`);
             const refreshed = await refetch.json();
@@ -707,6 +727,18 @@ test.describe("Tier-column drag updates due_date for today/tomorrow", () => {
             await page.goto("/?nosw=1");
             await page.waitForLoadState("networkidle");
 
+            // #225 (2026-05-24): same network-wait pattern as the
+            // Tomorrow sibling test above. Drop fires PATCH + reorder;
+            // the GET below must wait for both to clear before reading.
+            const patchPromise = page.waitForResponse(
+                (resp) => resp.url().includes(`/api/tasks/${task.id}`)
+                    && resp.request().method() === "PATCH",
+                { timeout: 15_000 },
+            );
+            const reorderPromise = page.waitForResponse(
+                (resp) => resp.url().includes("/api/tasks/reorder"),
+                { timeout: 15_000 },
+            );
             await page.evaluate((tid) => {
                 const card = document.querySelector(`.task-card[data-id="${tid}"]`);
                 const list = document.querySelector(
@@ -718,7 +750,8 @@ test.describe("Tier-column drag updates due_date for today/tomorrow", () => {
                 list.dispatchEvent(new DragEvent("dragover", { dataTransfer: dt, bubbles: true, cancelable: true }));
                 list.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
             }, task.id);
-            await page.waitForTimeout(700);
+            await patchPromise;
+            await reorderPromise;
 
             const refetch = await request.get(`/api/tasks/${task.id}`);
             const refreshed = await refetch.json();
