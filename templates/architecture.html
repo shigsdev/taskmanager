@@ -1014,6 +1014,13 @@ npm run test:e2e:prod</pre>
    cdn.jsdelivr.net for script-src per ADR-028. #}
 <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.esm.min.mjs";
-    mermaid.initialize({ startOnLoad: true, theme: "default", flowchart: { curve: "basis" } });
+    mermaid.initialize({
+        startOnLoad: true,
+        /* #224: dark theme to match the rest of the page. Mermaid's
+           built-in "dark" theme provides high-contrast strokes + dark
+           backgrounds for nodes/edges. */
+        theme: "dark",
+        flowchart: { curve: "basis" },
+    });
 </script>
 {% endblock %}

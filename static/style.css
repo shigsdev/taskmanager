@@ -31,6 +31,17 @@
        got the fallback. Define a dark equivalent so those refs
        (table headers, code blocks, hints, etc.) resolve correctly. */
     --bg-subtle: #21262d;
+    /* `--bg-card` was referenced via `var(--bg-card, #ffffff)` fallback
+       (e.g. `.recurring-row`) but never defined → white fallback won
+       on every page using it. Alias to surface. */
+    --bg-card: var(--surface);
+    /* #224 iter 1: dedicated navbar background. Differentiated from
+       `--accent-soft` (#1e2c47, used for tier-header tinted panels
+       and the .intro-prose informational callout) so the global
+       navbar reads as MORE muted than internal accent surfaces.
+       Deep navy, holds white text comfortably, ~3 luminance stops
+       below the original `--accent` brightness. */
+    --nav-bg: #14213d;
     /* Status colors — same hues as light theme but desaturated/dimmed
        to avoid blowing out on a dark background. */
     --danger: #f85149;
@@ -127,9 +138,18 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     align-items: center;
     gap: 12px;
     padding: 8px 16px;
-    /* Accent-tinted top bar — brand-forward, contrasts with light panels */
-    background: var(--accent);
-    border-bottom: 1px solid var(--accent-hover);
+    /* #224 iteration 1: dimmer dark-navy tone via dedicated --nav-bg
+       (#14213d) instead of the original bright `--accent` (#4493f8).
+       That was the right choice on a LIGHT-theme white-paneled page
+       (popped vs the white background); on dark, the navbar was the
+       BRIGHTEST element on screen — uncomfortable + drew the eye
+       away from content. Distinct from `--accent-soft` (#1e2c47,
+       used for internal tier-header panels and .intro-prose
+       callouts) so the GLOBAL chrome reads as a tier below
+       internal accents. White text still has high contrast against
+       deep navy. */
+    background: var(--nav-bg);
+    border-bottom: 1px solid var(--border-strong);
     position: sticky;
     top: 0;
     z-index: 100;
@@ -2014,7 +2034,9 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 
 /* Task card in review */
 .review-task {
-    background: #fff;
+    /* #224: was `#fff` — flipped to dark surface so title text
+       (which inherits var(--text)) is legible on the same card. */
+    background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 24px;
@@ -3510,7 +3532,11 @@ details.route-catalog-api > table {
 /* Multi-paragraph reader-orientation block at the top of the page. */
 .intro-prose {
     font-size: 1.02em;
-    background: #eff6ff;
+    /* #224: was `#eff6ff` (very light blue tint) — mapped to the
+       dark navy `--accent-soft` token that's the dark-mode equivalent
+       of the same light-blue callout treatment. Left border in
+       --accent gives the same "informational callout" semantic. */
+    background: var(--accent-soft);
     border-left: 4px solid var(--accent, #2563eb);
     padding: 14px 18px;
     border-radius: 4px;
