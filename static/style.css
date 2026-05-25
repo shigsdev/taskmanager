@@ -2,39 +2,53 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-    /* Opt out of browser auto-dark: this app is light-only. Without this,
-       Chrome/Safari on OS-level dark mode will invert our palette. */
-    color-scheme: light;
-    /* Page canvas — deeper so white panels pop */
-    --bg: #eceef3;
-    /* Panel surfaces — three tiers */
-    --surface: #fff;
-    --surface-sunk: #f4f5f8;
-    --surface-raised: #fff;
-    /* Borders — two weights */
-    --border: #d4d7de;
-    --border-strong: #b8bcc6;
-    /* Text */
-    --text: #111418;
-    --text-muted: #5c6370;
-    /* Accents */
-    --accent: #2563eb;
-    --accent-hover: #1d4ed8;
-    --accent-soft: #e4ecff;
-    --danger: #dc2626;
-    --amber: #d97706;
-    --red: #dc2626;
-    --green: #16a34a;
+    /* #224 (2026-05-24): dark-only theme. User-confirmed: dark only,
+       no light theme, no toggle. `color-scheme: dark` opts every form
+       control into dark UA styling (input borders, scrollbars, etc.)
+       so we don't have to fight white scrollbar tracks on a dark page. */
+    color-scheme: dark;
+    /* Page canvas — deepest layer. GitHub-dark-inspired (well-tested
+       for code/admin UIs at this density). */
+    --bg: #0d1117;
+    /* Panel surfaces — three tiers above the canvas. */
+    --surface: #161b22;
+    --surface-sunk: #0d1117;   /* same as canvas — used for "below" wells */
+    --surface-raised: #1f2937; /* slightly elevated for modals/elevated cards */
+    /* Borders — two weights. */
+    --border: #30363d;
+    --border-strong: #484f58;
+    /* Text — high-contrast off-white avoids pure-white eye strain. */
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    /* Accent (brand blue) — slightly softer hue/saturation for dark
+       contrast. Hover is brighter (counter to light theme where hover
+       was darker) — common dark-mode pattern: lift on hover, don't deepen. */
+    --accent: #4493f8;
+    --accent-hover: #58a6ff;
+    --accent-soft: #1e2c47;    /* dark navy tint, replaces the pale-blue */
+    /* `--bg-subtle` was referenced 23x via `var(--bg-subtle, #f6f8fa)`
+       fallback pattern but never defined in `:root` — light theme
+       got the fallback. Define a dark equivalent so those refs
+       (table headers, code blocks, hints, etc.) resolve correctly. */
+    --bg-subtle: #21262d;
+    /* Status colors — same hues as light theme but desaturated/dimmed
+       to avoid blowing out on a dark background. */
+    --danger: #f85149;
+    --amber: #d29922;
+    --red: #f85149;
+    --green: #3fb950;
     /* Aliases for legacy/undefined tokens that exist in the codebase */
     --card: var(--surface);
     --muted: var(--text-muted);
     --success: var(--green);
     --warning: var(--amber);
     --radius: 8px;
-    /* Elevation tiers */
-    --shadow-sm: 0 1px 2px rgba(17,24,39,0.06), 0 1px 3px rgba(17,24,39,0.08);
-    --shadow-md: 0 4px 12px rgba(17,24,39,0.10), 0 1px 3px rgba(17,24,39,0.06);
-    --shadow-lg: 0 16px 40px rgba(17,24,39,0.18), 0 4px 12px rgba(17,24,39,0.10);
+    /* Elevation tiers — black-tinted for dark canvases. Light theme
+       used (17,24,39) rgba; dark uses (0,0,0) with higher alpha
+       because shadows need to be DEEPER on dark to actually show. */
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.40);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.30), 0 1px 3px rgba(0,0,0,0.40);
+    --shadow-lg: 0 16px 40px rgba(0,0,0,0.50), 0 4px 12px rgba(0,0,0,0.30);
     --shadow: var(--shadow-sm);
 }
 
@@ -44,6 +58,31 @@ body {
     color: var(--text);
     line-height: 1.5;
     min-height: 100vh;
+}
+
+/* #224 (2026-05-24): dark-theme form-control baseline. `color-scheme: dark`
+   in `:root` tells the UA to use dark widget styling, BUT explicit
+   `background: #fff` or similar in many existing rules wins. We can't
+   sweep every input/select rule — instead, set a default for elements
+   that don't already have an explicit background. Specific rules that
+   DO set a bg (e.g. .task-search-bar input, .nav .icon-btn) override
+   this with their own value. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+textarea,
+select {
+    background: var(--surface);
+    color: var(--text);
+    border-color: var(--border);
+}
+input::placeholder,
+textarea::placeholder {
+    color: var(--text-muted);
+}
+/* Native date pickers get an inverted icon on dark themes via
+   color-scheme; this keeps the calendar/time icons visible. */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.8);
 }
 
 /* === Update Banner === */
@@ -66,6 +105,10 @@ body {
 }
 .update-banner[hidden] { display: none; }
 .update-banner button {
+    /* #224: update banner sits on the accent-blue strip. The button
+       is the call-to-action, so it needs HIGH contrast vs the blue
+       background — white-on-blue is correct (intentional inversion,
+       same pattern as .inbox-badge on the navbar). */
     background: #fff;
     color: var(--accent);
     border: none;
@@ -76,7 +119,7 @@ body {
     cursor: pointer;
     min-height: 36px;
 }
-.update-banner button:active { background: #e5e7eb; }
+.update-banner button:active { background: #cdd9e5; }
 
 /* === Navigation === */
 .nav {
@@ -709,15 +752,18 @@ body {
     font-size: 0.7rem;
     font-weight: 600;
 }
-.badge-work { background: #dbeafe; color: #1e40af; }
-.badge-personal { background: #fef3c7; color: #92400e; }
+/* #224 (2026-05-24): dark-theme badge backgrounds. Same hue family
+   as light theme (so work=blue, personal=amber, goal=purple stays
+   recognizable) but darker tints + lighter text for contrast. */
+.badge-work { background: #1e2c47; color: #79b8ff; }
+.badge-personal { background: #3d2e0c; color: #ffdf5d; }
 .badge-project {
     border: 1px solid var(--border);
     background: var(--surface);
 }
 .badge-goal {
-    background: #ede9fe;
-    color: #5b21b6;
+    background: #2c1f4a;
+    color: #c5a3ff;
 }
 .badge-due { color: var(--text-muted); }
 .badge-due.due-today { color: var(--amber); font-weight: 700; }
@@ -1139,7 +1185,10 @@ body {
     border: 1px solid var(--border, #ccc);
     border-radius: 4px;
     font-size: 0.9rem;
-    background: #fff;
+    /* #224: was `#fff` (white) — became glaring on the dark canvas.
+       Match the rest of the page's surface palette. */
+    background: var(--surface);
+    color: var(--text);
 }
 .task-search-meta {
     font-size: 0.8rem;
@@ -2884,8 +2933,11 @@ body {
    chosen from the mockup at docs/mockups/32-recurring-preview.html.
    Key visual signal: "this is a preview, not a real task." */
 .preview-card {
-    border: 2px dashed #9ca3af;
-    background: #fafafa;
+    /* #224: was `#fafafa` (near-white) — flipped to a dark-mode sunk
+       tone. Dashed-border + lighter bg than the surrounding card
+       still reads as "ghost / preview" treatment in dark. */
+    border: 2px dashed #6e7681;
+    background: var(--surface-sunk);
     cursor: pointer;
 }
 .preview-card:hover {
@@ -3852,7 +3904,9 @@ table.quality-gates code {
     border: 1px solid var(--border, #e5e7eb);
     border-radius: 4px;
     font-size: 0.85rem;
-    background: #fff;
+    /* #224: was `#fff` — overrode the dark form-control baseline. */
+    background: var(--surface);
+    color: var(--text);
 }
 .weekly-focus-slot-plan {
     flex-shrink: 0;
