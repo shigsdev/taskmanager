@@ -12,10 +12,11 @@
         no-op.
     </p>
 
-    {# Each utility is a self-contained <section> with a count
-       display + Run button + result message. Pattern intentionally
-       repeatable for future utilities (e.g. a "fix stale flags",
-       "re-cascade goals", etc.) without restructuring the page. #}
+    {# Each utility is a self-contained <section> with a status row
+       + Run button + result message. The status row is auto-hidden
+       by utilities.js for action-only utilities (those whose registry
+       entry has no countUrl). Pattern intentionally repeatable for
+       future utilities without restructuring the page. #}
     <section class="utility-card" data-utility="clear-stale-next-week-due-dates">
         <h2>Clear stale Next Week due dates (#220)</h2>
         <p class="utility-description">
@@ -37,6 +38,64 @@
         </div>
         <button type="button" class="btn btn-primary utility-run-btn"
                 data-run="clear-stale-next-week-due-dates">
+            Run
+        </button>
+        <p class="utility-result" data-result aria-live="polite"></p>
+    </section>
+
+    {# #223 (2026-05-24): on-demand backup + restore-drill dispatch cards.
+       Action-only — no count preview (the result is async / external).
+       The .utility-status row is hidden by utilities.js's countUrl-absent
+       branch so the card layout reads explanation → Run → result. #}
+    <section class="utility-card" data-utility="trigger-backup">
+        <h2>Trigger off-cycle backup (#154)</h2>
+        <p class="utility-description">
+            Dispatches the <code>daily-backup.yml</code> GitHub Actions
+            workflow on-demand. The workflow does a <code>pg_dump</code>
+            of production, Fernet-encrypts the output, commits it to the
+            private backup repo, prunes anything older than 7 days, and
+            emails a PASS/FAIL status report.
+        </p>
+        <p class="utility-description">
+            Useful before risky migrations, before/after a large data
+            import, or any time you want a known-good point-in-time
+            snapshot without waiting for the 07:30 UTC scheduled run.
+            Requires the <code>GITHUB_DISPATCH_TOKEN</code> env var on
+            Railway (fine-grained PAT, Actions: write scope).
+        </p>
+        <div class="utility-status" data-status hidden>
+            {# Hidden via the [hidden] attribute as a defense-in-depth
+               complement to utilities.js's runtime hiding — keeps the
+               layout clean even if JS fails to load. #}
+        </div>
+        <button type="button" class="btn btn-primary utility-run-btn"
+                data-run="trigger-backup">
+            Run
+        </button>
+        <p class="utility-result" data-result aria-live="polite"></p>
+    </section>
+
+    <section class="utility-card" data-utility="trigger-restore-drill">
+        <h2>Run restore drill (#154.7)</h2>
+        <p class="utility-description">
+            Dispatches the <code>monthly-restore-drill.yml</code> GitHub
+            Actions workflow on-demand. The workflow pulls the most
+            recent encrypted backup, decrypts it, <code>pg_restore</code>s
+            into a scratch Postgres, asserts the scratch row counts are
+            within ±5% of live (sanity), and emails a PASS/FAIL report.
+        </p>
+        <p class="utility-description">
+            Use after rotating <code>BACKUP_FERNET_KEY</code>, after
+            upgrading the Postgres major version, or whenever you want
+            evidence that the latest backup is actually restorable.
+            "A backup you've never restored is a 50/50 backup."
+            Requires the same <code>GITHUB_DISPATCH_TOKEN</code> env var.
+        </p>
+        <div class="utility-status" data-status hidden>
+            {# Same hidden-by-default pattern as the trigger-backup card. #}
+        </div>
+        <button type="button" class="btn btn-primary utility-run-btn"
+                data-run="trigger-restore-drill">
             Run
         </button>
         <p class="utility-result" data-result aria-live="polite"></p>

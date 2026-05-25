@@ -420,6 +420,8 @@ class TestAllRoutesExist:
             "/api/settings/imports",
             "/api/utilities/clear-stale-next-week-due-dates",
             "/api/utilities/clear-stale-next-week-due-dates/count",
+            "/api/utilities/trigger-backup",
+            "/api/utilities/trigger-restore-drill",
         ]
         for api in apis:
             assert api in rules, f"API route '{api}' not registered"
