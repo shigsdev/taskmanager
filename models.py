@@ -498,6 +498,15 @@ class Reflection(db.Model):
     # Best-effort Claude cost from the response usage block; NULL if the
     # usage data was unavailable.
     ai_cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # #237 (2026-05-26): raw per-segment Whisper transcripts from the
+    # #232 pause/resume flow. Each segment is a dict
+    # `{text, duration_seconds, cost_usd, recorded_at}`. The transcript
+    # column above is the FINAL (possibly user-edited) text the user
+    # clicked Done with; this column is the original Whisper output
+    # before any editing. Empty list for typed reflections.
+    raw_segments: Mapped[list] = mapped_column(
+        JSONType, nullable=False, default=list,
+    )
     # Claude's proposed actions, as returned by reflection_service after
     # normalisation. Shape: {"explicit": [...], "suggested": [...]}.
     proposed_actions: Mapped[dict] = mapped_column(

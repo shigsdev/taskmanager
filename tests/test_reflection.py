@@ -594,6 +594,109 @@ class TestApplyActionsCorrectnessPR6:
 # --- reflection_api endpoints ------------------------------------------------
 
 
+class TestNormaliseRawSegments:
+    """#237 (2026-05-26): _normalise_raw_segments is the boundary
+    between client-supplied JSON and what lands in the DB. Defensive
+    cleanup so a malformed client send can't corrupt the audit trail
+    or sneak unbounded data past."""
+
+    def test_none_input_returns_empty_list(self):
+        from reflection_service import _normalise_raw_segments
+        assert _normalise_raw_segments(None) == []
+
+    def test_non_list_input_returns_empty_list(self):
+        from reflection_service import _normalise_raw_segments
+        assert _normalise_raw_segments("not a list") == []
+        assert _normalise_raw_segments({"text": "x"}) == []
+
+    def test_empty_text_dropped(self):
+        from reflection_service import _normalise_raw_segments
+        assert _normalise_raw_segments([{"text": ""}, {"text": "  "}]) == []
+
+    def test_non_string_text_dropped(self):
+        from reflection_service import _normalise_raw_segments
+        result = _normalise_raw_segments([
+            {"text": None},
+            {"text": 42},
+            {"text": "valid"},
+        ])
+        assert len(result) == 1
+        assert result[0]["text"] == "valid"
+
+    def test_non_dict_entries_dropped(self):
+        from reflection_service import _normalise_raw_segments
+        result = _normalise_raw_segments([
+            "not a dict",
+            42,
+            None,
+            ["nested list"],
+            {"text": "valid"},
+        ])
+        assert len(result) == 1
+
+    def test_text_trimmed(self):
+        from reflection_service import _normalise_raw_segments
+        result = _normalise_raw_segments([{"text": "  hello world  "}])
+        assert result[0]["text"] == "hello world"
+
+    def test_text_length_capped_at_20000(self):
+        from reflection_service import _normalise_raw_segments
+        result = _normalise_raw_segments([{"text": "a" * 25000}])
+        assert len(result[0]["text"]) == 20000
+
+    def test_telemetry_floats_coerced(self):
+        from reflection_service import _normalise_raw_segments
+        result = _normalise_raw_segments([{
+            "text": "x",
+            "duration_seconds": "12.5",   # str coerced to float
+            "cost_usd": 0.001,
+        }])
+        assert result[0]["duration_seconds"] == 12.5
+        assert result[0]["cost_usd"] == 0.001
+
+    def test_bad_telemetry_becomes_none(self):
+        """A non-numeric duration shouldn't reject the segment — just
+        null out the bad field. The text is what matters most."""
+        from reflection_service import _normalise_raw_segments
+        result = _normalise_raw_segments([{
+            "text": "x",
+            "duration_seconds": "bogus",
+            "cost_usd": [1, 2, 3],
+        }])
+        assert result[0]["duration_seconds"] is None
+        assert result[0]["cost_usd"] is None
+        # But the segment text survives.
+        assert result[0]["text"] == "x"
+
+    def test_unbounded_recorded_at_capped_to_none(self):
+        """A client send with a >64-char recorded_at string is
+        suspicious — drop it to None rather than persist unbounded
+        data."""
+        from reflection_service import _normalise_raw_segments
+        result = _normalise_raw_segments([{
+            "text": "x",
+            "recorded_at": "z" * 200,
+        }])
+        assert result[0]["recorded_at"] is None
+
+    def test_normal_iso_timestamp_preserved(self):
+        from reflection_service import _normalise_raw_segments
+        result = _normalise_raw_segments([{
+            "text": "x",
+            "recorded_at": "2026-05-26T13:00:00+00:00",
+        }])
+        assert result[0]["recorded_at"] == "2026-05-26T13:00:00+00:00"
+
+    def test_multiple_segments_preserve_order(self):
+        from reflection_service import _normalise_raw_segments
+        result = _normalise_raw_segments([
+            {"text": "first"},
+            {"text": "second"},
+            {"text": "third"},
+        ])
+        assert [s["text"] for s in result] == ["first", "second", "third"]
+
+
 class TestReflectionApi:
     def test_submit_typed_persists_and_returns_proposals(
         self, app, client, monkeypatch
@@ -652,6 +755,164 @@ class TestReflectionApi:
         assert body["input_mode"] == "voice"
         assert body["audio_cost_usd"] == 0.0012
         assert body["transcript"] == "Spoken reflection text."
+
+    # --- #237 raw_segments persistence (2026-05-26) --------------------
+
+    def test_237_submit_with_raw_segments_persists_them(
+        self, app, client, monkeypatch,
+    ):
+        """User-edited textarea + per-segment Whisper transcripts both
+        get saved — the final text on Reflection.transcript, the raw
+        verbatim segments on Reflection.raw_segments. So an edit
+        doesn't erase the original spoken words."""
+        _bypass_auth(monkeypatch)
+        with patch(
+            "reflection_api.analyze_reflection",
+            return_value={"explicit": [], "suggested": [],
+                          "ai_cost_usd": None, "snapshot": {}},
+        ):
+            resp = client.post(
+                "/api/reflection",
+                json={
+                    "text": "I shipped the auth refresh and almost finished the calendar.",
+                    "raw_segments": [
+                        {
+                            "text": "I shipped the auth refresh",
+                            "duration_seconds": 4.2,
+                            "cost_usd": 0.00042,
+                            "recorded_at": "2026-05-26T13:00:00+00:00",
+                        },
+                        {
+                            "text": "and started the calendar.",
+                            "duration_seconds": 3.1,
+                            "cost_usd": 0.00031,
+                            "recorded_at": "2026-05-26T13:00:30+00:00",
+                        },
+                    ],
+                },
+            )
+        assert resp.status_code == 201
+        body = resp.get_json()
+        # Response surfaces raw_segments back (for the history view).
+        assert len(body["raw_segments"]) == 2
+        assert body["raw_segments"][0]["text"] == "I shipped the auth refresh"
+        assert body["raw_segments"][1]["text"] == "and started the calendar."
+        # Persisted to DB.
+        with app.app_context():
+            r = db.session.scalar(select(Reflection))
+            assert len(r.raw_segments) == 2
+            assert r.raw_segments[0]["duration_seconds"] == 4.2
+            assert r.raw_segments[0]["cost_usd"] == 0.00042
+            # The final transcript (edited / merged) is what got saved
+            # — the raw_segments captured the original phrasing the
+            # user said BEFORE editing "started" → "almost finished".
+            assert "almost finished" in r.transcript
+            assert "started" not in r.transcript
+            assert "started" in r.raw_segments[1]["text"]
+            # Voice input mode inferred because raw_segments was sent.
+            assert r.input_mode == ReflectionInputMode.VOICE
+
+    def test_237_submit_typed_only_persists_empty_raw_segments(
+        self, app, client, monkeypatch,
+    ):
+        """Pure typed reflection (no raw_segments in payload) →
+        raw_segments persists as []. Doesn't crash; serializer returns
+        []."""
+        _bypass_auth(monkeypatch)
+        with patch(
+            "reflection_api.analyze_reflection",
+            return_value={"explicit": [], "suggested": [],
+                          "ai_cost_usd": None, "snapshot": {}},
+        ):
+            resp = client.post(
+                "/api/reflection",
+                json={"text": "Just typing this out, no voice."},
+            )
+        assert resp.status_code == 201
+        body = resp.get_json()
+        assert body["raw_segments"] == []
+        with app.app_context():
+            r = db.session.scalar(select(Reflection))
+            assert r.raw_segments == []
+            # Typed mode preserved — empty raw_segments doesn't flip it.
+            assert r.input_mode == ReflectionInputMode.TYPED
+
+    def test_237_submit_drops_malformed_segments(
+        self, app, client, monkeypatch,
+    ):
+        """The normaliser drops non-dict entries, empty-text entries,
+        and coerces bad telemetry fields to None. Defense against a
+        malformed client send."""
+        _bypass_auth(monkeypatch)
+        with patch(
+            "reflection_api.analyze_reflection",
+            return_value={"explicit": [], "suggested": [],
+                          "ai_cost_usd": None, "snapshot": {}},
+        ):
+            resp = client.post(
+                "/api/reflection",
+                json={
+                    "text": "Final text.",
+                    "raw_segments": [
+                        {"text": "  Real segment  "},   # whitespace-trimmed
+                        {"text": ""},                     # dropped (empty)
+                        "not-a-dict",                     # dropped (non-dict)
+                        {"text": "Another", "duration_seconds": "bogus"},  # bad telemetry → None
+                        {"text": None},                   # dropped (non-str text)
+                    ],
+                },
+            )
+        assert resp.status_code == 201
+        with app.app_context():
+            r = db.session.scalar(select(Reflection))
+            assert len(r.raw_segments) == 2
+            assert r.raw_segments[0]["text"] == "Real segment"
+            assert r.raw_segments[1]["text"] == "Another"
+            # Bad duration_seconds → None (silently coerced, not 422).
+            assert r.raw_segments[1]["duration_seconds"] is None
+
+    def test_237_submit_empty_text_still_422_even_with_raw_segments(
+        self, client, monkeypatch,
+    ):
+        """The text-emptiness check fires BEFORE the raw_segments
+        path. raw_segments alone can't carry the reflection — the
+        merged text must be present (the user clicked Done with
+        nothing in the textarea)."""
+        _bypass_auth(monkeypatch)
+        resp = client.post(
+            "/api/reflection",
+            json={
+                "text": "   ",
+                "raw_segments": [{"text": "I said something"}],
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_237_serializer_includes_raw_segments_for_pre_237_rows(
+        self, app, monkeypatch,
+    ):
+        """Pre-#237 rows have raw_segments = [] (server_default in the
+        migration). The serializer renders that as an empty list."""
+        _bypass_auth(monkeypatch)
+        with app.app_context():
+            from reflection_service import save_reflection
+            r = save_reflection(
+                transcript="Pre-237 typed reflection",
+                input_mode=ReflectionInputMode.TYPED,
+                proposed={"explicit": [], "suggested": []},
+                # NOT passing raw_segments — simulates pre-#237 code
+                # path AND the default-empty-list contract.
+            )
+            rid = str(r.id)
+
+        # Client (with bypass) — fetch the detail.
+        from flask import Flask  # ensure app fixture stays in scope
+        assert isinstance(app, Flask)
+        with app.test_client() as c:
+            resp = c.get(f"/api/reflection/{rid}")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["raw_segments"] == []
 
     def test_submit_empty_text_422(self, client, monkeypatch):
         _bypass_auth(monkeypatch)

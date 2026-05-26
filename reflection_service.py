@@ -517,9 +517,17 @@ def save_reflection(
     audio_duration_seconds: float | None = None,
     audio_cost_usd: float | None = None,
     ai_cost_usd: float | None = None,
+    raw_segments: list[dict[str, Any]] | None = None,
 ) -> Reflection:
     """Persist a reflection + its proposed actions. Transcript is kept
-    forever for future reference (the explicit user requirement)."""
+    forever for future reference (the explicit user requirement).
+
+    #237 (2026-05-26): ``raw_segments`` is the list of per-segment
+    Whisper transcripts from the #232 pause/resume flow. Each entry
+    is a dict ``{text, duration_seconds, cost_usd, recorded_at}``.
+    Defaults to ``[]`` (typed reflections + voice reflections that
+    pre-date #237).
+    """
     reflection = Reflection(
         iso_week=current_iso_week(),
         input_mode=input_mode,
@@ -527,6 +535,7 @@ def save_reflection(
         audio_duration_seconds=audio_duration_seconds,
         audio_cost_usd=audio_cost_usd,
         ai_cost_usd=ai_cost_usd,
+        raw_segments=_normalise_raw_segments(raw_segments),
         proposed_actions={
             "explicit": proposed.get("explicit", []),
             "suggested": proposed.get("suggested", []),
@@ -535,6 +544,68 @@ def save_reflection(
     db.session.add(reflection)
     db.session.commit()
     return reflection
+
+
+def _normalise_raw_segments(
+    raw_segments: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """#237: coerce client-supplied raw_segments to the persisted shape.
+
+    Drops non-dict entries, coerces field types, caps text length to
+    20000 chars per segment (same as the textarea maxlength), drops
+    segments with empty text. Returns ``[]`` if the input is None or
+    everything got dropped.
+    """
+    if not isinstance(raw_segments, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for seg in raw_segments:
+        if not isinstance(seg, dict):
+            continue
+        text = seg.get("text")
+        if not isinstance(text, str):
+            continue
+        text = text.strip()
+        if not text:
+            continue
+        # Length cap (defense against an unbounded client send). The
+        # textarea maxlength is 20000; one segment is a subset.
+        if len(text) > 20000:
+            text = text[:20000]
+
+        # Optional telemetry fields — coerce to float, drop if invalid.
+        duration = seg.get("duration_seconds")
+        try:
+            duration = float(duration) if duration is not None else None
+        except (TypeError, ValueError):
+            duration = None
+        cost = seg.get("cost_usd")
+        try:
+            cost = float(cost) if cost is not None else None
+        except (TypeError, ValueError):
+            cost = None
+
+        # recorded_at is a client-supplied ISO timestamp. Validate the
+        # shape — anything that doesn't parse becomes None rather than
+        # raising (we never want a stray client field to discard the
+        # transcript text).
+        recorded_at = seg.get("recorded_at")
+        if isinstance(recorded_at, str):
+            recorded_at = recorded_at.strip() or None
+            # Cap to a reasonable timestamp length to avoid an
+            # unbounded send.
+            if recorded_at and len(recorded_at) > 64:
+                recorded_at = None
+        else:
+            recorded_at = None
+
+        out.append({
+            "text": text,
+            "duration_seconds": duration,
+            "cost_usd": cost,
+            "recorded_at": recorded_at,
+        })
+    return out
 
 
 def attach_analysis(

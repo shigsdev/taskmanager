@@ -177,6 +177,13 @@
     var lastSegmentBlob = null;  // kept around for Retry
     var lastSegmentMime = null;
     var hasSegmentText = false;  // true once at least one segment landed in textarea
+    // #237 (2026-05-26): buffer of raw per-segment Whisper transcripts.
+    // Each push: { text, duration_seconds, cost_usd, recorded_at }.
+    // Sent alongside the final merged textarea content on Done so the
+    // server can persist the original (pre-edit) words for audit
+    // (Reflection.raw_segments column). Cleared by cancelEverything +
+    // finalizeAndSubmit.
+    var rawSegments = [];
 
     function showVoiceSubState(name) {
         voiceSubState = name;
@@ -322,6 +329,22 @@
                 ? textArea.value + " " : "") + seg;
         }
         hasSegmentText = true;
+        // #237 (2026-05-26): buffer the raw Whisper output for this
+        // segment so we can ship the full audit-trail to the server on
+        // Done. The textarea above is the (possibly edited) form the
+        // user will eventually submit; this is the verbatim Whisper
+        // output the user MIGHT edit between segments. Both are
+        // persisted (Reflection.transcript vs Reflection.raw_segments).
+        rawSegments.push({
+            text: seg,
+            duration_seconds: (data && typeof data.duration_seconds === "number")
+                ? data.duration_seconds
+                : null,
+            cost_usd: (data && typeof data.cost_usd === "number")
+                ? data.cost_usd
+                : null,
+            recorded_at: new Date().toISOString(),
+        });
         var wc = seg.split(/\s+/).filter(Boolean).length;
         voiceStatus.textContent =
             "Added " + wc + " word" + (wc === 1 ? "" : "s") + ". "
@@ -380,7 +403,19 @@
             showVoiceSubState("idle");
             return;
         }
-        submitReflection({ json: { text: text } });
+        // #237 (2026-05-26): include the per-segment raw transcripts
+        // alongside the final merged text. Server persists both —
+        // `transcript` = the user's edited final form, `raw_segments`
+        // = the verbatim Whisper output per segment. Snapshot + clear
+        // the buffer before posting so a slow network round-trip
+        // can't accidentally re-include them on a follow-up submit.
+        var segmentsSnapshot = rawSegments.slice();
+        rawSegments = [];
+        var payload = { text: text };
+        if (segmentsSnapshot.length > 0) {
+            payload.raw_segments = segmentsSnapshot;
+        }
+        submitReflection({ json: payload });
     }
 
     function cancelEverything() {
@@ -730,6 +765,12 @@
 
     function resetInput() {
         textArea.value = "";
+        // #237: also clear the raw-segments buffer when starting over.
+        // Without this, a new reflection started via "Start Over" /
+        // "New Reflection" / "Try Again" would carry the prior
+        // session's raw segments into the next submit — confusingly
+        // attaching old voice transcripts to a fresh typed reflection.
+        rawSegments = [];
         showState("input");
         selectMode("type");
         focusBtn.disabled = false;

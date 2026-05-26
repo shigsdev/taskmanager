@@ -61,6 +61,10 @@ def _serialize(reflection) -> dict:
             "explicit": proposed.get("explicit", []),
             "suggested": proposed.get("suggested", []),
         },
+        # #237 (2026-05-26): raw per-segment Whisper transcripts from
+        # the #232 pause/resume flow. Empty list for typed reflections
+        # and for pre-#237 voice reflections.
+        "raw_segments": reflection.raw_segments or [],
         "applied_actions": reflection.applied_actions,
         "applied_at": (
             reflection.applied_at.isoformat()
@@ -126,6 +130,25 @@ def submit(email: str):  # noqa: ARG001
             "error": "Reflection is empty — nothing to analyze",
         }), 422
 
+    # #237 (2026-05-26): the JSON path also carries `raw_segments` —
+    # the per-segment Whisper transcripts the user accumulated via
+    # the #232 pause/resume flow. Persisted alongside the final
+    # (possibly edited) `transcript` so an edit doesn't lose the
+    # original spoken words. Only the JSON path has this — the
+    # audio-upload path is a single-shot recording with no segments
+    # (kept for back-compat / direct one-shot voice memos).
+    raw_segments: list | None = None
+    if audio_file is None:
+        rs = data.get("raw_segments") if isinstance(data, dict) else None
+        if isinstance(rs, list):
+            raw_segments = rs
+            # If raw_segments were sent, this came from the #232
+            # pause/resume flow — mark as VOICE input even though the
+            # final POST is JSON (the textarea content was assembled
+            # from voice transcripts).
+            if rs:
+                input_mode = ReflectionInputMode.VOICE
+
     # Persist the transcript FIRST, before the paid + failure-prone
     # Claude call. #165 requires every transcript persisted forever;
     # the original order (analyze → save) discarded the reflection on
@@ -139,6 +162,7 @@ def submit(email: str):  # noqa: ARG001
         audio_duration_seconds=duration,
         audio_cost_usd=audio_cost,
         ai_cost_usd=None,
+        raw_segments=raw_segments,  # #237
     )
 
     # Analyze with Claude (proposes create/update/delete actions). On
