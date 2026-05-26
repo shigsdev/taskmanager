@@ -1803,7 +1803,16 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 @media (max-width: 700px) {
     .plan-row {
-        grid-template-columns: 1fr;
+        /* #226 (2026-05-25): was bare `1fr`. The #217 audit flagged this
+         * as a latent #138 D-B1 risk — under realistic /plan rows with
+         * an unbreakable URL the column would size to max-content and
+         * push the row past 375px. Switching to `minmax(0, 1fr)` lets
+         * the track shrink so the inner ellipsis / overflow-wrap rules
+         * actually take effect. Drive-by fix as part of the recurring
+         * bug-pattern scanner ship so the new gate (check_bare_1fr_grids)
+         * starts with zero findings.
+         */
+        grid-template-columns: minmax(0, 1fr);
     }
     .plan-row-actions {
         justify-content: flex-end;
