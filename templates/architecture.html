@@ -45,6 +45,7 @@
             <li><a href="#ship-lifecycle">Ship lifecycle</a></li>
             <li><a href="#quality-gates">11 quality gates</a></li>
             <li><a href="#drift-gates">Drift-prevention gates</a></li>
+            <li><a href="#recurring-audits">Recurring audits (weekly crons)</a></li>
             <li><a href="#testing-limitations">Known testing limitations</a></li>
         </ul>
 
@@ -884,6 +885,53 @@ flowchart TD
                         <td><code>_build_enum_repair_statements</code></td>
                         <td>Auto-derives <code>ALTER TYPE … ADD VALUE</code> for every Python enum member at boot — no manual list to drift behind</td>
                         <td>Same as above (#53). Layer A complement to <code>check_enum_coverage</code></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            {# ---- Recurring audits (weekly crons) ---- #}
+
+            <h3 id="recurring-audits">Recurring audits (weekly crons)</h3>
+            <p>
+                On-commit gates catch <em>new</em> instances of known
+                patterns as code is being written. These weekly GitHub
+                Actions workflows complement that with drift detection
+                over time — they catch <em>old</em> instances of
+                patterns we learned about <em>after</em> the affected
+                code was originally written, plus things like CVEs that
+                land against unchanged dependencies between commits.
+                Each emails on findings via the shared
+                <code>SENDGRID_API_KEY</code> + <code>DIGEST_*_EMAIL</code>
+                config and exits 0 silently on clean weeks.
+            </p>
+
+            <table class="quality-gates">
+                <thead>
+                    <tr><th>Workflow</th><th>Schedule</th><th>What it scans</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>weekly-advisory-check.yml</code> (#210)</td>
+                        <td>Mondays 13:00 UTC</td>
+                        <td>Re-runs <code>pip-audit -r requirements-dev.txt</code> + <code>npm audit --audit-level=high</code> against unchanged dependencies. Catches CVEs published between ships.</td>
+                    </tr>
+                    <tr>
+                        <td><code>weekly-bug-pattern-scan.yml</code> (#226)</td>
+                        <td>Sundays 13:00 UTC</td>
+                        <td>
+                            Re-greps the working tree for 5 known-bad
+                            shapes: bare <code>1fr</code> grids without
+                            <code>minmax(0, ...)</code> (#138/#216/#217
+                            D-B1 class); <code>https://user[:token]@host/</code>
+                            embedded URL creds in source (gate 11 only
+                            covers <code>.git/config</code>); belt-and-
+                            braces re-run of the gate 8d string-match-
+                            only prod test guard; state-mutating GET
+                            routes (#190 CSRF surface); raw
+                            <code>tier == "today"</code> string
+                            comparisons that should go through the
+                            <code>Tier</code> enum.
+                        </td>
                     </tr>
                 </tbody>
             </table>
