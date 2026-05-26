@@ -604,6 +604,24 @@ def _fetch_projects_and_goals_for_hints() -> tuple[
 
     Returns empty lists on any error (DB unavailable, etc.) — the
     rest of the voice flow still works without hints.
+
+    #234 (2026-05-26): added INFO + WARNING logging so the fetch
+    counts are visible in /api/debug/logs. Before this, a fetch that
+    silently returned `([], [])` due to a DB transient looked
+    identical to "user genuinely has no projects/goals" on the user
+    end (both surface as "Heard X: '...' (no match)" on the review
+    screen). The new logs distinguish the two cases:
+
+      INFO  voice hint sources: 41 projects, 7 goals
+              → fetch worked; if a hint still didn't resolve, look at
+                resolution path next (case mismatch, hallucinated hint,
+                etc.).
+
+      WARNING voice hint sources fetch failed: <exception type>: <msg>
+              → fetch exception silently returned empty; THIS is why
+                every hint shows "(no match)". DB transient, schema
+                drift, or context-bound session issue. Investigate
+                the exception details.
     """
     try:
         from sqlalchemy import select
@@ -621,8 +639,17 @@ def _fetch_projects_and_goals_for_hints() -> tuple[
                 select(Goal).where(Goal.is_active.is_(True))
             )
         ]
+        logger.info(
+            "voice hint sources: %d projects, %d goals",
+            len(projects), len(goals),
+        )
         return projects, goals
-    except Exception:  # noqa: BLE001 — hints are optional; never crash the flow
+    except Exception as exc:  # noqa: BLE001 — hints are optional; never crash the flow
+        logger.warning(
+            "voice hint sources fetch failed: %s: %s — hints will all "
+            "surface as (no match)",
+            type(exc).__name__, exc,
+        )
         return [], []
 
 
@@ -816,14 +843,24 @@ def _normalise_voice_candidates(
         # string stays on the candidate regardless so the UI can
         # show "Claude suggested X" even when X doesn't match.
         #
-        # Resolution strategy (2026-05-09 user-reported bug):
+        # Resolution strategy:
         #   1. Exact case-insensitive title match (preserves prior
         #      behavior — Claude usually echoes the verbatim title).
-        #   2. Substring fallback if exact misses. If the hint is
-        #      contained in exactly ONE active title (or vice versa),
-        #      use it. Common repro: user said "audit" while the
-        #      project is "IPPM Audit". Multi-match → leave as hint
-        #      (ambiguous; don't guess).
+        #   2. Substring fallback if exact misses (2026-05-09 bug).
+        #      If the hint is contained in exactly ONE active title
+        #      (or vice versa), use it. Common repro: user said
+        #      "audit" while the project is "IPPM Audit". Multi-match
+        #      → leave as hint (ambiguous; don't guess).
+        #   3. #234 (2026-05-26) — CROSS-DOMAIN FALLBACK: if a
+        #      project_hint doesn't resolve against projects AND there's
+        #      no goal_hint, try resolving it against goals. Same
+        #      vice versa. The reported case had BOTH a Project AND a
+        #      Goal named "Job Search", so the natural read is to fill
+        #      BOTH slots from whichever hint resolved. But the more
+        #      important case it covers is Claude misclassifying a
+        #      goal-name as a project-name (or vice versa) — without
+        #      this fallback, a hint that clearly matches one side of
+        #      the user's domain stays unresolved.
         # Logs INFO on every resolution path so we can audit hint
         # accuracy from /api/debug/logs.
         project_hint = item.get("project_hint")
@@ -839,6 +876,42 @@ def _normalise_voice_candidates(
             goal_id = _resolve_voice_hint(
                 goal_hint.strip(), goal_by_title_lc, kind="goal",
             )
+
+        # #234 cross-domain fallback. Run AFTER the primary attempts so
+        # an explicit Claude-cited project doesn't get overwritten by a
+        # coincidental same-name goal match. Only fires when the slot
+        # is still null AND we have a hint to try.
+        if (project_id is None
+                and isinstance(project_hint, str)
+                and project_hint.strip()):
+            fallback_goal = _resolve_voice_hint(
+                project_hint.strip(), goal_by_title_lc,
+                kind="project→goal-fallback",
+            )
+            # If project_hint resolves to a goal AND we don't already
+            # have a goal_id (don't clobber a Claude-explicit goal),
+            # treat it as a goal hint. This handles "Claude said
+            # project but it's actually a goal".
+            if fallback_goal is not None and goal_id is None:
+                goal_id = fallback_goal
+                # If goal_hint wasn't set, surface the resolved name
+                # to the UI as the goal_hint so the user understands
+                # which goal it picked up (without this, the dropdown
+                # selection appears without explanation).
+                if not (isinstance(goal_hint, str) and goal_hint.strip()):
+                    goal_hint = project_hint
+
+        if (goal_id is None
+                and isinstance(goal_hint, str)
+                and goal_hint.strip()):
+            fallback_project = _resolve_voice_hint(
+                goal_hint.strip(), proj_by_title_lc,
+                kind="goal→project-fallback",
+            )
+            if fallback_project is not None and project_id is None:
+                project_id = fallback_project
+                if not (isinstance(project_hint, str) and project_hint.strip()):
+                    project_hint = goal_hint
 
         # Default is_task=True so that a Claude miss (forgot to emit
         # the field) still treats the item as a task. `is not False`
