@@ -919,7 +919,7 @@ flowchart TD
                         <td><code>weekly-bug-pattern-scan.yml</code> (#226)</td>
                         <td>Sundays 13:00 UTC</td>
                         <td>
-                            Re-greps the working tree for 5 known-bad
+                            Re-greps the working tree for 6 known-bad
                             shapes: bare <code>1fr</code> grids without
                             <code>minmax(0, ...)</code> (#138/#216/#217
                             D-B1 class); <code>https://user[:token]@host/</code>
@@ -930,7 +930,11 @@ flowchart TD
                             routes (#190 CSRF surface); raw
                             <code>tier == "today"</code> string
                             comparisons that should go through the
-                            <code>Tier</code> enum.
+                            <code>Tier</code> enum; and unbalanced
+                            <code>.type === "work"</code> JS checks
+                            without a paired <code>"personal"</code>
+                            reference within ±20 lines (bug #57 class —
+                            #226b, 2026-05-26).
                         </td>
                     </tr>
                 </tbody>

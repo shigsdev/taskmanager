@@ -371,6 +371,191 @@ class TestRawTierStringCompareCheck:
 
 
 # ---------------------------------------------------------------------------
+# Check (e) #226b: unbalanced-type-work
+# ---------------------------------------------------------------------------
+
+
+class TestUnbalancedTypeWorkCheck:
+    """#226b (2026-05-26): JS `.type === "work"` check without a paired
+    "personal" reference in the same window. Bug #57's other cascade
+    row (the original incident was the task-detail save handler).
+    """
+
+    def test_unbalanced_work_check_is_flagged(self, with_project_root: Path):
+        static_dir = with_project_root / "static"
+        static_dir.mkdir()
+        (static_dir / "app.js").write_text(
+            'function save(task) {\n'
+            '    if (task.type === "work") {\n'
+            '        payload.project_id = projSelect.value;\n'
+            '    }\n'
+            '    return payload;\n'
+            '}\n',
+            encoding="utf-8",
+        )
+        findings = bp_mod.check_unbalanced_type_work()
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.check_id == "unbalanced-type-work"
+        assert f.path == "static/app.js"
+        assert f.line_num == 2
+
+    def test_paired_work_and_personal_branches_are_clean(self, with_project_root: Path):
+        # Classic if/else — work on one line, personal on the next.
+        # Heuristic finds "personal" in the ±20 window → balanced.
+        static_dir = with_project_root / "static"
+        static_dir.mkdir()
+        (static_dir / "filter.js").write_text(
+            'function filter(tasks, view) {\n'
+            '    if (view === "work") {\n'
+            '        tasks = tasks.filter((t) => t.type === "work");\n'
+            '    } else if (view === "personal") {\n'
+            '        tasks = tasks.filter((t) => t.type === "personal");\n'
+            '    }\n'
+            '    return tasks;\n'
+            '}\n',
+            encoding="utf-8",
+        )
+        assert bp_mod.check_unbalanced_type_work() == []
+
+    def test_unbalanced_not_equal_to_work_is_flagged(self, with_project_root: Path):
+        # `.type !== "work"` with no personal counterpart is the same
+        # bug class — the negative branch silently includes personal
+        # without the developer thinking about it.
+        static_dir = with_project_root / "static"
+        static_dir.mkdir()
+        (static_dir / "app.js").write_text(
+            'function shouldShow(task, view) {\n'
+            '    if (view === "work" && task.type !== "work") return false;\n'
+            '    return true;\n'
+            '}\n',
+            encoding="utf-8",
+        )
+        assert len(bp_mod.check_unbalanced_type_work()) == 1
+
+    def test_comment_with_type_work_is_not_flagged(self, with_project_root: Path):
+        # JSDoc / comment text discussing the bug pattern (like the
+        # comment in static/task_detail_payload.js) must not trigger.
+        # Comments don't start with `.type` — the regex requires the
+        # leading dot — but this case is worth locking in.
+        static_dir = with_project_root / "static"
+        static_dir.mkdir()
+        (static_dir / "app.js").write_text(
+            '/**\n'
+            ' * Bug #57: a stale `type === "work"` check used to drop\n'
+            ' * project_id for personal tasks.\n'
+            ' */\n'
+            'function noop() {}\n',
+            encoding="utf-8",
+        )
+        # The literal `type === "work"` inside the JSDoc has no leading
+        # dot, so the regex doesn't match. Clean.
+        assert bp_mod.check_unbalanced_type_work() == []
+
+    def test_line_comment_after_match_is_not_flagged(self, with_project_root: Path):
+        # `// only on work tasks` comment after the actual match — the
+        # match IS real code; flag stays.
+        static_dir = with_project_root / "static"
+        static_dir.mkdir()
+        (static_dir / "app.js").write_text(
+            'function pickWorkOnly(task) {\n'
+            '    return task.type === "work";  // workaround for issue X\n'
+            '}\n',
+            encoding="utf-8",
+        )
+        # Real code, no "personal" reference within ±20 lines.
+        assert len(bp_mod.check_unbalanced_type_work()) == 1
+
+    def test_personal_in_comment_still_counts_as_balanced(self, with_project_root: Path):
+        # Comments mentioning "personal" near a work check are evidence
+        # the author considered the personal branch — even if the code
+        # itself doesn't have it. We accept this as a deliberate
+        # false-negative trade-off: false-positive on comments is
+        # noisier than false-negative on a one-off check that's
+        # documented.
+        static_dir = with_project_root / "static"
+        static_dir.mkdir()
+        (static_dir / "app.js").write_text(
+            'function pickWorkOnly(task) {\n'
+            '    // Note: this skips "personal" tasks intentionally.\n'
+            '    return task.type === "work";\n'
+            '}\n',
+            encoding="utf-8",
+        )
+        assert bp_mod.check_unbalanced_type_work() == []
+
+    def test_tests_directory_is_skipped(self, with_project_root: Path):
+        # Test files assert on specific type values intentionally.
+        tests_dir = with_project_root / "tests" / "js"
+        tests_dir.mkdir(parents=True)
+        (tests_dir / "foo.test.js").write_text(
+            'test("work only", () => {\n'
+            '    expect(t.type === "work").toBe(true);\n'
+            '});\n',
+            encoding="utf-8",
+        )
+        assert bp_mod.check_unbalanced_type_work() == []
+
+    def test_non_js_file_is_skipped(self, with_project_root: Path):
+        # Python uses TaskType.WORK / TaskType.PERSONAL enum members;
+        # the JS check shouldn't scan Python files even if they
+        # contain the literal pattern in a docstring.
+        (with_project_root / "service.py").write_text(
+            'def f(task):\n'
+            '    return task.type == "work"  # legitimate in Python\n',
+            encoding="utf-8",
+        )
+        assert bp_mod.check_unbalanced_type_work() == []
+
+    def test_personal_outside_window_still_flagged(self, with_project_root: Path):
+        # If "personal" is >20 lines away, the heuristic considers the
+        # work check unbalanced. Trade-off: long-block if/else with the
+        # personal branch >20 lines from the work line will false-
+        # positive. Operator fixes by either shortening the block,
+        # commenting "personal" near the work check, or restructuring.
+        static_dir = with_project_root / "static"
+        static_dir.mkdir()
+        lines = ['function f(task) {']
+        lines.append('    if (task.type === "work") {')
+        # 25 lines of unrelated code between work and personal.
+        lines.extend([f'        // line {n}' for n in range(25)])
+        lines.append('    } else if (task.type === "personal") {')
+        lines.append('        return true;')
+        lines.append('    }')
+        lines.append('}')
+        (static_dir / "app.js").write_text("\n".join(lines), encoding="utf-8")
+        # The match at line 2 is 28 lines away from the "personal"
+        # match — outside the ±20 window. Flagged.
+        findings = bp_mod.check_unbalanced_type_work()
+        assert len(findings) == 1
+
+
+class TestStripJsLineComment:
+    """The helper used by check_unbalanced_type_work to defang trailing
+    `// comment` text that would otherwise hide the regex match."""
+
+    def test_no_comment_returns_line_unchanged(self):
+        assert bp_mod._strip_js_line_comment('foo();') == 'foo();'
+
+    def test_trailing_line_comment_stripped(self):
+        assert bp_mod._strip_js_line_comment('foo();  // bar') == 'foo();  '
+
+    def test_comment_inside_double_quote_string_preserved(self):
+        # The `//` is inside a string literal, not a comment.
+        assert bp_mod._strip_js_line_comment(
+            'url = "https://example.com";'
+        ) == 'url = "https://example.com";'
+
+    def test_comment_inside_single_quote_string_preserved(self):
+        assert bp_mod._strip_js_line_comment(
+            "url = 'https://x';"
+        ) == "url = 'https://x';"
+
+    def test_no_slashslash_at_all(self):
+        assert bp_mod._strip_js_line_comment('var x = 1;') == 'var x = 1;'
+
+
+# ---------------------------------------------------------------------------
 # Driver-level integration
 # ---------------------------------------------------------------------------
 

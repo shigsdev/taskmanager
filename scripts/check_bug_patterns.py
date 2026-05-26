@@ -39,11 +39,11 @@ Five mechanical checks ship in the first cut:
       ``Tier.TODAY`` enum members. Tests intentionally compare strings
       to enum values; only non-test Python is scanned.
 
-A sixth proposed check (``type == "work"`` without a corresponding
-personal branch — bug #57) was deferred to #226b because the mechanical
-regex would misfire on every legitimate two-branch if/else; it needs a
-heuristic that scans for an else-personal sibling, which is worth doing
-well in a follow-up rather than shipping as noise.
+  unbalanced-type-work (#226b, 2026-05-26)
+      ``.type === "work"`` (or ``!==``) in JS source without any
+      ``"personal"`` reference within ±20 lines — bug #57's other
+      cascade row. Heuristic windowed scan (not pure regex) because
+      legitimate if/else blocks must NOT flag.
 
 Pipeline::
 
@@ -372,6 +372,101 @@ def check_state_mutating_get_routes() -> list[Finding]:
 
 
 # ---------------------------------------------------------------------------
+# Check (e): unbalanced `.type === "work"` in JS without a personal branch.
+# ---------------------------------------------------------------------------
+# Bug #57's cascade row in CLAUDE.md: when a feature is extended from
+# work-only to work+personal, code that hard-coded `task.type === "work"`
+# (without a sibling `else if task.type === "personal"`) silently dropped
+# personal-type behavior. The original incident was the task-detail
+# save handler at static/app.js — a stale `type === "work"` conditional
+# silently dropped `project_id` for personal tasks, no error raised,
+# only caught by manual user testing.
+#
+# Deferred from #226's first cut as "fuzzy heuristic" — pure regex
+# misfires on every legitimate if/else. Implemented here as a windowed
+# scan: a `.type === "work"` reference is OK iff there's ANY mention of
+# "personal" within ±20 lines (the typical if/else block fits in that
+# window). Unbalanced uses get flagged.
+
+_TYPE_WORK_RE = re.compile(r'\.type\s*[=!]==\s*["\']work["\']')
+_PERSONAL_NEAR_RE = re.compile(r'["\']personal["\']')
+
+
+def _strip_js_line_comment(line: str) -> str:
+    """Return the non-comment portion of a JS line.
+
+    Naive but sufficient for our regex-defense purpose: find the FIRST
+    `//` that appears outside a quoted string (rough count) and chop
+    everything after it. Block comments (``/* ... */``) are rare in
+    this codebase and not worth a full lexer — those false-positives
+    can be silenced via the cascade-comment heuristic below.
+    """
+    idx = line.find("//")
+    if idx == -1:
+        return line
+    before = line[:idx]
+    # Crude string-aware check: if quote counts are even, `//` is
+    # outside any string and is a real comment start.
+    if before.count('"') % 2 == 0 and before.count("'") % 2 == 0:
+        return before
+    return line
+
+
+def check_unbalanced_type_work() -> list[Finding]:
+    """Scan JS source for ``.type === "work"`` (or ``!==``) without a
+    matching ``"personal"`` reference nearby — bug #57 class.
+
+    Heuristic: for each ``.type === "work"`` line, look ±20 lines for
+    the literal string ``"personal"`` (in any quoting style). If
+    found, the check considers the branch balanced and skips. If not,
+    emit a Finding so the developer can audit whether this is the
+    next #57.
+
+    Scope: ``static/*.js`` only. Tests live in ``tests/js/`` and
+    intentionally compare against specific type values — skipped.
+    Python source uses ``TaskType.WORK`` / ``TaskType.PERSONAL`` enum
+    members instead of strings (per CLAUDE.md), so Python isn't scoped
+    in this check.
+    """
+    findings: list[Finding] = []
+    for p in _walk_tracked_files():
+        if p.suffix != ".js":
+            continue
+        rel = p.relative_to(PROJECT_ROOT).as_posix()
+        # Skip tests — they intentionally assert specific type values.
+        if rel.startswith("tests/"):
+            continue
+        try:
+            text = p.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        lines = text.splitlines()
+        for i, line in enumerate(lines, start=1):
+            code = _strip_js_line_comment(line)
+            if not _TYPE_WORK_RE.search(code):
+                continue
+            # ±20 line window around the match.
+            start = max(0, i - 1 - 20)
+            end = min(len(lines), i + 20)
+            window = "\n".join(lines[start:end])
+            if _PERSONAL_NEAR_RE.search(window):
+                continue  # balanced — has a personal branch nearby
+            findings.append(Finding(
+                check_id="unbalanced-type-work",
+                path=rel,
+                line_num=i,
+                line=line.rstrip(),
+                message=(
+                    "`.type === \"work\"` (or `!==`) check has no "
+                    '"personal" reference within 20 lines — extend '
+                    "to handle both types (bug #57 class) or use "
+                    "the TaskType enum"
+                ),
+            ))
+    return findings
+
+
+# ---------------------------------------------------------------------------
 # Check (f): raw tier-string comparisons in Python source.
 # ---------------------------------------------------------------------------
 
@@ -458,6 +553,7 @@ CHECKS = [
     ("string-match-only-prod-tests", check_string_match_only_prod_tests),
     ("state-mutating-get-routes", check_state_mutating_get_routes),
     ("raw-tier-string-compare", check_raw_tier_string_compare),
+    ("unbalanced-type-work", check_unbalanced_type_work),
 ]
 
 
