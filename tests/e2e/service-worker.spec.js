@@ -108,6 +108,55 @@ test.describe("Service Worker lifecycle", () => {
         expect(regCount).toBe(0);
     });
 
+    test("#235 SW does NOT intercept cross-origin requests", async ({ page }) => {
+        // 2026-05-25: regression guard for the broken-Mermaid bug. The
+        // SW intercepted the cross-origin Mermaid CDN fetch and the
+        // .catch 503-fallback broke the ES module import on iOS Safari.
+        // Fix: the fetch handler now early-returns for any request
+        // whose origin differs from self.location.origin, letting the
+        // browser handle cross-origin natively.
+        //
+        // This test confirms that property by inspecting whether the
+        // SW's intercept was invoked at all for a cross-origin URL.
+        // We can't easily mock the fetch handler in a real-browser
+        // test, so we use the FetchEvent-via-MessageChannel pattern:
+        // send a synthetic Request to the SW and ask what it would
+        // do. The SW exposes the inspection via a 'fetch-probe' message
+        // handler — added below in the test for the test's purpose
+        // (not in production code, to avoid bloating the SW).
+        //
+        // Simpler approach taken here: ASSERT THAT THE FETCH HAPPENED
+        // VIA THE NETWORK by intercepting at the Playwright level
+        // (page.route). If the SW had intercepted, page.route would
+        // never fire because the SW would handle the request.
+        await setupFreshSW(page);
+
+        let cdnIntercepted = false;
+        await page.route("https://cdn.jsdelivr.net/**", (route) => {
+            cdnIntercepted = true;
+            // Return a tiny fake JS module — the test only cares that
+            // the request reached the network layer, not what comes back.
+            route.fulfill({
+                status: 200,
+                contentType: "application/javascript",
+                body: "export default {};",
+            });
+        });
+
+        // Navigate to /architecture which loads Mermaid from the CDN.
+        // The SW is active (setupFreshSW); if the fix worked, the SW
+        // skips the cross-origin URL and the browser fetches directly,
+        // which our page.route catches.
+        await page.goto("/architecture");
+        await page.waitForLoadState("networkidle");
+
+        // The page.route fired iff the browser saw the cross-origin
+        // request directly (= SW correctly skipped it). If the SW had
+        // intercepted and served from cache or 503'd, page.route would
+        // never have been called.
+        expect(cdnIntercepted).toBe(true);
+    });
+
     test("SW responds to CLEAR_CACHE message", async ({ page }) => {
         // #205 (2026-05-21): use the shared setupFreshSW helper that
         // handles the controllerchange → reload race so this test

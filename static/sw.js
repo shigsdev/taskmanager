@@ -5,7 +5,7 @@
  * Bump CACHE_VERSION when deploying new static files.
  */
 
-var CACHE_VERSION = "v166";
+var CACHE_VERSION = "v167";
 var CACHE_NAME = "taskmanager-" + CACHE_VERSION;
 
 // HTML is intentionally NOT pre-cached (see fetch handler below — Bug #56).
@@ -128,6 +128,32 @@ self.addEventListener("fetch", function (event) {
 
     // Skip non-GET requests
     if (event.request.method !== "GET") return;
+
+    // #235 (2026-05-25): NEVER intercept cross-origin requests. The
+    // user-reported Mermaid breakage on /architecture (raw `flowchart LR`
+    // source rendered as text instead of SVG diagrams) was caused by
+    // this SW intercepting the ES module fetch to
+    // `https://cdn.jsdelivr.net/npm/mermaid@10.9.1/...` and either
+    // returning a cached old copy or falling through to the 503
+    // .catch handler. iOS Safari module imports through a SW are
+    // brittle — the spec'd behavior allows it but real-world breakage
+    // is common (CORS, opaque-response caching, version drift).
+    //
+    // The blast radius matters: any future CDN-loaded asset
+    // (third-party fonts, analytics, AI SDKs) would hit the same
+    // failure mode. Cleanest fix is to let the browser's native
+    // network stack handle EVERY cross-origin request, the same way
+    // we let it handle /api/ and HTML below.
+    //
+    // The prod-smoke test "architecture page renders Mermaid
+    // diagrams" used `?nosw=1` which BYPASSED the SW — so the test
+    // happily passed while the user's iPhone (SW active by default)
+    // got 503s for the Mermaid CDN. That gap was the testing miss
+    // RCA'd in the BACKLOG #235 row. Mitigation: a paired prod-smoke
+    // test that EXERCISES the SW path (architecture without nosw=1).
+    if (url.origin !== self.location.origin) {
+        return;  // browser handles cross-origin natively
+    }
 
     // API calls and HTML pages: always network, never cached.
     //

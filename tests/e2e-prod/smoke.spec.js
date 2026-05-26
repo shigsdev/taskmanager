@@ -123,6 +123,16 @@ test.describe("Prod smoke — page renders", () => {
      * against the live URL and asserts at least one Mermaid SVG
      * actually rendered — catching CSP regressions, jsdelivr
      * outages, ad-blocker effects, and stale-SW combos.
+     *
+     * RCA #235 (2026-05-25): the original test used `?nosw=1` which
+     * BYPASSED the Service Worker, so it never exercised the SW path
+     * the user's iPhone takes by default. The SW's fetch handler
+     * intercepted the cross-origin Mermaid CDN request and returned
+     * a 503 from its `.catch` block on certain failure modes (or
+     * served a stale cached opaque response). The user got raw
+     * `flowchart LR ...` text instead of SVG. The companion test
+     * below (`renders Mermaid diagrams WITH the Service Worker
+     * active`) is the regression guard that closes this loop.
      */
     test("architecture page renders Mermaid diagrams", async ({ page }) => {
         const errors = [];
@@ -143,6 +153,56 @@ test.describe("Prod smoke — page renders", () => {
         // /architecture currently has 10 (1 ER + 4 simple flows + 4
         // detailed flows + 1 ship-lifecycle). Assert >=5 to leave
         // headroom for content changes without breaking the gate.
+        const svgCount = await page.locator("pre.mermaid svg").count();
+        expect(svgCount).toBeGreaterThanOrEqual(5);
+
+        expect(errors).toEqual([]);
+    });
+
+    /**
+     * #235 (2026-05-25) regression guard: the user reported broken
+     * Mermaid diagrams on /architecture while the per-deploy
+     * "renders Mermaid diagrams" check above kept passing. Root
+     * cause: the existing test used `?nosw=1` to bypass the Service
+     * Worker, but the user's iPhone (and every real user) navigates
+     * normally — the SW is active and intercepts the cross-origin
+     * Mermaid CDN fetch. The SW's `fetch.catch` 503-fallback or
+     * stale-opaque-cache combination broke the ES module import.
+     *
+     * This test runs the SAME page WITHOUT `?nosw=1` so the live SW
+     * intercept-path is exercised end-to-end. After the v167 SW
+     * skips cross-origin requests entirely (browser handles
+     * natively), this should match the no-SW behavior. If the SW
+     * ever regresses to intercepting CDN URLs, this test fails
+     * within the same deploy-validate window the original check
+     * runs in — closing the gap that let #235 ship silently.
+     */
+    test("architecture page renders Mermaid diagrams WITH the Service Worker active", async ({ page }) => {
+        const errors = [];
+        page.on("pageerror", (err) => errors.push(err.message));
+
+        // Step 1: navigate to / first so the SW registers + activates.
+        await page.goto("/");
+        await page.waitForLoadState("networkidle");
+        // Wait for SW to be the active controller (or skip silently if
+        // the browser doesn't support SW — Playwright chromium does).
+        await page.evaluate(async () => {
+            if (!("serviceWorker" in navigator)) return;
+            await navigator.serviceWorker.ready;
+        });
+
+        // Step 2: navigate to /architecture WITHOUT nosw=1. The SW
+        // intercepts every static asset + cross-origin request.
+        await page.goto("/architecture");
+        await page.waitForLoadState("networkidle");
+
+        // Same assertions as the nosw=1 test — Mermaid must render
+        // through the SW path too. Without #235's SW cross-origin
+        // skip, this would time out waiting for the SVG.
+        await expect(
+            page.locator("pre.mermaid svg").first(),
+        ).toBeVisible({ timeout: 10_000 });
+
         const svgCount = await page.locator("pre.mermaid svg").count();
         expect(svgCount).toBeGreaterThanOrEqual(5);
 
