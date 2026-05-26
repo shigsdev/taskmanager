@@ -1113,6 +1113,60 @@ class TestVoiceNormaliser:
         assert result[0]["project_hint"] is None
         assert result[0]["goal_hint"] is None
 
+    # --- #234 fourth pass (2026-05-26): separator-char normalization ---
+    # User STILL hit "(no match)" for "Roadmap Automation" after the
+    # third-pass Unicode-normalize fix. Diagnostic probe found
+    # "Roadmap-Automation" and "Roadmap_Automation" still miss — both
+    # plausible Claude mutations (the model "tidies up" multi-word
+    # names into code-style identifiers). Fix: coerce hyphens,
+    # underscores, en-dashes, em-dashes to a single space.
+
+    def test_234_hyphen_in_hint_resolves_to_space_separated_title(self):
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "x", "project_hint": "Roadmap-Automation"}],
+            projects=[("p-ra", "Roadmap Automation")],
+            goals=[],
+        )
+        assert result[0]["project_id"] == "p-ra"
+
+    def test_234_underscore_in_hint_resolves(self):
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "x", "project_hint": "Roadmap_Automation"}],
+            projects=[("p-ra", "Roadmap Automation")],
+            goals=[],
+        )
+        assert result[0]["project_id"] == "p-ra"
+
+    def test_234_em_dash_in_hint_resolves(self):
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "x", "goal_hint": "Roadmaps—Best Practices"}],
+            projects=[],
+            goals=[("g-rbp", "Roadmaps Best Practices")],
+        )
+        assert result[0]["goal_id"] == "g-rbp"
+
+    def test_234_en_dash_in_hint_resolves(self):
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "x", "project_hint": "Roadmap–Automation"}],
+            projects=[("p-ra", "Roadmap Automation")],
+            goals=[],
+        )
+        assert result[0]["project_id"] == "p-ra"
+
+    def test_234_normalise_title_separator_chars(self):
+        """Direct unit test of separator-char coercion."""
+        from scan_service import _normalise_title
+        assert _normalise_title("Roadmap-Automation") == "roadmap automation"
+        assert _normalise_title("Roadmap_Automation") == "roadmap automation"
+        assert _normalise_title("Roadmap—Automation") == "roadmap automation"
+        assert _normalise_title("Roadmap–Automation") == "roadmap automation"
+        assert _normalise_title("foo-bar_baz—qux") == "foo bar baz qux"
+        assert _normalise_title("foo - bar") == "foo bar"
+
     def test_234_fetch_logs_counts_on_success(self, app, caplog):
         """The #234 fetch surfaces project/goal counts to logs so a
         future 'all hints missed' report can be diagnosed from
