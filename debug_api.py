@@ -286,6 +286,170 @@ def get_logs(email: str):  # noqa: ARG001
     })
 
 
+# --- GET /api/debug/voice-hint-trace -----------------------------------------
+#
+# #234 diagnostic endpoint (2026-05-26): probes the voice hint resolver
+# directly with arbitrary hints so we can diagnose "(no match)" reports
+# without waiting for the user to retest a voice memo.
+#
+# Returns:
+#   - the counts of projects + goals the fetch saw
+#   - a sample of the first 20 lookup-map keys (lowercased titles) for
+#     each domain, so we can confirm whether the expected title is in
+#     the map
+#   - for each supplied hint, the resolution result (project + goal
+#     paths run + which one matched) including the cross-domain
+#     fallback behavior from #234's first pass
+#
+# Gated by login_required (single-user OAuth) — same as /api/debug/logs.
+# No persistence; pure read. Safe to leave in place indefinitely.
+
+
+@bp.get("/voice-hint-trace")
+@login_required
+def voice_hint_trace(email: str):  # noqa: ARG001
+    """Probe the voice hint resolver against arbitrary hints.
+
+    Query params:
+      project_hint=<string>   (optional)
+      goal_hint=<string>      (optional)
+      sample_size=<int>       (optional, default 20, max 100)
+
+    Examples:
+      /api/debug/voice-hint-trace?project_hint=Roadmaps&goal_hint=Roadmaps%20Best%20Practices
+      /api/debug/voice-hint-trace?project_hint=audit
+    """
+    from scan_service import (
+        _fetch_projects_and_goals_for_hints,
+        _normalise_voice_candidates,
+    )
+
+    project_hint = (request.args.get("project_hint") or "").strip() or None
+    goal_hint = (request.args.get("goal_hint") or "").strip() or None
+    try:
+        sample_size = min(int(request.args.get("sample_size", "20")), 100)
+    except (TypeError, ValueError):
+        sample_size = 20
+
+    projects, goals = _fetch_projects_and_goals_for_hints()
+
+    # Build the SAME lookup maps the resolver builds — so the sample
+    # keys reflect exactly what the resolver sees, not what the API
+    # would have shown.
+    proj_keys = sorted({
+        title.lower().strip()
+        for _, title in projects
+        if isinstance(title, str) and title.strip()
+    })
+    goal_keys = sorted({
+        title.lower().strip()
+        for _, title in goals
+        if isinstance(title, str) and title.strip()
+    })
+
+    # Run a synthetic candidate through _normalise_voice_candidates so
+    # the resolution path matches what the live voice-memo flow does
+    # (including the #234 cross-domain fallback).
+    raw = [{
+        "title": "debug-probe",
+        "type": "personal",
+        "tier": "inbox",
+        "project_hint": project_hint,
+        "goal_hint": goal_hint,
+    }]
+    normalised = _normalise_voice_candidates(
+        raw, projects=projects, goals=goals,
+    )
+    result = normalised[0] if normalised else {}
+
+    return jsonify({
+        "fetch": {
+            "project_count": len(projects),
+            "goal_count": len(goals),
+        },
+        "lookup_keys_sample": {
+            "projects": proj_keys[:sample_size],
+            "goals": goal_keys[:sample_size],
+        },
+        "resolution": {
+            "project_hint": result.get("project_hint"),
+            "project_id": result.get("project_id"),
+            "goal_hint": result.get("goal_hint"),
+            "goal_id": result.get("goal_id"),
+        },
+        "interpretation": _voice_hint_interpretation(
+            project_hint, goal_hint, result, proj_keys, goal_keys,
+        ),
+    })
+
+
+def _voice_hint_interpretation(
+    project_hint, goal_hint, result, proj_keys, goal_keys,
+):
+    """Build a plain-English explanation of what the resolver did."""
+    notes = []
+    if not proj_keys and not goal_keys:
+        notes.append(
+            "FETCH RETURNED EMPTY — _fetch_projects_and_goals_for_hints "
+            "hit its exception branch OR the DB has 0 active projects + "
+            "0 active goals. Every hint will appear as (no match).",
+        )
+    elif not proj_keys:
+        notes.append(
+            "FETCH RETURNED 0 PROJECTS — every project_hint will appear "
+            "as (no match). Likely a DB/session issue scoping the "
+            "Project query specifically.",
+        )
+    elif not goal_keys:
+        notes.append(
+            "FETCH RETURNED 0 GOALS — every goal_hint will appear as "
+            "(no match). Likely a DB/session issue scoping the Goal "
+            "query specifically.",
+        )
+
+    if project_hint:
+        hint_lc = project_hint.lower().strip()
+        if result.get("project_id"):
+            notes.append(
+                f"project_hint {project_hint!r} → RESOLVED to "
+                f"{result['project_id']}",
+            )
+        elif hint_lc in proj_keys:
+            notes.append(
+                f"project_hint {project_hint!r} IS in the project map "
+                f"(key {hint_lc!r}) BUT the resolver returned None. "
+                "Inspect the resolver for a logic bug.",
+            )
+        else:
+            notes.append(
+                f"project_hint {project_hint!r} is NOT in the project "
+                f"map (lowercased to {hint_lc!r}). Map has "
+                f"{len(proj_keys)} keys. (no match) is correct.",
+            )
+
+    if goal_hint:
+        hint_lc = goal_hint.lower().strip()
+        if result.get("goal_id"):
+            notes.append(
+                f"goal_hint {goal_hint!r} → RESOLVED to "
+                f"{result['goal_id']}",
+            )
+        elif hint_lc in goal_keys:
+            notes.append(
+                f"goal_hint {goal_hint!r} IS in the goal map "
+                f"(key {hint_lc!r}) BUT the resolver returned None. "
+                "Inspect the resolver for a logic bug.",
+            )
+        else:
+            notes.append(
+                f"goal_hint {goal_hint!r} is NOT in the goal map "
+                f"(lowercased to {hint_lc!r}). Map has "
+                f"{len(goal_keys)} keys. (no match) is correct.",
+            )
+
+    return notes
+
+
 # --- POST /api/debug/client-error --------------------------------------------
 
 

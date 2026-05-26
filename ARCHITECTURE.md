@@ -606,6 +606,7 @@ the code.
 # debug_api.py — used by scripts/validate_deploy.py --check-logs
 /api/debug/logs
 /api/debug/client-error
+/api/debug/voice-hint-trace                       # GET — #234 diagnostic: probe voice hint resolver with arbitrary hints, returns lookup-map counts + sample + resolution result
 /api/debug/backfill/task-goal-from-project   # #77 — one-shot admin
 /api/debug/backfill/project-colors           # #93 — one-shot admin (per-type default backfill)
 /api/debug/backfill/today-tomorrow-due-date
