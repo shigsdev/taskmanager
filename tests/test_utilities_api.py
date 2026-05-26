@@ -343,3 +343,150 @@ class TestGitHubRepoOverride:
         body = resp.get_json()
         assert "myfork/taskmanager-fork" in captured["url"]
         assert body["actions_url"] == "https://github.com/myfork/taskmanager-fork/actions"
+
+
+class TestInlineAuditScans:
+    """#236 (2026-05-26): on-demand inline-scan endpoints for the
+    recurring audit scripts. Mock the script CHECKS arrays to keep
+    the test fast + independent of the live filesystem state."""
+
+    def test_bug_pattern_endpoint_requires_auth(self, client):
+        resp = client.post("/api/utilities/run-bug-pattern-scan")
+        assert resp.status_code in (302, 401)
+
+    def test_security_posture_endpoint_requires_auth(self, client):
+        resp = client.post("/api/utilities/run-security-posture-scan")
+        assert resp.status_code in (302, 401)
+
+    def test_bug_pattern_scan_returns_total_per_check_findings(
+        self, authed_client, monkeypatch,
+    ):
+        """Smoke test the response shape against the real CHECKS.
+        Against the current main, every check should report 0 findings.
+        """
+        resp = authed_client.post("/api/utilities/run-bug-pattern-scan")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert isinstance(body["total"], int)
+        assert isinstance(body["per_check"], list)
+        assert isinstance(body["findings"], list)
+        # All 6 checks should be enumerated in per_check.
+        labels = [c["label"] for c in body["per_check"]]
+        assert "bare-1fr-grids" in labels
+        assert "unbalanced-type-work" in labels
+        # The findings list is empty iff total is 0.
+        assert len(body["findings"]) == body["total"]
+
+    def test_security_posture_scan_returns_total_per_check_findings(
+        self, authed_client,
+    ):
+        resp = authed_client.post(
+            "/api/utilities/run-security-posture-scan"
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        labels = [c["label"] for c in body["per_check"]]
+        assert "pat-inventory" in labels
+        assert "oauth-scope-drift" in labels
+        assert "unencrypted-sensitive-columns" in labels
+        assert "threat-model-freshness" in labels
+
+    def test_inline_scan_aggregates_findings_from_mocked_checks(
+        self, authed_client, monkeypatch,
+    ):
+        """Patch one of the script CHECKS arrays to return synthetic
+        findings, then verify the endpoint aggregates them into the
+        {total, per_check, findings} shape correctly."""
+        from scripts import check_bug_patterns as bp_mod
+
+        fake_findings = [
+            bp_mod.Finding(
+                check_id="bare-1fr-grids",
+                path="static/style.css",
+                line_num=42,
+                line=".bad { grid-template-columns: 1fr; }",
+                message="bare 1fr",
+            ),
+        ]
+
+        def fake_check():
+            return fake_findings
+
+        # Replace the CHECKS tuple list with a single synthetic check.
+        original = bp_mod.CHECKS
+        bp_mod.CHECKS = [("bare-1fr-grids", fake_check)]
+        try:
+            resp = authed_client.post(
+                "/api/utilities/run-bug-pattern-scan"
+            )
+        finally:
+            bp_mod.CHECKS = original
+
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["total"] == 1
+        assert body["per_check"] == [
+            {"label": "bare-1fr-grids", "count": 1},
+        ]
+        finding = body["findings"][0]
+        assert finding["check_id"] == "bare-1fr-grids"
+        assert finding["path"] == "static/style.css"
+        assert finding["line_num"] == 42
+
+    def test_inline_scan_one_failing_check_doesnt_abort_others(
+        self, authed_client,
+    ):
+        """If one check raises, it gets recorded with `errored` in
+        per_check but the other checks still run (no fail-fast)."""
+        from scripts import check_bug_patterns as bp_mod
+
+        def passing():
+            return []
+
+        def boom():
+            raise RuntimeError("synthetic")
+
+        original = bp_mod.CHECKS
+        bp_mod.CHECKS = [
+            ("pass-check", passing),
+            ("boom-check", boom),
+            ("pass-after-boom", passing),
+        ]
+        try:
+            resp = authed_client.post(
+                "/api/utilities/run-bug-pattern-scan"
+            )
+        finally:
+            bp_mod.CHECKS = original
+
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["total"] == 0
+        # All 3 checks reported in per_check, the middle one with
+        # `errored` set + count 0.
+        assert len(body["per_check"]) == 3
+        labels = [c["label"] for c in body["per_check"]]
+        assert labels == ["pass-check", "boom-check", "pass-after-boom"]
+        boom_entry = body["per_check"][1]
+        assert boom_entry["count"] == 0
+        assert "errored" in boom_entry
+        assert "synthetic" in boom_entry["errored"]
+        assert "RuntimeError" in boom_entry["errored"]
+
+    def test_inline_scan_does_not_send_email(
+        self, authed_client, monkeypatch,
+    ):
+        """The endpoint must NOT trigger the SendGrid email path that
+        `main()` does — the UI inline-render IS the result channel."""
+        from scripts import check_bug_patterns as bp_mod
+
+        email_sent = []
+        monkeypatch.setattr(
+            bp_mod, "send_scan_email",
+            lambda findings, *, per_check_counts: email_sent.append(True),
+        )
+        resp = authed_client.post(
+            "/api/utilities/run-bug-pattern-scan"
+        )
+        assert resp.status_code == 200
+        assert email_sent == []

@@ -24,6 +24,19 @@ async / external so there's nothing to preview:
          — dispatches `.github/workflows/monthly-restore-drill.yml`.
     Both require GITHUB_DISPATCH_TOKEN env var (fine-grained PAT
     with `Actions: write` permission on the taskmanager repo).
+
+Inline-scan utilities (#236, 2026-05-26) — POST-only; runs the
+recurring-audit scripts in-process and returns findings INLINE so
+the UI can render the result list immediately (no waiting for
+workflow + email):
+    POST /api/utilities/run-bug-pattern-scan
+         — invokes scripts/check_bug_patterns.CHECKS (the #226
+           weekly scan).
+    POST /api/utilities/run-security-posture-scan
+         — invokes scripts/check_security_posture.CHECKS (the
+           #227 monthly audit).
+    Both return ``{total, per_check, findings}``. Skips the
+    SendGrid email path (the UI surface IS the result channel).
 """
 from __future__ import annotations
 
@@ -191,6 +204,110 @@ def trigger_backup(email: str):  # noqa: ARG001
         result = _dispatch_github_workflow("daily-backup.yml")
     except ValueError as e:
         return jsonify({"error": str(e)}), 503
+    return jsonify(result)
+
+
+# #236 (2026-05-26): on-demand triggers for the recurring audit
+# scripts. Unlike the workflow-dispatch utilities above, these run
+# IN-PROCESS — the audit scripts are pure-stdlib + read-only, so
+# we can invoke their CHECKS arrays directly and surface the
+# findings inline on the page (no waiting for a workflow + email).
+#
+# Why not workflow_dispatch like #223? Two reasons:
+#   1. Latency: the workflow takes ~30s to start + run; running
+#      in-process completes in <1s for both audits combined.
+#   2. Visibility: a workflow_dispatch shows up as "dispatched, see
+#      Actions tab" — the user doesn't see the finding list until
+#      the email arrives. Inline scan shows the findings RIGHT NOW.
+# Side effect: the SendGrid email path is skipped (no cron, no
+# email). That's intentional — the on-demand UI IS the email-substitute.
+
+
+def _serialise_findings(findings) -> list[dict]:
+    """Convert a list of script Finding dataclasses to JSON-safe dicts.
+
+    Both `check_bug_patterns.Finding` and `check_security_posture.Finding`
+    are frozen dataclasses; dataclasses.asdict() handles either.
+    """
+    import dataclasses
+    out: list[dict] = []
+    for f in findings:
+        try:
+            out.append(dataclasses.asdict(f))
+        except TypeError:
+            # Defensive — if a future check returns a non-dataclass
+            # Finding, render its repr() so the UI still surfaces it.
+            out.append({"detail": repr(f)})
+    return out
+
+
+def _run_audit_script_checks(checks_module) -> dict:
+    """Invoke every check function in `checks_module.CHECKS` and
+    return the aggregate as a JSON-safe dict.
+
+    Used by both /run-bug-pattern-scan and /run-security-posture-scan.
+    Catches per-check exceptions so one broken check doesn't abort
+    the whole audit — the broken check just shows 0 findings + an
+    "errored" note in per_check_counts.
+    """
+    all_findings = []
+    per_check = []
+    for label, fn in checks_module.CHECKS:
+        try:
+            findings = fn()
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "utilities: %s check %s errored: %s: %s",
+                checks_module.__name__, label, type(e).__name__, e,
+            )
+            per_check.append({"label": label, "count": 0,
+                              "errored": f"{type(e).__name__}: {e}"})
+            continue
+        all_findings.extend(findings)
+        per_check.append({"label": label, "count": len(findings)})
+    return {
+        "total": len(all_findings),
+        "per_check": per_check,
+        "findings": _serialise_findings(all_findings),
+    }
+
+
+@bp.post("/run-bug-pattern-scan")
+@login_required
+def run_bug_pattern_scan(email: str):  # noqa: ARG001
+    """#236 — run the #226 weekly bug-pattern scanner in-process and
+    return the findings inline. Skips the SendGrid email path (the UI
+    surfaces the results directly).
+
+    Returns ``{total, per_check, findings}``. `per_check` is the
+    ordered list of `{label, count, errored?}` so the UI can render a
+    breakdown even when total is 0. Empty `findings` array = CLEAN.
+    """
+    from scripts import check_bug_patterns
+    result = _run_audit_script_checks(check_bug_patterns)
+    logger.info(
+        "utilities: bug-pattern scan triggered via UI, total=%d",
+        result["total"],
+    )
+    return jsonify(result)
+
+
+@bp.post("/run-security-posture-scan")
+@login_required
+def run_security_posture_scan(email: str):  # noqa: ARG001
+    """#236 — run the #227 monthly security-posture audit in-process
+    and return findings inline. Skips the SendGrid email path. The
+    operator-maintained source-of-truth files
+    (`docs/security/pat-inventory.json`,
+    `docs/security/oauth-scopes.json`) are read on every call so the
+    UI reflects whatever is committed at the deployed SHA.
+    """
+    from scripts import check_security_posture
+    result = _run_audit_script_checks(check_security_posture)
+    logger.info(
+        "utilities: security-posture scan triggered via UI, total=%d",
+        result["total"],
+    )
     return jsonify(result)
 
 
