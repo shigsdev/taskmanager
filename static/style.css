@@ -4583,3 +4583,43 @@ table.quality-gates code {
 .utility-result.utility-result-ok { color: var(--green, #16a34a); }
 .utility-result.utility-result-err { color: var(--red, #dc2626); }
 
+/* #236 (2026-05-26): inline-scan result lists — per-check breakdown
+ * (always shown) + findings collapsible (non-clean runs only). */
+.utility-scan-breakdown {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-family: var(--mono, ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace);
+}
+.utility-scan-breakdown li {
+    padding: 1px 0;
+    color: var(--text);
+}
+.utility-scan-check-hit { color: var(--red, #dc2626); }
+.utility-scan-check-errored { color: var(--warn, #d97706); font-style: italic; }
+.utility-scan-findings {
+    margin-top: 8px;
+    font-size: 0.85rem;
+}
+.utility-scan-findings summary {
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--text);
+}
+.utility-scan-findings ul {
+    margin: 8px 0 0;
+    padding-left: 20px;
+    color: var(--text);
+}
+.utility-scan-findings li {
+    padding: 4px 0;
+    word-break: break-word;
+}
+.utility-scan-findings strong {
+    font-family: var(--mono, ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace);
+    font-size: 0.85em;
+    color: var(--accent);
+}
+

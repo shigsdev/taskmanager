@@ -605,6 +605,8 @@ the code.
 /api/utilities/clear-stale-next-week-due-dates         # #222 — POST: run #220 backfill
 /api/utilities/trigger-backup                          # #223 — POST: dispatch daily-backup.yml workflow_dispatch
 /api/utilities/trigger-restore-drill                   # #223 — POST: dispatch monthly-restore-drill.yml workflow_dispatch
+/api/utilities/run-bug-pattern-scan                    # #236 — POST: run check_bug_patterns.CHECKS in-process, return {total, per_check, findings}
+/api/utilities/run-security-posture-scan               # #236 — POST: run check_security_posture.CHECKS in-process, return {total, per_check, findings}
 
 # debug_api.py — used by scripts/validate_deploy.py --check-logs
 /api/debug/logs

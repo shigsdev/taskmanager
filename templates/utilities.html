@@ -75,6 +75,63 @@
         <p class="utility-result" data-result aria-live="polite"></p>
     </section>
 
+    {# #236 (2026-05-26): on-demand cards for the recurring audit scripts.
+       Inline-scan shape — POST runs the scan IN-PROCESS and the result
+       JSON includes the findings, which utilities.js renders inline as
+       a per-check breakdown. Skips SendGrid (no email on UI runs). #}
+    <section class="utility-card" data-utility="run-bug-pattern-scan">
+        <h2>Run weekly bug-pattern scan (#226)</h2>
+        <p class="utility-description">
+            Re-greps the working tree for 6 known-bad shapes that the
+            per-commit gates miss: bare <code>1fr</code> grids without
+            <code>minmax(0, …)</code>, embedded URL credentials in
+            source, string-match-only prod tests, state-mutating GET
+            routes, raw tier-string compares in Python, and unbalanced
+            <code>.type === "work"</code> JS branches without a
+            corresponding <code>personal</code> reference.
+        </p>
+        <p class="utility-description">
+            Same checks the weekly Sunday cron runs — this lets you
+            verify CLEAN on-demand (e.g. before a release). The result
+            renders inline below; no email is sent for UI runs.
+        </p>
+        <div class="utility-status" data-status hidden></div>
+        <button type="button" class="btn btn-primary utility-run-btn"
+                data-run="run-bug-pattern-scan">
+            Run
+        </button>
+        <p class="utility-result" data-result aria-live="polite"></p>
+    </section>
+
+    <section class="utility-card" data-utility="run-security-posture-scan">
+        <h2>Run monthly security-posture audit (#227)</h2>
+        <p class="utility-description">
+            Posture review (not vuln scanning). Four checks:
+            <strong>PAT inventory</strong> against
+            <code>docs/security/pat-inventory.json</code> (null
+            expiry / &gt; 90-day expiry / &gt; 60-day idle);
+            <strong>OAuth scope drift</strong> against
+            <code>docs/security/oauth-scopes.json</code> (additions or
+            removals both flagged);
+            <strong>unencrypted sensitive columns</strong> in
+            <code>models.py</code> (regex on column names cross-
+            referenced against <code>crypto.py</code> import);
+            <strong>threat-model freshness</strong>
+            (<code>CLAUDE.md</code> &gt; 180 days untouched).
+        </p>
+        <p class="utility-description">
+            Same checks the 1st-of-month cron runs — use after rotating
+            a PAT, changing OAuth scopes, or adding a sensitive-named
+            column to confirm the audit picks it up.
+        </p>
+        <div class="utility-status" data-status hidden></div>
+        <button type="button" class="btn btn-primary utility-run-btn"
+                data-run="run-security-posture-scan">
+            Run
+        </button>
+        <p class="utility-result" data-result aria-live="polite"></p>
+    </section>
+
     <section class="utility-card" data-utility="trigger-restore-drill">
         <h2>Run restore drill (#154.7)</h2>
         <p class="utility-description">
