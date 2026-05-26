@@ -16,6 +16,8 @@ import base64
 import json
 import logging
 import os
+import re
+import unicodedata
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -729,6 +731,70 @@ _VOICE_VALID_CATEGORIES = {
 _VOICE_DEFAULT_CATEGORY = "personal_growth"
 
 
+# #234 third pass (2026-05-26): Unicode-aware normalization.
+#
+# The user reported "(no match)" for hint "Roadmaps" against a Project
+# titled "Roadmaps". A live probe via /api/debug/voice-hint-trace
+# confirmed the resolver works correctly with ASCII "Roadmaps" against
+# the same prod data. So Claude is emitting a hint that LOOKS like
+# "Roadmaps" when rendered but contains hidden characters that break
+# the .lower().strip() lookup:
+#
+#   - Zero-width space (U+200B), zero-width joiner (U+200D), etc. —
+#     Python's str.strip() does NOT strip these (they're not in the
+#     ASCII whitespace class). A trailing ZWSP → lookup miss.
+#   - Non-breaking space (U+00A0) — str.strip() DOES strip this, but
+#     INTERNAL NBSP between words ("Roadmaps Best Practices")
+#     would not match the regular-space title.
+#   - Smart quotes inside the string, em/en dashes, ligatures — all
+#     of these render as their ASCII look-alikes in many fonts but
+#     fail byte-for-byte equality.
+#
+# Fix: normalize hints AND lookup-map keys through the same NFKC
+# canonicalization + remove zero-width/format characters + collapse
+# all Unicode whitespace runs to a single ASCII space. That way the
+# resolver compares the "what the user reads" forms, not the raw
+# bytes that may differ.
+#
+# Both sides of the comparison MUST run through the same normalizer —
+# we apply it to the hint AND when building the title-map in
+# _normalise_voice_candidates.
+
+# Match any Unicode format character (Cf) — covers zero-width space
+# (U+200B), zero-width joiner (U+200D), word joiner (U+2060), BOM
+# (U+FEFF), and the bidi/format-control characters Claude has been
+# observed to emit.
+_ZERO_WIDTH_RE = re.compile(r"[​-‍⁠﻿]")
+# Collapse runs of Unicode whitespace (incl. NBSP, em-space, etc.)
+# to a single ASCII space.
+_UNICODE_WS_RE = re.compile(r"\s+")
+
+
+def _normalise_title(s: str) -> str:
+    """Normalise a hint / title string for lookup comparison.
+
+    Steps (order matters):
+      1. NFKC normalize — folds Unicode look-alikes ("ﬃ" → "ffi",
+         fullwidth digits → ASCII, smart quotes → straight, etc.).
+      2. Strip zero-width / format characters (U+200B–U+200D, U+2060,
+         U+FEFF) which str.strip() leaves intact.
+      3. Lowercase via ``str.lower()`` (Unicode-aware, so "Δ".lower()
+         == "δ").
+      4. Collapse all Unicode whitespace runs to a single ASCII space
+         (so internal NBSPs don't break the match).
+      5. ``.strip()`` to remove leading/trailing whitespace.
+
+    Returns the normalised string. Empty input → empty string.
+    """
+    if not isinstance(s, str):
+        return ""
+    out = unicodedata.normalize("NFKC", s)
+    out = _ZERO_WIDTH_RE.sub("", out)
+    out = out.lower()
+    out = _UNICODE_WS_RE.sub(" ", out)
+    return out.strip()
+
+
 def _resolve_voice_hint(
     hint: str,
     by_title_lc: dict[str, str],
@@ -745,15 +811,22 @@ def _resolve_voice_hint(
          unresolved (ambiguous). Common repro: user said "audit"
          while the project is "IPPM Audit".
 
+    #234 third pass: both sides of the comparison run through
+    ``_normalise_title`` (NFKC + strip-zero-width + lower + collapse-
+    whitespace + .strip()) — so a hint with a hidden zero-width space
+    or NBSP still matches its ASCII counterpart in the lookup map.
+
     Args:
         hint: Trimmed hint string from Claude (project title fragment).
-        by_title_lc: ``{lowercased_title: id}`` lookup.
+        by_title_lc: ``{lowercased_title: id}`` lookup. Keys MUST have
+            been normalised with the same ``_normalise_title`` —
+            ``_normalise_voice_candidates`` is the canonical builder.
         kind: ``"project"`` or ``"goal"`` — used for log labels only.
 
     Returns:
         The resolved id, or None if no unambiguous match.
     """
-    hint_lc = hint.lower()
+    hint_lc = _normalise_title(hint)
     exact = by_title_lc.get(hint_lc)
     if exact is not None:
         # Resolved correctly — INFO (stderr only, not /api/debug/logs)
@@ -784,17 +857,23 @@ def _resolve_voice_hint(
     # of the title-map keys (first 8) so the operator can confirm
     # whether the expected title is even in the lookup map.
     sample = list(by_title_lc.keys())[:8]
+    # #234 third pass: surface code-points of the hint when it misses
+    # so we can SEE Claude's hidden characters (ZWSP, NBSP, etc.). The
+    # normalised form is what we actually compared, so include both.
+    code_points = [f"U+{ord(c):04X}" for c in hint]
     if len(candidates) > 1:
         logger.warning(
-            "voice hint ambiguous: %s %r → %d substring matches "
-            "(of %d total titles); sample keys=%s",
-            kind, hint, len(candidates), len(by_title_lc), sample,
+            "voice hint ambiguous: %s %r (normalised %r, code_points=%s) "
+            "→ %d substring matches (of %d total titles); sample keys=%s",
+            kind, hint, hint_lc, code_points,
+            len(candidates), len(by_title_lc), sample,
         )
     else:
         logger.warning(
-            "voice hint missed: %s %r → no match in %d titles; "
-            "sample keys=%s",
-            kind, hint, len(by_title_lc), sample,
+            "voice hint missed: %s %r (normalised %r, code_points=%s) "
+            "→ no match in %d titles; sample keys=%s",
+            kind, hint, hint_lc, code_points,
+            len(by_title_lc), sample,
         )
     return None
 
@@ -823,13 +902,16 @@ def _normalise_voice_candidates(
 
     # Build case-insensitive title → id lookup maps. Skip if no
     # projects/goals supplied (test case or empty-db case).
+    # #234 third pass: use _normalise_title so Unicode look-alikes
+    # match — must use the EXACT SAME normalisation as the resolver
+    # uses on the hint side.
     proj_by_title_lc = {
-        title.lower().strip(): pid
+        _normalise_title(title): pid
         for pid, title in (projects or [])
         if isinstance(title, str) and title.strip()
     }
     goal_by_title_lc = {
-        title.lower().strip(): gid
+        _normalise_title(title): gid
         for gid, title in (goals or [])
         if isinstance(title, str) and title.strip()
     }

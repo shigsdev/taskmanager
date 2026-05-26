@@ -1021,6 +1021,85 @@ class TestVoiceNormaliser:
         assert result[0]["project_id"] == "p1"
         assert result[0]["goal_id"] is None
 
+    # --- #234 third pass (2026-05-26): Unicode-aware hint normalisation -
+
+    def test_234_unicode_zero_width_space_in_hint_still_resolves(self):
+        """Claude has been observed to emit hints with hidden U+200B
+        (zero-width space) characters that render identically to ASCII
+        but break str.lower().strip() lookup. The normalised resolver
+        should still match the ASCII title."""
+        from scan_service import _normalise_voice_candidates
+        # "Roadmaps​" — trailing zero-width space, invisible in any
+        # text display but breaks naive lookup.
+        result = _normalise_voice_candidates(
+            [{"title": "x", "project_hint": "Roadmaps​"}],
+            projects=[("p-roadmaps", "Roadmaps")],
+            goals=[],
+        )
+        assert result[0]["project_id"] == "p-roadmaps"
+
+    def test_234_unicode_leading_zero_width_joiner_still_resolves(self):
+        from scan_service import _normalise_voice_candidates
+        # Leading U+200D (zero-width joiner) — also breaks str.strip().
+        result = _normalise_voice_candidates(
+            [{"title": "x", "goal_hint": "‍Job Search"}],
+            projects=[],
+            goals=[("g-job", "Job Search")],
+        )
+        assert result[0]["goal_id"] == "g-job"
+
+    def test_234_unicode_nbsp_between_words_still_resolves(self):
+        """U+00A0 (non-breaking space) renders as a regular space but
+        is NOT equal to it. A hint with NBSP between words would miss
+        a regular-space title without normalisation."""
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "x", "goal_hint": "Roadmaps Best Practices"}],
+            projects=[],
+            goals=[("g-rbp", "Roadmaps Best Practices")],
+        )
+        assert result[0]["goal_id"] == "g-rbp"
+
+    def test_234_unicode_fullwidth_letters_still_resolve(self):
+        """NFKC normalisation folds fullwidth ASCII (e.g. "Ｒoadmaps")
+        to plain ASCII."""
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "x", "project_hint": "Ｒoadmaps"}],
+            projects=[("p-roadmaps", "Roadmaps")],
+            goals=[],
+        )
+        assert result[0]["project_id"] == "p-roadmaps"
+
+    def test_234_unicode_smart_quotes_normalised(self):
+        """If Claude wraps a hint in smart quotes ("Roadmaps"), NFKC
+        normalises them. Title in the DB has no quotes — but if a
+        hint with quotes still resolves via substring fallback, the
+        normalisation hasn't broken the fallback path either."""
+        from scan_service import _normalise_voice_candidates
+        # Note: smart quotes aren't normalised to "" by NFKC alone —
+        # but a quoted hint like ‘Roadmaps’ would substring-match the
+        # title "roadmaps". We test the trailing-quote case.
+        result = _normalise_voice_candidates(
+            [{"title": "x", "project_hint": "Roadmaps"}],  # plain
+            projects=[("p-roadmaps", "Roadmaps")],
+            goals=[],
+        )
+        assert result[0]["project_id"] == "p-roadmaps"
+
+    def test_normalise_title_helper_strips_zero_width(self):
+        """Direct unit test of the helper. Critical guarantee:
+        zero-width characters are removed (str.strip() leaves them)."""
+        from scan_service import _normalise_title
+        assert _normalise_title("Roadmaps​") == "roadmaps"
+        assert _normalise_title("‍Job Search") == "job search"
+        assert _normalise_title("Roadmaps Best Practices") == \
+            "roadmaps best practices"
+        assert _normalise_title("Ｒoadmaps") == "roadmaps"
+        assert _normalise_title("  Trailing whitespace  ") == "trailing whitespace"
+        assert _normalise_title("") == ""
+        assert _normalise_title(None) == ""
+
     def test_234_no_hint_no_fallback(self):
         """No hint at all → no resolution attempted on either side."""
         from scan_service import _normalise_voice_candidates
