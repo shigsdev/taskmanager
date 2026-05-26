@@ -1035,18 +1035,30 @@ class TestVoiceNormaliser:
         assert result[0]["goal_hint"] is None
 
     def test_234_fetch_logs_counts_on_success(self, app, caplog):
-        """The #234 INFO log surfaces project/goal counts so a future
-        'all hints missed' report can be diagnosed from /api/debug/logs.
+        """The #234 fetch surfaces project/goal counts to logs so a
+        future 'all hints missed' report can be diagnosed from
+        /api/debug/logs.
+
+        2026-05-26 follow-up: in the test DB there are typically 0
+        projects/goals — that triggers the THIN-source WARNING path
+        (the same "missing data" signal real users would hit). Either
+        the INFO or the WARNING qualifies as "the log fired and named
+        the counts" for the purpose of this assertion.
         """
         import logging
 
         from scan_service import _fetch_projects_and_goals_for_hints
+        # caplog at INFO so we capture both the happy-path INFO and the
+        # thin-sources WARNING when projects/goals are missing.
         with app.app_context(), caplog.at_level(logging.INFO, logger="scan_service"):
             projects, goals = _fetch_projects_and_goals_for_hints()
-        # In the test DB there may be 0 projects/goals; that's fine —
-        # the assertion is that the log fired with the format we expect.
         msgs = [r.getMessage() for r in caplog.records]
-        assert any("voice hint sources:" in m for m in msgs), msgs
+        # One of the two should be present; both report N projects + M
+        # goals, just at different severities.
+        assert any(
+            "voice hint sources:" in m or "voice hint sources thin:" in m
+            for m in msgs
+        ), msgs
 
     def test_234_fetch_logs_warning_on_exception(self, monkeypatch, caplog):
         """If the DB query raises (transient, schema drift, etc.),
