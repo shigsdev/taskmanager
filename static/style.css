@@ -4441,15 +4441,63 @@ table.quality-gates code {
 }
 .reflection-history { margin-top: 32px; }
 .reflection-history h3 { font-size: 1rem; }
+/* #238 (2026-05-26): Show-archived toggle header. */
+.reflection-history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.reflection-history-header h3 { margin: 0; }
+.reflection-history-toggle {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
 .reflection-history-item {
     border: 1px solid var(--border, #e5e7eb);
     border-radius: 6px;
     padding: 8px 12px;
     margin-bottom: 8px;
 }
+/* #238: archived rows render muted so the operator can spot them in
+ * the mixed list when Show-archived is on. */
+.reflection-history-item-archived {
+    opacity: 0.55;
+    font-style: italic;
+}
+.reflection-history-item-archived:hover { opacity: 0.85; }
+/* #238: deleted rows in the Recently-deleted section get a different
+ * muted treatment so they don't read as "archived". */
+.reflection-history-item-deleted {
+    opacity: 0.7;
+    border-left: 3px solid var(--danger, #c0392b);
+}
 .reflection-history-item summary {
     cursor: pointer;
     font-size: 0.88rem;
+}
+.reflection-history-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+/* #238: Recently-deleted collapsible at the bottom of the history
+ * section. Default collapsed (operator opens to see what's recoverable). */
+.reflection-recently-deleted {
+    margin-top: 24px;
+    border-top: 1px solid var(--border, #e5e7eb);
+    padding-top: 16px;
+}
+.reflection-recently-deleted summary {
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-muted);
 }
 .reflection-history-transcript {
     white-space: pre-wrap;

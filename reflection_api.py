@@ -1,17 +1,26 @@
 """JSON API for the Weekly Reflection feature.
 
 Endpoints:
-    POST /api/reflection                       — submit a reflection (typed
+    POST   /api/reflection                       — submit a reflection (typed
         JSON {"text": ...} OR multipart audio field "audio"); transcribes
         if audio, persists the Reflection, returns AI-proposed actions
-    POST /api/reflection/transcribe-segment    — transcribe ONE audio
+    POST   /api/reflection/transcribe-segment    — transcribe ONE audio
         segment (#232 pause+resume). No Reflection row, no Claude call —
         just audio→text. Frontend appends the text to its textarea and
         eventually POSTs the merged content to the main endpoint above.
-    POST /api/reflection/<id>/confirm          — apply the user-selected
+    POST   /api/reflection/<id>/confirm          — apply the user-selected
         actions; returns an apply summary
-    GET  /api/reflection                       — list past reflections
-    GET  /api/reflection/<id>                  — one reflection + its
+    POST   /api/reflection/<id>/archive          — #238: hide from default
+        history list (toggleable; "Show archived" surfaces it again)
+    POST   /api/reflection/<id>/unarchive        — #238: restore from archive
+    DELETE /api/reflection/<id>                  — #238: soft-delete
+        (`is_active=False`); row stays in DB, surfaces in
+        Recently-deleted UI section
+    POST   /api/reflection/<id>/restore          — #238: restore from
+        soft-delete
+    GET    /api/reflection                       — list past reflections;
+        ``?include_archived=true``/``?include_deleted=true`` opt-in flags
+    GET    /api/reflection/<id>                  — one reflection + its
         proposed/applied actions (history detail)
 
 The transcript is always persisted (the user explicitly wants every
@@ -65,6 +74,11 @@ def _serialize(reflection) -> dict:
         # the #232 pause/resume flow. Empty list for typed reflections
         # and for pre-#237 voice reflections.
         "raw_segments": reflection.raw_segments or [],
+        # #238 (2026-05-26): archive + soft-delete flags. UI uses these
+        # to render archived rows muted and to surface restore buttons
+        # on the Recently-deleted list.
+        "is_archived": bool(reflection.is_archived),
+        "is_active": bool(reflection.is_active),
         "applied_actions": reflection.applied_actions,
         "applied_at": (
             reflection.applied_at.isoformat()
@@ -322,11 +336,78 @@ def confirm(email: str, reflection_id):  # noqa: ARG001
 @bp.get("")
 @login_required
 def list_all(email: str):  # noqa: ARG001
-    """List past reflections (newest first) for the history view."""
-    reflections = list_reflections()
+    """List past reflections (newest first) for the history view.
+
+    #238 (2026-05-26): supports two query flags:
+      ``?include_archived=true``  — also include rows where
+          ``is_archived=True``. Default off; UI sends when the
+          Show-archived toggle is on.
+      ``?include_deleted=true``   — also include rows where
+          ``is_active=False`` (soft-deleted). Default off; UI sends
+          ONLY when loading the Recently-deleted section.
+
+    Truthy values: ``true``, ``1``, ``yes`` (case-insensitive).
+    """
+    def _truthy(s):
+        return (s or "").strip().lower() in ("true", "1", "yes")
+
+    include_archived = _truthy(request.args.get("include_archived"))
+    include_deleted = _truthy(request.args.get("include_deleted"))
+    reflections = list_reflections(
+        include_archived=include_archived,
+        include_deleted=include_deleted,
+    )
     return jsonify({
         "reflections": [_serialize(r) for r in reflections],
     })
+
+
+# #238 (2026-05-26): archive + soft-delete endpoints.
+
+
+@bp.post("/<uuid:reflection_id>/archive")
+@login_required
+def archive(email: str, reflection_id):  # noqa: ARG001
+    """Mark a reflection archived (hide from default history)."""
+    from reflection_service import set_reflection_archived
+    r = set_reflection_archived(reflection_id, archived=True)
+    if r is None:
+        return jsonify({"error": "Reflection not found"}), 404
+    return jsonify(_serialize(r))
+
+
+@bp.post("/<uuid:reflection_id>/unarchive")
+@login_required
+def unarchive(email: str, reflection_id):  # noqa: ARG001
+    """Restore a reflection from the archive."""
+    from reflection_service import set_reflection_archived
+    r = set_reflection_archived(reflection_id, archived=False)
+    if r is None:
+        return jsonify({"error": "Reflection not found"}), 404
+    return jsonify(_serialize(r))
+
+
+@bp.delete("/<uuid:reflection_id>")
+@login_required
+def delete(email: str, reflection_id):  # noqa: ARG001
+    """Soft-delete a reflection. The row stays in the DB; the
+    Recently-deleted UI surfaces it for restore."""
+    from reflection_service import soft_delete_reflection
+    r = soft_delete_reflection(reflection_id)
+    if r is None:
+        return jsonify({"error": "Reflection not found"}), 404
+    return jsonify(_serialize(r))
+
+
+@bp.post("/<uuid:reflection_id>/restore")
+@login_required
+def restore(email: str, reflection_id):  # noqa: ARG001
+    """Restore a soft-deleted reflection back into the history list."""
+    from reflection_service import restore_reflection
+    r = restore_reflection(reflection_id)
+    if r is None:
+        return jsonify({"error": "Reflection not found"}), 404
+    return jsonify(_serialize(r))
 
 
 @bp.get("/<uuid:reflection_id>")

@@ -786,15 +786,44 @@
         showState("error");
     }
 
-    // ---- history ----
+    // ---- history (#238: archive + soft-delete + restore) ----
+
+    var showArchivedCheckbox = document.getElementById("reflShowArchived");
+    var recentlyDeletedEl = document.getElementById("reflRecentlyDeleted");
+    var recentlyDeletedSummary = document.getElementById(
+        "reflRecentlyDeletedSummary",
+    );
 
     async function loadHistory() {
         try {
-            var data = await window.apiFetch("/api/reflection");
+            var url = "/api/reflection"
+                + (showArchivedCheckbox && showArchivedCheckbox.checked
+                    ? "?include_archived=true" : "");
+            var data = await window.apiFetch(url);
             renderHistory((data && data.reflections) || []);
         } catch (e) {
             historyEl.innerHTML =
                 '<p class="reflection-hint">Couldn\'t load history.</p>';
+        }
+        // Recently-deleted is loaded separately so a Show-archived
+        // toggle doesn't conflate the two filters.
+        loadRecentlyDeleted();
+    }
+
+    async function loadRecentlyDeleted() {
+        if (!recentlyDeletedEl) return;
+        try {
+            var data = await window.apiFetch(
+                "/api/reflection?include_deleted=true",
+            );
+            // The list includes BOTH active + deleted rows; filter to
+            // just the deleted ones for this section.
+            var all = (data && data.reflections) || [];
+            var deleted = all.filter(function (r) { return !r.is_active; });
+            renderDeletedList(deleted);
+        } catch (e) {
+            recentlyDeletedEl.innerHTML =
+                '<p class="reflection-hint">Couldn\'t load recently-deleted.</p>';
         }
     }
 
@@ -806,20 +835,103 @@
             return;
         }
         list.forEach(function (r) {
-            var item = document.createElement("details");
-            item.className = "reflection-history-item";
-            var sum = document.createElement("summary");
-            var when = (r.created_at || "").slice(0, 10);
-            var applied = r.applied_at ? " ✓ applied" : "";
-            sum.textContent = r.iso_week + " · " + when
-                + " · " + (r.input_mode || "typed") + applied;
-            item.appendChild(sum);
-            var pre = document.createElement("pre");
-            pre.className = "reflection-history-transcript";
-            pre.textContent = r.transcript || "(no transcript)";
-            item.appendChild(pre);
-            historyEl.appendChild(item);
+            historyEl.appendChild(_renderHistoryItem(r, /*deleted=*/false));
         });
+    }
+
+    function renderDeletedList(list) {
+        if (recentlyDeletedSummary) {
+            recentlyDeletedSummary.textContent =
+                "Recently deleted (" + list.length + ")";
+        }
+        recentlyDeletedEl.innerHTML = "";
+        if (list.length === 0) {
+            recentlyDeletedEl.innerHTML =
+                '<p class="reflection-hint">Nothing in the recycle bin.</p>';
+            return;
+        }
+        list.forEach(function (r) {
+            recentlyDeletedEl.appendChild(_renderHistoryItem(r, /*deleted=*/true));
+        });
+    }
+
+    function _renderHistoryItem(r, deleted) {
+        var item = document.createElement("details");
+        item.className = "reflection-history-item";
+        if (r.is_archived) item.classList.add("reflection-history-item-archived");
+        if (deleted) item.classList.add("reflection-history-item-deleted");
+        item.dataset.reflectionId = r.id;
+
+        var sum = document.createElement("summary");
+        var when = (r.created_at || "").slice(0, 10);
+        var applied = r.applied_at ? " ✓ applied" : "";
+        var archivedTag = r.is_archived ? " · 📥 archived" : "";
+        sum.textContent = r.iso_week + " · " + when
+            + " · " + (r.input_mode || "typed") + applied + archivedTag;
+        item.appendChild(sum);
+
+        var pre = document.createElement("pre");
+        pre.className = "reflection-history-transcript";
+        pre.textContent = r.transcript || "(no transcript)";
+        item.appendChild(pre);
+
+        // Per-row action buttons. The set differs for deleted rows
+        // (Restore) vs active rows (Archive/Unarchive + Delete).
+        var actions = document.createElement("div");
+        actions.className = "reflection-history-actions";
+        if (deleted) {
+            var restoreBtn = document.createElement("button");
+            restoreBtn.type = "button";
+            restoreBtn.className = "btn btn-sm";
+            restoreBtn.textContent = "↺ Restore";
+            restoreBtn.addEventListener("click", function () {
+                _refreshAfter("/api/reflection/" + r.id + "/restore",
+                              { method: "POST" });
+            });
+            actions.appendChild(restoreBtn);
+        } else {
+            var archiveBtn = document.createElement("button");
+            archiveBtn.type = "button";
+            archiveBtn.className = "btn btn-sm";
+            archiveBtn.textContent = r.is_archived
+                ? "📤 Unarchive" : "📥 Archive";
+            archiveBtn.addEventListener("click", function () {
+                var path = r.is_archived ? "/unarchive" : "/archive";
+                _refreshAfter("/api/reflection/" + r.id + path,
+                              { method: "POST" });
+            });
+            actions.appendChild(archiveBtn);
+
+            var delBtn = document.createElement("button");
+            delBtn.type = "button";
+            delBtn.className = "btn btn-sm btn-cancel";
+            delBtn.textContent = "🗑️ Delete";
+            delBtn.addEventListener("click", function () {
+                if (!confirm("Delete this reflection? You can restore "
+                    + "it from the Recently-deleted section below.")) {
+                    return;
+                }
+                _refreshAfter("/api/reflection/" + r.id,
+                              { method: "DELETE" });
+            });
+            actions.appendChild(delBtn);
+        }
+        item.appendChild(actions);
+        return item;
+    }
+
+    async function _refreshAfter(url, opts) {
+        try {
+            await window.apiFetch(url, opts);
+        } catch (e) {
+            alert("Action failed: " + (e && e.message ? e.message : e));
+            return;
+        }
+        loadHistory();  // refreshes BOTH active list AND recently-deleted
+    }
+
+    if (showArchivedCheckbox) {
+        showArchivedCheckbox.addEventListener("change", loadHistory);
     }
 
     // ---- init ----

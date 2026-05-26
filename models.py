@@ -518,6 +518,19 @@ class Reflection(db.Model):
     applied_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # #238 (2026-05-26): archive (hide from default history list, but
+    # surface when "Show archived" toggle is on) and soft-delete
+    # (`is_active=False` — mirrors the Project / Goal / RecurringTask
+    # pattern). The transcript is still "kept forever" per the
+    # original #165 design; the flags just control what surfaces by
+    # default. Soft-deleted reflections appear in a Recently-deleted
+    # section with Restore buttons for ~undo.
+    is_archived: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False,
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now
