@@ -156,3 +156,82 @@ describe("selectedActions", () => {
         expect(selectedActions({}, { "explicit:0": true })).toEqual([]);
     });
 });
+
+describe("appendTranscriptSegment (#232 pause+resume)", () => {
+    const { appendTranscriptSegment } = require("../../../static/reflection_helpers");
+
+    test("empty existing + segment → just segment", () => {
+        expect(appendTranscriptSegment("", "Hello world.")).toBe("Hello world.");
+    });
+
+    test("null existing handled as empty", () => {
+        expect(appendTranscriptSegment(null, "Hello.")).toBe("Hello.");
+    });
+
+    test("undefined existing handled as empty", () => {
+        expect(appendTranscriptSegment(undefined, "Hello.")).toBe("Hello.");
+    });
+
+    test("existing ends with trailing space → just concatenate", () => {
+        expect(appendTranscriptSegment("First. ", "Second."))
+            .toBe("First. Second.");
+    });
+
+    test("existing ends with trailing newline → just concatenate", () => {
+        expect(appendTranscriptSegment("First.\n", "Second."))
+            .toBe("First.\nSecond.");
+    });
+
+    test("existing ends without whitespace → insert single space", () => {
+        expect(appendTranscriptSegment("First.", "Second."))
+            .toBe("First. Second.");
+    });
+
+    test("Whisper leading whitespace on segment is trimmed", () => {
+        // Whisper sometimes prepends " " or " hello"; trim it so we
+        // don't get double spaces in the textarea.
+        expect(appendTranscriptSegment("First.", "  Second."))
+            .toBe("First. Second.");
+    });
+
+    test("preserves segment's trailing space for the next concat", () => {
+        // The segment-side trailing whitespace is intentionally KEPT
+        // so the next append doesn't need to recompute the boundary.
+        const result = appendTranscriptSegment("First.", "Second. ");
+        expect(result).toBe("First. Second. ");
+    });
+
+    test("empty segment is a no-op", () => {
+        expect(appendTranscriptSegment("Existing.", "")).toBe("Existing.");
+    });
+
+    test("empty segment after leading-whitespace trim is a no-op", () => {
+        // " " trims to "" so segment is empty → no-op.
+        expect(appendTranscriptSegment("Existing.", "   ")).toBe("Existing.");
+    });
+
+    test("null segment is a no-op", () => {
+        expect(appendTranscriptSegment("Existing.", null)).toBe("Existing.");
+    });
+
+    test("typed existing + voice segment → space-separated", () => {
+        // The user typed before clicking Record. New voice segments
+        // append after their typed text.
+        expect(appendTranscriptSegment("I typed this.", "Then I said this."))
+            .toBe("I typed this. Then I said this.");
+    });
+
+    test("two voice segments chain naturally", () => {
+        let acc = "";
+        acc = appendTranscriptSegment(acc, "First segment.");
+        acc = appendTranscriptSegment(acc, "Second segment.");
+        acc = appendTranscriptSegment(acc, "Third segment.");
+        expect(acc).toBe("First segment. Second segment. Third segment.");
+    });
+
+    test("non-string types are coerced gracefully", () => {
+        // Defensive: a fetch error could pass us a number or object;
+        // String() coercion makes the helper crash-resistant.
+        expect(appendTranscriptSegment("base", 42)).toBe("base 42");
+    });
+});

@@ -49,10 +49,20 @@
 
     var voiceIdle = document.getElementById("reflVoiceIdle");
     var voiceRecording = document.getElementById("reflVoiceRecording");
+    var voicePaused = document.getElementById("reflVoicePaused");
+    var voiceTranscribing = document.getElementById("reflVoiceTranscribing");
+    var voiceStatus = document.getElementById("reflVoiceStatus");
     var recordBtn = document.getElementById("reflRecordBtn");
-    var stopBtn = document.getElementById("reflStopBtn");
+    var pauseBtn = document.getElementById("reflPauseBtn");
+    var resumeBtn = document.getElementById("reflResumeBtn");
+    var doneBtn = document.getElementById("reflDoneBtn");
     var cancelBtn = document.getElementById("reflCancelBtn");
+    var cancelBtn2 = document.getElementById("reflCancelBtn2");
     var timerEl = document.getElementById("reflTimer");
+    var segmentError = document.getElementById("reflSegmentError");
+    var segmentErrorMsg = document.getElementById("reflSegmentErrorMsg");
+    var segmentRetryBtn = document.getElementById("reflSegmentRetryBtn");
+    var segmentSkipBtn = document.getElementById("reflSegmentSkipBtn");
 
     var stepSave = document.getElementById("reflStepSave");
     var stepClaude = document.getElementById("reflStepClaude");
@@ -126,7 +136,36 @@
         submitReflection({ json: { text: text } });
     });
 
-    // ---- voice submit ----
+    // ---- voice submit (#232 — pause/resume + append-to-textarea) ----
+    //
+    // State machine:
+    //
+    //   idle ─Record→ recording ─Pause→ (segment uploads in background)
+    //                  │                       ↓
+    //                  Cancel              transcribing
+    //                  ↓                       ↓
+    //                idle                paused ─Resume→ recording (loop)
+    //                                          │
+    //                                          Done → finalize → submit
+    //                                          │
+    //                                          Cancel → discard last
+    //                                                   recording but keep
+    //                                                   prior textarea text
+    //
+    // The mic stream is created on first Record and stays alive across
+    // Pause/Resume cycles so the user doesn't get a permission prompt
+    // again. It's only released on Done or Cancel.
+    //
+    // Each Pause stops the MediaRecorder; its `onstop` fires and uploads
+    // the segment to /api/reflection/transcribe-segment. While the
+    // upload is in flight we show the "Transcribing…" sub-state. On
+    // success the returned transcript is appended to #reflText via
+    // reflectionHelpers.appendTranscriptSegment(). On failure the
+    // segment-error UI offers Retry (re-uploads the same blob) or Skip
+    // (drops the segment, keeps prior text intact).
+    //
+    // Resume is disabled while a segment is transcribing — prevents
+    // out-of-order text appends and bounds concurrent Whisper calls.
 
     if (!navigator.mediaDevices || !window.MediaRecorder) {
         // Disable the record tab gracefully — typed still works.
@@ -134,26 +173,49 @@
         tabVoice.title = "Audio recording unsupported in this browser";
     }
 
-    recordBtn.addEventListener("click", startRecording);
-    stopBtn.addEventListener("click", stopRecording);
-    cancelBtn.addEventListener("click", cancelRecording);
+    var voiceSubState = "idle";  // idle|recording|transcribing|paused|error
+    var lastSegmentBlob = null;  // kept around for Retry
+    var lastSegmentMime = null;
+    var hasSegmentText = false;  // true once at least one segment landed in textarea
 
-    async function startRecording() {
+    function showVoiceSubState(name) {
+        voiceSubState = name;
+        voiceIdle.style.display = (name === "idle") ? "" : "none";
+        voiceRecording.style.display = (name === "recording") ? "" : "none";
+        voicePaused.style.display = (name === "paused") ? "" : "none";
+        voiceTranscribing.style.display = (name === "transcribing") ? "" : "none";
+        segmentError.style.display = (name === "error") ? "" : "none";
+    }
+
+    recordBtn.addEventListener("click", function () { startSegment(/*resume=*/false); });
+    resumeBtn.addEventListener("click", function () { startSegment(/*resume=*/true); });
+    pauseBtn.addEventListener("click", pauseSegment);
+    doneBtn.addEventListener("click", finalizeAndSubmit);
+    cancelBtn.addEventListener("click", cancelEverything);
+    cancelBtn2.addEventListener("click", cancelEverything);
+    segmentRetryBtn.addEventListener("click", retryLastSegment);
+    segmentSkipBtn.addEventListener("click", skipLastSegment);
+
+    async function startSegment(isResume) {
         if (!navigator.mediaDevices || !window.MediaRecorder) {
             showErr("This browser doesn't support audio recording. "
                 + "Use the Type tab instead.", false);
             return;
         }
-        try {
-            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        } catch (err) {
-            var msg = (err && err.name === "NotAllowedError")
-                ? "Microphone access was blocked. Allow it and try again, "
-                  + "or use the Type tab."
-                : "Couldn't access the microphone: "
-                  + (err && err.message ? err.message : err);
-            showErr(msg, false);
-            return;
+        if (!mediaStream) {
+            // First Record click: request the mic. On Resume the stream
+            // is reused, so this branch only runs once per session.
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            } catch (err) {
+                var msg = (err && err.name === "NotAllowedError")
+                    ? "Microphone access was blocked. Allow it and try again, "
+                      + "or use the Type tab."
+                    : "Couldn't access the microphone: "
+                      + (err && err.message ? err.message : err);
+                showErr(msg, false);
+                return;
+            }
         }
         chunks = [];
         try {
@@ -167,60 +229,177 @@
             if (e.data && e.data.size > 0) chunks.push(e.data);
         };
         mediaRecorder.onstop = function () {
-            stopMediaStream();
+            // Per-segment upload. Don't release the mic stream — we may
+            // resume. Only Done/Cancel release it (stopMediaStream).
             var mime = mediaRecorder.mimeType || "audio/webm";
             var blob = new Blob(chunks, { type: mime });
             if (blob.size === 0) {
-                showErr("No audio captured (recording was empty).", false);
+                // Empty segment (user paused immediately). Just bounce
+                // back to paused without an error.
+                showVoiceSubState(hasSegmentText ? "paused" : "idle");
                 return;
             }
-            var fd = new FormData();
-            fd.append("audio", blob, "reflection." + mimeExt(mime));
-            submitReflection({ form: fd });
+            uploadSegment(blob, mime);
         };
         mediaRecorder.onerror = function (e) {
             mediaRecorder.onstop = null;
             clearCap();
             stopTimer();
-            stopMediaStream();
-            showErr("Recording error: "
-                + ((e.error && e.error.message) || "unknown"), false);
+            showSegmentError(
+                "Recording error: "
+                + ((e.error && e.error.message) || "unknown"),
+            );
         };
         recordStartMs = Date.now();
         startTimer();
-        recordCapTimeoutId = setTimeout(stopRecording, MAX_RECORDING_MS);
+        // Per-segment 10-min cap (was per-session before #232). Each
+        // segment can be up to 10 min; user can chain many.
+        recordCapTimeoutId = setTimeout(pauseSegment, MAX_RECORDING_MS);
         mediaRecorder.start();
-        voiceIdle.style.display = "none";
-        voiceRecording.style.display = "";
+        showVoiceSubState("recording");
     }
 
     document.addEventListener("visibilitychange", function () {
         if (document.visibilityState !== "visible") return;
         if (!mediaRecorder || mediaRecorder.state !== "recording") return;
-        if (Date.now() - recordStartMs >= MAX_RECORDING_MS) stopRecording();
+        // iOS Safari freezes setTimeout when backgrounded; re-check the
+        // per-segment cap when foregrounding.
+        if (Date.now() - recordStartMs >= MAX_RECORDING_MS) pauseSegment();
     });
 
-    function stopRecording() {
+    function pauseSegment() {
         clearCap();
         stopTimer();
         if (mediaRecorder && mediaRecorder.state !== "inactive") {
+            // The onstop handler will pick up here and either upload
+            // the segment OR (if empty) bounce back to paused/idle.
+            showVoiceSubState("transcribing");
             mediaRecorder.stop();
+        } else {
+            // Already inactive — show the appropriate idle state.
+            showVoiceSubState(hasSegmentText ? "paused" : "idle");
         }
-        voiceRecording.style.display = "none";
-        voiceIdle.style.display = "";
     }
 
-    function cancelRecording() {
+    async function uploadSegment(blob, mime) {
+        lastSegmentBlob = blob;
+        lastSegmentMime = mime;
+        showVoiceSubState("transcribing");
+        var fd = new FormData();
+        fd.append("audio", blob, "reflection-segment." + mimeExt(mime));
+        var data;
+        try {
+            data = await window.apiFetch(
+                "/api/reflection/transcribe-segment",
+                {
+                    method: "POST",
+                    credentials: "same-origin",
+                    body: fd,
+                },
+            );
+        } catch (err) {
+            showSegmentError(
+                "Transcription failed: "
+                + (err && err.message ? err.message : err),
+            );
+            return;
+        }
+        var seg = (data && data.transcript) || "";
+        if (seg.trim() === "") {
+            // Whisper returned empty — no words heard. Don't append, just
+            // tell the user and let them try again.
+            voiceStatus.textContent =
+                "Last segment was silent — try again.";
+            showVoiceSubState(hasSegmentText ? "paused" : "idle");
+            return;
+        }
+        var H_ = window.reflectionHelpers || {};
+        if (typeof H_.appendTranscriptSegment === "function") {
+            textArea.value = H_.appendTranscriptSegment(textArea.value, seg);
+        } else {
+            // Defensive fallback (helpers file failed to load).
+            textArea.value = (textArea.value
+                ? textArea.value + " " : "") + seg;
+        }
+        hasSegmentText = true;
+        var wc = seg.split(/\s+/).filter(Boolean).length;
+        voiceStatus.textContent =
+            "Added " + wc + " word" + (wc === 1 ? "" : "s") + ". "
+            + "Resume to add more, or Done to analyze.";
+        // Successful segment — drop the kept-for-retry blob so a future
+        // Retry click doesn't re-upload the already-applied segment.
+        lastSegmentBlob = null;
+        lastSegmentMime = null;
+        showVoiceSubState("paused");
+    }
+
+    function showSegmentError(msg) {
+        segmentErrorMsg.textContent = msg;
+        showVoiceSubState("error");
+    }
+
+    async function retryLastSegment() {
+        if (!lastSegmentBlob) {
+            // Lost the blob — best we can do is bounce back to paused.
+            showVoiceSubState(hasSegmentText ? "paused" : "idle");
+            return;
+        }
+        await uploadSegment(lastSegmentBlob, lastSegmentMime);
+    }
+
+    function skipLastSegment() {
+        lastSegmentBlob = null;
+        lastSegmentMime = null;
+        showVoiceSubState(hasSegmentText ? "paused" : "idle");
+    }
+
+    async function finalizeAndSubmit() {
+        // If a segment is currently transcribing, wait for it to
+        // resolve (the next paused state). The simplest correct way is
+        // a short poll on voiceSubState — uploadSegment is the only
+        // thing that flips us out of "transcribing".
+        if (voiceSubState === "transcribing") {
+            await new Promise(function (resolve) {
+                var iv = setInterval(function () {
+                    if (voiceSubState !== "transcribing") {
+                        clearInterval(iv);
+                        resolve();
+                    }
+                }, 100);
+            });
+        }
+        // If the wait surfaced a segment-error, bail out — user picks
+        // Retry / Skip before retrying Done.
+        if (voiceSubState === "error") return;
+        stopMediaStream();
+        chunks = [];
+        hasSegmentText = false;
+        var text = (textArea.value || "").trim();
+        if (!text) {
+            alert("Record or type something to reflect on first.");
+            showVoiceSubState("idle");
+            return;
+        }
+        submitReflection({ json: { text: text } });
+    }
+
+    function cancelEverything() {
         clearCap();
         stopTimer();
         if (mediaRecorder && mediaRecorder.state !== "inactive") {
+            // Drop the onstop so we don't upload the discarded segment.
             mediaRecorder.onstop = null;
             mediaRecorder.stop();
         }
         stopMediaStream();
         chunks = [];
-        voiceRecording.style.display = "none";
-        voiceIdle.style.display = "";
+        lastSegmentBlob = null;
+        lastSegmentMime = null;
+        // Prior segments' text in #reflText INTENTIONALLY survives Cancel
+        // — the user can hit Cancel mid-session to abandon a bad segment
+        // without losing the words they already committed.
+        hasSegmentText = false;
+        showVoiceSubState("idle");
     }
 
     function clearCap() {

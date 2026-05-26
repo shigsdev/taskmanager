@@ -136,6 +136,32 @@
         return out;
     }
 
+    /**
+     * #232 (2026-05-25): append a freshly-transcribed voice segment to
+     * whatever's already in the reflection textarea (typed text OR
+     * earlier voice segments). The rule:
+     *
+     *   - empty existing → return the new segment as-is
+     *   - existing ends in whitespace → just concat (no extra space)
+     *   - otherwise → insert a single space between
+     *
+     * Trim only the LEADING whitespace on the new segment (Whisper
+     * sometimes returns " hello"); preserve its trailing whitespace
+     * for the next concat. Never insert a hard newline — the user
+     * can press Enter manually if they want paragraph breaks.
+     *
+     * Pure: no DOM, no module state. The DOM glue in reflection.js
+     * reads the current textarea value, calls this, sets it back.
+     */
+    function appendTranscriptSegment(existing, segment) {
+        var ex = (existing == null) ? "" : String(existing);
+        var seg = (segment == null) ? "" : String(segment).replace(/^\s+/, "");
+        if (seg === "") return ex;
+        if (ex === "") return seg;
+        if (/\s$/.test(ex)) return ex + seg;
+        return ex + " " + seg;
+    }
+
     var api = {
         defaultChecked: defaultChecked,
         actionLabel: actionLabel,
@@ -143,6 +169,7 @@
         focusCandidates: focusCandidates,
         applySummaryText: applySummaryText,
         selectedActions: selectedActions,
+        appendTranscriptSegment: appendTranscriptSegment,
     };
 
     if (typeof module !== "undefined" && module.exports) {

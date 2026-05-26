@@ -34,7 +34,12 @@
             </div>
         </div>
 
-        <!-- Voice sub-state -->
+        <!-- Voice sub-state (#232 — pause/resume with append-to-textarea).
+             The same `#reflText` textarea above is the source of truth;
+             each Pause uploads the just-recorded segment to
+             `/api/reflection/transcribe-segment` and appends the
+             returned text to the textarea. Done finalizes by submitting
+             the merged content via the existing Analyze path. -->
         <div class="reflection-voice" id="reflVoice" style="display:none">
             <div class="reflection-voice-controls" id="reflVoiceIdle">
                 <button class="btn btn-record" id="reflRecordBtn" type="button"
@@ -43,8 +48,12 @@
                     <span class="voice-record-label">Start recording</span>
                 </button>
                 <p class="reflection-hint">
-                    Max 10 min. Audio is transcribed via Whisper in memory
-                    only — never written to disk or the database.
+                    Speak as long as you want. Pause to think, then Resume
+                    to add more — each segment appears in the textarea
+                    above. Click <strong>Done</strong> when finished to
+                    analyze. Max 10 min per segment. Audio is transcribed
+                    via Whisper in memory only — never written to disk
+                    or the database.
                 </p>
             </div>
             <div class="reflection-voice-controls" id="reflVoiceRecording" style="display:none">
@@ -52,11 +61,41 @@
                     <div class="voice-pulse" aria-hidden="true"></div>
                     <div class="voice-timer" id="reflTimer">0:00</div>
                 </div>
-                <button class="btn btn-stop" id="reflStopBtn" type="button">
-                    <span>■</span> Stop &amp; Analyze
+                <button class="btn btn-pause" id="reflPauseBtn" type="button">
+                    <span>❚❚</span> Pause
                 </button>
                 <button class="btn btn-sm btn-cancel" id="reflCancelBtn" type="button">
                     Cancel
+                </button>
+            </div>
+            <div class="reflection-voice-controls" id="reflVoicePaused" style="display:none">
+                <div class="reflection-voice-status" id="reflVoiceStatus">
+                    Ready — add more or finish.
+                </div>
+                <button class="btn btn-record" id="reflResumeBtn" type="button"
+                        aria-label="Resume recording">
+                    <span class="voice-record-icon">●</span>
+                    <span class="voice-record-label">Resume</span>
+                </button>
+                <button class="btn btn-primary" id="reflDoneBtn" type="button">
+                    Done — Analyze
+                </button>
+                <button class="btn btn-sm btn-cancel" id="reflCancelBtn2" type="button">
+                    Discard recording
+                </button>
+            </div>
+            <div class="reflection-voice-controls" id="reflVoiceTranscribing" style="display:none">
+                <div class="reflection-voice-status">
+                    ⏳ Transcribing segment…
+                </div>
+            </div>
+            <div class="reflection-voice-error" id="reflSegmentError" style="display:none">
+                <p class="reflection-error-message" id="reflSegmentErrorMsg"></p>
+                <button class="btn btn-sm" id="reflSegmentRetryBtn" type="button">
+                    Retry this segment
+                </button>
+                <button class="btn btn-sm" id="reflSegmentSkipBtn" type="button">
+                    Skip this segment
                 </button>
             </div>
         </div>
