@@ -42,9 +42,16 @@
     <header class="nav">
         <a href="{{ url_for('index') }}" class="brand">Task Manager</a>
         {# Top-left quick-upload: opens the Scan page for image→task.
-           Anchored to the brand so it's on every page, not just Tasks. #}
+           Anchored to the brand so it's on every page, not just Tasks.
+           #233 (2026-05-26): icon-only — the camera glyph carries the
+           intent, the prior "Upload" word duplicated it and ate ~80px
+           of nav-bar width on mobile (user-reported). `aria-label` is
+           the screen-reader-visible label; `title` is the hover
+           tooltip. #}
         <a href="{{ url_for('scan_page') }}" class="icon-btn upload-btn"
-           id="topUploadBtn" title="Upload an image to scan">📷 Upload</a>
+           id="topUploadBtn"
+           aria-label="Upload an image to scan"
+           title="Upload an image to scan">📷</a>
         {% block capture %}{% endblock %}
         <nav class="nav-links">
             {# Canonical page nav. Pages set `active_page` (e.g. goals,

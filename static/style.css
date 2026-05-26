@@ -207,19 +207,17 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 /* Top-left quick-upload button (shortcut to /scan). Uses both
-   .icon-btn and .upload-btn classes, so we must override the
-   white-pill icon-btn styling below with transparent + white text. */
+   .icon-btn and .upload-btn classes, so we override the white-pill
+   icon-btn styling below with transparent + white text — the navbar
+   chrome is dark, so the button needs to read on dark, not light.
+   #233 (2026-05-26): dropped the font-size + padding + gap overrides
+   so the icon-only upload button inherits the standard .icon-btn
+   shape (font-size 1rem desktop, 1.2rem + 44px touch target on
+   mobile). Matches the capture-bar 🎤 / 🎙️ / ✓ icons exactly. */
 .upload-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
     text-decoration: none;
     color: #fff;
-    font-size: 0.85rem;
-    padding: 4px 10px;
     margin-left: 4px;
-    white-space: nowrap;
-    border-radius: var(--radius);
     background: transparent;
     border-color: rgba(255, 255, 255, 0.5);
 }
