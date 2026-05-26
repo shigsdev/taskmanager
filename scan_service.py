@@ -765,6 +765,27 @@ _VOICE_DEFAULT_CATEGORY = "personal_growth"
 # (U+FEFF), and the bidi/format-control characters Claude has been
 # observed to emit.
 _ZERO_WIDTH_RE = re.compile(r"[​-‍⁠﻿]")
+# #234 fourth pass (2026-05-26): Claude has been observed to mutate
+# multi-word names by replacing spaces with hyphens / underscores /
+# en-dashes / em-dashes (especially when the model "tidies up" a
+# project name into a code-style identifier). The diagnostic probe
+# at /api/debug/voice-hint-trace confirmed both "Roadmap-Automation"
+# and "Roadmap_Automation" missed the resolver against the real
+# "Roadmap Automation" project. Coercing these separator-like chars
+# to a single space (before the whitespace-collapse pass) makes the
+# lookup robust against this mutation class.
+#
+# Characters mapped:
+#   U+002D hyphen-minus
+#   U+005F underscore
+#   U+2010 hyphen
+#   U+2011 non-breaking hyphen
+#   U+2012 figure dash
+#   U+2013 en-dash
+#   U+2014 em-dash
+#   U+2015 horizontal bar
+#   U+2212 minus sign
+_SEPARATOR_RE = re.compile(r"[-_‐-―−]")
 # Collapse runs of Unicode whitespace (incl. NBSP, em-space, etc.)
 # to a single ASCII space.
 _UNICODE_WS_RE = re.compile(r"\s+")
@@ -780,9 +801,11 @@ def _normalise_title(s: str) -> str:
          U+FEFF) which str.strip() leaves intact.
       3. Lowercase via ``str.lower()`` (Unicode-aware, so "Δ".lower()
          == "δ").
-      4. Collapse all Unicode whitespace runs to a single ASCII space
+      4. Replace separator-like punctuation (hyphens, underscores,
+         en/em dashes) with a single space — #234 fourth pass.
+      5. Collapse all Unicode whitespace runs to a single ASCII space
          (so internal NBSPs don't break the match).
-      5. ``.strip()`` to remove leading/trailing whitespace.
+      6. ``.strip()`` to remove leading/trailing whitespace.
 
     Returns the normalised string. Empty input → empty string.
     """
@@ -791,6 +814,7 @@ def _normalise_title(s: str) -> str:
     out = unicodedata.normalize("NFKC", s)
     out = _ZERO_WIDTH_RE.sub("", out)
     out = out.lower()
+    out = _SEPARATOR_RE.sub(" ", out)
     out = _UNICODE_WS_RE.sub(" ", out)
     return out.strip()
 
