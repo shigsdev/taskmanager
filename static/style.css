@@ -2702,6 +2702,22 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .btn-record:hover { filter: brightness(1.1); }
 .voice-record-icon { font-size: 1.4rem; }
+
+/* #232 (2026-05-25): pause button — mirrors btn-stop's size/treatment
+ * but visually muted (orange-ish) to read as "pause" not "stop". The
+ * actual finalize is the separate Done button. */
+.btn-pause {
+    background: var(--warn, #d97706);
+    color: white;
+    padding: 14px 28px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    min-height: 48px;
+    margin-right: 8px;
+}
+.btn-pause:hover { filter: brightness(1.1); }
+
 .btn-stop {
     background: var(--accent, #2980b9);
     color: white;
@@ -4266,6 +4282,28 @@ table.quality-gates code {
     margin: 16px 0;
 }
 .reflection-voice-controls { text-align: center; margin: 16px 0; }
+/* #232 (2026-05-25): pause/resume sub-state UI. The status line
+ * (`#reflVoiceStatus`) reports "Added N words." after each successful
+ * segment so the user sees what just happened without staring at the
+ * textarea above. The error block surfaces a failed segment with
+ * Retry + Skip buttons. */
+.reflection-voice-status {
+    color: var(--text-muted, #6b7280);
+    font-size: 0.95rem;
+    margin: 8px 0 16px;
+    font-style: italic;
+}
+.reflection-voice-error {
+    margin: 16px 0;
+    padding: 12px;
+    border: 1px solid var(--danger, #c0392b);
+    border-radius: 6px;
+    background: var(--accent-soft, rgba(192, 57, 43, 0.08));
+}
+.reflection-voice-error .reflection-error-message {
+    margin: 0 0 8px;
+    color: var(--danger, #c0392b);
+}
 .reflection-progress {
     display: flex;
     flex-direction: column;

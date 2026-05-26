@@ -4,6 +4,10 @@ Endpoints:
     POST /api/reflection                       — submit a reflection (typed
         JSON {"text": ...} OR multipart audio field "audio"); transcribes
         if audio, persists the Reflection, returns AI-proposed actions
+    POST /api/reflection/transcribe-segment    — transcribe ONE audio
+        segment (#232 pause+resume). No Reflection row, no Claude call —
+        just audio→text. Frontend appends the text to its textarea and
+        eventually POSTs the merged content to the main endpoint above.
     POST /api/reflection/<id>/confirm          — apply the user-selected
         actions; returns an apply summary
     GET  /api/reflection                       — list past reflections
@@ -174,6 +178,66 @@ def submit(email: str):  # noqa: ARG001
     )
 
     return jsonify(_serialize(reflection)), 201
+
+
+@bp.post("/transcribe-segment")
+@login_required
+@limiter.limit(PAID_API)  # paid: Whisper
+def transcribe_segment(email: str):  # noqa: ARG001
+    """Transcribe ONE audio segment for the #232 pause+resume flow.
+
+    Accepts multipart/form-data with an 'audio' file field (same MIME
+    whitelist + size cap as ``POST /api/reflection``). Returns just the
+    raw transcription — no Reflection row is saved, no Claude analysis
+    is run. The frontend appends the returned text to its shared
+    ``#reflText`` textarea; when the user clicks Done it POSTs the full
+    merged content to ``POST /api/reflection`` (text path), which runs
+    the persist + Claude steps exactly as before.
+
+    This decoupling keeps cost predictable (one Whisper call per
+    segment, one Claude call per finalized reflection) and bounds the
+    blast radius of a network blip: if one segment fails the
+    frontend retries that segment only; prior segments' text is already
+    in the textarea and unaffected.
+
+    Returns JSON::
+
+        {
+            "transcript": "...",
+            "duration_seconds": 12.5,
+            "cost_usd": 0.0012
+        }
+    """
+    audio_bytes, content_type, err = validate_upload(
+        request,
+        field_name="audio",
+        allowed_mime=ALLOWED_AUDIO_TYPES,
+        max_bytes=WHISPER_MAX_UPLOAD_BYTES,
+    )
+    if err:
+        body, status = err
+        if status == 422:
+            logger.warning(
+                "reflection segment rejected: %s", body.get("error"),
+            )
+        return jsonify(body), status
+
+    try:
+        result = transcribe_audio(audio_bytes, content_type)
+    except RuntimeError as e:
+        logger.warning("Reflection segment transcription failed: %s", e)
+        return jsonify({"error": f"Transcription failed: {e}"}), 422
+    except Exception:
+        logger.exception("Reflection segment transcription crashed")
+        return jsonify(
+            {"error": "Transcription failed (unexpected)"}
+        ), 500
+
+    return jsonify({
+        "transcript": result["transcript"],
+        "duration_seconds": result["duration_seconds"],
+        "cost_usd": result["cost_usd"],
+    })
 
 
 @bp.post("/<uuid:reflection_id>/confirm")

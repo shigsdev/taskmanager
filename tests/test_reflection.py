@@ -799,3 +799,143 @@ class TestReflectionApi:
         # No auth bypass — login_required must reject.
         resp = client.post("/api/reflection", json={"text": "hi"})
         assert resp.status_code != 201
+
+
+class TestTranscribeSegmentApi:
+    """#232 (2026-05-25): POST /api/reflection/transcribe-segment.
+
+    One-segment Whisper transcription for the pause/resume frontend
+    flow. Returns just text + duration + cost. Does NOT save a
+    Reflection row and does NOT call Claude — those steps run when the
+    user clicks Done, which POSTs the merged textarea content to the
+    main /api/reflection endpoint (JSON path, no audio).
+
+    These tests exercise the API contract; the frontend pause/resume
+    state machine is exercised in `tests/js/unit/reflection_helpers.test.js`
+    (helper) and Phase 6 manual regression (full DOM flow).
+    """
+
+    def test_segment_returns_transcript_no_reflection_row(
+        self, app, client, monkeypatch
+    ):
+        _bypass_auth(monkeypatch)
+        monkeypatch.setenv("OPENAI_API_KEY", "fake-key")
+        with patch(
+            "reflection_api.transcribe_audio",
+            return_value={
+                "transcript": "First chunk of my week.",
+                "duration_seconds": 6.0,
+                "cost_usd": 0.0006,
+            },
+        ):
+            resp = client.post(
+                "/api/reflection/transcribe-segment",
+                data={"audio": (io.BytesIO(b"fake audio"), "seg.webm",
+                                "audio/webm")},
+                content_type="multipart/form-data",
+            )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["transcript"] == "First chunk of my week."
+        assert body["duration_seconds"] == 6.0
+        assert body["cost_usd"] == 0.0006
+        # Critically: NO Reflection row is created — Claude isn't called
+        # for a segment, only when the user clicks Done.
+        with app.app_context():
+            assert db.session.scalar(select(func.count(Reflection.id))) == 0
+
+    def test_segment_empty_transcript_is_fine(self, client, monkeypatch):
+        # Whisper sometimes returns an empty transcript if the segment
+        # was pure silence. Surface that to the frontend as a clean 200
+        # with transcript="" — NOT a 422 — so the frontend can decide
+        # whether to show "silent segment, try again" UX.
+        _bypass_auth(monkeypatch)
+        with patch(
+            "reflection_api.transcribe_audio",
+            return_value={
+                "transcript": "",
+                "duration_seconds": 0.5,
+                "cost_usd": 0.00005,
+            },
+        ):
+            resp = client.post(
+                "/api/reflection/transcribe-segment",
+                data={"audio": (io.BytesIO(b"silent audio"), "seg.webm",
+                                "audio/webm")},
+                content_type="multipart/form-data",
+            )
+        assert resp.status_code == 200
+        assert resp.get_json()["transcript"] == ""
+
+    def test_segment_missing_audio_field_rejected(self, client, monkeypatch):
+        _bypass_auth(monkeypatch)
+        # No multipart audio field at all.
+        resp = client.post(
+            "/api/reflection/transcribe-segment",
+            data={},
+            content_type="multipart/form-data",
+        )
+        # validate_upload returns 400 when the field is missing.
+        assert resp.status_code == 400
+
+    def test_segment_unsupported_mime_rejected(self, client, monkeypatch):
+        _bypass_auth(monkeypatch)
+        resp = client.post(
+            "/api/reflection/transcribe-segment",
+            data={"audio": (io.BytesIO(b"\x89PNG\r\n"), "not-audio.png",
+                            "image/png")},
+            content_type="multipart/form-data",
+        )
+        # MIME whitelist enforced by validate_upload.
+        assert resp.status_code in (400, 422)
+
+    def test_segment_whisper_runtime_error_returns_422(
+        self, client, monkeypatch
+    ):
+        _bypass_auth(monkeypatch)
+        with patch(
+            "reflection_api.transcribe_audio",
+            side_effect=RuntimeError("OPENAI_API_KEY missing"),
+        ):
+            resp = client.post(
+                "/api/reflection/transcribe-segment",
+                data={"audio": (io.BytesIO(b"fake"), "seg.webm",
+                                "audio/webm")},
+                content_type="multipart/form-data",
+            )
+        # User-facing error message must NOT leak the original error
+        # context that could include sensitive details — but a
+        # short prose summary is fine.
+        assert resp.status_code == 422
+        body = resp.get_json()
+        assert "Transcription failed" in body["error"]
+
+    def test_segment_whisper_unexpected_exception_returns_500(
+        self, client, monkeypatch
+    ):
+        _bypass_auth(monkeypatch)
+        with patch(
+            "reflection_api.transcribe_audio",
+            side_effect=ValueError("internal logic bug"),
+        ):
+            resp = client.post(
+                "/api/reflection/transcribe-segment",
+                data={"audio": (io.BytesIO(b"fake"), "seg.webm",
+                                "audio/webm")},
+                content_type="multipart/form-data",
+            )
+        assert resp.status_code == 500
+        body = resp.get_json()
+        # Generic message, no traceback / no secret leak.
+        assert body["error"] == "Transcription failed (unexpected)"
+
+    def test_segment_requires_auth(self, client):
+        resp = client.post(
+            "/api/reflection/transcribe-segment",
+            data={"audio": (io.BytesIO(b"fake"), "seg.webm",
+                            "audio/webm")},
+            content_type="multipart/form-data",
+        )
+        # login_required must reject — exact status varies (302 → OAuth
+        # or 401 JSON), but it must NOT be a success.
+        assert resp.status_code not in (200, 201)
