@@ -916,6 +916,30 @@ flowchart TD
                         <td>Re-runs <code>pip-audit -r requirements-dev.txt</code> + <code>npm audit --audit-level=high</code> against unchanged dependencies. Catches CVEs published between ships.</td>
                     </tr>
                     <tr>
+                        <td><code>monthly-security-audit.yml</code> (#227)</td>
+                        <td>1st of each month 13:00 UTC</td>
+                        <td>
+                            Posture review (not vuln scanning). Four
+                            checks: <strong>PAT inventory</strong>
+                            against <code>docs/security/pat-inventory.json</code>
+                            (flag null expiry, &gt; 90-day expiry,
+                            &gt; 60-day idle); <strong>OAuth scope
+                            drift</strong> against
+                            <code>docs/security/oauth-scopes.json</code>
+                            (added or removed scopes both flagged so
+                            an intentional change still requires an
+                            explicit allowlist update);
+                            <strong>unencrypted sensitive columns</strong>
+                            in <code>models.py</code> (regex on
+                            token/secret/password/key/credential column
+                            names cross-referenced against
+                            <code>crypto.py</code> import);
+                            <strong>threat-model freshness</strong>
+                            (<code>CLAUDE.md</code> last touched
+                            &gt; 180 days ago).
+                        </td>
+                    </tr>
+                    <tr>
                         <td><code>weekly-bug-pattern-scan.yml</code> (#226)</td>
                         <td>Sundays 13:00 UTC</td>
                         <td>

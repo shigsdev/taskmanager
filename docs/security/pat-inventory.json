@@ -1,0 +1,37 @@
+{
+  "_doc": [
+    "Operator-maintained inventory of GitHub Personal Access Tokens used",
+    "with this repository. Read by scripts/check_security_posture.py on a",
+    "monthly cron to flag stale or unbounded PATs (#227, 2026-05-26).",
+    "",
+    "Why this file exists: GitHub does NOT expose a list-my-PATs API. To",
+    "audit token freshness mechanically, we maintain this file as source",
+    "of truth and update it on every PAT rotation/creation.",
+    "",
+    "Schema per entry:",
+    "  name              short label (visible in the PAT's GitHub UI)",
+    "  created_at        ISO YYYY-MM-DD",
+    "  expires_at        ISO YYYY-MM-DD, or null (forever — flagged)",
+    "  last_used_at      ISO YYYY-MM-DD, the operator's last touch date.",
+    "                    Update when you next use the token; the cron",
+    "                    flags entries where this is > 60 days ago.",
+    "  scopes            list of strings (the GitHub PAT scopes).",
+    "  where_used        free-text: which workflow/script consumes it.",
+    "",
+    "Audit thresholds (in scripts/check_security_posture.py):",
+    "  - expires_at == null               → flagged (rotate to a finite",
+    "                                        expiry)",
+    "  - expires_at > 90 days from today  → flagged (cap at 90)",
+    "  - last_used_at > 60 days ago       → flagged (consider revoking)"
+  ],
+  "tokens": [
+    {
+      "name": "(placeholder) — populate when you next rotate a PAT",
+      "created_at": "2026-05-26",
+      "expires_at": "2026-08-24",
+      "last_used_at": "2026-05-26",
+      "scopes": ["repo"],
+      "where_used": "Placeholder so the cron has a non-empty list to validate against. Replace with the real PAT(s) when you next rotate. If you have zero PATs in use, delete this entry and the audit will report 0 tokens."
+    }
+  ]
+}

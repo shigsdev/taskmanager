@@ -1,0 +1,28 @@
+{
+  "_doc": [
+    "Allowlist of Google OAuth scopes this app requests via flask-dance",
+    "`make_google_blueprint(scope=...)`. Read by",
+    "scripts/check_security_posture.py on a monthly cron to detect scope",
+    "drift — any new scope added to app.py that ISN'T in this list, or",
+    "any scope here that was REMOVED from app.py, fires a flag.",
+    "",
+    "When you intentionally change the OAuth scopes:",
+    "  1. Update app.py (the make_google_blueprint scope= list)",
+    "  2. Update this file to match",
+    "  3. Re-deploy. The cron's next run reads this file as source of",
+    "     truth, so until you update it, the audit will flag the drift",
+    "     intentionally — that IS the alert.",
+    "",
+    "Rationale for keeping the list small:",
+    "  - openid + userinfo.email + userinfo.profile is enough to assert",
+    "    'this is shigsdev@gmail.com' for the single-user lockdown.",
+    "  - Adding read/write scopes on Calendar / Gmail / Drive would",
+    "    massively expand the blast radius if the OAuth token were ever",
+    "    stolen. Don't add unless absolutely needed."
+  ],
+  "scopes": [
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile"
+  ]
+}

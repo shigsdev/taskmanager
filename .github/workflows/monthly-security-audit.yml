@@ -1,0 +1,55 @@
+# Monthly recurring security-posture audit (#227).
+#
+# Runs on the 1st of every month at 13:00 UTC. The four checks live
+# in scripts/check_security_posture.py:
+#   - pat-inventory                  (docs/security/pat-inventory.json
+#                                     vs 90-day expiry + 60-day idle
+#                                     thresholds)
+#   - oauth-scope-drift              (app.py make_google_blueprint
+#                                     scope= list vs allowlist in
+#                                     docs/security/oauth-scopes.json)
+#   - unencrypted-sensitive-columns  (models.py sensitive-named
+#                                     columns vs crypto.py import)
+#   - threat-model-freshness         (CLAUDE.md last touched
+#                                     > 180 days ago)
+#
+# Different from #210 (weekly CVE) and #226 (weekly bug-pattern) — those
+# catch shipping-pattern issues; this is the slow-drift POSTURE review
+# the 2026-05-24 PAT-leak incident motivated.
+#
+# Always sends an email (clean or not) so the absence of one proves
+# the cron failed. No new secrets — reuses SENDGRID_API_KEY +
+# DIGEST_FROM_EMAIL + DIGEST_TO_EMAIL.
+name: Monthly security-posture audit
+
+on:
+  schedule:
+    # 1st of each month at 13:00 UTC ≈ 08:00 ET (EST) / 09:00 ET (EDT).
+    # Monthly cadence matches the "slow drift" signal — POSTURE
+    # questions ("should this PAT still exist?") rotate slower than
+    # weekly per-commit checks.
+    - cron: "0 13 1 * *"
+  workflow_dispatch: {}
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      # Pure-stdlib script (no pip deps to install).
+
+      - name: Run security-posture audit
+        env:
+          SENDGRID_API_KEY:  ${{ secrets.SENDGRID_API_KEY }}
+          DIGEST_FROM_EMAIL: ${{ vars.DIGEST_FROM_EMAIL }}
+          DIGEST_TO_EMAIL:   ${{ vars.DIGEST_TO_EMAIL }}
+        run: python scripts/check_security_posture.py
