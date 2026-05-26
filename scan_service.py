@@ -639,10 +639,24 @@ def _fetch_projects_and_goals_for_hints() -> tuple[
                 select(Goal).where(Goal.is_active.is_(True))
             )
         ]
-        logger.info(
-            "voice hint sources: %d projects, %d goals",
-            len(projects), len(goals),
-        )
+        if not projects or not goals:
+            # #234 (2026-05-26 second pass): WARN if EITHER count is 0.
+            # The fetch wrapper returns this state when an exception is
+            # swallowed below OR when the user genuinely has no projects/
+            # goals. Either way, every hint will surface "(no match)"
+            # on the review screen, which is what the user reported.
+            # WARNING level → persisted to app_logs → visible in
+            # /api/debug/logs for diagnosis.
+            logger.warning(
+                "voice hint sources thin: %d projects, %d goals — "
+                "all hints will appear as (no match) on review",
+                len(projects), len(goals),
+            )
+        else:
+            logger.info(
+                "voice hint sources: %d projects, %d goals",
+                len(projects), len(goals),
+            )
         return projects, goals
     except Exception as exc:  # noqa: BLE001 — hints are optional; never crash the flow
         logger.warning(
@@ -742,6 +756,9 @@ def _resolve_voice_hint(
     hint_lc = hint.lower()
     exact = by_title_lc.get(hint_lc)
     if exact is not None:
+        # Resolved correctly — INFO (stderr only, not /api/debug/logs)
+        # because nothing's broken; no need to bloat the in-DB log table
+        # with the happy path.
         logger.info("voice hint resolved: %s %r → exact match", kind, hint)
         return exact
 
@@ -757,15 +774,27 @@ def _resolve_voice_hint(
             kind, hint, len(by_title_lc),
         )
         return candidates[0]
+    # #234 (2026-05-26, second pass): promote the "miss" + "ambiguous"
+    # paths from INFO → WARNING so they surface in /api/debug/logs.
+    # Per logging_service.py, only WARNING+ rows persist to the
+    # app_logs DB table — INFO goes to stderr only and gets rolled out
+    # of /api/debug/logs visibility. The user has reported "(no match)"
+    # twice now; promoting these so we can SEE the resolver state from
+    # /api/debug/logs the next time it happens. Also include a sample
+    # of the title-map keys (first 8) so the operator can confirm
+    # whether the expected title is even in the lookup map.
+    sample = list(by_title_lc.keys())[:8]
     if len(candidates) > 1:
-        logger.info(
-            "voice hint ambiguous: %s %r → %d substring matches; left unresolved",
-            kind, hint, len(candidates),
+        logger.warning(
+            "voice hint ambiguous: %s %r → %d substring matches "
+            "(of %d total titles); sample keys=%s",
+            kind, hint, len(candidates), len(by_title_lc), sample,
         )
     else:
-        logger.info(
-            "voice hint missed: %s %r → no match in %d titles",
-            kind, hint, len(by_title_lc),
+        logger.warning(
+            "voice hint missed: %s %r → no match in %d titles; "
+            "sample keys=%s",
+            kind, hint, len(by_title_lc), sample,
         )
     return None
 

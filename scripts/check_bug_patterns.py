@@ -557,9 +557,16 @@ CHECKS = [
 ]
 
 
-def send_findings_email(findings: list[Finding]) -> None:
-    """Best-effort SendGrid email. Failures LOG but do NOT change the
-    exit code — same convention as ``scripts/check_advisories.py``.
+def send_scan_email(findings: list[Finding], *, per_check_counts: list[tuple[str, int]]) -> None:
+    """Best-effort SendGrid email — sent on EVERY weekly run, clean or
+    not. User-requested 2026-05-26: "an email should go out every week
+    with the run regardless if it is clean so I know it is happening."
+
+    On clean runs the subject is ``[Taskmanager bug-pattern] CLEAN``
+    and the body lists each check + 0 findings. On findings runs the
+    subject reports the count and the body lists each offender. Same
+    SendGrid pattern as `scripts/check_advisories.py`; failures here
+    LOG but do NOT change the exit code.
     """
     sg_key = os.environ.get("SENDGRID_API_KEY")
     from_addr = os.environ.get("DIGEST_FROM_EMAIL")
@@ -569,35 +576,54 @@ def send_findings_email(findings: list[Finding]) -> None:
         return
 
     today = datetime.date.today().isoformat()
+    total = len(findings)
     by_check: dict[str, list[Finding]] = {}
     for f in findings:
         by_check.setdefault(f.check_id, []).append(f)
 
-    body_lines = [
-        f"Weekly bug-pattern scan {today} found {len(findings)} finding(s) "
-        f"across {len(by_check)} check(s).",
-        "",
-    ]
-    for label, _ in CHECKS:
-        hits = by_check.get(label, [])
-        body_lines.append(f"== {label} ({len(hits)} finding(s)) ==")
-        for f in hits:
-            if f.line_num:
-                body_lines.append(f"  {f.path}:{f.line_num}  {f.line}")
-            else:
-                body_lines.append(f"  {f.path}  {f.line}")
-            body_lines.append(f"      → {f.message}")
-        body_lines.append("")
-    body_lines += [
-        "Action: review each finding, fix the offender, re-run "
-        "`python scripts/check_bug_patterns.py` to confirm clean. See "
-        "the GitHub Actions run for the full raw output.",
-    ]
+    clean = total == 0
+    if clean:
+        subject = f"[Taskmanager bug-pattern] CLEAN — {today}"
+        body_lines = [
+            f"Weekly bug-pattern scan {today}: ALL CHECKS CLEAN "
+            f"({len(per_check_counts)} checks, 0 findings).",
+            "",
+            "This confirmation email fires on every weekly run so the "
+            "absence of an email = the cron failed (or the workflow "
+            "config drifted). Saved you a trip to the Actions tab.",
+            "",
+            "Per-check breakdown:",
+        ]
+        for label, count in per_check_counts:
+            body_lines.append(f"  ✓ {label}: {count} finding(s)")
+    else:
+        subject = f"[Taskmanager bug-pattern] {total} finding(s) — {today}"
+        body_lines = [
+            f"Weekly bug-pattern scan {today} found {total} finding(s) "
+            f"across {len(by_check)} check(s) (of {len(per_check_counts)} "
+            f"checks total).",
+            "",
+        ]
+        for label, _ in CHECKS:
+            hits = by_check.get(label, [])
+            body_lines.append(f"== {label} ({len(hits)} finding(s)) ==")
+            for f in hits:
+                if f.line_num:
+                    body_lines.append(f"  {f.path}:{f.line_num}  {f.line}")
+                else:
+                    body_lines.append(f"  {f.path}  {f.line}")
+                body_lines.append(f"      → {f.message}")
+            body_lines.append("")
+        body_lines += [
+            "Action: review each finding, fix the offender, re-run "
+            "`python scripts/check_bug_patterns.py` to confirm clean. "
+            "See the GitHub Actions run for the full raw output.",
+        ]
 
     payload = {
         "personalizations": [{"to": [{"email": to_addr}]}],
         "from": {"email": from_addr},
-        "subject": f"[Taskmanager bug-pattern] {len(findings)} finding(s) — {today}",
+        "subject": subject,
         "content": [{"type": "text/plain", "value": "\n".join(body_lines)}],
     }
     import urllib.error
@@ -620,6 +646,16 @@ def send_findings_email(findings: list[Finding]) -> None:
         sys.stderr.write(f"[bug-pattern-scan] email send failed: {e}\n")
 
 
+# Back-compat shim — `send_findings_email` was the pre-#236 name; keep
+# a wrapper so any external caller / test patch that still uses the
+# old name keeps working (and so test mocks can target either name).
+def send_findings_email(findings: list[Finding]) -> None:  # noqa: D401
+    """Deprecated alias for ``send_scan_email``. Sends with no per-check
+    count detail (use ``send_scan_email`` directly for the full
+    confirm-on-clean message)."""
+    send_scan_email(findings, per_check_counts=[])
+
+
 def main() -> int:
     sys.stdout.write(
         f"[bug-pattern-scan] starting "
@@ -627,6 +663,7 @@ def main() -> int:
     )
 
     all_findings: list[Finding] = []
+    per_check_counts: list[tuple[str, int]] = []
     for label, check_fn in CHECKS:
         try:
             findings = check_fn()
@@ -640,11 +677,18 @@ def main() -> int:
             else:
                 sys.stdout.write(f"    {f.path}  {f.line}\n")
         all_findings.extend(findings)
+        per_check_counts.append((label, len(findings)))
 
+    # User-requested 2026-05-26: send an email EVERY run, clean or not,
+    # so the absence of an email proves the cron failed (or the
+    # workflow drifted). Pre-#236 behavior was silent-on-clean — which
+    # left "is the cron actually running?" as a latent question.
+    send_scan_email(all_findings, per_check_counts=per_check_counts)
     if not all_findings:
-        sys.stdout.write("[bug-pattern-scan] CLEAN — no email sent.\n")
+        sys.stdout.write(
+            "[bug-pattern-scan] CLEAN — confirmation email sent.\n"
+        )
         return 0
-    send_findings_email(all_findings)
     return 1
 
 

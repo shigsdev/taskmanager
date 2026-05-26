@@ -561,10 +561,18 @@ class TestStripJsLineComment:
 
 
 class TestMainExitCodes:
-    def test_main_clean_returns_zero(self, with_project_root: Path, capsys):
+    def test_main_clean_returns_zero(self, with_project_root: Path, capsys, monkeypatch):
         # Fresh tmp_path → no fixtures → all checks clean → exit 0.
         # Also stub out the string-match check, which would otherwise
         # try to run the real gate 8d script (not present under tmp_path).
+        # User-requested 2026-05-26: the CLEAN run also calls
+        # send_scan_email (confirmation-on-clean). Stub it to capture
+        # the call so we can assert on the per-check counts payload.
+        sent = []
+        monkeypatch.setattr(bp_mod, "send_scan_email",
+                            lambda findings, *, per_check_counts: sent.append(
+                                {"findings": findings, "counts": per_check_counts},
+                            ))
         import scripts.check_bug_patterns as mod
         mod.CHECKS_BACKUP = list(mod.CHECKS)
         mod.CHECKS = [
@@ -578,6 +586,14 @@ class TestMainExitCodes:
         assert rc == 0
         out = capsys.readouterr().out
         assert "CLEAN" in out
+        # Confirmation-on-clean email IS sent (1 call, 0 findings).
+        assert len(sent) == 1
+        assert sent[0]["findings"] == []
+        # Per-check counts breakdown is in the payload — every check
+        # gets a 0 entry (so the email body can render the breakdown).
+        labels = [label for label, _ in sent[0]["counts"]]
+        assert "bare-1fr-grids" in labels
+        assert all(count == 0 for _, count in sent[0]["counts"])
 
     def test_main_with_findings_returns_one(self, with_project_root: Path, capsys, monkeypatch):
         # Plant a bare-1fr offender so check (a) reports one finding.
@@ -589,8 +605,10 @@ class TestMainExitCodes:
         )
         # Stub the SendGrid call so the test never hits the network.
         sent = []
-        monkeypatch.setattr(bp_mod, "send_findings_email",
-                            lambda findings: sent.append(findings))
+        monkeypatch.setattr(bp_mod, "send_scan_email",
+                            lambda findings, *, per_check_counts: sent.append(
+                                {"findings": findings, "counts": per_check_counts},
+                            ))
         import scripts.check_bug_patterns as mod
         mod.CHECKS_BACKUP = list(mod.CHECKS)
         mod.CHECKS = [
@@ -602,8 +620,100 @@ class TestMainExitCodes:
         finally:
             mod.CHECKS = mod.CHECKS_BACKUP
         assert rc == 1
+        # Email IS sent on findings runs too (same code path, different
+        # subject + body — see TestSendScanEmail below).
         assert len(sent) == 1
-        assert sent[0][0].check_id == "bare-1fr-grids"
+        assert len(sent[0]["findings"]) == 1
+        assert sent[0]["findings"][0].check_id == "bare-1fr-grids"
+
+
+class TestSendScanEmail:
+    """#236 (user-requested 2026-05-26): the cron emails on EVERY run,
+    clean or not, so the absence of an email proves the cron failed.
+    Subject/body shape differs between clean and findings runs."""
+
+    def _patch_sendgrid(self, monkeypatch):
+        """Set the three env vars the function checks + capture the
+        outgoing HTTP request payload instead of hitting SendGrid."""
+        monkeypatch.setenv("SENDGRID_API_KEY", "fake-key")
+        monkeypatch.setenv("DIGEST_FROM_EMAIL", "from@example.com")
+        monkeypatch.setenv("DIGEST_TO_EMAIL", "to@example.com")
+
+        captured = {}
+
+        class _FakeResp:
+            status = 202
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+
+        def _fake_urlopen(req, timeout=None):  # noqa: ARG001
+            import json as _json
+            captured["url"] = req.full_url
+            captured["body"] = _json.loads(req.data.decode("utf-8"))
+            return _FakeResp()
+
+        import urllib.request
+        monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen)
+        return captured
+
+    def test_clean_run_subject_says_CLEAN(self, monkeypatch):
+        cap = self._patch_sendgrid(monkeypatch)
+        bp_mod.send_scan_email(
+            findings=[],
+            per_check_counts=[("bare-1fr-grids", 0), ("embedded-url-credentials", 0)],
+        )
+        assert "CLEAN" in cap["body"]["subject"]
+        body_text = cap["body"]["content"][0]["value"]
+        # Plain-English statement of clean.
+        assert "ALL CHECKS CLEAN" in body_text
+        # Per-check breakdown lists every check with its 0 count.
+        assert "bare-1fr-grids: 0 finding(s)" in body_text
+        assert "embedded-url-credentials: 0 finding(s)" in body_text
+        # Explainer line so the user knows why they got the email.
+        assert "confirmation email fires on every weekly run" in body_text
+
+    def test_findings_run_subject_has_count(self, monkeypatch):
+        cap = self._patch_sendgrid(monkeypatch)
+        finding = bp_mod.Finding(
+            check_id="bare-1fr-grids",
+            path="static/style.css",
+            line_num=42,
+            line=".x { grid-template-columns: 1fr; }",
+            message="bare 1fr",
+        )
+        bp_mod.send_scan_email(
+            findings=[finding],
+            per_check_counts=[("bare-1fr-grids", 1), ("embedded-url-credentials", 0)],
+        )
+        assert "1 finding(s)" in cap["body"]["subject"]
+        body_text = cap["body"]["content"][0]["value"]
+        # Body has the per-check group header + the file:line offender.
+        assert "== bare-1fr-grids (1 finding(s)) ==" in body_text
+        assert "static/style.css:42" in body_text
+
+    def test_no_email_sent_when_sendgrid_unconfigured(self, monkeypatch, capsys):
+        # Defensive — same behavior as scripts/check_advisories.py: if
+        # the SENDGRID env is missing, log to stderr and return without
+        # raising. Confirms the change keeps the cron resilient.
+        monkeypatch.delenv("SENDGRID_API_KEY", raising=False)
+        monkeypatch.delenv("DIGEST_FROM_EMAIL", raising=False)
+        monkeypatch.delenv("DIGEST_TO_EMAIL", raising=False)
+        bp_mod.send_scan_email(
+            findings=[],
+            per_check_counts=[("bare-1fr-grids", 0)],
+        )
+        err = capsys.readouterr().err
+        assert "SendGrid not configured" in err
+
+    def test_back_compat_alias_send_findings_email(self, monkeypatch):
+        # send_findings_email used to be the public name; keep it as an
+        # alias so any external caller / test mock that targets it still
+        # works. The alias forwards to send_scan_email with no per-check
+        # counts, so the body just confirms it landed in the same path
+        # (clean → CLEAN subject; the per-check breakdown is empty).
+        cap = self._patch_sendgrid(monkeypatch)
+        bp_mod.send_findings_email([])
+        assert "CLEAN" in cap["body"]["subject"]
 
 
 # ---------------------------------------------------------------------------
