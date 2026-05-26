@@ -563,8 +563,11 @@ the code.
 # reflection_api.py — Weekly Reflection (2026-05-16)
 /api/reflection                                  # POST submit (typed/audio), GET list
 /api/reflection/transcribe-segment               # POST — #232 one-segment Whisper transcribe for the pause/resume flow (no Reflection row, no Claude call)
-/api/reflection/<uuid:reflection_id>             # GET one (history detail)
+/api/reflection/<uuid:reflection_id>             # GET one (history detail), DELETE soft-delete (#238)
 /api/reflection/<uuid:reflection_id>/confirm     # POST apply confirmed actions
+/api/reflection/<uuid:reflection_id>/archive     # POST #238 — hide from default history
+/api/reflection/<uuid:reflection_id>/unarchive   # POST #238 — restore from archive
+/api/reflection/<uuid:reflection_id>/restore     # POST #238 — restore from soft-delete
 
 # import_api.py
 /api/import/tasks/parse

@@ -192,6 +192,8 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "audio_cost_usd":         {"desc": "Whisper transcription cost", "notes": "Voice only; NULL for typed"},
             "ai_cost_usd":            {"desc": "Approximate Claude cost for the analysis", "notes": "Best-effort from the response usage; NULL if unavailable"},
             "raw_segments":           {"desc": "Per-segment Whisper transcripts from the #232 pause/resume voice flow", "notes": "JSON list of {text, duration_seconds, cost_usd, recorded_at}. Empty list for typed reflections and pre-#237 rows. Persists the original spoken words so a textarea edit doesn't lose them (#237)."},
+            "is_archived":            {"desc": "Hidden from the default history view (#238)", "notes": "User-toggleable. Show-archived UI toggle surfaces these rows alongside active ones, visually muted. Independent of is_active — a row can be archived AND soft-deleted."},
+            "is_active":              {"desc": "Soft-delete flag (#238)", "notes": "False = soft-deleted; row stays in DB but drops from the default list. Recently-deleted UI section surfaces these with Restore buttons. Matches the Project / Goal / RecurringTask pattern."},
             "proposed_actions":       {"desc": "Claude's proposed changes", "notes": "JSON {explicit: [...], suggested: [...]}"},
             "applied_actions":        {"desc": "What you actually confirmed + the apply result", "notes": "JSON audit trail; NULL until confirmed"},
             "applied_at":             {"desc": "When the confirmed actions were applied", "notes": "NULL until you confirm"},

@@ -194,12 +194,24 @@
         </div>
     </div>
 
-    <!-- History -->
+    <!-- History (#238: archive + soft-delete + restore) -->
     <section class="reflection-history">
-        <h3>Past Reflections</h3>
+        <header class="reflection-history-header">
+            <h3>Past Reflections</h3>
+            <label class="reflection-history-toggle">
+                <input type="checkbox" id="reflShowArchived"> Show archived
+            </label>
+        </header>
         <div id="reflHistory" class="reflection-history-list">
             <p class="reflection-hint">Loading…</p>
         </div>
+
+        <details class="reflection-recently-deleted">
+            <summary id="reflRecentlyDeletedSummary">Recently deleted</summary>
+            <div id="reflRecentlyDeleted" class="reflection-history-list">
+                <p class="reflection-hint">Loading…</p>
+            </div>
+        </details>
     </section>
 
 </div>

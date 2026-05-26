@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import json
+import uuid
 from datetime import date
 from unittest.mock import patch
 
@@ -1200,3 +1201,244 @@ class TestTranscribeSegmentApi:
         # login_required must reject — exact status varies (302 → OAuth
         # or 401 JSON), but it must NOT be a success.
         assert resp.status_code not in (200, 201)
+
+
+class TestArchiveAndDeleteApi:
+    """#238 (2026-05-26): archive (hide from default history) +
+    soft-delete (recycle pattern) endpoints."""
+
+    def _seed_reflection(self, app, transcript="seed text"):
+        with app.app_context():
+            from reflection_service import save_reflection
+            r = save_reflection(
+                transcript=transcript,
+                input_mode=ReflectionInputMode.TYPED,
+                proposed={"explicit": [], "suggested": []},
+            )
+            return str(r.id)
+
+    def test_archive_endpoint_sets_is_archived_true(self, app, client, monkeypatch):
+        _bypass_auth(monkeypatch)
+        rid = self._seed_reflection(app)
+        resp = client.post(f"/api/reflection/{rid}/archive")
+        assert resp.status_code == 200
+        assert resp.get_json()["is_archived"] is True
+        with app.app_context():
+            assert db.session.get(Reflection, uuid.UUID(rid)).is_archived is True
+
+    def test_unarchive_endpoint_clears_is_archived(self, app, client, monkeypatch):
+        _bypass_auth(monkeypatch)
+        rid = self._seed_reflection(app)
+        client.post(f"/api/reflection/{rid}/archive")
+        resp = client.post(f"/api/reflection/{rid}/unarchive")
+        assert resp.status_code == 200
+        assert resp.get_json()["is_archived"] is False
+
+    def test_delete_endpoint_sets_is_active_false(self, app, client, monkeypatch):
+        _bypass_auth(monkeypatch)
+        rid = self._seed_reflection(app)
+        resp = client.delete(f"/api/reflection/{rid}")
+        assert resp.status_code == 200
+        assert resp.get_json()["is_active"] is False
+        with app.app_context():
+            # Row is STILL in the DB — soft-delete only.
+            assert db.session.get(Reflection, uuid.UUID(rid)) is not None
+
+    def test_restore_endpoint_undeletes(self, app, client, monkeypatch):
+        _bypass_auth(monkeypatch)
+        rid = self._seed_reflection(app)
+        client.delete(f"/api/reflection/{rid}")
+        resp = client.post(f"/api/reflection/{rid}/restore")
+        assert resp.status_code == 200
+        assert resp.get_json()["is_active"] is True
+
+    def test_list_hides_archived_by_default(self, app, client, monkeypatch):
+        _bypass_auth(monkeypatch)
+        rid_a = self._seed_reflection(app, "archived one")
+        rid_b = self._seed_reflection(app, "active one")
+        client.post(f"/api/reflection/{rid_a}/archive")
+        resp = client.get("/api/reflection")
+        ids = [r["id"] for r in resp.get_json()["reflections"]]
+        assert rid_a not in ids
+        assert rid_b in ids
+
+    def test_list_with_include_archived_surfaces_them(self, app, client, monkeypatch):
+        _bypass_auth(monkeypatch)
+        rid_a = self._seed_reflection(app)
+        client.post(f"/api/reflection/{rid_a}/archive")
+        resp = client.get("/api/reflection?include_archived=true")
+        ids = [r["id"] for r in resp.get_json()["reflections"]]
+        assert rid_a in ids
+
+    def test_list_hides_deleted_by_default(self, app, client, monkeypatch):
+        _bypass_auth(monkeypatch)
+        rid = self._seed_reflection(app)
+        client.delete(f"/api/reflection/{rid}")
+        resp = client.get("/api/reflection")
+        assert rid not in [r["id"] for r in resp.get_json()["reflections"]]
+
+    def test_list_with_include_deleted_surfaces_them(self, app, client, monkeypatch):
+        _bypass_auth(monkeypatch)
+        rid = self._seed_reflection(app)
+        client.delete(f"/api/reflection/{rid}")
+        resp = client.get("/api/reflection?include_deleted=true")
+        ids = [r["id"] for r in resp.get_json()["reflections"]]
+        assert rid in ids
+
+    def test_archive_idempotent(self, app, client, monkeypatch):
+        _bypass_auth(monkeypatch)
+        rid = self._seed_reflection(app)
+        client.post(f"/api/reflection/{rid}/archive")
+        # Second archive call → still 200, still archived (no-op).
+        resp = client.post(f"/api/reflection/{rid}/archive")
+        assert resp.status_code == 200
+        assert resp.get_json()["is_archived"] is True
+
+    def test_delete_unknown_id_404(self, client, monkeypatch):
+        _bypass_auth(monkeypatch)
+        resp = client.delete(
+            "/api/reflection/00000000-0000-0000-0000-000000000000",
+        )
+        assert resp.status_code == 404
+
+    def test_archive_unknown_id_404(self, client, monkeypatch):
+        _bypass_auth(monkeypatch)
+        resp = client.post(
+            "/api/reflection/00000000-0000-0000-0000-000000000000/archive",
+        )
+        assert resp.status_code == 404
+
+    def test_restore_unknown_id_404(self, client, monkeypatch):
+        _bypass_auth(monkeypatch)
+        resp = client.post(
+            "/api/reflection/00000000-0000-0000-0000-000000000000/restore",
+        )
+        assert resp.status_code == 404
+
+    def test_archive_independent_of_delete(self, app, client, monkeypatch):
+        """Archive and delete are orthogonal flags — a reflection can be
+        archived AND soft-deleted at the same time. Restore handles
+        is_active; unarchive handles is_archived."""
+        _bypass_auth(monkeypatch)
+        rid = self._seed_reflection(app)
+        client.post(f"/api/reflection/{rid}/archive")
+        client.delete(f"/api/reflection/{rid}")
+        with app.app_context():
+            r = db.session.get(Reflection, uuid.UUID(rid))
+            assert r.is_archived is True
+            assert r.is_active is False
+        # Restore brings back is_active only — still archived.
+        client.post(f"/api/reflection/{rid}/restore")
+        with app.app_context():
+            r = db.session.get(Reflection, uuid.UUID(rid))
+            assert r.is_archived is True
+            assert r.is_active is True
+
+
+class TestReflectionServiceArchiveDelete:
+    """Direct service-layer assertions for the #238 archive/delete
+    helpers — exercises the path without HTTP routing."""
+
+    def test_set_reflection_archived_toggles_flag(self, app):
+        with app.app_context():
+            from reflection_service import (
+                save_reflection,
+                set_reflection_archived,
+            )
+            r = save_reflection(
+                transcript="x",
+                input_mode=ReflectionInputMode.TYPED,
+                proposed={"explicit": [], "suggested": []},
+            )
+            assert r.is_archived is False
+            set_reflection_archived(r.id, archived=True)
+            assert r.is_archived is True
+            set_reflection_archived(r.id, archived=False)
+            assert r.is_archived is False
+
+    def test_set_reflection_archived_unknown_id_returns_none(self, app):
+        with app.app_context():
+            from reflection_service import set_reflection_archived
+            assert set_reflection_archived(
+                uuid.UUID("00000000-0000-0000-0000-000000000000"),
+                archived=True,
+            ) is None
+
+    def test_soft_delete_then_restore(self, app):
+        with app.app_context():
+            from reflection_service import (
+                restore_reflection,
+                save_reflection,
+                soft_delete_reflection,
+            )
+            r = save_reflection(
+                transcript="x",
+                input_mode=ReflectionInputMode.TYPED,
+                proposed={"explicit": [], "suggested": []},
+            )
+            assert r.is_active is True
+            soft_delete_reflection(r.id)
+            assert r.is_active is False
+            restore_reflection(r.id)
+            assert r.is_active is True
+
+    def test_list_reflections_default_hides_archived_and_deleted(self, app):
+        with app.app_context():
+            from reflection_service import (
+                list_reflections,
+                save_reflection,
+                set_reflection_archived,
+                soft_delete_reflection,
+            )
+            active = save_reflection(
+                transcript="active",
+                input_mode=ReflectionInputMode.TYPED,
+                proposed={"explicit": [], "suggested": []},
+            )
+            archived = save_reflection(
+                transcript="archived",
+                input_mode=ReflectionInputMode.TYPED,
+                proposed={"explicit": [], "suggested": []},
+            )
+            deleted = save_reflection(
+                transcript="deleted",
+                input_mode=ReflectionInputMode.TYPED,
+                proposed={"explicit": [], "suggested": []},
+            )
+            set_reflection_archived(archived.id, archived=True)
+            soft_delete_reflection(deleted.id)
+            results = list_reflections()
+            ids = {str(r.id) for r in results}
+            assert str(active.id) in ids
+            assert str(archived.id) not in ids
+            assert str(deleted.id) not in ids
+
+    def test_list_reflections_include_archived_surfaces(self, app):
+        with app.app_context():
+            from reflection_service import (
+                list_reflections,
+                save_reflection,
+                set_reflection_archived,
+            )
+            r = save_reflection(
+                transcript="x",
+                input_mode=ReflectionInputMode.TYPED,
+                proposed={"explicit": [], "suggested": []},
+            )
+            set_reflection_archived(r.id, archived=True)
+            assert r in list_reflections(include_archived=True)
+
+    def test_list_reflections_include_deleted_surfaces(self, app):
+        with app.app_context():
+            from reflection_service import (
+                list_reflections,
+                save_reflection,
+                soft_delete_reflection,
+            )
+            r = save_reflection(
+                transcript="x",
+                input_mode=ReflectionInputMode.TYPED,
+                proposed={"explicit": [], "suggested": []},
+            )
+            soft_delete_reflection(r.id)
+            assert r in list_reflections(include_deleted=True)

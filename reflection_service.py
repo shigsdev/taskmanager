@@ -641,14 +641,72 @@ def get_reflection(reflection_id: uuid.UUID) -> Reflection | None:
     return db.session.get(Reflection, reflection_id)
 
 
-def list_reflections(limit: int = 100) -> list[Reflection]:
-    return list(
-        db.session.scalars(
-            select(Reflection)
-            .order_by(Reflection.created_at.desc())
-            .limit(limit)
-        )
-    )
+def list_reflections(
+    limit: int = 100,
+    *,
+    include_archived: bool = False,
+    include_deleted: bool = False,
+) -> list[Reflection]:
+    """List reflections, newest first.
+
+    #238 (2026-05-26):
+      - ``include_archived=False`` (default) hides rows where
+        ``is_archived=True``. UI passes ``True`` when the "Show
+        archived" toggle is on.
+      - ``include_deleted=False`` (default) hides rows where
+        ``is_active=False`` (soft-deleted). UI passes ``True`` only
+        for the Recently-deleted section so the user can restore.
+    """
+    stmt = select(Reflection)
+    if not include_archived:
+        stmt = stmt.where(Reflection.is_archived.is_(False))
+    if not include_deleted:
+        stmt = stmt.where(Reflection.is_active.is_(True))
+    stmt = stmt.order_by(Reflection.created_at.desc()).limit(limit)
+    return list(db.session.scalars(stmt))
+
+
+def set_reflection_archived(
+    reflection_id: uuid.UUID, archived: bool,
+) -> Reflection | None:
+    """Toggle a reflection's archived flag. Returns the updated
+    Reflection or None if not found.
+
+    Idempotent: setting archived=True on an already-archived row is
+    a no-op (no error). Soft-deleted rows can still be archived/
+    unarchived — the two flags are independent (deleted+archived is
+    a valid state; restore handles the active flag, unarchive handles
+    the archived flag).
+    """
+    r = get_reflection(reflection_id)
+    if r is None:
+        return None
+    if r.is_archived != bool(archived):
+        r.is_archived = bool(archived)
+        db.session.commit()
+    return r
+
+
+def soft_delete_reflection(reflection_id: uuid.UUID) -> Reflection | None:
+    """Mark a reflection inactive (soft-delete). Idempotent."""
+    r = get_reflection(reflection_id)
+    if r is None:
+        return None
+    if r.is_active:
+        r.is_active = False
+        db.session.commit()
+    return r
+
+
+def restore_reflection(reflection_id: uuid.UUID) -> Reflection | None:
+    """Restore a soft-deleted reflection. Idempotent."""
+    r = get_reflection(reflection_id)
+    if r is None:
+        return None
+    if not r.is_active:
+        r.is_active = True
+        db.session.commit()
+    return r
 
 
 def _resolve_ref(hint: Any, index: dict[str, uuid.UUID]) -> str | None:
