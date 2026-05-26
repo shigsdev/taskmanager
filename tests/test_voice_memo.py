@@ -923,6 +923,157 @@ class TestVoiceNormaliser:
         assert result[0]["goal_id"] is None
         assert result[0]["goal_hint"] == "Hallucinated goal"
 
+    # --- #234 (2026-05-26) cross-domain fallback + exact-name regression -
+
+    def test_234_exact_user_repro_project_and_goal_both_named_job_search(self):
+        """User-reported 2026-05-25 with iPhone screenshot: voice-memo
+        candidate "Follow up with VG regarding job openings" showed
+        BOTH "Heard project: 'Job Search' (no match)" AND
+        "Heard goal: 'Job Search' (no match)" — but the user's prod
+        DB has BOTH a Project AND a Goal named exactly "Job Search".
+
+        This is the regression assertion that the resolver works for
+        the user's exact data shape. If it ever fails, "(no match)"
+        will surface again and we'll have a fast Jest-style signal
+        instead of waiting for the user to find it.
+        """
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{
+                "title": "Follow up with VG regarding job openings",
+                "type": "personal",
+                "tier": "this_week",
+                "project_hint": "Job Search",
+                "goal_hint": "Job Search",
+            }],
+            projects=[("project-uuid-21a67c55", "Job Search")],
+            goals=[("goal-uuid-5d20e981", "Job Search")],
+        )
+        assert result[0]["project_id"] == "project-uuid-21a67c55"
+        assert result[0]["goal_id"] == "goal-uuid-5d20e981"
+        # Hints stay on the candidate even when resolved (the UI uses
+        # them for the dropdown's pre-selection + tooltip).
+        assert result[0]["project_hint"] == "Job Search"
+        assert result[0]["goal_hint"] == "Job Search"
+
+    def test_234_cross_domain_project_hint_falls_back_to_goal(self):
+        """If Claude misclassifies — putting a goal-name in
+        project_hint AND not setting goal_hint — the cross-domain
+        fallback resolves project_hint against goals and fills goal_id.
+        project_id stays null (the project lookup correctly missed)."""
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "x", "project_hint": "Run a half marathon"}],
+            projects=[("p1", "Some Project")],
+            goals=[("g1", "Run a half marathon")],
+        )
+        assert result[0]["project_id"] is None
+        assert result[0]["goal_id"] == "g1"
+        # The fallback surfaces the resolved name as goal_hint so the
+        # UI can show the user which goal it picked.
+        assert result[0]["goal_hint"] == "Run a half marathon"
+
+    def test_234_cross_domain_goal_hint_falls_back_to_project(self):
+        """Symmetric to the above: a project-name in goal_hint with no
+        project_hint set resolves via the goal→project fallback."""
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "x", "goal_hint": "Q2 OKRs"}],
+            projects=[("p1", "Q2 OKRs")],
+            goals=[("g1", "Some Goal")],
+        )
+        assert result[0]["goal_id"] is None
+        assert result[0]["project_id"] == "p1"
+        assert result[0]["project_hint"] == "Q2 OKRs"
+
+    def test_234_cross_domain_does_not_clobber_explicit_resolution(self):
+        """If Claude correctly sets BOTH hints and both resolve, the
+        fallback must NOT overwrite either. Specifically: an explicit
+        project_hint that resolves to a project shouldn't be
+        secondarily resolved against goals (would clobber the goal_id
+        if also explicit).
+        """
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{
+                "title": "x",
+                "project_hint": "Marathon Training",
+                "goal_hint": "Run a half marathon",
+            }],
+            projects=[("p1", "Marathon Training")],
+            goals=[("g1", "Run a half marathon")],
+        )
+        assert result[0]["project_id"] == "p1"
+        assert result[0]["goal_id"] == "g1"
+
+    def test_234_cross_domain_does_not_fire_if_already_resolved(self):
+        """If project_hint resolved to a project, the goal-fallback
+        path must not also run on the same hint (would risk clobbering
+        a separately-set goal_hint's resolution)."""
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "x", "project_hint": "Job Search"}],
+            projects=[("p1", "Job Search")],
+            goals=[("g1", "Job Search")],
+        )
+        # project_hint resolves to project → no fallback to goal.
+        # goal_id stays None because no goal_hint was set.
+        assert result[0]["project_id"] == "p1"
+        assert result[0]["goal_id"] is None
+
+    def test_234_no_hint_no_fallback(self):
+        """No hint at all → no resolution attempted on either side."""
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "x"}],
+            projects=[("p1", "Job Search")],
+            goals=[("g1", "Job Search")],
+        )
+        assert result[0]["project_id"] is None
+        assert result[0]["goal_id"] is None
+        assert result[0]["project_hint"] is None
+        assert result[0]["goal_hint"] is None
+
+    def test_234_fetch_logs_counts_on_success(self, app, caplog):
+        """The #234 INFO log surfaces project/goal counts so a future
+        'all hints missed' report can be diagnosed from /api/debug/logs.
+        """
+        import logging
+
+        from scan_service import _fetch_projects_and_goals_for_hints
+        with app.app_context(), caplog.at_level(logging.INFO, logger="scan_service"):
+            projects, goals = _fetch_projects_and_goals_for_hints()
+        # In the test DB there may be 0 projects/goals; that's fine —
+        # the assertion is that the log fired with the format we expect.
+        msgs = [r.getMessage() for r in caplog.records]
+        assert any("voice hint sources:" in m for m in msgs), msgs
+
+    def test_234_fetch_logs_warning_on_exception(self, monkeypatch, caplog):
+        """If the DB query raises (transient, schema drift, etc.),
+        the fetch returns empty AND logs a WARNING with the exception
+        type + message — instead of silently swallowing.
+        """
+        import logging
+
+        import scan_service
+
+        # Patch db.session.scalars to raise on the next call. The
+        # `from models import ... db` is local-to-function so we have
+        # to patch at the source.
+        from models import db as _db
+
+        def _explode(*args, **kwargs):
+            raise RuntimeError("simulated DB transient")
+
+        monkeypatch.setattr(_db.session, "scalars", _explode)
+        with caplog.at_level(logging.WARNING, logger="scan_service"):
+            projects, goals = scan_service._fetch_projects_and_goals_for_hints()
+        assert projects == []
+        assert goals == []
+        msgs = [r.getMessage() for r in caplog.records]
+        assert any("voice hint sources fetch failed" in m for m in msgs), msgs
+        assert any("RuntimeError" in m for m in msgs), msgs
+
     def test_is_task_false_preserved(self):
         from scan_service import _normalise_voice_candidates
         result = _normalise_voice_candidates(
