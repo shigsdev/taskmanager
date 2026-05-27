@@ -105,13 +105,19 @@ def _run_pytest_with_coverage() -> dict | None:
     if coverage_json.exists():
         coverage_json.unlink()
     try:
+        # NOTE: `--no-cov-on-fail` was REMOVED 2026-05-27 because it
+        # made the audit useless when ANY test failed — coverage.json
+        # never landed, and the audit exited 2 ("internal error")
+        # instead of giving us the coverage signal we ACTUALLY came
+        # for. The audit doesn't care about test pass/fail; it just
+        # needs the coverage data. Test failures are caught by the
+        # per-commit gate; the audit's job is the drift signal.
         proc = subprocess.run(  # noqa: S603
             [
                 sys.executable, "-m", "pytest",
                 "--cov=.",
                 "--cov-report=json:coverage.json",
                 "--cov-report=term",
-                "--no-cov-on-fail",
                 "-q",
             ],
             capture_output=True, text=True, check=False,
