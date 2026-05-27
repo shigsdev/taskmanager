@@ -30,7 +30,9 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # #242: `contents: write` so the workflow can commit the
+      # `## Auto-filed by recurring audits` updates back to main.
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -66,4 +68,26 @@ jobs:
           SENDGRID_API_KEY:  ${{ secrets.SENDGRID_API_KEY }}
           DIGEST_FROM_EMAIL: ${{ vars.DIGEST_FROM_EMAIL }}
           DIGEST_TO_EMAIL:   ${{ vars.DIGEST_TO_EMAIL }}
-        run: python scripts/check_tech_debt.py
+        # See weekly-bug-pattern-scan.yml for the AUDIT_RC pattern;
+        # we need to preserve the audit's meaningful exit code while
+        # still running the commit-back step regardless.
+        run: |
+          python scripts/check_tech_debt.py --autofile
+          echo "AUDIT_RC=$?" >> $GITHUB_ENV
+        continue-on-error: true
+
+      - name: Commit BACKLOG.md changes (if any)
+        # #242: see weekly-bug-pattern-scan.yml for the rationale.
+        run: |
+          if [[ -n "$(git status --porcelain BACKLOG.md)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add BACKLOG.md
+            git commit -m "chore(autofile): tech-debt audit upsert [skip ci]"
+            git push
+          else
+            echo "No BACKLOG.md changes to commit."
+          fi
+
+      - name: Re-emit audit exit code
+        run: exit ${AUDIT_RC:-0}

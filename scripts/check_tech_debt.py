@@ -525,7 +525,21 @@ def send_audit_email(
         sys.stderr.write(f"[tech-debt] email send failed: {e}\n")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Run the #228 weekly tech-debt audit.",
+    )
+    parser.add_argument(
+        "--autofile", action="store_true",
+        help=(
+            "#242: upsert findings into BACKLOG.md's "
+            "`## Auto-filed by recurring audits` section after the "
+            "email step. Used by the weekly cron workflow."
+        ),
+    )
+    args = parser.parse_args(argv)
+
     sys.stdout.write(
         f"[tech-debt] starting "
         f"{datetime.datetime.now(datetime.UTC).isoformat()}\n"
@@ -551,6 +565,12 @@ def main() -> int:
         per_check_counts.append((label, len(findings)))
 
     send_audit_email(all_findings, per_check_counts=per_check_counts)
+    if args.autofile:
+        # Add PROJECT_ROOT to sys.path so `from scripts import ...`
+        # works when run as `python scripts/check_tech_debt.py`.
+        sys.path.insert(0, str(PROJECT_ROOT))
+        from scripts import backlog_autofile  # noqa: PLC0415
+        backlog_autofile.run_for_audit("tech-debt", all_findings)
     if not all_findings:
         sys.stdout.write(
             "[tech-debt] CLEAN — confirmation email sent.\n"

@@ -31,7 +31,10 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # #242: `contents: write` so the workflow can commit the
+      # `## Auto-filed by recurring audits` updates back to main when
+      # the audit's `--autofile` flag changes BACKLOG.md.
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -50,4 +53,32 @@ jobs:
           SENDGRID_API_KEY:  ${{ secrets.SENDGRID_API_KEY }}
           DIGEST_FROM_EMAIL: ${{ vars.DIGEST_FROM_EMAIL }}
           DIGEST_TO_EMAIL:   ${{ vars.DIGEST_TO_EMAIL }}
-        run: python scripts/check_bug_patterns.py
+        # The audit's exit code is meaningful (1 on findings, 2 on
+        # internal error) — DON'T let the autofile commit step block
+        # on it. We capture the rc and re-emit it at the end.
+        run: |
+          python scripts/check_bug_patterns.py --autofile
+          echo "AUDIT_RC=$?" >> $GITHUB_ENV
+        continue-on-error: true
+
+      - name: Commit BACKLOG.md changes (if any)
+        # #242: belt-and-braces — if `--autofile` updated BACKLOG.md
+        # (inserts / updates / auto-resolves), commit + push back to
+        # main. `[skip ci]` in the message prevents push-triggered
+        # workflows from firing on this commit (the recurring audit
+        # uses cron triggers anyway, but belt-and-braces).
+        run: |
+          if [[ -n "$(git status --porcelain BACKLOG.md)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add BACKLOG.md
+            git commit -m "chore(autofile): bug-pattern audit upsert [skip ci]"
+            git push
+          else
+            echo "No BACKLOG.md changes to commit."
+          fi
+
+      - name: Re-emit audit exit code
+        # Restore the audit's original exit code so workflow status
+        # accurately reflects findings vs clean — same UX as before.
+        run: exit ${AUDIT_RC:-0}

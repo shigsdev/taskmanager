@@ -445,6 +445,14 @@ def main(argv: list[str] | None = None) -> int:
             "can distinguish CLEAN / findings / internal-error runs."
         ),
     )
+    parser.add_argument(
+        "--autofile", action="store_true",
+        help=(
+            "#242 (2026-05-27): upsert findings into BACKLOG.md's "
+            "`## Auto-filed by recurring audits` section after the "
+            "email step. Used by the weekly cron workflow."
+        ),
+    )
     args = parser.parse_args(argv)
 
     sys.stdout.write(
@@ -511,6 +519,12 @@ def main(argv: list[str] | None = None) -> int:
     send_audit_email(
         findings, per_check_counts=per_check_counts, overall=overall,
     )
+    if args.autofile:
+        # Add PROJECT_ROOT to sys.path so `from scripts import ...`
+        # works when run as `python scripts/check_test_coverage.py`.
+        sys.path.insert(0, str(PROJECT_ROOT))
+        from scripts import backlog_autofile  # noqa: PLC0415
+        backlog_autofile.run_for_audit("coverage", findings)
     if not findings:
         sys.stdout.write(
             "[coverage-audit] CLEAN — confirmation email sent.\n"

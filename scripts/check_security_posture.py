@@ -474,7 +474,21 @@ def send_audit_email(
         sys.stderr.write(f"[security-posture] email send failed: {e}\n")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Run the #227 monthly security-posture audit.",
+    )
+    parser.add_argument(
+        "--autofile", action="store_true",
+        help=(
+            "#242: upsert findings into BACKLOG.md's "
+            "`## Auto-filed by recurring audits` section after the "
+            "email step. Used by the monthly cron workflow."
+        ),
+    )
+    args = parser.parse_args(argv)
+
     sys.stdout.write(
         f"[security-posture] starting "
         f"{datetime.datetime.now(datetime.UTC).isoformat()}\n"
@@ -501,6 +515,12 @@ def main() -> int:
 
     # Email on every run (clean or not) — same pattern as #226c.
     send_audit_email(all_findings, per_check_counts=per_check_counts)
+    if args.autofile:
+        # Add PROJECT_ROOT to sys.path so `from scripts import ...`
+        # works when run as `python scripts/check_security_posture.py`.
+        sys.path.insert(0, str(PROJECT_ROOT))
+        from scripts import backlog_autofile  # noqa: PLC0415
+        backlog_autofile.run_for_audit("security", all_findings)
     if not all_findings:
         sys.stdout.write(
             "[security-posture] CLEAN — confirmation email sent.\n"

@@ -580,7 +580,7 @@ class TestMainExitCodes:
             if name != "string-match-only-prod-tests"
         ]
         try:
-            rc = mod.main()
+            rc = mod.main([])
         finally:
             mod.CHECKS = mod.CHECKS_BACKUP
         assert rc == 0
@@ -616,7 +616,7 @@ class TestMainExitCodes:
             if name != "string-match-only-prod-tests"
         ]
         try:
-            rc = mod.main()
+            rc = mod.main([])
         finally:
             mod.CHECKS = mod.CHECKS_BACKUP
         assert rc == 1

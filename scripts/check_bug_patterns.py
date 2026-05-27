@@ -656,7 +656,21 @@ def send_findings_email(findings: list[Finding]) -> None:  # noqa: D401
     send_scan_email(findings, per_check_counts=[])
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Run the #226 weekly bug-pattern scan.",
+    )
+    parser.add_argument(
+        "--autofile", action="store_true",
+        help=(
+            "#242: upsert findings into BACKLOG.md's "
+            "`## Auto-filed by recurring audits` section after the "
+            "email step. Used by the weekly cron workflow."
+        ),
+    )
+    args = parser.parse_args(argv)
+
     sys.stdout.write(
         f"[bug-pattern-scan] starting "
         f"{datetime.datetime.now(datetime.UTC).isoformat()}\n"
@@ -684,6 +698,14 @@ def main() -> int:
     # workflow drifted). Pre-#236 behavior was silent-on-clean — which
     # left "is the cron actually running?" as a latent question.
     send_scan_email(all_findings, per_check_counts=per_check_counts)
+    if args.autofile:
+        # Import via sys.path so the script works either as
+        # `python scripts/check_bug_patterns.py` (cwd=PROJECT_ROOT,
+        # scripts/ on sys.path[0] which does NOT see `scripts` as a
+        # package) or via `python -m scripts.check_bug_patterns`.
+        sys.path.insert(0, str(PROJECT_ROOT))
+        from scripts import backlog_autofile  # noqa: PLC0415
+        backlog_autofile.run_for_audit("bug-pattern", all_findings)
     if not all_findings:
         sys.stdout.write(
             "[bug-pattern-scan] CLEAN — confirmation email sent.\n"

@@ -156,6 +156,25 @@ _(nothing in flight)_
 | 161 | **Tier vs due_date drift — task with tier=tomorrow can have due_date=today (and vice versa)** — Diagnostic-found 2026-05-09 while investigating #152. Task "create intro letters for Ryan" had `tier=tomorrow` and `due_date=2026-05-09` (today, Saturday). The Today panel filters strictly by `tier=today`, so this task was invisible there even though the date said today. Caused by: user manually edits one field without the auto-promote gate firing — `_auto_promote_tier_on_due_today` (`task_service.py:133`) skips when the PATCH includes both `tier` and `due_date`, OR when the user just edits one without touching the other. **Fix proposals:** (a) "Show on both" — the Today panel surfaces tasks where `tier=today` OR `due_date=today` (excluding freezer/inbox); same for Tomorrow. No state mutation, just an inclusive filter on the read side. (b) Mutation-on-read — every list endpoint reconciles tier ↔ due_date and persists. Cleaner state but write-on-read feels gross. (c) Add a "drift warning" badge to tasks where tier and due_date disagree. **Recommend (a) — least invasive, mirrors the calendar's slicing.** | 2026-05-09 | ✅ DONE (shipped earlier; corrected in the 2026-05-22 backlog audit). The Today panel inclusively surfaces the `tier=tomorrow` + `due_date=today` drift case — `static/app.js:615` (`#161` comment, narrowed 2026-05-14 to the tomorrow-roll case) — Option (a). |
 | 153 | **Calendar cell content cut off — task titles in day cells truncate with no way to see full text** — User-reported 2026-05-09. Long task titles in the /calendar day cells (e.g. "Change refrigerator…", "create intro letters f…") get ellipsis-truncated and there's no hover, click, or expand affordance to see the full text. Fix options: (a) hover tooltip — desktop only; (b) click cell content → opens task detail panel — works on mobile but currently the cell is the drop target for drag-and-drop, may conflict; (c) cell-row CSS `white-space: normal; word-wrap: break-word;` — tasks expand vertically; (d) on hover/tap on small "…" indicator, expand into a popover showing full text + click-to-open. Recommend (b) — make each task line in the cell a clickable link to the detail panel, similar to how task cards work on the main board. Drag-and-drop should still work on the cell itself (drop empty space) AND on the line (drop on the task line opens detail rather than reorders — needs scoping). | 2026-05-09 | ✅ DONE (shipped earlier; corrected in the 2026-05-22 backlog audit). Calendar day-cell task lines are clickable links to the detail panel (`static/calendar.js:147` — class `calendar-task-link` → `/?task=<id>`) plus a native `title=` hover tooltip (`calendar.js:131`) — Option (b). |
 
+## Auto-filed by recurring audits
+
+<!-- This section is managed by `scripts/backlog_autofile.py`. Each row
+is keyed by an HTML-comment marker of the form
+`<!-- audit-row: <audit_name>/<check_id>/<dedup_key> -->`. The four
+recurring audits (#226 bug-pattern, #227 security, #228 tech-debt,
+#229 coverage) call `upsert_finding()` on every run; new findings get
+a row, repeat findings only refresh `last-seen`. When an audit run
+clean-passes a previously-flagged key, the next `upsert_findings()`
+call marks the row `🟢 auto-detected resolved YYYY-MM-DD` so an
+operator can verify + move it to Resolved. **Do not edit the markers
+or column structure by hand** — the script grep-matches them
+verbatim. Free-text edits to the `Notes / Status` cell are fine.
+The script preserves operator-added prose across re-renders. -->
+
+| Audit row | Finding | First seen | Last seen | Notes / Status |
+|---|---|---|---|---|
+<!-- autofile-section-end -->
+
 ## Backlog (prioritized)
 
 | # | Item | Category | Priority | Value | Effort | Complexity | Status |

@@ -422,7 +422,7 @@ class TestMainExitCodes:
                             lambda findings, *, per_check_counts: sent.append(
                                 {"findings": findings, "counts": per_check_counts},
                             ))
-        rc = sp_mod.main()
+        rc = sp_mod.main([])
         assert rc == 0
         assert "CLEAN" in capsys.readouterr().out
         # Confirmation-on-clean email IS sent (1 call, 0 findings).
@@ -456,7 +456,7 @@ class TestMainExitCodes:
                             lambda findings, *, per_check_counts: sent.append(
                                 {"findings": findings, "counts": per_check_counts},
                             ))
-        rc = sp_mod.main()
+        rc = sp_mod.main([])
         assert rc == 1
         assert len(sent) == 1
         assert len(sent[0]["findings"]) == 1

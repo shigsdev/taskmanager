@@ -526,7 +526,7 @@ class TestMainExitCodes:
                             lambda findings, *, per_check_counts: sent.append(
                                 {"findings": findings, "counts": per_check_counts},
                             ))
-        rc = td_mod.main()
+        rc = td_mod.main([])
         assert rc == 0
         out = capsys.readouterr().out
         assert "CLEAN" in out
@@ -560,7 +560,7 @@ class TestMainExitCodes:
                             lambda findings, *, per_check_counts: sent.append(
                                 {"findings": findings, "counts": per_check_counts},
                             ))
-        rc = td_mod.main()
+        rc = td_mod.main([])
         assert rc == 1
         assert len(sent) == 1
         assert len(sent[0]["findings"]) == 1
