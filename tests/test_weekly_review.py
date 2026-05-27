@@ -16,10 +16,24 @@ These tests verify:
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import auth
 from models import Task, TaskStatus, TaskType, Tier, db
+from utils import local_today_date
+
+
+# #240 (2026-05-27): tests previously used `date.today()` which returns
+# UTC on CI runners. The server stamps `last_reviewed` via
+# `local_today_date()` (DIGEST_TZ — America/New_York by default), so
+# at the UTC↔ET midnight boundary the assertions `body["task"][
+# "last_reviewed"] == _today().isoformat()` would fail with
+# `2026-05-26 == 2026-05-27` style mismatches. Same fixture timing
+# class as #181 (2026-05-09). Routing all date arithmetic through
+# `local_today_date()` keeps the test math aligned with the server's
+# view regardless of the runner's clock.
+def _today() -> object:  # noqa: ANN201 — small wrapper
+    return local_today_date()
 
 
 def _make_task(**overrides) -> Task:
@@ -57,7 +71,7 @@ class TestStaleTasksAPI:
         with app.app_context():
             _make_task(
                 title="Old review",
-                last_reviewed=date.today() - timedelta(days=8),
+                last_reviewed=_today() - timedelta(days=8),
             )
 
         resp = authed_client.get("/api/review")
@@ -69,7 +83,7 @@ class TestStaleTasksAPI:
         with app.app_context():
             _make_task(
                 title="Fresh review",
-                last_reviewed=date.today() - timedelta(days=3),
+                last_reviewed=_today() - timedelta(days=3),
             )
 
         resp = authed_client.get("/api/review")
@@ -81,7 +95,7 @@ class TestStaleTasksAPI:
         with app.app_context():
             _make_task(
                 title="Boundary",
-                last_reviewed=date.today() - timedelta(days=7),
+                last_reviewed=_today() - timedelta(days=7),
             )
 
         resp = authed_client.get("/api/review")
@@ -119,7 +133,7 @@ class TestStaleTasksAPI:
         with app.app_context():
             _make_task(
                 title="Fresh",
-                last_reviewed=date.today(),
+                last_reviewed=_today(),
             )
 
         resp = authed_client.get("/api/review")
@@ -144,7 +158,7 @@ class TestReviewKeepAction:
         assert resp.status_code == 200
         body = resp.get_json()
         assert body["action"] == "keep"
-        assert body["task"]["last_reviewed"] == date.today().isoformat()
+        assert body["task"]["last_reviewed"] == _today().isoformat()
         assert body["task"]["tier"] == "today"  # unchanged
 
     def test_keep_does_not_change_tier(self, authed_client, app):
@@ -172,7 +186,7 @@ class TestReviewFreezeAction:
         assert resp.status_code == 200
         body = resp.get_json()
         assert body["task"]["tier"] == "freezer"
-        assert body["task"]["last_reviewed"] == date.today().isoformat()
+        assert body["task"]["last_reviewed"] == _today().isoformat()
 
     def test_freeze_from_today_tier(self, authed_client, app):
         with app.app_context():
@@ -224,7 +238,7 @@ class TestReviewSnoozeAction:
         )
         assert resp.status_code == 200
         body = resp.get_json()
-        assert body["task"]["last_reviewed"] == date.today().isoformat()
+        assert body["task"]["last_reviewed"] == _today().isoformat()
         assert body["task"]["tier"] == "this_week"  # unchanged
 
     def test_snoozed_task_not_in_review_queue(self, authed_client, app):
