@@ -79,11 +79,14 @@ _CRITICAL_PATH_FLOORS: dict[str, float] = {
     "crypto.py": 95.0,               # Fernet encrypt/decrypt — tiny + critical
     "recurring_service.py": 80.0,    # spawn cron correctness
     "reflection_service.py": 80.0,   # Claude apply pipeline (#174 audit fix)
-    # voice_service.py: floor set to 70 (current is ~72.7). Lower than
-    # the others on purpose — the Whisper-mocked tests are heavier to
-    # write per LOC than for the pure-logic services. Tighten when
-    # voice_service gets more direct unit tests (#239 candidate).
-    "voice_service.py": 70.0,
+    # voice_service.py: floor bumped 70 → 90 by #239 (2026-05-27).
+    # Direct unit tests on `_call_whisper_api` (egress shape + cost
+    # calc + EgressError translation + iOS-Safari MIME quirks)
+    # brought file coverage to 100%. Setting floor at 90% leaves
+    # headroom for incidental regressions while still flagging real
+    # drift — Whisper-mocked tests aren't cheap to write per LOC, so
+    # 90 (not 95) is the pragmatic high-water-mark anchor.
+    "voice_service.py": 90.0,
 }
 
 _BASELINE_PATH = PROJECT_ROOT / "docs" / "audit" / "coverage-baseline.json"
