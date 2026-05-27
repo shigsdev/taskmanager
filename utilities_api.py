@@ -263,14 +263,23 @@ def _serialise_findings(findings) -> list[dict]:
     return out
 
 
-def _run_audit_script_checks(checks_module) -> dict:
+def _run_audit_script_checks(
+    checks_module, audit_name: str | None = None,
+) -> dict:
     """Invoke every check function in `checks_module.CHECKS` and
     return the aggregate as a JSON-safe dict.
 
-    Used by both /run-bug-pattern-scan and /run-security-posture-scan.
-    Catches per-check exceptions so one broken check doesn't abort
-    the whole audit — the broken check just shows 0 findings + an
-    "errored" note in per_check_counts.
+    Used by /run-bug-pattern-scan, /run-security-posture-scan, and
+    /run-tech-debt-audit. Catches per-check exceptions so one broken
+    check doesn't abort the whole audit — the broken check just shows
+    0 findings + an "errored" note in per_check_counts.
+
+    If ``audit_name`` is provided, the finding list is also passed to
+    ``backlog_autofile.run_for_audit()`` so /utilities-triggered runs
+    end up in BACKLOG.md's ``## Auto-filed by recurring audits``
+    section, same as the cron-triggered runs. The autofile is
+    idempotent — a manual run won't duplicate rows on top of the cron
+    run's data; it just refreshes ``last_seen``. (#243, 2026-05-27)
     """
     all_findings = []
     per_check = []
@@ -287,6 +296,23 @@ def _run_audit_script_checks(checks_module) -> dict:
             continue
         all_findings.extend(findings)
         per_check.append({"label": label, "count": len(findings)})
+
+    # #243: auto-file the findings so the operator sees them in the
+    # backlog even when they ran the audit by clicking Run on the
+    # /utilities card. Same upsert path the cron uses — single source
+    # of truth for "this finding exists." Best-effort: a broken
+    # autofile must not take down the UI response.
+    if audit_name:
+        try:
+            from scripts import backlog_autofile
+            backlog_autofile.run_for_audit(audit_name, all_findings)
+        except (ImportError, FileNotFoundError, ValueError, OSError) as e:
+            logger.warning(
+                "utilities: autofile for %s failed (continuing): "
+                "%s: %s",
+                audit_name, type(e).__name__, e,
+            )
+
     return {
         "total": len(all_findings),
         "per_check": per_check,
@@ -306,7 +332,11 @@ def run_bug_pattern_scan(email: str):  # noqa: ARG001
     breakdown even when total is 0. Empty `findings` array = CLEAN.
     """
     from scripts import check_bug_patterns
-    result = _run_audit_script_checks(check_bug_patterns)
+    # #243 — pass audit_name so the findings get auto-filed to
+    # BACKLOG.md's `## Auto-filed by recurring audits` section.
+    result = _run_audit_script_checks(
+        check_bug_patterns, audit_name="bug-pattern",
+    )
     logger.info(
         "utilities: bug-pattern scan triggered via UI, total=%d",
         result["total"],
@@ -325,7 +355,10 @@ def run_security_posture_scan(email: str):  # noqa: ARG001
     UI reflects whatever is committed at the deployed SHA.
     """
     from scripts import check_security_posture
-    result = _run_audit_script_checks(check_security_posture)
+    # #243 — autofile to BACKLOG.md alongside the email channel.
+    result = _run_audit_script_checks(
+        check_security_posture, audit_name="security",
+    )
     logger.info(
         "utilities: security-posture scan triggered via UI, total=%d",
         result["total"],
@@ -473,6 +506,32 @@ def _run_coverage_audit_subprocess(json_path: str) -> None:
         with contextlib.suppress(OSError):
             Path(stderr_path).unlink(missing_ok=True)
 
+    # #243 (2026-05-27): autofile coverage findings into BACKLOG.md
+    # the same way the inline-scan endpoints do. The script's
+    # --json-only branch exits before its own autofile branch fires,
+    # so we trigger it here using the parsed result. Best-effort: a
+    # broken autofile must not flip the job's status to error since
+    # the audit data itself is fine.
+    try:
+        from types import SimpleNamespace
+
+        from scripts import backlog_autofile
+        adapted = [
+            SimpleNamespace(
+                check_id=f.get("check_id", ""),
+                path=f.get("path", ""),
+                detail=f.get("detail", ""),
+            )
+            for f in (result.get("findings") or [])
+        ]
+        backlog_autofile.run_for_audit("coverage", adapted)
+    except (ImportError, FileNotFoundError, ValueError, OSError) as e:
+        logger.warning(
+            "utilities: coverage autofile failed (continuing): "
+            "%s: %s",
+            type(e).__name__, e,
+        )
+
     finished = datetime.datetime.now(datetime.UTC)
     with _coverage_job_lock:
         _coverage_job_state.update({
@@ -582,7 +641,10 @@ def run_tech_debt_audit(email: str):  # noqa: ARG001
     consider moving to a background-job pattern.
     """
     from scripts import check_tech_debt
-    result = _run_audit_script_checks(check_tech_debt)
+    # #243 — autofile to BACKLOG.md alongside the email channel.
+    result = _run_audit_script_checks(
+        check_tech_debt, audit_name="tech-debt",
+    )
     logger.info(
         "utilities: tech-debt audit triggered via UI, total=%d",
         result["total"],

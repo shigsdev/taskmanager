@@ -473,6 +473,68 @@ class TestInlineAuditScans:
         assert "synthetic" in boom_entry["errored"]
         assert "RuntimeError" in boom_entry["errored"]
 
+    def test_inline_scan_calls_backlog_autofile(
+        self, authed_client, monkeypatch,
+    ):
+        """#243 (2026-05-27): inline-scan endpoints must call
+        backlog_autofile.run_for_audit so /utilities-triggered runs
+        end up in BACKLOG.md (not just cron runs)."""
+        from scripts import backlog_autofile
+        from scripts import check_bug_patterns as bp_mod
+
+        captured = {"audit_name": None, "count": None}
+
+        def fake_autofile(audit_name, findings):
+            captured["audit_name"] = audit_name
+            captured["count"] = len(list(findings))
+
+        monkeypatch.setattr(
+            backlog_autofile, "run_for_audit", fake_autofile,
+        )
+        # Synthesize one finding so we can assert it propagated.
+        fake = bp_mod.Finding(
+            check_id="bare-1fr-grids",
+            path="static/style.css",
+            line_num=42,
+            line=".bad { grid-template-columns: 1fr; }",
+            message="bare 1fr",
+        )
+        original = bp_mod.CHECKS
+        bp_mod.CHECKS = [("bare-1fr-grids", lambda: [fake])]
+        try:
+            resp = authed_client.post(
+                "/api/utilities/run-bug-pattern-scan"
+            )
+        finally:
+            bp_mod.CHECKS = original
+
+        assert resp.status_code == 200
+        assert captured["audit_name"] == "bug-pattern"
+        assert captured["count"] == 1
+
+    def test_inline_scan_autofile_failure_does_not_break_response(
+        self, authed_client, monkeypatch,
+    ):
+        """If backlog_autofile crashes (e.g. BACKLOG.md missing the
+        autofile section), the endpoint must still return the
+        findings — autofile is a value-add, not a load-bearing dep."""
+        from scripts import backlog_autofile
+
+        def boom(audit_name, findings):
+            raise ValueError("simulated autofile breakage")
+
+        monkeypatch.setattr(
+            backlog_autofile, "run_for_audit", boom,
+        )
+        resp = authed_client.post(
+            "/api/utilities/run-bug-pattern-scan"
+        )
+        # Endpoint still 200 with findings — autofile breakage is
+        # logged at WARNING but doesn't propagate to the user.
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert isinstance(body["total"], int)
+
     def test_inline_scan_does_not_send_email(
         self, authed_client, monkeypatch,
     ):
@@ -843,6 +905,97 @@ class TestCoverageAuditAsync:
         try:
             utilities_api._run_coverage_audit_subprocess(str(json_path))
             assert captured_env.get("PYTHONIOENCODING") == "utf-8"
+        finally:
+            utilities_api._coverage_job_state.update({
+                "status": "idle",
+                "started_at": None,
+                "finished_at": None,
+                "duration_seconds": None,
+                "result": None,
+                "error": None,
+            })
+
+    def test_subprocess_runner_calls_autofile_with_findings(
+        self, authed_client, monkeypatch, tmp_path,
+    ):
+        """#243 (2026-05-27): manual /utilities runs must also autofile
+        their findings into BACKLOG.md so the operator doesn't have to
+        wait for the next weekly cron to see the rows. We verify the
+        subprocess runner adapts the JSON findings back to the
+        attribute-shape backlog_autofile expects (`check_id`, `path`,
+        `detail`) and calls `run_for_audit("coverage", ...)`.
+        """
+        import json
+        import subprocess
+
+        import utilities_api
+
+        fake_payload = {
+            "total": 2,
+            "per_check": [
+                {"label": "overall-coverage-drift", "count": 0},
+                {"label": "per-file-coverage-drift", "count": 2},
+            ],
+            "findings": [
+                {
+                    "check_id": "per-file-coverage-drift",
+                    "path": "auth.py",
+                    "detail": "97.6% → 81.9% (tolerance 5pp)",
+                },
+                {
+                    "check_id": "per-file-coverage-drift",
+                    "path": "auth_api.py",
+                    "detail": "100.0% → 43.5% (tolerance 5pp)",
+                },
+            ],
+            "overall": 84.0,
+        }
+        json_path = tmp_path / "result.json"
+        json_path.write_text(json.dumps(fake_payload), encoding="utf-8")
+
+        class FakeProc:
+            returncode = 1
+            stdout = ""
+            stderr = ""
+
+        monkeypatch.setattr(
+            subprocess, "run", lambda *a, **kw: FakeProc(),
+        )
+
+        captured = {"audit_name": None, "findings": None}
+        from scripts import backlog_autofile
+
+        def fake_autofile(audit_name, findings):
+            captured["audit_name"] = audit_name
+            # Drain to list of dicts for assertion (findings are
+            # SimpleNamespace instances).
+            captured["findings"] = [
+                {"check_id": f.check_id, "path": f.path, "detail": f.detail}
+                for f in findings
+            ]
+        monkeypatch.setattr(
+            backlog_autofile, "run_for_audit", fake_autofile,
+        )
+
+        utilities_api._coverage_job_state.update({
+            "status": "running",
+            "started_at": "2026-05-27T12:00:00+00:00",
+            "finished_at": None,
+            "duration_seconds": None,
+            "result": None,
+            "error": None,
+        })
+        try:
+            utilities_api._run_coverage_audit_subprocess(str(json_path))
+            assert captured["audit_name"] == "coverage"
+            assert captured["findings"] is not None
+            assert len(captured["findings"]) == 2
+            assert captured["findings"][0]["path"] == "auth.py"
+            assert captured["findings"][1]["check_id"] == (
+                "per-file-coverage-drift"
+            )
+            # Job state still marked complete.
+            assert utilities_api._coverage_job_state["status"] == "complete"
         finally:
             utilities_api._coverage_job_state.update({
                 "status": "idle",

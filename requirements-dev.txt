@@ -1,7 +1,8 @@
 -r requirements.txt
-# pytest 9.0.3 — #163: 8.3.2 carried GHSA-6w46-j5rx-g56g; 9.0.3 is the
-# fix release. pytest-cov bumped to match the 9.x line.
-pytest==9.0.3
-pytest-cov==7.0.0
+# pytest + pytest-cov moved to requirements.txt for #243 (2026-05-27)
+# — the /utilities coverage-audit card needs pytest on the Railway
+# prod container. They satisfy the dev workflow as transitively
+# included from requirements.txt; left as a comment here for the
+# bisect-this-file searcher.
 ruff==0.6.3
 pre-commit==4.6.0

@@ -25,3 +25,14 @@ markdown==3.10.2
 # reduction on text/javascript + text/css + application/json. Tiny CPU
 # cost on each response (single-user app — never the bottleneck).
 flask-compress==1.24
+# #243 (2026-05-27): pytest + pytest-cov are runtime dependencies on
+# Railway prod because the /utilities `Run weekly test-coverage audit`
+# card (#229b) spawns the audit script which calls `pytest --cov`.
+# Without these here, the prod container can't run the audit (it
+# bails with `No module named pytest`). On GitHub Actions runners the
+# weekly cron picks them up from requirements-dev.txt, so the cron
+# path also stays green. ~20MB image growth — acceptable for a
+# single-user app where the audit endpoint is part of the shipped
+# feature surface.
+pytest==9.0.3
+pytest-cov==7.0.0
