@@ -29,9 +29,13 @@ Three mechanical checks ship in the first cut:
       been touched in 6 months while its source module churns is a
       signal the test isn't asserting what you think.
 
-A fourth proposed check (code duplication via jscpd) was deferred —
-the required tooling adds a heavier CI dep without proven payoff
-yet. File as #228b if/when a duplication hotspot is felt in practice.
+  code-duplication (#228b, 2026-05-27)
+      Run `npx jscpd --reporters json` against the Python + JS
+      source tree (HTML excluded — Jinja2-included partials
+      generate noisy false positives at the template level).
+      Flag any duplication of 30+ lines. The duplication detector
+      catches "copy-pasted helper" hotspots before they entrench
+      into divergent forks of the same logic.
 
 Same email pattern as #226 + #227: sends an email EVERY run (clean
 or not) so the absence of one proves the cron failed. Exit 0 on
@@ -74,6 +78,21 @@ _TODO_PER_FILE_THRESHOLD = 5     # flag any file holding more than this
 
 # Check (c) — stale tests.
 _STALE_TEST_DAYS = 180
+
+# Check (d) — code duplication via jscpd (#228b, 2026-05-27).
+# Only flag duplications of this many or more lines. Below this
+# threshold the noise (boilerplate imports, similar dict literals,
+# repeated test fixtures) overwhelms the real signal.
+_JSCPD_MIN_LINES = 30
+# Globs jscpd ignores. node_modules, tests, migrations, docs are
+# the obvious exclusions. coverage-js + .venv + __pycache__ are
+# generated. HTML is excluded via `--formats` rather than `--ignore`
+# because Jinja2 `{% include %}` partials get detected as duplicates
+# in every parent template — semantic-false-positive noise.
+_JSCPD_IGNORE_GLOBS = (
+    "node_modules/**", "tests/**", "migrations/**", "docs/**",
+    "coverage-js/**", ".venv/**", "__pycache__/**",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -315,6 +334,99 @@ def check_stale_tests() -> list[Finding]:
 
 
 # ---------------------------------------------------------------------------
+# Check (d): code duplication via jscpd (#228b)
+# ---------------------------------------------------------------------------
+
+
+def check_code_duplication() -> list[Finding]:
+    """Run `npx jscpd --reporters json` over the Python + JS source
+    tree and flag any duplication of ``_JSCPD_MIN_LINES`` lines or
+    more.
+
+    Returns empty list when:
+      - jscpd / npx isn't on the runner (missing tooling — skip silent
+        rather than emit a confusing finding)
+      - jscpd returns no JSON (parse error)
+      - jscpd hits a non-zero exit but doesn't produce a report file
+
+    The GitHub Actions workflow installs npm + jscpd so the CI path
+    always exercises the full check; the silent-skip is defense-in-
+    depth for a developer running the audit locally without the
+    Node dep.
+    """
+    findings: list[Finding] = []
+
+    # jscpd writes to <output-dir>/jscpd-report.json. Use a per-run
+    # tempdir so concurrent runs (or stale state from a prior run)
+    # can't poison the result.
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="jscpd-") as tmpdir:
+        ignore_arg = ",".join(_JSCPD_IGNORE_GLOBS)
+        # Use `npm exec --no --` (cross-platform) instead of `npx`
+        # directly. npx on Windows resolves to a `.cmd` wrapper that
+        # subprocess can't invoke without shell=True (security finding
+        # from bandit). `npm exec` is just a Node script — same exe
+        # name on Windows + Linux + macOS, no shell needed.
+        npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
+        try:
+            subprocess.run(  # noqa: S603
+                [
+                    npm_cmd, "exec", "--no", "--",
+                    "jscpd",
+                    "--reporters", "json",
+                    "--silent",
+                    "--min-lines", str(_JSCPD_MIN_LINES),
+                    # Restrict to Python + JS — HTML duplicates via
+                    # Jinja2 `{% include %}` are semantic false
+                    # positives (the partial isn't actually inlined;
+                    # jscpd matches structural shape).
+                    "--formats-exts", "python:py;javascript:js",
+                    "--output", tmpdir,
+                    "--ignore", ignore_arg,
+                    ".",
+                ],
+                capture_output=True, text=True, check=False,
+                cwd=PROJECT_ROOT,
+                timeout=180,
+            )
+        except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+            return findings
+        report = Path(tmpdir) / "jscpd-report.json"
+        if not report.exists():
+            return findings
+        try:
+            data = json.loads(report.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return findings
+
+    for dup in data.get("duplicates") or []:
+        if not isinstance(dup, dict):
+            continue
+        lines = int(dup.get("lines") or 0)
+        if lines < _JSCPD_MIN_LINES:
+            continue
+        a = dup.get("firstFile") or {}
+        b = dup.get("secondFile") or {}
+        a_name = a.get("name") or "?"
+        b_name = b.get("name") or "?"
+        a_start = a.get("start")
+        a_end = a.get("end")
+        b_start = b.get("start")
+        b_end = b.get("end")
+        findings.append(Finding(
+            check_id="code-duplication",
+            path=a_name,
+            detail=(
+                f"{lines}-line duplicate block: "
+                f"{a_name}:{a_start}-{a_end} <-> "
+                f"{b_name}:{b_start}-{b_end} — extract to a shared "
+                "helper or rationalise the divergence."
+            ),
+        ))
+    return findings
+
+
+# ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------
 
@@ -322,6 +434,7 @@ CHECKS = [
     ("todo-fixme-accumulation", check_todo_fixme_accumulation),
     ("dependency-drift", check_dependency_drift),
     ("stale-tests", check_stale_tests),
+    ("code-duplication", check_code_duplication),
 ]
 
 
