@@ -1,8 +1,8 @@
 /**
  * /utilities page (#222 — 2026-05-24, extended #223 — 2026-05-24,
- * extended #236 — 2026-05-26).
+ * extended #236 — 2026-05-26, extended #229b — 2026-05-27).
  *
- * Wires each .utility-card to its API endpoint(s). Three utility
+ * Wires each .utility-card to its API endpoint(s). Four utility
  * shapes are supported via the slug-keyed UTILITIES registry below:
  *
  *   1. Query-driven utilities (the #222 shape) — provide countUrl +
@@ -24,6 +24,15 @@
  *      JSON `{total, per_check, findings}` is rendered inline as a
  *      per-check breakdown + (when total > 0) a finding list. No
  *      email is sent for UI runs.
+ *
+ *   4. Async inline-scan utilities (the #229b shape) — provide runUrl
+ *      + `inlineScan: true` + `asyncJob: true` + `statusUrl`. POST to
+ *      `runUrl` kicks off a background subprocess and returns
+ *      immediately. The page then polls `statusUrl` every 2s until
+ *      the response's `status` is `"complete"` (renders result) or
+ *      `"error"` (renders error message). The button text becomes
+ *      "Running… (~{estimatedSeconds}s)" with a spinner during the
+ *      wait. Used for the #229 coverage audit (pytest+cov ~30s).
  *
  * Adding a new utility = adding an entry here + a matching <section>
  * in utilities.html. No other JS changes.
@@ -71,6 +80,19 @@
             inlineScan: true,
             cleanResultText: "Audit CLEAN — no findings across the 4 checks.",
             postRunHint: "Same checks as the Saturday 13:00 UTC weekly cron. (Slower than the other scans — pip outdated + jscpd duplication detection take ~5-15s.)",
+        },
+        // #229b — async inline-scan (runs pytest --cov as a background
+        // subprocess; the page polls for status every 2s and renders
+        // the result when the job completes ~30s later).
+        "run-coverage-audit": {
+            runUrl: "/api/utilities/run-coverage-audit",
+            statusUrl: "/api/utilities/coverage-audit-status",
+            inlineScan: true,
+            asyncJob: true,
+            estimatedSeconds: 30,
+            pollIntervalMs: 2000,
+            cleanResultText: "Audit CLEAN — no findings across the 3 checks.",
+            postRunHint: "Same checks as the Friday 13:00 UTC weekly cron. (Runs the full pytest suite with --cov; takes ~30s.)",
         },
     };
 
@@ -192,8 +214,49 @@
     }
 
     /**
+     * #229b — poll the async-job statusUrl every `pollIntervalMs` until
+     * the response's `status` field is `"complete"` (renders the
+     * embedded `result` payload via renderScanResult) or `"error"`
+     * (renders the error message). Resolves when the poll terminates.
+     */
+    function pollAsyncJob(resultEl, config) {
+        return new Promise(function (resolve) {
+            const interval = setInterval(async function () {
+                let snap;
+                try {
+                    snap = await window.apiFetch(config.statusUrl);
+                } catch (err) {
+                    // Transient fetch error — keep polling. If the
+                    // network is dead the operator can refresh; the
+                    // backend keeps the job state in memory until the
+                    // next run replaces it.
+                    return;
+                }
+                if (snap && snap.status === "complete") {
+                    clearInterval(interval);
+                    renderScanResult(
+                        resultEl,
+                        snap.result || {},
+                        config,
+                    );
+                    resolve();
+                } else if (snap && snap.status === "error") {
+                    clearInterval(interval);
+                    resultEl.classList.add("utility-result-err");
+                    resultEl.textContent = "Audit failed: "
+                        + (snap.error || "unknown error");
+                    resolve();
+                }
+                // status === "running" or "idle" — keep polling.
+            }, config.pollIntervalMs || 2000);
+        });
+    }
+
+    /**
      * Run a utility. Branches on response shape: backfill-style returns
-     * {updated: N}; dispatch-style returns {dispatched: true, actions_url}.
+     * {updated: N}; dispatch-style returns {dispatched: true, actions_url};
+     * async-job (#229b) returns {status: "running", started_at} and is
+     * followed by repeated polls of statusUrl until completion.
      */
     async function runUtility(card) {
         const slug = card.dataset.utility;
@@ -208,6 +271,26 @@
         while (resultEl.firstChild) resultEl.removeChild(resultEl.firstChild);
         resultEl.classList.remove("utility-result-ok", "utility-result-err");
         try {
+            // #229b — async-job branch: POST kicks off a background
+            // subprocess and returns immediately ({status: "running"}).
+            // We then poll statusUrl every 2s until the job completes
+            // or errors. The button shows "Running… (~Ns)" while we wait.
+            if (config.asyncJob) {
+                btn.textContent = "Running… (~"
+                    + (config.estimatedSeconds || 30) + "s)";
+                try {
+                    await window.apiFetch(config.runUrl, { method: "POST" });
+                } catch (err) {
+                    // 409 = another run already in flight (apiFetch
+                    // throws on any non-2xx). Treat as "join the
+                    // existing job" — start polling anyway. Any other
+                    // error rethrows into the outer catch.
+                    const msg = (err && err.message) || "";
+                    if (!/already running/i.test(msg)) throw err;
+                }
+                await pollAsyncJob(resultEl, config);
+                return;
+            }
             const data = await window.apiFetch(config.runUrl, { method: "POST" });
             // #236 — inline-scan branch: dedicated renderer that
             // builds a per-check breakdown + findings detail list.

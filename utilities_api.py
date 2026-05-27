@@ -42,11 +42,28 @@ workflow + email):
            typically ~2-5s).
     All three return ``{total, per_check, findings}``. Skips the
     SendGrid email path (the UI surface IS the result channel).
+
+Async-scan utility (#229b, 2026-05-27) — POST kicks off a
+subprocess and returns immediately, GET polls for status:
+    POST /api/utilities/run-coverage-audit
+         — spawns `scripts/check_test_coverage.py --json-only` in a
+           background thread (pytest+coverage takes ~30s, can't
+           block the request). Returns {status: "running",
+           started_at, estimated_duration_seconds}. 409 if another
+           run is in flight.
+    GET  /api/utilities/coverage-audit-status
+         — poll for the current state. While running, returns
+           {status: "running", started_at, result: null}. When done,
+           returns {status: "complete", duration_seconds, result:
+           {total, per_check, findings, overall}}. On failure,
+           returns {status: "error", error}. Safe to poll every 2s.
 """
 from __future__ import annotations
 
+import datetime
 import logging
 import os
+from pathlib import Path
 
 import requests
 from flask import Blueprint, jsonify
@@ -314,6 +331,242 @@ def run_security_posture_scan(email: str):  # noqa: ARG001
         result["total"],
     )
     return jsonify(result)
+
+
+# #229b (2026-05-27): coverage-audit on-demand card — async edition.
+#
+# The other three inline-scan endpoints (#236 bug-pattern + security-
+# posture + tech-debt) run their CHECKS arrays in <2 seconds, so a
+# synchronous POST that returns the result is fine. The coverage audit
+# is different: pytest with coverage takes ~30 seconds against the
+# full test suite. Blocking a Flask request that long would hit
+# gunicorn's worker timeout AND give the user no progress feedback.
+#
+# Pattern: ONE single-user job slot tracked in a module-level dict.
+# POST spawns scripts/check_test_coverage.py as a subprocess with
+# --json-only <tmpfile>. A background thread watches the subprocess
+# and updates the state dict when it finishes. GET polls the state.
+#
+# Trade-offs:
+#   - Single slot = no concurrent runs (operator gets 409 if they
+#     double-click; harmless because there's only one operator).
+#   - Server restart wipes the in-flight state (the orphaned
+#     subprocess will keep writing to its tmpfile, but the state dict
+#     loses its handle — the file gets garbage-collected with the
+#     temp dir).
+#   - No persistence — last result is in-memory only. Acceptable
+#     because the cron's email is the durable record.
+
+_coverage_job_state: dict = {
+    "status": "idle",         # idle | running | complete | error
+    "started_at": None,        # ISO8601
+    "finished_at": None,       # ISO8601 (set on complete OR error)
+    "duration_seconds": None,  # filled on completion
+    "result": None,            # the parsed JSON when status=complete
+    "error": None,             # str when status=error
+}
+_coverage_job_lock = __import__("threading").Lock()
+
+
+def _run_coverage_audit_subprocess(json_path: str) -> None:
+    """Background-thread target. Runs the audit script, then updates
+    the module-level state dict. Catches every exception so the
+    thread can't die silently and leave the state stuck at
+    "running" — any unexpected failure surfaces as status=error.
+    """
+    import json
+    import subprocess
+    import sys
+    import threading  # noqa: F401 — imported for the lock
+
+    started = datetime.datetime.now(datetime.UTC)
+    script_path = (
+        Path(__file__).resolve().parent / "scripts" / "check_test_coverage.py"
+    )
+    # #229b refinement (2026-05-27): redirect stdout/stderr to tempfiles
+    # rather than `capture_output=True` (PIPE). On Windows, PIPE-captured
+    # output of a long-running pytest run can deadlock or crash before
+    # coverage.json lands. Tempfile redirection sidesteps the PIPE
+    # buffering issue while still letting us read the last 500 bytes of
+    # stderr on failure for diagnostics.
+    #
+    # Also force PYTHONIOENCODING=utf-8 in the subprocess env — the
+    # script's sys.stdout/stderr otherwise default to cp1252 on Windows,
+    # which crashes on the non-ASCII characters (→ → arrows etc.)
+    # that the script's progress messages use. The script then exits
+    # 1 from the encode error and the result file never gets written.
+    import tempfile as _tempfile
+    stderr_fd, stderr_path = _tempfile.mkstemp(
+        prefix="cov-audit-stderr-", suffix=".log",
+    )
+    os.close(stderr_fd)
+    sub_env = os.environ.copy()
+    sub_env["PYTHONIOENCODING"] = "utf-8"
+    try:
+        # Inherit env — DIGEST_*_EMAIL etc. unused in --json-only mode
+        # but harmless. Discard stdout (the pytest report is large +
+        # uninteresting once coverage.json lands); keep stderr in a
+        # tempfile so we can surface the tail of it on failure.
+        with open(stderr_path, "w", encoding="utf-8") as stderr_fp:
+            proc = subprocess.run(  # noqa: S603
+                [
+                    sys.executable, str(script_path),
+                    "--json-only", json_path,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=stderr_fp,
+                env=sub_env,
+                text=True,
+                check=False,
+                timeout=600,  # generous: pytest+cov on a slow runner
+            )
+        # Read stderr back so we can include it in error messages.
+        try:
+            stderr_tail = Path(stderr_path).read_text(
+                encoding="utf-8", errors="replace",
+            )[-500:]
+        except OSError:
+            stderr_tail = ""
+        if proc.returncode == 2:
+            # Internal error in the script (e.g. coverage.json not
+            # produced). Surface the last bit of stderr to the UI.
+            raise RuntimeError(
+                "coverage script exited 2 (internal error): "
+                + stderr_tail,
+            )
+        # 0 = clean, 1 = findings — both produce a result file.
+        result_path = Path(json_path)
+        if not result_path.exists():
+            raise RuntimeError(
+                f"coverage script exited but produced no result file "
+                f"(rc={proc.returncode}, stderr_tail={stderr_tail!r})",
+            )
+        if result_path.stat().st_size == 0:
+            raise RuntimeError(
+                f"coverage script exited but result file is empty "
+                f"(rc={proc.returncode}, stderr_tail={stderr_tail!r})",
+            )
+        result = json.loads(result_path.read_text(encoding="utf-8"))
+    except (subprocess.TimeoutExpired, RuntimeError, OSError,
+            json.JSONDecodeError) as e:
+        finished = datetime.datetime.now(datetime.UTC)
+        with _coverage_job_lock:
+            _coverage_job_state.update({
+                "status": "error",
+                "finished_at": finished.isoformat(),
+                "duration_seconds": (finished - started).total_seconds(),
+                "result": None,
+                "error": f"{type(e).__name__}: {e}",
+            })
+        logger.warning(
+            "utilities: coverage audit subprocess errored: %s: %s",
+            type(e).__name__, e,
+        )
+        return
+    finally:
+        # Best-effort cleanup of the stderr tempfile. Logged at INFO so
+        # the path is grep-able in Railway logs if a future run errors
+        # before this finally fires (the wrapper catches every excn so
+        # that's belt-and-braces).
+        import contextlib
+        logger.info("utilities: coverage audit stderr at %s", stderr_path)
+        with contextlib.suppress(OSError):
+            Path(stderr_path).unlink(missing_ok=True)
+
+    finished = datetime.datetime.now(datetime.UTC)
+    with _coverage_job_lock:
+        _coverage_job_state.update({
+            "status": "complete",
+            "finished_at": finished.isoformat(),
+            "duration_seconds": (finished - started).total_seconds(),
+            "result": result,
+            "error": None,
+        })
+    logger.info(
+        "utilities: coverage audit complete (total=%d, %.1fs)",
+        result.get("total", 0),
+        (finished - started).total_seconds(),
+    )
+
+
+@bp.post("/run-coverage-audit")
+@login_required
+def run_coverage_audit(email: str):  # noqa: ARG001
+    """#229b — kick off a coverage-audit subprocess in the background.
+
+    Returns immediately with {status: "running", started_at}. Client
+    polls GET /api/utilities/coverage-audit-status until status flips
+    to "complete" or "error". The actual result JSON (matching the
+    inline-scan shape from #236) lives in the status response when
+    complete.
+
+    Returns 409 if a previous run is already in flight. Single-user
+    app, so two concurrent runs would just race for the result file
+    and the operator gets confusing UX.
+    """
+    import tempfile
+    import threading
+
+    with _coverage_job_lock:
+        if _coverage_job_state["status"] == "running":
+            return jsonify({
+                "error": "A coverage audit is already running",
+                "started_at": _coverage_job_state["started_at"],
+            }), 409
+        # Allocate a tempfile path the subprocess will write to. Use
+        # a per-run path so a stale file from a prior run can't
+        # mislead the next poll.
+        fd, json_path = tempfile.mkstemp(
+            prefix="cov-audit-", suffix=".json",
+        )
+        os.close(fd)  # subprocess will overwrite it
+        started_iso = datetime.datetime.now(datetime.UTC).isoformat()
+        _coverage_job_state.update({
+            "status": "running",
+            "started_at": started_iso,
+            "finished_at": None,
+            "duration_seconds": None,
+            "result": None,
+            "error": None,
+        })
+
+    # Spawn the background thread AFTER releasing the lock so the
+    # subprocess.run inside doesn't hold up POSTs that might come
+    # in to status.
+    t = threading.Thread(
+        target=_run_coverage_audit_subprocess,
+        args=(json_path,),
+        daemon=True,
+        name="coverage-audit-runner",
+    )
+    t.start()
+    logger.info(
+        "utilities: coverage audit started, json_path=%s", json_path,
+    )
+    return jsonify({
+        "status": "running",
+        "started_at": started_iso,
+        "estimated_duration_seconds": 30,
+    })
+
+
+@bp.get("/coverage-audit-status")
+@login_required
+def coverage_audit_status(email: str):  # noqa: ARG001
+    """#229b — poll the current coverage-audit job state.
+
+    Returns the module-level state dict snapshot. While running, the
+    `result` field is null and the UI shows a spinner. When complete,
+    `result` contains the {total, per_check, findings, overall}
+    payload the inline-scan renderer expects. On error, `error`
+    contains a short type+message string.
+
+    Idempotent and read-only — safe to poll every 2 seconds.
+    """
+    with _coverage_job_lock:
+        # Return a copy so polling can't observe a mid-update state.
+        snapshot = dict(_coverage_job_state)
+    return jsonify(snapshot)
 
 
 @bp.post("/run-tech-debt-audit")

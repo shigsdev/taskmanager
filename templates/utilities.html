@@ -132,6 +132,32 @@
         <p class="utility-result" data-result aria-live="polite"></p>
     </section>
 
+    <section class="utility-card" data-utility="run-coverage-audit">
+        <h2>Run weekly test-coverage audit (#229)</h2>
+        <p class="utility-description">
+            Runs <code>pytest --cov</code> over the full suite and
+            compares to the committed baseline at
+            <code>docs/audit/coverage-baseline.json</code>. Three
+            checks: <strong>overall coverage drift</strong> (current
+            &lt; baseline - 1pp); <strong>per-file drift</strong>
+            (any file &lt; its baseline - 5pp); <strong>critical-path
+            floor</strong> (auth.py 90%, task_service.py 85%,
+            crypto.py 95%, recurring_service.py 80%,
+            reflection_service.py 80%, voice_service.py 90%).
+        </p>
+        <p class="utility-description">
+            Slower than the other inline scans — pytest takes ~30s.
+            The Run button kicks off a background subprocess and
+            polls every 2s; the page won't lock up while it runs.
+        </p>
+        <div class="utility-status" data-status hidden></div>
+        <button type="button" class="btn btn-primary utility-run-btn"
+                data-run="run-coverage-audit">
+            Run
+        </button>
+        <p class="utility-result" data-result aria-live="polite"></p>
+    </section>
+
     <section class="utility-card" data-utility="run-tech-debt-audit">
         <h2>Run weekly tech-debt audit (#228)</h2>
         <p class="utility-description">

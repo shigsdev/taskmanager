@@ -432,6 +432,19 @@ def main(argv: list[str] | None = None) -> int:
             "against the new high-water mark."
         ),
     )
+    parser.add_argument(
+        "--json-only",
+        metavar="OUTPUT_PATH",
+        default=None,
+        help=(
+            "#229b (2026-05-27): write the audit result as JSON to "
+            "OUTPUT_PATH and skip sending the SendGrid confirmation "
+            "email. Used by the /utilities inline-scan card — the UI "
+            "POST spawns the script with this flag and polls for the "
+            "result file. Same exit code semantics (0/1/2) so the UI "
+            "can distinguish CLEAN / findings / internal-error runs."
+        ),
+    )
     args = parser.parse_args(argv)
 
     sys.stdout.write(
@@ -468,6 +481,32 @@ def main(argv: list[str] | None = None) -> int:
         if f.path:
             sys.stdout.write(f"    {f.path}\n")
         sys.stdout.write(f"{line}{f.detail}\n")
+
+    # #229b: JSON-only mode skips the email and writes the result to
+    # the requested path. Used by /utilities inline-scan polling.
+    if args.json_only:
+        # Match the shape the inline-scan UI expects (from #236's
+        # _run_audit_script_checks helper): {total, per_check,
+        # findings: [dict, ...]}. Convert Finding dataclasses to
+        # dicts so the JSON survives the subprocess round-trip.
+        import dataclasses
+        payload = {
+            "total": len(findings),
+            "per_check": [
+                {"label": label, "count": count}
+                for label, count in per_check_counts
+            ],
+            "findings": [dataclasses.asdict(f) for f in findings],
+            "overall": overall,
+        }
+        Path(args.json_only).write_text(
+            json.dumps(payload), encoding="utf-8",
+        )
+        sys.stdout.write(
+            f"[coverage-audit] JSON-only mode: result written to "
+            f"{args.json_only} (no email sent).\n"
+        )
+        return 0 if not findings else 1
 
     send_audit_email(
         findings, per_check_counts=per_check_counts, overall=overall,

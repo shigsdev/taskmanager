@@ -608,6 +608,8 @@ the code.
 /api/utilities/run-bug-pattern-scan                    # #236 — POST: run check_bug_patterns.CHECKS in-process, return {total, per_check, findings}
 /api/utilities/run-security-posture-scan               # #236 — POST: run check_security_posture.CHECKS in-process, return {total, per_check, findings}
 /api/utilities/run-tech-debt-audit                     # #228 — POST: run check_tech_debt.CHECKS in-process, return {total, per_check, findings}
+/api/utilities/run-coverage-audit                      # #229b — POST: kick off check_test_coverage.py subprocess in background daemon thread, return {status: "running", started_at} immediately; 409 if another run is in flight
+/api/utilities/coverage-audit-status                   # #229b — GET: poll the in-memory job state; returns {status, started_at, finished_at, duration_seconds, result, error} where status is idle|running|complete|error and `result` (when complete) matches the #236 inline-scan shape {total, per_check, findings, overall}
 
 # debug_api.py — used by scripts/validate_deploy.py --check-logs
 /api/debug/logs

@@ -490,3 +490,407 @@ class TestInlineAuditScans:
         )
         assert resp.status_code == 200
         assert email_sent == []
+
+
+class TestCoverageAuditAsync:
+    """#229b (2026-05-27): async background-job pattern for the
+    coverage audit. The audit takes ~30s (full pytest --cov run), so
+    a synchronous request would hit gunicorn worker timeouts.
+
+    Pattern: POST kicks off a subprocess in a daemon thread and returns
+    immediately with {status: "running"}. Frontend polls GET status
+    until it flips to "complete" or "error". Single-slot — a second
+    POST while a run is in flight returns 409.
+    """
+
+    def test_run_endpoint_requires_auth(self, client):
+        resp = client.post("/api/utilities/run-coverage-audit")
+        assert resp.status_code in (302, 401, 403)
+
+    def test_status_endpoint_requires_auth(self, client):
+        resp = client.get("/api/utilities/coverage-audit-status")
+        assert resp.status_code in (302, 401, 403)
+
+    def test_run_endpoint_rejects_GET(self, client):
+        # State-mutating endpoint — POST only (#190 / #185 rule).
+        resp = client.get("/api/utilities/run-coverage-audit")
+        assert resp.status_code in (302, 401, 403, 404, 405)
+
+    def test_kickoff_returns_running_and_started_at(
+        self, authed_client, monkeypatch,
+    ):
+        """POST should return immediately with {status: "running"}
+        and a started_at timestamp. The actual subprocess is monkey-
+        patched out so the test doesn't actually run pytest --cov.
+        """
+        import utilities_api
+
+        # Patch the subprocess-runner so it doesn't actually shell out.
+        # We just want to confirm the endpoint returns the expected
+        # shape and updates the module-level state dict.
+        monkeypatch.setattr(
+            utilities_api,
+            "_run_coverage_audit_subprocess",
+            lambda json_path: None,
+        )
+        # Reset state so prior tests don't leave it in "running".
+        utilities_api._coverage_job_state.update({
+            "status": "idle",
+            "started_at": None,
+            "finished_at": None,
+            "duration_seconds": None,
+            "result": None,
+            "error": None,
+        })
+        resp = authed_client.post("/api/utilities/run-coverage-audit")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["status"] == "running"
+        assert "started_at" in body
+        assert body["estimated_duration_seconds"] == 30
+
+    def test_kickoff_returns_409_when_already_running(
+        self, authed_client, monkeypatch,
+    ):
+        """Single-slot semantics: a second POST while status is
+        "running" returns 409 with a clear error message that the
+        frontend uses to "join" the existing job rather than start
+        a new one.
+        """
+        import utilities_api
+
+        # Force the state into "running" so the kickoff sees an
+        # in-flight job and bails.
+        utilities_api._coverage_job_state.update({
+            "status": "running",
+            "started_at": "2026-05-27T12:00:00+00:00",
+            "finished_at": None,
+            "duration_seconds": None,
+            "result": None,
+            "error": None,
+        })
+        try:
+            resp = authed_client.post(
+                "/api/utilities/run-coverage-audit"
+            )
+            assert resp.status_code == 409
+            body = resp.get_json()
+            assert "already running" in body["error"].lower()
+            assert body["started_at"] == "2026-05-27T12:00:00+00:00"
+        finally:
+            # Restore idle state so later tests aren't blocked.
+            utilities_api._coverage_job_state.update({
+                "status": "idle",
+                "started_at": None,
+                "finished_at": None,
+                "duration_seconds": None,
+                "result": None,
+                "error": None,
+            })
+
+    def test_status_returns_state_snapshot(self, authed_client):
+        """GET /coverage-audit-status returns the module-level state
+        dict snapshot — the same shape regardless of status, with
+        result populated when complete.
+        """
+        import utilities_api
+
+        # Seed a fake "complete" state to confirm the snapshot pickup.
+        fake_result = {
+            "total": 0,
+            "per_check": [
+                {"label": "overall-coverage-drift", "count": 0},
+                {"label": "per-file-coverage-drift", "count": 0},
+                {"label": "critical-path-floors", "count": 0},
+            ],
+            "findings": [],
+            "overall": 84.0,
+        }
+        utilities_api._coverage_job_state.update({
+            "status": "complete",
+            "started_at": "2026-05-27T12:00:00+00:00",
+            "finished_at": "2026-05-27T12:00:30+00:00",
+            "duration_seconds": 30.0,
+            "result": fake_result,
+            "error": None,
+        })
+        try:
+            resp = authed_client.get(
+                "/api/utilities/coverage-audit-status"
+            )
+            assert resp.status_code == 200
+            body = resp.get_json()
+            assert body["status"] == "complete"
+            assert body["result"] == fake_result
+            assert body["error"] is None
+            assert body["duration_seconds"] == 30.0
+        finally:
+            utilities_api._coverage_job_state.update({
+                "status": "idle",
+                "started_at": None,
+                "finished_at": None,
+                "duration_seconds": None,
+                "result": None,
+                "error": None,
+            })
+
+    def test_status_returns_error_on_subprocess_failure(
+        self, authed_client,
+    ):
+        """When the background subprocess fails (e.g. pytest itself
+        crashes), the state dict's `error` is populated and the UI
+        renders the error message instead of trying to render a
+        missing result."""
+        import utilities_api
+
+        utilities_api._coverage_job_state.update({
+            "status": "error",
+            "started_at": "2026-05-27T12:00:00+00:00",
+            "finished_at": "2026-05-27T12:00:05+00:00",
+            "duration_seconds": 5.0,
+            "result": None,
+            "error": "RuntimeError: subprocess returned exit 2",
+        })
+        try:
+            resp = authed_client.get(
+                "/api/utilities/coverage-audit-status"
+            )
+            assert resp.status_code == 200
+            body = resp.get_json()
+            assert body["status"] == "error"
+            assert "RuntimeError" in body["error"]
+            assert body["result"] is None
+        finally:
+            utilities_api._coverage_job_state.update({
+                "status": "idle",
+                "started_at": None,
+                "finished_at": None,
+                "duration_seconds": None,
+                "result": None,
+                "error": None,
+            })
+
+    def test_subprocess_runner_writes_result_to_state(
+        self, authed_client, monkeypatch, tmp_path,
+    ):
+        """The _run_coverage_audit_subprocess function should:
+          - run check_test_coverage.py with --json-only OUT
+          - parse the JSON output file
+          - write the parsed payload into _coverage_job_state.result
+          - flip status to "complete" + populate finished_at + duration
+        Mocks subprocess.run so we don't actually invoke pytest.
+        """
+        import json
+        import subprocess
+
+        import utilities_api
+
+        fake_payload = {
+            "total": 1,
+            "per_check": [
+                {"label": "overall-coverage-drift", "count": 1},
+            ],
+            "findings": [
+                {
+                    "check_id": "overall-coverage-drift",
+                    "path": "(repo)",
+                    "line_num": 0,
+                    "message": "84.0% < baseline 86.0% - 1pp",
+                },
+            ],
+            "overall": 84.0,
+        }
+        json_path = tmp_path / "result.json"
+        json_path.write_text(json.dumps(fake_payload), encoding="utf-8")
+
+        # Mock subprocess.run so the wrapper "successfully" returns
+        # without actually invoking pytest. Returncode 1 simulates
+        # the audit finding non-clean state.
+        class FakeProc:
+            returncode = 1
+            stdout = ""
+            stderr = ""
+
+        monkeypatch.setattr(
+            subprocess, "run", lambda *a, **kw: FakeProc(),
+        )
+
+        # Seed the state as "running" the way the kickoff endpoint
+        # would have left it before spawning the thread.
+        utilities_api._coverage_job_state.update({
+            "status": "running",
+            "started_at": "2026-05-27T12:00:00+00:00",
+            "finished_at": None,
+            "duration_seconds": None,
+            "result": None,
+            "error": None,
+        })
+        try:
+            # Invoke the runner inline (no thread — we want the
+            # test to be deterministic).
+            utilities_api._run_coverage_audit_subprocess(str(json_path))
+
+            assert utilities_api._coverage_job_state["status"] == "complete"
+            assert utilities_api._coverage_job_state["result"] == fake_payload
+            assert utilities_api._coverage_job_state["error"] is None
+            assert utilities_api._coverage_job_state["finished_at"] is not None
+            assert utilities_api._coverage_job_state["duration_seconds"] is not None
+        finally:
+            utilities_api._coverage_job_state.update({
+                "status": "idle",
+                "started_at": None,
+                "finished_at": None,
+                "duration_seconds": None,
+                "result": None,
+                "error": None,
+            })
+
+    def test_subprocess_runner_errors_on_empty_result_file(
+        self, authed_client, monkeypatch, tmp_path,
+    ):
+        """Regression for the 2026-05-27 Windows cp1252 bug: pytest
+        crashes mid-run on UnicodeEncodeError when sys.stderr is a
+        non-utf-8 file handle, the script exits with non-2 returncode
+        but never writes the result JSON, and the wrapper would
+        previously fall through to `json.loads("")` and surface a
+        confusing JSONDecodeError. The empty-file guard surfaces a
+        clearer "result file is empty" message with returncode +
+        stderr_tail for post-mortem.
+        """
+        import subprocess
+
+        import utilities_api
+
+        json_path = tmp_path / "result.json"
+        json_path.write_text("", encoding="utf-8")  # empty — bug shape
+
+        class FakeProc:
+            returncode = 1
+            stdout = ""
+            stderr = ""
+
+        monkeypatch.setattr(
+            subprocess, "run", lambda *a, **kw: FakeProc(),
+        )
+
+        utilities_api._coverage_job_state.update({
+            "status": "running",
+            "started_at": "2026-05-27T12:00:00+00:00",
+            "finished_at": None,
+            "duration_seconds": None,
+            "result": None,
+            "error": None,
+        })
+        try:
+            utilities_api._run_coverage_audit_subprocess(str(json_path))
+            assert utilities_api._coverage_job_state["status"] == "error"
+            err = utilities_api._coverage_job_state["error"]
+            assert "result file is empty" in err
+            assert "rc=1" in err
+        finally:
+            utilities_api._coverage_job_state.update({
+                "status": "idle",
+                "started_at": None,
+                "finished_at": None,
+                "duration_seconds": None,
+                "result": None,
+                "error": None,
+            })
+
+    def test_subprocess_runner_passes_utf8_encoding_to_child(
+        self, authed_client, monkeypatch, tmp_path,
+    ):
+        """Regression for the 2026-05-27 Windows cp1252 bug: the
+        subprocess env must include PYTHONIOENCODING=utf-8 so the
+        child Python's sys.stdout/stderr can encode the non-ASCII
+        characters in the script's progress messages (→ etc). Without
+        this, the child crashes with UnicodeEncodeError on Windows
+        whose locale codec is cp1252.
+        """
+        import subprocess
+
+        import utilities_api
+
+        captured_env = {}
+
+        class FakeProc:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        def fake_run(*args, **kwargs):
+            captured_env.update(kwargs.get("env") or {})
+            return FakeProc()
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        # Pre-create a valid result file so the wrapper reaches the
+        # subprocess call without needing the script to actually run.
+        json_path = tmp_path / "result.json"
+        json_path.write_text(
+            '{"total": 0, "per_check": [], "findings": [], "overall": 84.0}',
+            encoding="utf-8",
+        )
+
+        utilities_api._coverage_job_state.update({
+            "status": "running",
+            "started_at": "2026-05-27T12:00:00+00:00",
+            "finished_at": None,
+            "duration_seconds": None,
+            "result": None,
+            "error": None,
+        })
+        try:
+            utilities_api._run_coverage_audit_subprocess(str(json_path))
+            assert captured_env.get("PYTHONIOENCODING") == "utf-8"
+        finally:
+            utilities_api._coverage_job_state.update({
+                "status": "idle",
+                "started_at": None,
+                "finished_at": None,
+                "duration_seconds": None,
+                "result": None,
+                "error": None,
+            })
+
+    def test_subprocess_runner_records_error_on_exception(
+        self, authed_client, monkeypatch, tmp_path,
+    ):
+        """If subprocess.run itself raises (e.g. TimeoutExpired,
+        FileNotFoundError), the runner must populate state.error
+        rather than letting the exception propagate to the daemon
+        thread's uncaught handler."""
+        import subprocess
+
+        import utilities_api
+
+        def boom(*args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd="pytest", timeout=600)
+
+        monkeypatch.setattr(subprocess, "run", boom)
+
+        utilities_api._coverage_job_state.update({
+            "status": "running",
+            "started_at": "2026-05-27T12:00:00+00:00",
+            "finished_at": None,
+            "duration_seconds": None,
+            "result": None,
+            "error": None,
+        })
+        try:
+            utilities_api._run_coverage_audit_subprocess(
+                str(tmp_path / "nope.json"),
+            )
+            assert utilities_api._coverage_job_state["status"] == "error"
+            assert utilities_api._coverage_job_state["error"] is not None
+            assert "Timeout" in utilities_api._coverage_job_state["error"] \
+                or "timeout" in utilities_api._coverage_job_state["error"].lower()
+        finally:
+            utilities_api._coverage_job_state.update({
+                "status": "idle",
+                "started_at": None,
+                "finished_at": None,
+                "duration_seconds": None,
+                "result": None,
+                "error": None,
+            })
