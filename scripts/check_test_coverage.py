@@ -164,7 +164,7 @@ def _extract_per_file_and_total(cov_data: dict) -> tuple[dict[str, float], float
     for path, info in (cov_data.get("files") or {}).items():
         summary = (info or {}).get("summary") or {}
         pct = summary.get("percent_covered")
-        if isinstance(pct, (int, float)):
+        if isinstance(pct, int | float):
             per_file[path] = float(pct)
     total = float(
         (cov_data.get("totals") or {}).get("percent_covered") or 0.0,
@@ -223,7 +223,7 @@ def check_overall_drift(
     overall_pct: float, baseline: dict,
 ) -> list[Finding]:
     """Overall coverage dropped below baseline - tolerance."""
-    if not isinstance(baseline.get("overall"), (int, float)):
+    if not isinstance(baseline.get("overall"), int | float):
         return []
     baseline_pct = float(baseline["overall"])
     diff = baseline_pct - overall_pct
@@ -251,7 +251,7 @@ def check_per_file_drift(
     if not isinstance(baseline_files, dict):
         return findings
     for path, baseline_pct in baseline_files.items():
-        if not isinstance(baseline_pct, (int, float)):
+        if not isinstance(baseline_pct, int | float):
             continue
         if path not in per_file:
             continue  # file disappeared (deleted/moved); not our problem

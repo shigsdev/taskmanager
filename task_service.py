@@ -91,7 +91,7 @@ def _column_value(value: Any) -> Any:
         return None
     if isinstance(value, uuid.UUID):
         return str(value)
-    if isinstance(value, (date, datetime)):
+    if isinstance(value, date | datetime):
         return value.isoformat()
     if isinstance(value, enum.Enum):
         return value.value
