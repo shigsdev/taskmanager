@@ -316,6 +316,185 @@ class TestStaleTestsCheck:
 
 
 # ---------------------------------------------------------------------------
+# Check (d): code-duplication via jscpd (#228b)
+# ---------------------------------------------------------------------------
+
+
+class TestCodeDuplicationCheck:
+    """The actual jscpd subprocess isn't exercised here (too slow,
+    requires Node). We test the parsing + threshold logic by
+    monkeypatching subprocess.run and the report-file write."""
+
+    def _mock_jscpd(self, monkeypatch, *, report_data, exit_code=0):
+        """Patch subprocess.run + tempfile.TemporaryDirectory so the
+        check parses ``report_data`` as if jscpd had emitted it.
+        """
+        import json as _json
+        import tempfile
+
+        class _Result:
+            returncode = exit_code
+            stdout = ""
+            stderr = ""
+
+        # Capture the temp dir jscpd would write into, plant the JSON
+        # there before the function's read.
+        class _FakeTempDir:
+            def __init__(self, *a, **kw):
+                self._d = tempfile.mkdtemp()
+                (Path(self._d) / "jscpd-report.json").write_text(
+                    _json.dumps(report_data), encoding="utf-8",
+                )
+
+            def __enter__(self):
+                return self._d
+
+            def __exit__(self, *a):
+                import shutil
+                shutil.rmtree(self._d, ignore_errors=True)
+
+        monkeypatch.setattr(td_mod.subprocess, "run",
+                            lambda *a, **kw: _Result())
+        monkeypatch.setattr(
+            td_mod.tempfile if hasattr(td_mod, "tempfile") else __import__("tempfile"),
+            "TemporaryDirectory",
+            _FakeTempDir,
+        )
+        # `tempfile` is imported locally inside check_code_duplication,
+        # so the cleaner patch target is via the module global if any.
+        # Fall back: patch builtin tempfile module.
+        import tempfile as _real_tempfile
+        monkeypatch.setattr(
+            _real_tempfile, "TemporaryDirectory", _FakeTempDir,
+        )
+
+    def test_no_duplicates_clean(self, with_project_root, monkeypatch):
+        self._mock_jscpd(monkeypatch, report_data={
+            "duplicates": [],
+            "statistics": {"total": {"clones": 0, "duplicatedLines": 0}},
+        })
+        assert td_mod.check_code_duplication() == []
+
+    def test_duplicate_above_threshold_flagged(
+        self, with_project_root, monkeypatch,
+    ):
+        self._mock_jscpd(monkeypatch, report_data={
+            "duplicates": [{
+                "lines": 50,
+                "tokens": 200,
+                "firstFile": {"name": "task_service.py",
+                              "start": 100, "end": 150},
+                "secondFile": {"name": "recurring_service.py",
+                               "start": 50, "end": 100},
+            }],
+            "statistics": {"total": {"clones": 1}},
+        })
+        findings = td_mod.check_code_duplication()
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.check_id == "code-duplication"
+        assert "50-line" in f.detail
+        assert "task_service.py:100-150" in f.detail
+        assert "recurring_service.py:50-100" in f.detail
+        assert "extract to a shared helper" in f.detail
+
+    def test_duplicate_below_threshold_skipped(
+        self, with_project_root, monkeypatch,
+    ):
+        # jscpd was called with --min-lines 30, but defensive code in
+        # the check also filters anything < _JSCPD_MIN_LINES in case
+        # the JSON contains a stale or differently-configured run.
+        self._mock_jscpd(monkeypatch, report_data={
+            "duplicates": [{
+                "lines": 15,  # below threshold
+                "firstFile": {"name": "a.py", "start": 1, "end": 16},
+                "secondFile": {"name": "b.py", "start": 1, "end": 16},
+            }],
+        })
+        assert td_mod.check_code_duplication() == []
+
+    def test_non_dict_duplicate_entry_skipped(
+        self, with_project_root, monkeypatch,
+    ):
+        # Defensive: malformed jscpd output shouldn't crash the audit.
+        self._mock_jscpd(monkeypatch, report_data={
+            "duplicates": [
+                "not-a-dict",
+                None,
+                42,
+                {"lines": 35, "firstFile": {"name": "a.py", "start": 1, "end": 36},
+                 "secondFile": {"name": "b.py", "start": 1, "end": 36}},
+            ],
+        })
+        findings = td_mod.check_code_duplication()
+        assert len(findings) == 1  # only the real entry
+
+    def test_npx_missing_returns_empty(
+        self, with_project_root, monkeypatch,
+    ):
+        """Running the audit on a host without node/npx → silent
+        skip (return []) rather than crash. The CI workflow installs
+        Node; this is for ad-hoc local runs without the npm tree."""
+        def fake_run(*a, **kw):
+            raise FileNotFoundError("npx not installed")
+        monkeypatch.setattr(td_mod.subprocess, "run", fake_run)
+        assert td_mod.check_code_duplication() == []
+
+    def test_missing_report_file_returns_empty(
+        self, with_project_root, monkeypatch,
+    ):
+        """jscpd ran but didn't produce a JSON report (e.g. it crashed
+        partway). Return [] rather than crash the audit."""
+        class _Result:
+            returncode = 0
+            stdout = ""
+        monkeypatch.setattr(td_mod.subprocess, "run",
+                            lambda *a, **kw: _Result())
+        # Don't mock tempfile — the real tempdir stays empty.
+        # check_code_duplication returns [] when the report file is missing.
+        assert td_mod.check_code_duplication() == []
+
+    def test_malformed_report_json_returns_empty(
+        self, with_project_root, monkeypatch,
+    ):
+        """jscpd produced a file but the JSON is malformed."""
+        import tempfile
+
+        class _FakeTempDir:
+            def __init__(self, *a, **kw):
+                self._d = tempfile.mkdtemp()
+                (Path(self._d) / "jscpd-report.json").write_text(
+                    "{not valid json", encoding="utf-8",
+                )
+
+            def __enter__(self):
+                return self._d
+
+            def __exit__(self, *a):
+                import shutil
+                shutil.rmtree(self._d, ignore_errors=True)
+
+        class _Result:
+            returncode = 0
+            stdout = ""
+        monkeypatch.setattr(td_mod.subprocess, "run",
+                            lambda *a, **kw: _Result())
+        import tempfile as _real_tempfile
+        monkeypatch.setattr(_real_tempfile, "TemporaryDirectory", _FakeTempDir)
+        assert td_mod.check_code_duplication() == []
+
+    def test_timeout_returns_empty(self, with_project_root, monkeypatch):
+        """A slow jscpd run that exceeds the timeout shouldn't take
+        down the rest of the audit."""
+        import subprocess as _sp
+
+        def fake_run(*a, **kw):
+            raise _sp.TimeoutExpired(cmd=a[0], timeout=180)
+        monkeypatch.setattr(td_mod.subprocess, "run", fake_run)
+        assert td_mod.check_code_duplication() == []
+
+
+# ---------------------------------------------------------------------------
 # Driver / main + email
 # ---------------------------------------------------------------------------
 
@@ -357,6 +536,7 @@ class TestMainExitCodes:
         assert "todo-fixme-accumulation" in labels
         assert "dependency-drift" in labels
         assert "stale-tests" in labels
+        assert "code-duplication" in labels  # #228b
 
     def test_main_with_findings_exit_one(
         self, with_project_root: Path, capsys, monkeypatch,

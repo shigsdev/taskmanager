@@ -964,7 +964,7 @@ flowchart TD
                         <td><code>weekly-tech-debt-audit.yml</code> (#228)</td>
                         <td>Saturdays 13:00 UTC</td>
                         <td>
-                            Three checks: <strong>TODO/FIXME
+                            Four checks: <strong>TODO/FIXME
                             accumulation</strong> (hotspot files
                             &gt; 5 markers OR grand-total &gt; 25);
                             <strong>dependency drift</strong>
@@ -972,7 +972,11 @@ flowchart TD
                             <code>npm outdated</code>; flags
                             major-version-behind packages);
                             <strong>stale tests</strong> (test files
-                            untouched in &gt; 180 days).
+                            untouched in &gt; 180 days);
+                            <strong>code duplication</strong>
+                            (#228b — <code>npx jscpd</code> over
+                            .py + .js; flags any block of 30+
+                            duplicated lines).
                         </td>
                     </tr>
                     <tr>

@@ -135,18 +135,21 @@
     <section class="utility-card" data-utility="run-tech-debt-audit">
         <h2>Run weekly tech-debt audit (#228)</h2>
         <p class="utility-description">
-            Three checks: <strong>TODO/FIXME accumulation</strong>
+            Four checks: <strong>TODO/FIXME accumulation</strong>
             (flags hotspot files with &gt; 5 markers AND grand-total
             over 25 across the tree); <strong>dependency drift</strong>
             (runs <code>pip list --outdated</code> + <code>npm
             outdated</code>; flags any dep that's a major version
             behind); <strong>stale tests</strong> (test files
-            untouched in &gt; 180 days).
+            untouched in &gt; 180 days); <strong>code duplication</strong>
+            (#228b — <code>npx jscpd</code> over .py + .js; flags any
+            block of 30+ duplicated lines).
         </p>
         <p class="utility-description">
             Same checks the Saturday 13:00 UTC weekly cron runs.
-            Slower than the other inline scans (~2-5s) because the
-            dependency-drift check shells out to pip + npm.
+            Slower than the other inline scans (~5-15s) because the
+            dependency-drift + code-duplication checks shell out to
+            pip + npm.
         </p>
         <div class="utility-status" data-status hidden></div>
         <button type="button" class="btn btn-primary utility-run-btn"

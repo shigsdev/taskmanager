@@ -5,13 +5,15 @@
 # the operator's inbox gets one audit email per day across the
 # weekend → Monday window rather than two on any single morning.
 #
-# Three checks live in scripts/check_tech_debt.py:
+# Four checks live in scripts/check_tech_debt.py:
 #   - todo-fixme-accumulation  (counts TODO/FIXME/XXX/HACK markers
 #                               in production code; flags hotspots
 #                               + grand-total ceiling)
 #   - dependency-drift         (pip list --outdated + npm outdated;
 #                               flags major-version-behind packages)
 #   - stale-tests              (test files untouched in > 180 days)
+#   - code-duplication (#228b) (npx jscpd over .py + .js; flags any
+#                               duplication of 30+ lines)
 #
 # Always sends an email (clean or not) so the absence of one proves
 # the cron failed. Reuses SENDGRID_API_KEY + DIGEST_*_EMAIL (no new
