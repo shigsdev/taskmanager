@@ -35,7 +35,12 @@ workflow + email):
     POST /api/utilities/run-security-posture-scan
          — invokes scripts/check_security_posture.CHECKS (the
            #227 monthly audit).
-    Both return ``{total, per_check, findings}``. Skips the
+    POST /api/utilities/run-tech-debt-audit
+         — invokes scripts/check_tech_debt.CHECKS (the #228 weekly
+           audit; the dependency-drift check inside shells out to
+           pip + npm so this endpoint is the slowest of the three,
+           typically ~2-5s).
+    All three return ``{total, per_check, findings}``. Skips the
     SendGrid email path (the UI surface IS the result channel).
 """
 from __future__ import annotations
@@ -306,6 +311,27 @@ def run_security_posture_scan(email: str):  # noqa: ARG001
     result = _run_audit_script_checks(check_security_posture)
     logger.info(
         "utilities: security-posture scan triggered via UI, total=%d",
+        result["total"],
+    )
+    return jsonify(result)
+
+
+@bp.post("/run-tech-debt-audit")
+@login_required
+def run_tech_debt_audit(email: str):  # noqa: ARG001
+    """#236 — run the #228 weekly tech-debt audit in-process and
+    return findings inline. Skips the SendGrid email path.
+
+    Note: the `dependency-drift` check inside this audit shells out
+    to `pip list --outdated` and `npm outdated`, both of which can
+    take a few seconds on first call. On the Railway host the
+    runtime is normally < 5s; if it consistently exceeds 10s,
+    consider moving to a background-job pattern.
+    """
+    from scripts import check_tech_debt
+    result = _run_audit_script_checks(check_tech_debt)
+    logger.info(
+        "utilities: tech-debt audit triggered via UI, total=%d",
         result["total"],
     )
     return jsonify(result)

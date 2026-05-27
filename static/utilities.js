@@ -66,6 +66,12 @@
             cleanResultText: "Audit CLEAN — no findings across the 4 checks.",
             postRunHint: "Same checks as the 1st-of-month 13:00 UTC cron.",
         },
+        "run-tech-debt-audit": {
+            runUrl: "/api/utilities/run-tech-debt-audit",
+            inlineScan: true,
+            cleanResultText: "Audit CLEAN — no findings across the 3 checks.",
+            postRunHint: "Same checks as the Saturday 13:00 UTC weekly cron. (Slower than the other scans — pip + npm dep lookups take a few seconds.)",
+        },
     };
 
     /**

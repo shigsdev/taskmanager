@@ -940,6 +940,21 @@ flowchart TD
                         </td>
                     </tr>
                     <tr>
+                        <td><code>weekly-tech-debt-audit.yml</code> (#228)</td>
+                        <td>Saturdays 13:00 UTC</td>
+                        <td>
+                            Three checks: <strong>TODO/FIXME
+                            accumulation</strong> (hotspot files
+                            &gt; 5 markers OR grand-total &gt; 25);
+                            <strong>dependency drift</strong>
+                            (<code>pip list --outdated</code> +
+                            <code>npm outdated</code>; flags
+                            major-version-behind packages);
+                            <strong>stale tests</strong> (test files
+                            untouched in &gt; 180 days).
+                        </td>
+                    </tr>
+                    <tr>
                         <td><code>weekly-bug-pattern-scan.yml</code> (#226)</td>
                         <td>Sundays 13:00 UTC</td>
                         <td>
