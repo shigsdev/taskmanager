@@ -940,6 +940,27 @@ flowchart TD
                         </td>
                     </tr>
                     <tr>
+                        <td><code>weekly-coverage-audit.yml</code> (#229)</td>
+                        <td>Fridays 13:00 UTC</td>
+                        <td>
+                            Runs <code>pytest --cov</code>, compares
+                            to baseline at
+                            <code>docs/audit/coverage-baseline.json</code>.
+                            Three checks: <strong>overall drift</strong>
+                            (current &lt; baseline - 1pp);
+                            <strong>per-file drift</strong> (any file
+                            &lt; its baseline - 5pp);
+                            <strong>critical-path floor</strong>
+                            (auth.py 90%, task_service.py 85%,
+                            crypto.py 95%, recurring_service.py 80%,
+                            reflection_service.py 80%,
+                            voice_service.py 70%). Regenerate
+                            baseline via
+                            <code>--write-baseline</code> after
+                            intentional coverage improvements.
+                        </td>
+                    </tr>
+                    <tr>
                         <td><code>weekly-tech-debt-audit.yml</code> (#228)</td>
                         <td>Saturdays 13:00 UTC</td>
                         <td>

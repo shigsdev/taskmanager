@@ -1,0 +1,51 @@
+# Weekly recurring test-coverage audit (#229).
+#
+# Runs every Friday at 13:00 UTC — fills the last open weekday in
+# the recurring-audit cadence (Mon=#210, Sat=#228, Sun=#226, monthly
+# 1st=#227, now Fri=#229). One audit email per day across the
+# weekend → Monday window.
+#
+# Runs the full pytest suite with coverage, compares to the committed
+# baseline in docs/audit/coverage-baseline.json, flags:
+#   - overall coverage drift > 1pp
+#   - per-file drift > 5pp on any file in the baseline
+#   - critical-path file below its absolute floor
+# (Critical paths: auth.py 90%, task_service.py 85%, crypto.py 95%,
+# recurring_service.py 80%, reflection_service.py 80%,
+# voice_service.py 70%.)
+#
+# Always emails (clean or not) so the absence proves the cron failed.
+# Reuses SENDGRID_API_KEY + DIGEST_*_EMAIL (no new secrets).
+name: Weekly test-coverage audit
+
+on:
+  schedule:
+    # Fridays 13:00 UTC ≈ 08:00 ET (EST) / 09:00 ET (EDT).
+    - cron: "0 13 * * 5"
+  workflow_dispatch: {}
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Run coverage audit
+        env:
+          SENDGRID_API_KEY:  ${{ secrets.SENDGRID_API_KEY }}
+          DIGEST_FROM_EMAIL: ${{ vars.DIGEST_FROM_EMAIL }}
+          DIGEST_TO_EMAIL:   ${{ vars.DIGEST_TO_EMAIL }}
+        run: python scripts/check_test_coverage.py
