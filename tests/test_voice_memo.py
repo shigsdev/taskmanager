@@ -1708,3 +1708,206 @@ class TestVoiceHintSubstringFallback:
             projects=[("p-ippm", "IPPM Audit")],
         )
         assert result[0]["project_id"] == "p-ippm"
+
+
+# --- #239 (2026-05-27): _call_whisper_api unit coverage --------------------
+# Pre-#239, the only voice_service.py paths exercised by the existing tests
+# were `transcribe_audio` (which is mocked at the boundary) and the
+# top-level `_normalise_voice_candidates`. The actual Whisper HTTP wrapper
+# `_call_whisper_api` was ENTIRELY uncovered — lines 161-202 representing
+# the egress call, response parsing, cost calc, and the EgressError →
+# RuntimeError translation. These tests close that gap so the
+# `voice_service.py` critical-path floor (in #229's coverage audit) can
+# move from 70% → 80%, matching the other critical-path services.
+
+
+class TestCallWhisperApi:
+    """Unit coverage for _call_whisper_api — the egress wrapper around
+    OpenAI's Whisper endpoint. Monkeypatches `egress.safe_call_api` so
+    no real HTTP call fires."""
+
+    def test_happy_path_returns_transcript_duration_cost(self, monkeypatch):
+        from voice_service import WHISPER_USD_PER_MINUTE, _call_whisper_api
+
+        captured = {}
+
+        def fake_safe_call_api(*, url, headers, files, data, timeout_sec, vendor):
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["files"] = files
+            captured["data"] = data
+            captured["timeout_sec"] = timeout_sec
+            captured["vendor"] = vendor
+            return {
+                "text": "  Hello world this is the transcript.  ",
+                "duration": 12.5,
+            }
+
+        import egress
+        monkeypatch.setattr(egress, "safe_call_api", fake_safe_call_api)
+
+        result = _call_whisper_api(
+            api_key="fake-key",
+            audio_bytes=b"PCM-frames-here",
+            mime_type="audio/webm",
+        )
+
+        # Transcript is .strip()'d (the leading + trailing spaces gone).
+        assert result["transcript"] == "Hello world this is the transcript."
+        assert result["duration_seconds"] == 12.5
+        # 12.5 seconds = 12.5/60 minutes * $0.006/min = $0.00125
+        expected_cost = (12.5 / 60.0) * WHISPER_USD_PER_MINUTE
+        assert result["cost_usd"] == pytest.approx(expected_cost)
+
+        # Egress call shape — these are the fields that matter for
+        # observability (vendor name in scrub logs) and correctness
+        # (multipart shape Whisper expects).
+        assert captured["url"] == "https://api.openai.com/v1/audio/transcriptions"
+        assert captured["headers"] == {"Authorization": "Bearer fake-key"}
+        assert captured["vendor"] == "Whisper"
+        assert captured["timeout_sec"] == 120
+        assert captured["data"]["model"] == "whisper-1"
+        assert captured["data"]["response_format"] == "verbose_json"
+        # `files` is the multipart payload. The "file" key has a tuple
+        # of (filename, file-like, mime_type).
+        assert "file" in captured["files"]
+        fname, fileobj, ftype = captured["files"]["file"]
+        assert fname == "memo.webm"
+        assert ftype == "audio/webm"
+        # file-like should read back the audio bytes.
+        assert fileobj.read() == b"PCM-frames-here"
+
+    def test_egress_error_translates_to_runtime_error(self, monkeypatch):
+        """Public contract of voice_service: callers in voice_api.py
+        catch RuntimeError. Internally egress raises EgressError; this
+        wrapper translates so the boundary stays stable."""
+        import egress
+        from voice_service import _call_whisper_api
+
+        def fake_safe_call_api(**kw):
+            raise egress.EgressError("Whisper rate-limited: HTTP 429")
+
+        monkeypatch.setattr(egress, "safe_call_api", fake_safe_call_api)
+
+        with pytest.raises(RuntimeError) as excinfo:
+            _call_whisper_api(
+                api_key="k", audio_bytes=b"x", mime_type="audio/webm",
+            )
+        # Message preserved (caller surfaces it to the user as part of
+        # the 422 error body in voice_api.upload).
+        assert "rate-limited" in str(excinfo.value)
+        # And the original EgressError is chained via __cause__ so the
+        # full trace is visible in /api/debug/logs.
+        assert isinstance(excinfo.value.__cause__, egress.EgressError)
+
+    def test_missing_duration_falls_back_to_zero(self, monkeypatch):
+        """Whisper has been observed to omit `duration` on very short
+        clips. Don't blow up — treat as 0.0 (cost = 0) and let the
+        transcript still flow through."""
+        import egress
+        from voice_service import _call_whisper_api
+        monkeypatch.setattr(
+            egress, "safe_call_api",
+            lambda **kw: {"text": "Hi"},  # no `duration` key
+        )
+
+        result = _call_whisper_api(
+            api_key="k", audio_bytes=b"x", mime_type="audio/webm",
+        )
+        assert result["transcript"] == "Hi"
+        assert result["duration_seconds"] == 0.0
+        assert result["cost_usd"] == 0.0
+
+    def test_missing_text_returns_empty_transcript(self, monkeypatch):
+        """If Whisper returns no `text` field (rare; usually empty
+        string instead), fall back to empty string rather than None.
+        The downstream pipeline (`parse_voice_memo_to_tasks`) gates on
+        empty transcript anyway."""
+        import egress
+        from voice_service import _call_whisper_api
+        monkeypatch.setattr(
+            egress, "safe_call_api",
+            lambda **kw: {"duration": 1.0},  # no `text` key
+        )
+
+        result = _call_whisper_api(
+            api_key="k", audio_bytes=b"x", mime_type="audio/webm",
+        )
+        assert result["transcript"] == ""
+
+    def test_mp4_mime_routes_to_mp4_filename(self, monkeypatch):
+        """iOS Safari sends `audio/mp4` for AAC-in-MP4 recordings.
+        The filename passed to Whisper must have the .mp4 extension
+        for Whisper to detect the format correctly."""
+        from voice_service import _call_whisper_api
+
+        captured = {}
+
+        import egress
+        def fake(**kw):
+            captured["files"] = kw["files"]
+            return {"text": "x", "duration": 1.0}
+        monkeypatch.setattr(egress, "safe_call_api", fake)
+
+        _call_whisper_api(
+            api_key="k", audio_bytes=b"x", mime_type="audio/mp4",
+        )
+        fname, _, _ = captured["files"]["file"]
+        assert fname == "memo.mp4"
+
+    def test_ios_safari_colon_separator_in_mime(self, monkeypatch):
+        """iOS Safari has been observed sending non-standard `:`
+        separator in MIME (e.g. `audio/mp4:codecs-mp4a.40.2`).
+        _filename_for_mime handles both `;` and `:` — verify the
+        whole call wraps it correctly."""
+        from voice_service import _call_whisper_api
+
+        captured = {}
+
+        import egress
+        def fake(**kw):
+            captured["files"] = kw["files"]
+            return {"text": "x", "duration": 1.0}
+        monkeypatch.setattr(egress, "safe_call_api", fake)
+
+        _call_whisper_api(
+            api_key="k",
+            audio_bytes=b"x",
+            mime_type="audio/mp4:codecs-mp4a.40.2",
+        )
+        fname, _, ftype = captured["files"]["file"]
+        assert fname == "memo.mp4"
+        # The full mime (with the `:` codec hint) is what we send to
+        # Whisper — Whisper's parser ignores anything after the base
+        # type, so this is fine.
+        assert ftype == "audio/mp4:codecs-mp4a.40.2"
+
+    def test_cost_calculation_matches_published_rate(self, monkeypatch):
+        """Whisper bills at $0.006/min. A 60-second clip should cost
+        exactly $0.006 (within float epsilon)."""
+        import egress
+        from voice_service import _call_whisper_api
+        monkeypatch.setattr(
+            egress, "safe_call_api",
+            lambda **kw: {"text": "x", "duration": 60.0},
+        )
+
+        result = _call_whisper_api(
+            api_key="k", audio_bytes=b"x", mime_type="audio/webm",
+        )
+        assert result["cost_usd"] == pytest.approx(0.006)
+
+    def test_duration_zero_yields_zero_cost(self, monkeypatch):
+        """Edge: 0-second clip = $0 cost (avoids accidental floor
+        billing on truly silent recordings)."""
+        import egress
+        from voice_service import _call_whisper_api
+        monkeypatch.setattr(
+            egress, "safe_call_api",
+            lambda **kw: {"text": "", "duration": 0.0},
+        )
+
+        result = _call_whisper_api(
+            api_key="k", audio_bytes=b"x", mime_type="audio/webm",
+        )
+        assert result["cost_usd"] == 0.0

@@ -14,7 +14,7 @@
     "Critical-path floors live in scripts/check_test_coverage.py",
     "and are NOT baseline-relative \u2014 they're absolute minimums."
   ],
-  "overall": 84.13,
+  "overall": 84.0,
   "per_file": {
     "app.py": 90.21,
     "architecture_schemas.py": 100.0,
@@ -56,6 +56,7 @@
     "scripts\\check_bug_patterns.py": 91.48,
     "scripts\\check_security_posture.py": 87.82,
     "scripts\\check_tech_debt.py": 85.07,
+    "scripts\\check_test_coverage.py": 70.55,
     "scripts\\mint_validator_cookie.py": 80.65,
     "scripts\\restore_drill.py": 26.83,
     "scripts\\run_dev_bypass.py": 51.61,
@@ -71,10 +72,10 @@
     "utils.py": 94.0,
     "validator_cookie.py": 80.0,
     "voice_api.py": 79.63,
-    "voice_service.py": 72.73,
+    "voice_service.py": 100.0,
     "weekly_focus_api.py": 83.58,
     "weekly_focus_service.py": 84.75,
     "weekly_planner_service.py": 75.59
   },
-  "generated_at": "2026-05-27T00:50:23.457489+00:00"
+  "generated_at": "2026-05-27T11:10:57.108676+00:00"
 }

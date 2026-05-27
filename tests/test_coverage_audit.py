@@ -133,13 +133,14 @@ class TestCheckPerFileDrift:
 class TestCheckCriticalPathFloors:
     def test_above_floor_no_finding(self):
         # Every critical-path file is well above its floor.
+        # voice_service.py: 95.0 satisfies the post-#239 90% floor.
         per_file = {
             "auth.py": 95.0,
             "task_service.py": 90.0,
             "crypto.py": 98.0,
             "recurring_service.py": 88.0,
             "reflection_service.py": 85.0,
-            "voice_service.py": 75.0,
+            "voice_service.py": 95.0,
         }
         assert cov_mod.check_critical_path_floors(per_file) == []
 
