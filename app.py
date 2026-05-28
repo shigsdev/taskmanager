@@ -5,6 +5,7 @@ Wires up Google OAuth + single-user lockdown, the database, and migrations.
 from __future__ import annotations
 
 import os
+import sys
 from datetime import timedelta
 
 from dotenv import load_dotenv
@@ -850,4 +851,60 @@ def _start_digest_scheduler(app: Flask) -> None:
     _health.register_scheduler(scheduler)
 
 
-app = create_app()
+# #248 (2026-05-27): The module-level `app = create_app()` runs WHENEVER
+# anything imports app.py — including pytest's conftest doing
+# `from app import create_app`. If DATABASE_URL points to prod (which it
+# does inside the /utilities coverage subprocess running on Railway, per
+# #229b), the resulting Flask app's `configure_logging()` attaches a
+# `DBLogHandler` to the ROOT logger. From then on, ANY test that emits
+# a WARNING+ log record (e.g. test_run_missed_crons's synthetic-
+# exception test) writes to PROD's app_logs table.
+#
+# Detected via 8 ERROR rows in prod logs with logger=run_missed_crons +
+# message=synthetic — the literal text from test_run_missed_crons.py:120's
+# `RuntimeError("synthetic")`. Traceback path was /app/tests/test_run_missed_crons.py
+# proving the leak was from pytest running inside the Railway container.
+#
+# Fix: when pytest is on the call stack (detected via `"pytest" in
+# sys.modules` at app.py import time), construct the module-level
+# `app` with `TESTING=True` + a safe in-memory SQLite URI. That:
+#  - Keeps `from app import app` working for callers like
+#    tests/test_deployment.py and gunicorn's `app:app` WSGI ref
+#  - Skips `configure_logging()` (gated on `not TESTING` in create_app)
+#  - Prevents accidental prod DATABASE_URL binding
+#
+# Gunicorn never imports pytest, so `_RUNNING_UNDER_PYTEST` is False on
+# Railway prod, and `app = create_app()` runs as before.
+_RUNNING_UNDER_PYTEST = "pytest" in sys.modules
+
+if _RUNNING_UNDER_PYTEST:
+    # Bare Flask() stub — does NOT call `create_app()` so no
+    # `db.init_app()` runs at module import. The conftest.py `app`
+    # fixture creates its own Flask app via `create_app({TESTING: True, ...})`
+    # and that's the one tests use. The module-level `app` only
+    # exists to satisfy:
+    #   - `from app import app` in tests/test_deployment.py
+    #     (test_app_is_flask_instance + test_app_module_exposes_app)
+    #   - the `app:app` WSGI reference (which never actually runs
+    #     under pytest — gunicorn never imports pytest)
+    # The bare stub is INTENTIONALLY missing routes / DB / logging —
+    # any test trying to use it instead of the fixture would fail
+    # loudly, which is the desired behavior.
+    #
+    # Going through `create_app(TESTING=True)` was attempted first
+    # but caused Flask-SQLAlchemy multi-app binding confusion in
+    # test_logging.py's TestClientErrorEndpoint — `db.engine` was
+    # resolving to the module-level stub's engine during certain
+    # context-pushing windows, so inserts and reads landed in
+    # different :memory: instances and the test asserted None.
+    app = Flask(__name__)
+    # nosem: python.flask.security.audit.hardcoded-config.avoid_hardcoded_config_TESTING
+    # — This line is gated behind `_RUNNING_UNDER_PYTEST` so it can
+    # only execute when pytest is loaded. Gunicorn / Railway prod
+    # NEVER imports pytest, so this branch is dead code on prod. The
+    # semgrep rule's intent (don't ship a TESTING=True app to prod)
+    # is satisfied by the import-time guard; the rule is a heuristic
+    # that doesn't understand the guard.
+    app.config["TESTING"] = True  # noqa: S106
+else:
+    app = create_app()

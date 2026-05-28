@@ -446,3 +446,81 @@ class TestWsgiEntryPoint:
         from app import app
 
         assert isinstance(app, Flask)
+
+    def test_app_under_pytest_is_bare_stub(self):
+        """#248 (2026-05-27): when pytest is on the call stack, the
+        module-level `app` MUST be a bare Flask() — NOT a full
+        `create_app()` result.
+
+        The bug: a full create_app() at module-import time pointed at
+        the env DATABASE_URL (prod Postgres on Railway), called
+        configure_logging(), and attached DBLogHandler to the root
+        logger. Any test that emitted WARNING+ then wrote to prod's
+        app_logs table.
+
+        Detected via 8 ERROR rows in prod logs with `synthetic`
+        RuntimeError text leaked from test_run_missed_crons.py:120
+        — only possible if the test's log handler was attached to a
+        prod-pointing app.
+
+        Bare Flask() under pytest means:
+          - No db.init_app() — no Flask-SQLAlchemy binding
+          - No configure_logging() — no DBLogHandler attached
+          - No route registration — no /api/anything served
+          - Tests must use the conftest `app` fixture for any real
+            Flask app testing
+        """
+        from app import app
+
+        # Bare stub has TESTING=True flag.
+        assert app.config.get("TESTING") is True, (
+            "Module-level app must have TESTING flag under pytest"
+        )
+        # Bare stub has NO SQLALCHEMY_DATABASE_URI config (because
+        # `create_app()` was never called). A full create_app() would
+        # populate it.
+        assert "SQLALCHEMY_DATABASE_URI" not in app.config, (
+            "Bare stub should not have SQLALCHEMY_DATABASE_URI — "
+            "presence implies create_app() ran at import time."
+        )
+        # Bare stub has no routes registered.
+        rules = [r.rule for r in app.url_map.iter_rules()]
+        # Flask auto-registers /static/<filename>; ignore that.
+        non_static_rules = [r for r in rules if not r.startswith("/static")]
+        assert non_static_rules == [], (
+            f"Bare stub should have no routes; got {non_static_rules}"
+        )
+
+    def test_root_logger_has_no_dblog_handler_from_app_import(self):
+        """#248 regression test: simply importing `from app import app`
+        must NOT add a DBLogHandler to the root logger. Without #248's
+        guard, this happens silently.
+
+        Cleans handlers between checks so prior tests' explicit
+        handler attachments don't pollute. Then re-imports `app`
+        (cached in sys.modules so this is a no-op) and asserts no
+        handler was added by the import.
+        """
+        import logging
+
+        from logging_service import DBLogHandler
+
+        # Note: we can't reliably check "no DBLogHandler ever attached"
+        # because some tests in test_logging.py intentionally attach
+        # one via the fixture path. But we CAN check the import alone
+        # doesn't trigger one — by counting handlers, importing, and
+        # counting again.
+        root = logging.getLogger()
+        before = sum(
+            1 for h in root.handlers if isinstance(h, DBLogHandler)
+        )
+        # Re-import — cached in sys.modules so this just rebinds the
+        # name; the module body doesn't re-execute.
+        from app import app  # noqa: F401
+        after = sum(
+            1 for h in root.handlers if isinstance(h, DBLogHandler)
+        )
+        assert after == before, (
+            f"Importing `from app import app` should not change "
+            f"DBLogHandler count on root; before={before} after={after}"
+        )

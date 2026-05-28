@@ -689,11 +689,24 @@ class TestClientErrorEndpoint:
         # The test app has TESTING=True so configure_logging isn't called.
         # Install a DBLogHandler manually so the endpoint's log.handle()
         # has somewhere to go.
+        # #248 (2026-05-27): Attach to ROOT logger, not
+        # `taskmanager.client`. The endpoint uses
+        # `taskmanager.debug.handle(record)` (debug_api.py:144 +
+        # client_error()), not `taskmanager.client.handle(...)` — the
+        # record carries name="taskmanager.client" but `handle()` fires
+        # the handlers of THIS logger, not the record's named one. So
+        # a handler on `taskmanager.client` never fires. Before #248,
+        # the module-level `app = create_app()` ran configure_logging()
+        # which attached a DBLogHandler to root, and propagation from
+        # taskmanager.debug → taskmanager → root caught the record by
+        # accident. With #248's bare Flask stub, that side effect is
+        # gone, exposing this latent test bug. Attaching to root is
+        # the correct shape — Python's logging propagation guarantees
+        # the record gets there regardless of which logger emitted it.
         handler = DBLogHandler(app, level=logging.ERROR)
         handler.addFilter(RequestContextFilter())
-        client_logger = logging.getLogger("taskmanager.client")
-        client_logger.addHandler(handler)
-        client_logger.setLevel(logging.ERROR)
+        root_logger = logging.getLogger()
+        root_logger.addHandler(handler)
         try:
             resp = authed_client.post(
                 "/api/debug/client-error",
@@ -717,14 +730,27 @@ class TestClientErrorEndpoint:
             assert row.traceback is not None
             assert "at bar" in row.traceback
         finally:
-            client_logger.removeHandler(handler)
+            root_logger.removeHandler(handler)
 
     def test_client_error_scrubs_email(self, app, authed_client):
+        # #248 (2026-05-27): Attach to ROOT logger, not
+        # `taskmanager.client`. The endpoint uses
+        # `taskmanager.debug.handle(record)` (debug_api.py:144 +
+        # client_error()), not `taskmanager.client.handle(...)` — the
+        # record carries name="taskmanager.client" but `handle()` fires
+        # the handlers of THIS logger, not the record's named one. So
+        # a handler on `taskmanager.client` never fires. Before #248,
+        # the module-level `app = create_app()` ran configure_logging()
+        # which attached a DBLogHandler to root, and propagation from
+        # taskmanager.debug → taskmanager → root caught the record by
+        # accident. With #248's bare Flask stub, that side effect is
+        # gone, exposing this latent test bug. Attaching to root is
+        # the correct shape — Python's logging propagation guarantees
+        # the record gets there regardless of which logger emitted it.
         handler = DBLogHandler(app, level=logging.ERROR)
         handler.addFilter(RequestContextFilter())
-        client_logger = logging.getLogger("taskmanager.client")
-        client_logger.addHandler(handler)
-        client_logger.setLevel(logging.ERROR)
+        root_logger = logging.getLogger()
+        root_logger.addHandler(handler)
         try:
             resp = authed_client.post(
                 "/api/debug/client-error",
@@ -740,7 +766,7 @@ class TestClientErrorEndpoint:
             assert "bob@example.com" not in row.message
             assert "[REDACTED:EMAIL]" in row.message
         finally:
-            client_logger.removeHandler(handler)
+            root_logger.removeHandler(handler)
 
 
 class TestClientErrorControlCharStripAndCaps:
@@ -749,11 +775,24 @@ class TestClientErrorControlCharStripAndCaps:
     rows and an attacker can't write 50KB+ messages each."""
 
     def test_newlines_in_message_replaced_with_space(self, app, authed_client):
+        # #248 (2026-05-27): Attach to ROOT logger, not
+        # `taskmanager.client`. The endpoint uses
+        # `taskmanager.debug.handle(record)` (debug_api.py:144 +
+        # client_error()), not `taskmanager.client.handle(...)` — the
+        # record carries name="taskmanager.client" but `handle()` fires
+        # the handlers of THIS logger, not the record's named one. So
+        # a handler on `taskmanager.client` never fires. Before #248,
+        # the module-level `app = create_app()` ran configure_logging()
+        # which attached a DBLogHandler to root, and propagation from
+        # taskmanager.debug → taskmanager → root caught the record by
+        # accident. With #248's bare Flask stub, that side effect is
+        # gone, exposing this latent test bug. Attaching to root is
+        # the correct shape — Python's logging propagation guarantees
+        # the record gets there regardless of which logger emitted it.
         handler = DBLogHandler(app, level=logging.ERROR)
         handler.addFilter(RequestContextFilter())
-        client_logger = logging.getLogger("taskmanager.client")
-        client_logger.addHandler(handler)
-        client_logger.setLevel(logging.ERROR)
+        root_logger = logging.getLogger()
+        root_logger.addHandler(handler)
         try:
             resp = authed_client.post(
                 "/api/debug/client-error",
@@ -768,14 +807,27 @@ class TestClientErrorControlCharStripAndCaps:
             assert "real error" in row.message
             assert "fake injected" in row.message
         finally:
-            client_logger.removeHandler(handler)
+            root_logger.removeHandler(handler)
 
     def test_oversized_message_truncated_at_2k(self, app, authed_client):
+        # #248 (2026-05-27): Attach to ROOT logger, not
+        # `taskmanager.client`. The endpoint uses
+        # `taskmanager.debug.handle(record)` (debug_api.py:144 +
+        # client_error()), not `taskmanager.client.handle(...)` — the
+        # record carries name="taskmanager.client" but `handle()` fires
+        # the handlers of THIS logger, not the record's named one. So
+        # a handler on `taskmanager.client` never fires. Before #248,
+        # the module-level `app = create_app()` ran configure_logging()
+        # which attached a DBLogHandler to root, and propagation from
+        # taskmanager.debug → taskmanager → root caught the record by
+        # accident. With #248's bare Flask stub, that side effect is
+        # gone, exposing this latent test bug. Attaching to root is
+        # the correct shape — Python's logging propagation guarantees
+        # the record gets there regardless of which logger emitted it.
         handler = DBLogHandler(app, level=logging.ERROR)
         handler.addFilter(RequestContextFilter())
-        client_logger = logging.getLogger("taskmanager.client")
-        client_logger.addHandler(handler)
-        client_logger.setLevel(logging.ERROR)
+        root_logger = logging.getLogger()
+        root_logger.addHandler(handler)
         try:
             resp = authed_client.post(
                 "/api/debug/client-error",
@@ -788,7 +840,7 @@ class TestClientErrorControlCharStripAndCaps:
             assert len(row.message) < 2100
             assert "[truncated]" in row.message
         finally:
-            client_logger.removeHandler(handler)
+            root_logger.removeHandler(handler)
 
 
 class TestBackfillProjectColors:
