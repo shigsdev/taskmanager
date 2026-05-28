@@ -1,5 +1,48 @@
 [build]
 builder = "nixpacks"
+# #245 (2026-05-27): exclude doc / autofile / CI-only files from the
+# redeploy trigger.
+#
+# Background: the recurring audits (#226-#229) have a `--autofile`
+# step that commits BACKLOG.md updates back to main from a GH Actions
+# runner. Railway's default behavior is to redeploy on ANY push to
+# the watched branch, so every autofile push (potentially several
+# per day across the 4 audits) restarts the prod container. With
+# #244, clicking Run on /utilities ALSO triggers a workflow_dispatch
+# that eventually pushes an autofile commit — creating a feedback
+# loop where each click guarantees a redeploy ~2 minutes later,
+# which can kill any concurrent /utilities audit in flight (the
+# polling-on-idle fix in #244's frontend then shows "interrupted").
+#
+# `watchPatterns` is a Railway-specific config. A leading `!` is
+# Railway's notation for "do NOT redeploy on changes to this glob"
+# (negative matcher). See Railway's config-as-code docs.
+#
+# What stays in (triggers redeploy):
+#   - All .py, .js, .css, .html files (code + templates + static)
+#   - requirements*.txt, package*.json, package-lock.json (deps)
+#   - migrations/ (schema changes)
+#   - railway.toml + nixpacks files (config changes)
+#   - gunicorn.conf.py (runtime config)
+# What's excluded (no redeploy):
+#   - BACKLOG.md            — autofile churn, zero code impact
+#   - docs/                 — ADRs, design docs, audit baselines
+#   - tests/                — tests don't run on Railway runtime
+#   - .github/              — CI yaml, no Railway impact
+#   - .gitignore / .gitattributes / .pre-commit-config.yaml
+#   - README.md, CLAUDE.md, ARCHITECTURE.md (operator docs)
+watchPatterns = [
+    "!BACKLOG.md",
+    "!docs/**",
+    "!tests/**",
+    "!.github/**",
+    "!.gitignore",
+    "!.gitattributes",
+    "!.pre-commit-config.yaml",
+    "!README.md",
+    "!CLAUDE.md",
+    "!ARCHITECTURE.md",
+]
 
 [deploy]
 startCommand = "flask db upgrade && gunicorn app:app -c gunicorn.conf.py"
