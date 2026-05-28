@@ -512,6 +512,63 @@ class TestInlineAuditScans:
         assert captured["audit_name"] == "bug-pattern"
         assert captured["count"] == 1
 
+    def test_inline_scan_dispatches_cron_workflow_for_autofile(
+        self, authed_client, monkeypatch,
+    ):
+        """#244 (2026-05-27): after the in-process autofile, the
+        endpoint must also dispatch the matching cron workflow via
+        the GitHub Actions API so the BACKLOG.md change gets
+        committed back to GitHub (Railway containers can't push).
+        Each audit_name maps to a specific workflow YAML file.
+        """
+        import utilities_api
+
+        dispatched = []
+        monkeypatch.setattr(
+            utilities_api, "_dispatch_github_workflow",
+            lambda workflow_file: dispatched.append(workflow_file),
+        )
+        # Stub autofile to a no-op (covered separately).
+        from scripts import backlog_autofile
+        monkeypatch.setattr(
+            backlog_autofile, "run_for_audit",
+            lambda *a, **kw: None,
+        )
+
+        resp = authed_client.post(
+            "/api/utilities/run-bug-pattern-scan"
+        )
+        assert resp.status_code == 200
+        assert dispatched == ["weekly-bug-pattern-scan.yml"]
+
+    def test_inline_scan_dispatch_failure_does_not_break_response(
+        self, authed_client, monkeypatch,
+    ):
+        """If the workflow_dispatch fails (e.g. GITHUB_DISPATCH_TOKEN
+        missing in dev), the inline scan response must still 200
+        with findings — the dispatch is value-add for persistence,
+        not load-bearing."""
+        import utilities_api
+
+        def boom(workflow_file):
+            raise ValueError(
+                "GITHUB_DISPATCH_TOKEN env var not configured",
+            )
+        monkeypatch.setattr(
+            utilities_api, "_dispatch_github_workflow", boom,
+        )
+        from scripts import backlog_autofile
+        monkeypatch.setattr(
+            backlog_autofile, "run_for_audit",
+            lambda *a, **kw: None,
+        )
+        resp = authed_client.post(
+            "/api/utilities/run-bug-pattern-scan"
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert isinstance(body["total"], int)
+
     def test_inline_scan_autofile_failure_does_not_break_response(
         self, authed_client, monkeypatch,
     ):

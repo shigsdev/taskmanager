@@ -263,6 +263,66 @@ def _serialise_findings(findings) -> list[dict]:
     return out
 
 
+# #244 (2026-05-27): /utilities-triggered audits dispatch the cron
+# workflow to persist BACKLOG.md changes back to GitHub.
+#
+# Why: the in-process autofile path (#243) modifies BACKLOG.md ON THE
+# RAILWAY CONTAINER'S LOCAL FILESYSTEM. Railway containers have no
+# git credentials, no push step, and get wiped on every deploy. So
+# the autofile rows ARE written but only inside the ephemeral
+# container — invisible to the operator who checks origin/main.
+#
+# Fix: after the in-process audit returns the findings inline, also
+# dispatch the matching cron workflow. The workflow runs the audit
+# on a GitHub Actions runner (which has commit + push wired in via
+# the #242 commit-back step). UI gets the inline results immediately;
+# the workflow_dispatch result lands in BACKLOG.md ~2 minutes later.
+#
+# Why dispatch the workflow rather than directly committing via the
+# REST API:
+#   - The workflow already has the commit + push logic; reusing it
+#     means a single code path. (REST API would need separate locking
+#     + race handling against the cron's own commit step.)
+#   - The workflow re-runs the audit on a clean checkout — catches
+#     "I committed something locally but the audit doesn't see it"
+#     class of confusion.
+#   - The dispatch is async — Flask returns immediately, no extra
+#     latency on the /utilities response.
+_AUDIT_NAME_TO_WORKFLOW = {
+    "bug-pattern": "weekly-bug-pattern-scan.yml",
+    "security": "monthly-security-audit.yml",
+    "tech-debt": "weekly-tech-debt-audit.yml",
+    "coverage": "weekly-coverage-audit.yml",
+}
+
+
+def _dispatch_audit_workflow_for_autofile(audit_name: str) -> None:
+    """#244: best-effort workflow_dispatch so the cron path commits
+    the autofile changes back to GitHub. Failures are logged but
+    don't propagate (the inline audit result is the load-bearing
+    channel; persistence is a value-add).
+    """
+    workflow_file = _AUDIT_NAME_TO_WORKFLOW.get(audit_name)
+    if not workflow_file:
+        return
+    try:
+        _dispatch_github_workflow(workflow_file)
+        logger.info(
+            "utilities: dispatched %s for autofile persistence",
+            workflow_file,
+        )
+    except (ValueError, RuntimeError) as e:
+        # Most common: GITHUB_DISPATCH_TOKEN not set in this env.
+        # Logged at INFO not WARNING because for dev/test envs it's
+        # expected and not actionable. The inline scan result still
+        # rendered correctly; only the BACKLOG.md persistence is
+        # affected.
+        logger.info(
+            "utilities: autofile dispatch skipped for %s: %s: %s",
+            audit_name, type(e).__name__, e,
+        )
+
+
 def _run_audit_script_checks(
     checks_module, audit_name: str | None = None,
 ) -> dict:
@@ -277,9 +337,11 @@ def _run_audit_script_checks(
     If ``audit_name`` is provided, the finding list is also passed to
     ``backlog_autofile.run_for_audit()`` so /utilities-triggered runs
     end up in BACKLOG.md's ``## Auto-filed by recurring audits``
-    section, same as the cron-triggered runs. The autofile is
-    idempotent — a manual run won't duplicate rows on top of the cron
-    run's data; it just refreshes ``last_seen``. (#243, 2026-05-27)
+    section. After that, #244 dispatches the matching cron workflow
+    so the BACKLOG.md change gets committed back to GitHub (the
+    Railway container can't push). The in-process autofile is still
+    useful for the local-dev / smoke-test path where the container
+    has git access. (#243, 2026-05-27; #244, 2026-05-27)
     """
     all_findings = []
     per_check = []
@@ -302,6 +364,9 @@ def _run_audit_script_checks(
     # /utilities card. Same upsert path the cron uses — single source
     # of truth for "this finding exists." Best-effort: a broken
     # autofile must not take down the UI response.
+    # #244: AFTER the local autofile, dispatch the cron workflow so
+    # the BACKLOG.md change gets committed back to GitHub from the
+    # GH Actions runner (Railway containers can't push to git).
     if audit_name:
         try:
             from scripts import backlog_autofile
@@ -312,6 +377,7 @@ def _run_audit_script_checks(
                 "%s: %s",
                 audit_name, type(e).__name__, e,
             )
+        _dispatch_audit_workflow_for_autofile(audit_name)
 
     return {
         "total": len(all_findings),
@@ -512,6 +578,9 @@ def _run_coverage_audit_subprocess(json_path: str) -> None:
     # so we trigger it here using the parsed result. Best-effort: a
     # broken autofile must not flip the job's status to error since
     # the audit data itself is fine.
+    # #244 (2026-05-27): also dispatch the cron workflow so the
+    # autofile change gets committed back to GitHub (Railway can't
+    # push). Same best-effort treatment.
     try:
         from types import SimpleNamespace
 
@@ -531,6 +600,7 @@ def _run_coverage_audit_subprocess(json_path: str) -> None:
             "%s: %s",
             type(e).__name__, e,
         )
+    _dispatch_audit_workflow_for_autofile("coverage")
 
     finished = datetime.datetime.now(datetime.UTC)
     with _coverage_job_lock:

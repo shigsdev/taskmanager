@@ -218,9 +218,21 @@
      * the response's `status` field is `"complete"` (renders the
      * embedded `result` payload via renderScanResult) or `"error"`
      * (renders the error message). Resolves when the poll terminates.
+     *
+     * #244 (2026-05-27): also terminate on an unexpected flip back
+     * to `"idle"` after we've seen `"running"`. The in-memory job
+     * state on Railway lives only as long as the gunicorn worker —
+     * when the container restarts (e.g. mid-deploy), state resets
+     * to `"idle"` and the original job is effectively cancelled.
+     * Before this fix the polling loop kept asking and never stopped.
      */
     function pollAsyncJob(resultEl, config) {
         return new Promise(function (resolve) {
+            // Track whether we've seen `running` at least once. The
+            // FIRST poll might arrive before the kickoff has flipped
+            // state to running (rare race); we only treat idle as
+            // terminal AFTER we've seen running.
+            let sawRunning = false;
             const interval = setInterval(async function () {
                 let snap;
                 try {
@@ -232,6 +244,10 @@
                     // next run replaces it.
                     return;
                 }
+                if (snap && snap.status === "running") {
+                    sawRunning = true;
+                    return;  // keep polling
+                }
                 if (snap && snap.status === "complete") {
                     clearInterval(interval);
                     renderScanResult(
@@ -240,14 +256,30 @@
                         config,
                     );
                     resolve();
-                } else if (snap && snap.status === "error") {
+                    return;
+                }
+                if (snap && snap.status === "error") {
                     clearInterval(interval);
                     resultEl.classList.add("utility-result-err");
                     resultEl.textContent = "Audit failed: "
                         + (snap.error || "unknown error");
                     resolve();
+                    return;
                 }
-                // status === "running" or "idle" — keep polling.
+                if (snap && snap.status === "idle" && sawRunning) {
+                    // #244 — running → idle = container reset. The
+                    // job's in-memory state is gone. Surface a clear
+                    // message so the operator knows to retry rather
+                    // than the spinner spinning forever.
+                    clearInterval(interval);
+                    resultEl.classList.add("utility-result-err");
+                    resultEl.textContent = "Audit was interrupted "
+                        + "(server restarted during the run — likely "
+                        + "a deploy). Click Run to try again.";
+                    resolve();
+                    return;
+                }
+                // Pre-running idle (kickoff race) — keep polling.
             }, config.pollIntervalMs || 2000);
         });
     }
