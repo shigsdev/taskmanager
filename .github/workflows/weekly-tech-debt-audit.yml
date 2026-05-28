@@ -78,16 +78,27 @@ jobs:
 
       - name: Commit BACKLOG.md changes (if any)
         # #242: see weekly-bug-pattern-scan.yml for the rationale.
+        # #247: rebase + retry on push (see weekly-bug-pattern-scan.yml).
         run: |
-          if [[ -n "$(git status --porcelain BACKLOG.md)" ]]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add BACKLOG.md
-            git commit -m "chore(autofile): tech-debt audit upsert [skip ci]"
-            git push
-          else
+          if [[ -z "$(git status --porcelain BACKLOG.md)" ]]; then
             echo "No BACKLOG.md changes to commit."
+            exit 0
           fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add BACKLOG.md
+          git commit -m "chore(autofile): tech-debt audit upsert [skip ci]"
+          for attempt in 1 2 3; do
+            git pull --rebase origin main || true
+            if git push; then
+              echo "Pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "Push attempt $attempt failed, retrying after backoff..."
+            sleep 5
+          done
+          echo "All push attempts failed."
+          exit 1
 
       - name: Re-emit audit exit code
         run: exit ${AUDIT_RC:-0}
