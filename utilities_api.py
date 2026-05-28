@@ -761,7 +761,11 @@ def run_coverage_audit(email: str):  # noqa: ARG001
     return jsonify({
         "status": "running",
         "started_at": started_iso,
-        "estimated_duration_seconds": 30,
+        # #251 (2026-05-28) — bumped from 30 to 240 to match observed
+        # Railway runtimes (3-5 minutes for the full pytest --cov
+        # suite). The UI's pollAsyncJob loop now overrides this with
+        # a live elapsed-time counter, so the field is informational.
+        "estimated_duration_seconds": 240,
     })
 
 

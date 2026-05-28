@@ -83,16 +83,18 @@
         },
         // #229b — async inline-scan (runs pytest --cov as a background
         // subprocess; the page polls for status every 2s and renders
-        // the result when the job completes ~30s later).
+        // the result when the job completes).
+        // #251 (2026-05-28) — observed Railway runtime is 3-5 minutes
+        // (not ~30s like on dev). The live elapsed-time counter in
+        // pollAsyncJob makes the actual duration visible.
         "run-coverage-audit": {
             runUrl: "/api/utilities/run-coverage-audit",
             statusUrl: "/api/utilities/coverage-audit-status",
             inlineScan: true,
             asyncJob: true,
-            estimatedSeconds: 30,
             pollIntervalMs: 2000,
             cleanResultText: "Audit CLEAN — no findings across the 3 checks.",
-            postRunHint: "Same checks as the Friday 13:00 UTC weekly cron. (Runs the full pytest suite with --cov; takes ~30s.)",
+            postRunHint: "Same checks as the Friday 13:00 UTC weekly cron. (Runs the full pytest suite with --cov; takes 3-5 minutes on Railway.)",
         },
     };
 
@@ -226,7 +228,21 @@
      * to `"idle"` and the original job is effectively cancelled.
      * Before this fix the polling loop kept asking and never stopped.
      */
-    function pollAsyncJob(resultEl, config) {
+    /**
+     * #251 (2026-05-28): format an elapsed duration as `Xm Ys` or
+     * `Ys` depending on length. Used for the live "Running…" label.
+     */
+    function formatElapsed(seconds) {
+        seconds = Math.max(0, Math.floor(seconds));
+        if (seconds < 60) {
+            return seconds + "s";
+        }
+        const m = Math.floor(seconds / 60);
+        const s = seconds % 60;
+        return m + "m " + s + "s";
+    }
+
+    function pollAsyncJob(resultEl, config, btn) {
         return new Promise(function (resolve) {
             // Track whether we've seen `running` at least once. The
             // FIRST poll might arrive before the kickoff has flipped
@@ -246,6 +262,16 @@
                 }
                 if (snap && snap.status === "running") {
                     sawRunning = true;
+                    // #251 — live elapsed-time label so the operator
+                    // can see the job IS progressing, even when it
+                    // takes longer than the rough estimate. Computes
+                    // elapsed from `started_at` on every poll.
+                    if (btn && snap.started_at) {
+                        const startMs = new Date(snap.started_at).getTime();
+                        const elapsedS = (Date.now() - startMs) / 1000;
+                        btn.textContent = "Running… ("
+                            + formatElapsed(elapsedS) + ")";
+                    }
                     return;  // keep polling
                 }
                 if (snap && snap.status === "complete") {
@@ -308,8 +334,11 @@
             // We then poll statusUrl every 2s until the job completes
             // or errors. The button shows "Running… (~Ns)" while we wait.
             if (config.asyncJob) {
-                btn.textContent = "Running… (~"
-                    + (config.estimatedSeconds || 30) + "s)";
+                // #251 (2026-05-28) — initial label shows a rough
+                // estimate range; the polling loop overwrites with
+                // a live elapsed-time counter as soon as the first
+                // poll returns started_at.
+                btn.textContent = "Running… (starting…)";
                 try {
                     await window.apiFetch(config.runUrl, { method: "POST" });
                 } catch (err) {
@@ -320,7 +349,7 @@
                     const msg = (err && err.message) || "";
                     if (!/already running/i.test(msg)) throw err;
                 }
-                await pollAsyncJob(resultEl, config);
+                await pollAsyncJob(resultEl, config, btn);
                 return;
             }
             const data = await window.apiFetch(config.runUrl, { method: "POST" });

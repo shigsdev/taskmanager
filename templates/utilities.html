@@ -146,9 +146,11 @@
             reflection_service.py 80%, voice_service.py 90%).
         </p>
         <p class="utility-description">
-            Slower than the other inline scans — pytest takes ~30s.
-            The Run button kicks off a background subprocess and
-            polls every 2s; the page won't lock up while it runs.
+            Slower than the other inline scans — pytest with coverage
+            takes 3-5 minutes on Railway. The Run button kicks off a
+            background subprocess and polls every 2s; the button
+            label shows live elapsed time, and the page won't lock up
+            while it runs.
         </p>
         <div class="utility-status" data-status hidden></div>
         <button type="button" class="btn btn-primary utility-run-btn"

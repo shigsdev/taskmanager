@@ -691,7 +691,13 @@ class TestCoverageAuditAsync:
         body = resp.get_json()
         assert body["status"] == "running"
         assert "started_at" in body
-        assert body["estimated_duration_seconds"] == 30
+        # #251 — bumped from 30s to 240s after observed Railway
+        # runtime of 3-5 min. Asserts the value is something
+        # reasonable (positive, plausibly minutes) rather than
+        # hard-coding the exact 240 — leaves room for the operator
+        # to tune the estimate without breaking the test.
+        assert isinstance(body["estimated_duration_seconds"], int)
+        assert body["estimated_duration_seconds"] >= 30
 
     def test_state_persists_via_file_not_module_dict(
         self, authed_client,
