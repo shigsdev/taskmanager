@@ -61,6 +61,7 @@ subprocess and returns immediately, GET polls for status:
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 import os
 from pathlib import Path
@@ -449,15 +450,45 @@ def run_security_posture_scan(email: str):  # noqa: ARG001
 # Trade-offs:
 #   - Single slot = no concurrent runs (operator gets 409 if they
 #     double-click; harmless because there's only one operator).
-#   - Server restart wipes the in-flight state (the orphaned
-#     subprocess will keep writing to its tmpfile, but the state dict
-#     loses its handle — the file gets garbage-collected with the
-#     temp dir).
-#   - No persistence — last result is in-memory only. Acceptable
-#     because the cron's email is the durable record.
-
-_coverage_job_state: dict = {
-    "status": "idle",         # idle | running | complete | error
+#   - Container restart wipes the in-flight state — file in /tmp/
+#     vanishes with the container. Polling sees "idle" on the new
+#     container; the JS frontend's "audit was interrupted" message
+#     handles this case.
+#   - No persistence across deploys — last result is ephemeral.
+#     Acceptable because the cron's email is the durable record.
+#
+# #250 (2026-05-28): MOVED FROM module-level dict to a shared FILE
+# in /tmp/ because gunicorn runs multiple workers (default 2 from
+# `gunicorn.conf.py`'s `WEB_CONCURRENCY=2`), and module-level dicts
+# are NOT shared across workers. The original implementation had a
+# severe bug: POST landed on worker A (set state="running"), polling
+# round-robin'd to worker B (saw state="idle" because worker B's
+# module state was never touched), and the frontend's polling-on-idle
+# fix (#244) interpreted that as a container restart → "Audit was
+# interrupted" message. File-based state is visible to all workers
+# in the same container.
+#
+# Atomicity: writes go through a sibling `.tmp` file + `os.replace()`
+# which is atomic on POSIX. Readers see either the old or the new
+# file content, never a partial state. The single-worker threading.
+# Lock is kept (only inside the kickoff POST handler) to serialise
+# the read-check-write sequence of the 409 guard against
+# double-click within a single worker; cross-worker the user is the
+# only one clicking so a true concurrent double-POST is extremely
+# rare, and at worst we get two subprocesses racing for the same
+# result file (single-user app, low-cost outcome).
+_COVERAGE_JOB_STATE_PATH = Path(
+    # nosec B108 / noqa: S108 — Intentional shared-state file under
+    # the system temp dir so all gunicorn workers in the same Railway
+    # container can read/write the same job-state record. The file
+    # contains audit-result JSON (no secrets, no PII) and is gated
+    # behind the @login_required `/api/utilities/*` routes which are
+    # AUTHORIZED_EMAIL-locked. Predictable path is the WHOLE POINT —
+    # mkstemp here would defeat the cross-worker visibility goal.
+    os.environ.get("TMPDIR", "/tmp"),  # noqa: S108
+) / "taskmanager_coverage_audit_state.json"
+_COVERAGE_IDLE_STATE: dict = {
+    "status": "idle",          # idle | running | complete | error
     "started_at": None,        # ISO8601
     "finished_at": None,       # ISO8601 (set on complete OR error)
     "duration_seconds": None,  # filled on completion
@@ -467,13 +498,55 @@ _coverage_job_state: dict = {
 _coverage_job_lock = __import__("threading").Lock()
 
 
+def _read_coverage_job_state() -> dict:
+    """Return the current job state from the shared state file, or the
+    idle default if the file is missing / malformed.
+
+    Missing file = idle (no run ever started, or container was just
+    restarted). Corrupt file = idle (defensive: surface as no-job and
+    let the next kickoff overwrite it). Returns a COPY so callers can't
+    mutate _COVERAGE_IDLE_STATE.
+    """
+    try:
+        text = _COVERAGE_JOB_STATE_PATH.read_text(encoding="utf-8")
+        parsed = json.loads(text)
+        if not isinstance(parsed, dict):
+            return dict(_COVERAGE_IDLE_STATE)
+        # Defensive: ensure all expected keys are present.
+        out = dict(_COVERAGE_IDLE_STATE)
+        out.update(parsed)
+        return out
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return dict(_COVERAGE_IDLE_STATE)
+
+
+def _write_coverage_job_state(state: dict) -> None:
+    """Atomic write of the job state to the shared file. Uses a
+    sibling `.tmp` file + `os.replace()` so readers never see a
+    partial state — they get either the old file or the new file,
+    never a half-written one.
+    """
+    tmp = _COVERAGE_JOB_STATE_PATH.with_suffix(".json.tmp")
+    try:
+        tmp.write_text(json.dumps(state), encoding="utf-8")
+        # `Path.replace` calls `os.replace`, which is atomic across
+        # POSIX (and best-effort on Windows). For Railway prod
+        # (Linux containers) this is truly atomic.
+        tmp.replace(_COVERAGE_JOB_STATE_PATH)
+    except OSError as e:
+        logger.warning(
+            "utilities: coverage state write failed (continuing): "
+            "%s: %s",
+            type(e).__name__, e,
+        )
+
+
 def _run_coverage_audit_subprocess(json_path: str) -> None:
     """Background-thread target. Runs the audit script, then updates
     the module-level state dict. Catches every exception so the
     thread can't die silently and leave the state stuck at
     "running" — any unexpected failure surfaces as status=error.
     """
-    import json
     import subprocess
     import sys
     import threading  # noqa: F401 — imported for the lock
@@ -549,14 +622,19 @@ def _run_coverage_audit_subprocess(json_path: str) -> None:
     except (subprocess.TimeoutExpired, RuntimeError, OSError,
             json.JSONDecodeError) as e:
         finished = datetime.datetime.now(datetime.UTC)
+        # #250 — write state to the shared file so all gunicorn workers
+        # see the new "error" state. Reading first preserves any fields
+        # the kickoff set (started_at) before overwriting status/error.
         with _coverage_job_lock:
-            _coverage_job_state.update({
+            cur = _read_coverage_job_state()
+            cur.update({
                 "status": "error",
                 "finished_at": finished.isoformat(),
                 "duration_seconds": (finished - started).total_seconds(),
                 "result": None,
                 "error": f"{type(e).__name__}: {e}",
             })
+            _write_coverage_job_state(cur)
         logger.warning(
             "utilities: coverage audit subprocess errored: %s: %s",
             type(e).__name__, e,
@@ -603,14 +681,17 @@ def _run_coverage_audit_subprocess(json_path: str) -> None:
     _dispatch_audit_workflow_for_autofile("coverage")
 
     finished = datetime.datetime.now(datetime.UTC)
+    # #250 — write to shared file (visible across all gunicorn workers).
     with _coverage_job_lock:
-        _coverage_job_state.update({
+        cur = _read_coverage_job_state()
+        cur.update({
             "status": "complete",
             "finished_at": finished.isoformat(),
             "duration_seconds": (finished - started).total_seconds(),
             "result": result,
             "error": None,
         })
+        _write_coverage_job_state(cur)
     logger.info(
         "utilities: coverage audit complete (total=%d, %.1fs)",
         result.get("total", 0),
@@ -637,10 +718,15 @@ def run_coverage_audit(email: str):  # noqa: ARG001
     import threading
 
     with _coverage_job_lock:
-        if _coverage_job_state["status"] == "running":
+        # #250 — read state from shared file so all gunicorn workers
+        # see the SAME source of truth. Without this, worker A could
+        # be running while worker B sees idle and starts a SECOND
+        # subprocess (race on coverage.json + autofile commits).
+        cur = _read_coverage_job_state()
+        if cur["status"] == "running":
             return jsonify({
                 "error": "A coverage audit is already running",
-                "started_at": _coverage_job_state["started_at"],
+                "started_at": cur["started_at"],
             }), 409
         # Allocate a tempfile path the subprocess will write to. Use
         # a per-run path so a stale file from a prior run can't
@@ -650,7 +736,7 @@ def run_coverage_audit(email: str):  # noqa: ARG001
         )
         os.close(fd)  # subprocess will overwrite it
         started_iso = datetime.datetime.now(datetime.UTC).isoformat()
-        _coverage_job_state.update({
+        _write_coverage_job_state({
             "status": "running",
             "started_at": started_iso,
             "finished_at": None,
@@ -692,9 +778,11 @@ def coverage_audit_status(email: str):  # noqa: ARG001
 
     Idempotent and read-only — safe to poll every 2 seconds.
     """
-    with _coverage_job_lock:
-        # Return a copy so polling can't observe a mid-update state.
-        snapshot = dict(_coverage_job_state)
+    # #250 — read from shared file so polling sees the SAME state
+    # regardless of which gunicorn worker handles this request.
+    # Atomic-rename semantics on the writer side mean we either see
+    # the old state or the new state, never a partial one.
+    snapshot = _read_coverage_job_state()
     return jsonify(snapshot)
 
 

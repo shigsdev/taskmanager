@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+import pytest
+
 from models import Task, TaskStatus, TaskType, Tier, db
 
 
@@ -620,7 +622,30 @@ class TestCoverageAuditAsync:
     immediately with {status: "running"}. Frontend polls GET status
     until it flips to "complete" or "error". Single-slot — a second
     POST while a run is in flight returns 409.
+
+    #250 (2026-05-28): job state moved from module-level dict to a
+    shared file in /tmp/ so all gunicorn workers see the same state.
+    Tests use a per-test tempfile via the `coverage_state_file`
+    fixture below so they don't pollute the real /tmp file (or each
+    other's state).
     """
+
+    @pytest.fixture(autouse=True)
+    def coverage_state_file(self, tmp_path, monkeypatch):
+        """#250: redirect the shared-state file to a per-test temp path
+        so tests don't leak state between each other or into the real
+        /tmp/taskmanager_coverage_audit_state.json. Auto-used by every
+        test in this class — no opt-in needed.
+        """
+        import utilities_api
+        monkeypatch.setattr(
+            utilities_api,
+            "_COVERAGE_JOB_STATE_PATH",
+            tmp_path / "coverage_state.json",
+        )
+        # Start each test with idle state (no file present).
+        # _read_coverage_job_state() returns the default idle dict
+        # when the file is missing, so no setup needed.
 
     def test_run_endpoint_requires_auth(self, client):
         resp = client.post("/api/utilities/run-coverage-audit")
@@ -653,7 +678,7 @@ class TestCoverageAuditAsync:
             lambda json_path: None,
         )
         # Reset state so prior tests don't leave it in "running".
-        utilities_api._coverage_job_state.update({
+        utilities_api._write_coverage_job_state({
             "status": "idle",
             "started_at": None,
             "finished_at": None,
@@ -668,6 +693,84 @@ class TestCoverageAuditAsync:
         assert "started_at" in body
         assert body["estimated_duration_seconds"] == 30
 
+    def test_state_persists_via_file_not_module_dict(
+        self, authed_client,
+    ):
+        """#250 (2026-05-28) regression: job state is stored in a file
+        at `_COVERAGE_JOB_STATE_PATH` (shared across gunicorn workers)
+        rather than a module-level dict (per-worker, NOT shared). The
+        original module-level implementation caused the polling
+        endpoint to return "idle" if the request round-robin'd to a
+        gunicorn worker that hadn't received the kickoff POST.
+
+        Verify: writing state via the helper actually persists to the
+        file path the module points at — so a different process /
+        thread / worker can read the same data.
+        """
+        import json as _json
+
+        import utilities_api
+
+        utilities_api._write_coverage_job_state({
+            "status": "running",
+            "started_at": "2026-05-28T20:00:00+00:00",
+            "finished_at": None,
+            "duration_seconds": None,
+            "result": None,
+            "error": None,
+        })
+        # File should exist at the path the module is currently
+        # configured to use (the fixture redirected this to tmp_path).
+        path = utilities_api._COVERAGE_JOB_STATE_PATH
+        assert path.exists(), (
+            f"Expected state file at {path}; was not created. "
+            "If module-level dict is used instead of a file, this test "
+            "regresses to the cross-worker bug."
+        )
+        # Content matches what we wrote (reading via parse, not via
+        # _read_coverage_job_state, so a buggy helper can't mask the
+        # bug).
+        on_disk = _json.loads(path.read_text(encoding="utf-8"))
+        assert on_disk["status"] == "running"
+        assert on_disk["started_at"] == "2026-05-28T20:00:00+00:00"
+
+        # And the read helper returns the same shape.
+        snapshot = utilities_api._read_coverage_job_state()
+        assert snapshot == on_disk
+
+    def test_status_endpoint_reads_from_file_not_module_dict(
+        self, authed_client,
+    ):
+        """#250 regression: GET /coverage-audit-status reads from the
+        shared file. Set state via the file directly (simulating
+        another worker having written it), and verify the endpoint
+        returns that state. If the endpoint read from a module dict,
+        this test would see idle instead of running.
+        """
+        import json as _json
+
+        import utilities_api
+
+        # Write the state directly to the file (simulating a different
+        # gunicorn worker that already handled the kickoff POST).
+        path = utilities_api._COVERAGE_JOB_STATE_PATH
+        path.write_text(_json.dumps({
+            "status": "running",
+            "started_at": "2026-05-28T20:30:00+00:00",
+            "finished_at": None,
+            "duration_seconds": None,
+            "result": None,
+            "error": None,
+        }), encoding="utf-8")
+
+        # Endpoint should reflect what's in the file, NOT a per-worker
+        # module dict that was never touched.
+        resp = authed_client.get("/api/utilities/coverage-audit-status")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["status"] == "running"
+        assert body["started_at"] == "2026-05-28T20:30:00+00:00"
+
     def test_kickoff_returns_409_when_already_running(
         self, authed_client, monkeypatch,
     ):
@@ -680,7 +783,7 @@ class TestCoverageAuditAsync:
 
         # Force the state into "running" so the kickoff sees an
         # in-flight job and bails.
-        utilities_api._coverage_job_state.update({
+        utilities_api._write_coverage_job_state({
             "status": "running",
             "started_at": "2026-05-27T12:00:00+00:00",
             "finished_at": None,
@@ -698,7 +801,7 @@ class TestCoverageAuditAsync:
             assert body["started_at"] == "2026-05-27T12:00:00+00:00"
         finally:
             # Restore idle state so later tests aren't blocked.
-            utilities_api._coverage_job_state.update({
+            utilities_api._write_coverage_job_state({
                 "status": "idle",
                 "started_at": None,
                 "finished_at": None,
@@ -725,7 +828,7 @@ class TestCoverageAuditAsync:
             "findings": [],
             "overall": 84.0,
         }
-        utilities_api._coverage_job_state.update({
+        utilities_api._write_coverage_job_state({
             "status": "complete",
             "started_at": "2026-05-27T12:00:00+00:00",
             "finished_at": "2026-05-27T12:00:30+00:00",
@@ -744,7 +847,7 @@ class TestCoverageAuditAsync:
             assert body["error"] is None
             assert body["duration_seconds"] == 30.0
         finally:
-            utilities_api._coverage_job_state.update({
+            utilities_api._write_coverage_job_state({
                 "status": "idle",
                 "started_at": None,
                 "finished_at": None,
@@ -762,7 +865,7 @@ class TestCoverageAuditAsync:
         missing result."""
         import utilities_api
 
-        utilities_api._coverage_job_state.update({
+        utilities_api._write_coverage_job_state({
             "status": "error",
             "started_at": "2026-05-27T12:00:00+00:00",
             "finished_at": "2026-05-27T12:00:05+00:00",
@@ -780,7 +883,7 @@ class TestCoverageAuditAsync:
             assert "RuntimeError" in body["error"]
             assert body["result"] is None
         finally:
-            utilities_api._coverage_job_state.update({
+            utilities_api._write_coverage_job_state({
                 "status": "idle",
                 "started_at": None,
                 "finished_at": None,
@@ -836,7 +939,7 @@ class TestCoverageAuditAsync:
 
         # Seed the state as "running" the way the kickoff endpoint
         # would have left it before spawning the thread.
-        utilities_api._coverage_job_state.update({
+        utilities_api._write_coverage_job_state({
             "status": "running",
             "started_at": "2026-05-27T12:00:00+00:00",
             "finished_at": None,
@@ -849,13 +952,13 @@ class TestCoverageAuditAsync:
             # test to be deterministic).
             utilities_api._run_coverage_audit_subprocess(str(json_path))
 
-            assert utilities_api._coverage_job_state["status"] == "complete"
-            assert utilities_api._coverage_job_state["result"] == fake_payload
-            assert utilities_api._coverage_job_state["error"] is None
-            assert utilities_api._coverage_job_state["finished_at"] is not None
-            assert utilities_api._coverage_job_state["duration_seconds"] is not None
+            assert utilities_api._read_coverage_job_state()["status"] == "complete"
+            assert utilities_api._read_coverage_job_state()["result"] == fake_payload
+            assert utilities_api._read_coverage_job_state()["error"] is None
+            assert utilities_api._read_coverage_job_state()["finished_at"] is not None
+            assert utilities_api._read_coverage_job_state()["duration_seconds"] is not None
         finally:
-            utilities_api._coverage_job_state.update({
+            utilities_api._write_coverage_job_state({
                 "status": "idle",
                 "started_at": None,
                 "finished_at": None,
@@ -892,7 +995,7 @@ class TestCoverageAuditAsync:
             subprocess, "run", lambda *a, **kw: FakeProc(),
         )
 
-        utilities_api._coverage_job_state.update({
+        utilities_api._write_coverage_job_state({
             "status": "running",
             "started_at": "2026-05-27T12:00:00+00:00",
             "finished_at": None,
@@ -902,12 +1005,12 @@ class TestCoverageAuditAsync:
         })
         try:
             utilities_api._run_coverage_audit_subprocess(str(json_path))
-            assert utilities_api._coverage_job_state["status"] == "error"
-            err = utilities_api._coverage_job_state["error"]
+            assert utilities_api._read_coverage_job_state()["status"] == "error"
+            err = utilities_api._read_coverage_job_state()["error"]
             assert "result file is empty" in err
             assert "rc=1" in err
         finally:
-            utilities_api._coverage_job_state.update({
+            utilities_api._write_coverage_job_state({
                 "status": "idle",
                 "started_at": None,
                 "finished_at": None,
@@ -951,7 +1054,7 @@ class TestCoverageAuditAsync:
             encoding="utf-8",
         )
 
-        utilities_api._coverage_job_state.update({
+        utilities_api._write_coverage_job_state({
             "status": "running",
             "started_at": "2026-05-27T12:00:00+00:00",
             "finished_at": None,
@@ -963,7 +1066,7 @@ class TestCoverageAuditAsync:
             utilities_api._run_coverage_audit_subprocess(str(json_path))
             assert captured_env.get("PYTHONIOENCODING") == "utf-8"
         finally:
-            utilities_api._coverage_job_state.update({
+            utilities_api._write_coverage_job_state({
                 "status": "idle",
                 "started_at": None,
                 "finished_at": None,
@@ -1034,7 +1137,7 @@ class TestCoverageAuditAsync:
             backlog_autofile, "run_for_audit", fake_autofile,
         )
 
-        utilities_api._coverage_job_state.update({
+        utilities_api._write_coverage_job_state({
             "status": "running",
             "started_at": "2026-05-27T12:00:00+00:00",
             "finished_at": None,
@@ -1052,9 +1155,9 @@ class TestCoverageAuditAsync:
                 "per-file-coverage-drift"
             )
             # Job state still marked complete.
-            assert utilities_api._coverage_job_state["status"] == "complete"
+            assert utilities_api._read_coverage_job_state()["status"] == "complete"
         finally:
-            utilities_api._coverage_job_state.update({
+            utilities_api._write_coverage_job_state({
                 "status": "idle",
                 "started_at": None,
                 "finished_at": None,
@@ -1079,7 +1182,7 @@ class TestCoverageAuditAsync:
 
         monkeypatch.setattr(subprocess, "run", boom)
 
-        utilities_api._coverage_job_state.update({
+        utilities_api._write_coverage_job_state({
             "status": "running",
             "started_at": "2026-05-27T12:00:00+00:00",
             "finished_at": None,
@@ -1091,12 +1194,12 @@ class TestCoverageAuditAsync:
             utilities_api._run_coverage_audit_subprocess(
                 str(tmp_path / "nope.json"),
             )
-            assert utilities_api._coverage_job_state["status"] == "error"
-            assert utilities_api._coverage_job_state["error"] is not None
-            assert "Timeout" in utilities_api._coverage_job_state["error"] \
-                or "timeout" in utilities_api._coverage_job_state["error"].lower()
+            assert utilities_api._read_coverage_job_state()["status"] == "error"
+            assert utilities_api._read_coverage_job_state()["error"] is not None
+            assert "Timeout" in utilities_api._read_coverage_job_state()["error"] \
+                or "timeout" in utilities_api._read_coverage_job_state()["error"].lower()
         finally:
-            utilities_api._coverage_job_state.update({
+            utilities_api._write_coverage_job_state({
                 "status": "idle",
                 "started_at": None,
                 "finished_at": None,
