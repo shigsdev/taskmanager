@@ -97,11 +97,22 @@ Any change that touches:
 - a new route that renders HTML
 - any CSS selector, layout change, or new UI element
 
-REQUIRES a live-browser regression via Claude Preview at BOTH desktop
-(1280×800) and mobile (375×812). Passing Playwright tests that don't
-specifically exercise the changed page/element DO NOT substitute for
-Phase 6. Backend tests DO NOT substitute for Phase 6. HTTP 200 on
-`curl` DO NOT substitute for Phase 6.
+REQUIRES a live-browser regression at BOTH desktop (1280×800) and
+mobile (375×812). Passing Playwright tests that don't specifically
+exercise the changed page/element DO NOT substitute for Phase 6.
+Backend tests DO NOT substitute for Phase 6. HTTP 200 on `curl` DO
+NOT substitute for Phase 6.
+
+**Tool preference (2026-05-28):** Prefer `chrome-devtools-mcp` over
+Claude Preview when both are available. They overlap on the basics
+(navigate / click / fill / snapshot / console logs / eval) but
+`chrome-devtools-mcp` adds: `list_network_requests` (verify the
+right API endpoints fire on each surface), per-call response body
+inspection, `lighthouse_audit` (a11y + perf scores), and
+`performance_start_trace`. Use Claude Preview only as a fallback if
+`chrome-devtools-mcp` isn't loaded. Both still need the same dev
+bypass setup (seed + `.env.dev-bypass` + `preview_start
+taskmanager-dev-bypass` to boot the Flask process).
 
 **Anti-pattern that happened on 2026-04-18 (voice memo feature):**
 The feature passed 16 backend tests, the full Jest suite, 23 local
