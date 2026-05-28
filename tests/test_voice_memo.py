@@ -1710,6 +1710,123 @@ class TestVoiceHintSubstringFallback:
         assert result[0]["project_id"] == "p-ippm"
 
 
+class TestVoiceHintAcronymLooseMatch:
+    """#249 (2026-05-28): Whisper-acronym-transcription fallback.
+
+    When the speaker says a 3-letter acronym like "BAU", Whisper
+    typically writes it back with periods ("B.A.U.") or letter-
+    spaced ("B A U"). The existing exact + substring passes don't
+    handle this — "b.a.u." and "b a u" share no contiguous substring
+    with the project key "bau".
+
+    Loose-match fallback: after exact + substring miss, strip every
+    non-alphanumeric character from BOTH the hint and the lookup
+    keys, then try exact match. "b.a.u." → "bau" matches "bau".
+    """
+
+    def _norm(self, item, projects=None, goals=None):
+        from scan_service import _normalise_voice_candidates
+        return _normalise_voice_candidates([item], projects=projects, goals=goals)
+
+    def test_period_separated_acronym_resolves(self):
+        """User says 'BAU'; Whisper writes 'B.A.U.' — should match."""
+        result = self._norm(
+            {"title": "x", "project_hint": "B.A.U."},
+            projects=[("p-bau", "BAU"), ("p-other", "Roadmaps")],
+        )
+        assert result[0]["project_id"] == "p-bau"
+
+    def test_period_separated_acronym_no_trailing_period(self):
+        """'B.A.U' (no trailing period) should also resolve."""
+        result = self._norm(
+            {"title": "x", "project_hint": "B.A.U"},
+            projects=[("p-bau", "BAU")],
+        )
+        assert result[0]["project_id"] == "p-bau"
+
+    def test_letter_spaced_acronym_resolves(self):
+        """'B A U' (letter-by-letter spacing) should resolve."""
+        result = self._norm(
+            {"title": "x", "project_hint": "B A U"},
+            projects=[("p-bau", "BAU")],
+        )
+        assert result[0]["project_id"] == "p-bau"
+
+    def test_hyphen_separated_acronym_resolves(self):
+        """'B-A-U' should resolve. (Hyphens are already handled by
+        _SEPARATOR_RE → space, but loose-match catches the resulting
+        spaces too.)"""
+        result = self._norm(
+            {"title": "x", "project_hint": "B-A-U"},
+            projects=[("p-bau", "BAU")],
+        )
+        assert result[0]["project_id"] == "p-bau"
+
+    def test_loose_match_works_against_goals(self):
+        """Same fallback fires on goal hints (not just projects)."""
+        result = self._norm(
+            {"title": "x", "goal_hint": "Q.4 OKRs"},
+            goals=[("g-q4", "Q4 OKRs"), ("g-other", "Health")],
+        )
+        assert result[0]["goal_id"] == "g-q4"
+
+    def test_loose_match_ambiguous_returns_none(self):
+        """If the loose-stripped hint matches multiple titles
+        ambiguously, don't guess — leave unresolved."""
+        # Two projects whose alnum-only forms both contain "bau" —
+        # but neither equals "bau" exactly, so the loose-EXACT pass
+        # won't pick either. Substring fallback already runs and
+        # would catch one if singular; here both contain "bau" so
+        # multi-match → ambiguous → no resolve.
+        result = self._norm(
+            {"title": "x", "project_hint": "B.A.U."},
+            projects=[
+                ("p-bau1", "BAU East"),
+                ("p-bau2", "BAU West"),
+            ],
+        )
+        # Substring fallback: "bau" in "bau east" + "bau west" →
+        # 2 matches → ambiguous → returns None. Loose pass: "bau"
+        # in alnum map → keys are "baueast", "bauwest" → "bau" not
+        # exact in alnum map either → returns None.
+        assert result[0]["project_id"] is None
+
+    def test_loose_match_does_not_fire_when_substring_resolves(self):
+        """If substring fallback already finds a unique match, the
+        loose-match pass shouldn't override it. (Belt-and-braces:
+        substring runs first in _resolve_voice_hint.)"""
+        result = self._norm(
+            {"title": "x", "project_hint": "audit"},
+            projects=[("p-ippm", "IPPM Audit"), ("p-bau", "BAU")],
+        )
+        # Should resolve via substring (audit in 'ippm audit').
+        assert result[0]["project_id"] == "p-ippm"
+
+    def test_alphanumeric_only_hint_does_not_double_check(self):
+        """If the hint is already alphanumeric-only (e.g. 'BAU'),
+        loose-match would be redundant with exact. The branch
+        should skip (no infinite loop, no false work)."""
+        result = self._norm(
+            {"title": "x", "project_hint": "BAU"},
+            projects=[("p-bau", "BAU")],
+        )
+        # Exact match wins on the first pass; loose-match never
+        # runs because the alnum stripped hint == the normalised hint.
+        assert result[0]["project_id"] == "p-bau"
+
+    def test_loose_match_preserves_original_hint_string(self):
+        """The candidate's `project_hint` field MUST stay the
+        original Whisper string (e.g. 'B.A.U.'), not the
+        normalised loose form. The UI shows it as 'Heard project:
+        "<original>"', so we want the original prose."""
+        result = self._norm(
+            {"title": "x", "project_hint": "B.A.U."},
+            projects=[("p-bau", "BAU")],
+        )
+        assert result[0]["project_hint"] == "B.A.U."
+        assert result[0]["project_id"] == "p-bau"
+
+
 # --- #239 (2026-05-27): _call_whisper_api unit coverage --------------------
 # Pre-#239, the only voice_service.py paths exercised by the existing tests
 # were `transcribe_audio` (which is mocked at the boundary) and the

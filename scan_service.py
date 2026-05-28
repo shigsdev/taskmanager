@@ -790,6 +790,20 @@ _SEPARATOR_RE = re.compile(r"[-_‐-―−]")
 # to a single ASCII space.
 _UNICODE_WS_RE = re.compile(r"\s+")
 
+# #249 (2026-05-28): "loose match" fallback. Strip everything that
+# isn't a letter or digit, leaving only alphanumerics + nothing else.
+# Used by `_resolve_voice_hint` as a final fallback after exact +
+# substring. Catches the acronym mistranscription class:
+#   - User says "BAU"
+#   - Whisper transcribes "B.A.U." (acronyms typically written with
+#     periods) or "B A U" (letter-by-letter spacing)
+#   - Loose normalisation collapses both to "bau" → matches the
+#     "BAU" project (which loose-normalises to "bau")
+# Safe against false positives because the lookup STILL requires a
+# single unambiguous match (multi-match → ambiguous → no resolution),
+# AND only fires after exact + substring miss.
+_NON_ALNUM_RE = re.compile(r"[^a-z0-9]")
+
 
 def _normalise_title(s: str) -> str:
     """Normalise a hint / title string for lookup comparison.
@@ -871,6 +885,38 @@ def _resolve_voice_hint(
             kind, hint, len(by_title_lc),
         )
         return candidates[0]
+
+    # #249 (2026-05-28): loose-match fallback. Strip everything that
+    # isn't a letter/digit on BOTH sides, then try exact + substring
+    # again. Catches the Whisper-acronym-transcription class:
+    #
+    #   "BAU" project + speaker says "BAU"
+    #   - Whisper writes "B.A.U." or "B A U" or "B-A-U"
+    #   - Normaliser keeps "b.a.u." / "b a u" / "b a u" (the
+    #     separator regex handles hyphens but not periods or spaces
+    #     between single letters)
+    #   - Loose-strip: "bau" on both sides → exact match
+    #
+    # Only runs if BOTH primary passes missed AND the hint has at
+    # least one non-alphanumeric character (otherwise it's already
+    # been tried as exact). Single-match requirement preserved —
+    # ambiguous loose-matches still resolve to no-match.
+    hint_alnum = _NON_ALNUM_RE.sub("", hint_lc)
+    if hint_alnum and hint_alnum != hint_lc:
+        loose_map = {
+            _NON_ALNUM_RE.sub("", title_lc): eid
+            for title_lc, eid in by_title_lc.items()
+        }
+        loose_exact = loose_map.get(hint_alnum)
+        if loose_exact is not None and list(
+            loose_map.values()
+        ).count(loose_exact) == 1:
+            logger.info(
+                "voice hint resolved: %s %r → loose match (alnum-only "
+                "%r against %d titles)",
+                kind, hint, hint_alnum, len(loose_map),
+            )
+            return loose_exact
     # #234 (2026-05-26, second pass): promote the "miss" + "ambiguous"
     # paths from INFO → WARNING so they surface in /api/debug/logs.
     # Per logging_service.py, only WARNING+ rows persist to the
