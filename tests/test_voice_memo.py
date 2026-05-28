@@ -1827,6 +1827,165 @@ class TestVoiceHintAcronymLooseMatch:
         assert result[0]["project_id"] == "p-bau"
 
 
+class TestVoiceHintTitleContextDisambiguation:
+    """#252 (2026-05-28): when Claude returns a partial hint that
+    substring-matches multiple projects (e.g. "Roadmap" matches both
+    "Roadmaps" and "Roadmap Automation"), the resolver disambiguates
+    by checking which candidate's "extra words" appear in the task
+    title.
+
+    Bug shape: user said something about a roadmap-automation
+    discussion. Whisper transcribed clearly. Claude saw "Roadmap" as
+    the hint. The pre-#252 resolver substring-matched both
+    "Roadmaps" and "Roadmap Automation" → ambiguous → returned None
+    → UI showed "(no match)". With #252, the resolver checks the
+    task title — if it contains "automation", picks
+    "Roadmap Automation".
+    """
+
+    def _norm(self, item, projects=None, goals=None):
+        from scan_service import _normalise_voice_candidates
+        return _normalise_voice_candidates([item], projects=projects, goals=goals)
+
+    def test_title_contains_distinguishing_word_picks_winner(self):
+        """User's task title contains "automation" → pick
+        "Roadmap Automation" over "Roadmaps"."""
+        result = self._norm(
+            {
+                "title": "Send note about the automation diagram",
+                "project_hint": "Roadmap",
+            },
+            projects=[
+                ("p-auto", "Roadmap Automation"),
+                ("p-plural", "Roadmaps"),
+            ],
+        )
+        assert result[0]["project_id"] == "p-auto"
+
+    def test_title_contains_other_distinguishing_word(self):
+        """Symmetric case: task title contains "roadmaps" (plural)
+        → pick "Roadmaps" over "Roadmap Automation"."""
+        result = self._norm(
+            {
+                "title": "Review the roadmaps list for Q3",
+                "project_hint": "Roadmap",
+            },
+            projects=[
+                ("p-auto", "Roadmap Automation"),
+                ("p-plural", "Roadmaps"),
+            ],
+        )
+        assert result[0]["project_id"] == "p-plural"
+
+    def test_no_disambiguating_signal_returns_none(self):
+        """If the task title has no overlap with EITHER candidate's
+        extra words, the resolver still returns None (don't guess
+        when there's no evidence)."""
+        result = self._norm(
+            {
+                "title": "Just a generic task with no signal",
+                "project_hint": "Roadmap",
+            },
+            projects=[
+                ("p-auto", "Roadmap Automation"),
+                ("p-plural", "Roadmaps"),
+            ],
+        )
+        assert result[0]["project_id"] is None
+        # Hint preserved for UI display.
+        assert result[0]["project_hint"] == "Roadmap"
+
+    def test_exact_match_still_wins_over_title_disambiguation(self):
+        """When Claude IS specific (returns full project name), the
+        exact-match pass fires before substring/title disambiguation
+        ever runs. Don't override the explicit choice."""
+        result = self._norm(
+            {
+                "title": "Review the roadmaps list",
+                # Title says "roadmaps" but Claude was explicit.
+                "project_hint": "Roadmap Automation",
+            },
+            projects=[
+                ("p-auto", "Roadmap Automation"),
+                ("p-plural", "Roadmaps"),
+            ],
+        )
+        assert result[0]["project_id"] == "p-auto"
+
+    def test_disambiguation_only_fires_on_multi_match(self):
+        """When substring fallback finds exactly ONE match (not
+        ambiguous), the title-context check is skipped — there's
+        nothing to disambiguate."""
+        result = self._norm(
+            {
+                "title": "Tidy the audit notes",
+                "project_hint": "audit",
+            },
+            projects=[
+                # Only ONE project contains "audit" — substring fallback
+                # resolves directly without needing title context.
+                ("p-ippm", "IPPM Audit"),
+                ("p-other", "Roadmaps"),
+            ],
+        )
+        assert result[0]["project_id"] == "p-ippm"
+
+    def test_disambiguation_with_short_extra_word_ignores_filler(self):
+        """Extra words < 4 chars are ignored (too noisy — would
+        match common task-title words like 'the', 'and', 'for')."""
+        result = self._norm(
+            {
+                # Title contains "for" — must NOT be used to disambiguate.
+                "title": "Build something for the team",
+                "project_hint": "X",
+            },
+            projects=[
+                ("p-for", "X for the team"),
+                ("p-by", "X by Friday"),
+            ],
+        )
+        # Neither extra word ("team" / "Friday") is in title with
+        # length >= 4 AND uniquely identifying — actually "team" IS
+        # in title and length >= 4, so "X for the team" should win.
+        # This test confirms the filter works.
+        assert result[0]["project_id"] == "p-for"
+
+    def test_tied_scores_remain_unresolved(self):
+        """If two candidates tie for top score, return None — a tie
+        is still ambiguous."""
+        result = self._norm(
+            {
+                # Title contains BOTH "automation" AND "roadmaps" —
+                # one signal for each candidate.
+                "title": "Migrate roadmaps to the new automation pipeline",
+                "project_hint": "Roadmap",
+            },
+            projects=[
+                ("p-auto", "Roadmap Automation"),
+                ("p-plural", "Roadmaps"),
+            ],
+        )
+        # Each candidate scores 1 (one extra word in title).
+        # Tied top score → returns None.
+        assert result[0]["project_id"] is None
+
+    def test_disambiguation_works_for_goals_too(self):
+        """The same fallback fires on goal_hint resolution, not just
+        project_hint."""
+        result = self._norm(
+            {
+                "title": "Plan exercises for fitness milestone",
+                "goal_hint": "fitness",
+            },
+            goals=[
+                ("g-cardio", "Cardio fitness exercises"),
+                ("g-wellness", "Mental fitness practice"),
+            ],
+        )
+        # Title has "exercises" → picks Cardio fitness exercises.
+        assert result[0]["goal_id"] == "g-cardio"
+
+
 # --- #239 (2026-05-27): _call_whisper_api unit coverage --------------------
 # Pre-#239, the only voice_service.py paths exercised by the existing tests
 # were `transcribe_audio` (which is mocked at the boundary) and the

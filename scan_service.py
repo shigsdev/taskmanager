@@ -473,6 +473,18 @@ Each item must be a JSON object with these keys:
     project_hint null — do not invent. Topic-match fallback still
     applies for non-explicit phrasings (e.g. "Q2 OKR deck" implies
     project "Q2 OKRs" by topic).
+  * **CRITICAL — no partial citations.** When the speaker says a
+    word like "Roadmap" but the list contains MULTIPLE projects
+    sharing that word as a prefix or substring (e.g. "Roadmaps"
+    AND "Roadmap Automation"), do NOT return just "Roadmap" — that
+    matches NEITHER exactly. Cite the FULL verbatim title or null:
+      - If the speaker's context clearly maps to ONE of the
+        candidates (e.g. they mentioned "automation"), cite the
+        FULL title: "Roadmap Automation".
+      - If unclear, cite null. The downstream resolver tries to
+        disambiguate using the task title; partial citations like
+        "Roadmap" defeat that path because they match every
+        candidate equally.
 - goal_hint: exact title (verbatim) of a user goal this task
   clearly supports, OR null. Same rule — only cite from the list.
   * Treat EXPLICIT phrasings as strong signals — case-insensitive.
@@ -833,11 +845,75 @@ def _normalise_title(s: str) -> str:
     return out.strip()
 
 
+def _disambiguate_via_title(
+    substring_matches: list[tuple[str, str]],
+    task_title: str,
+    hint_lc: str,
+) -> str | None:
+    """#252 (2026-05-28): when substring fallback finds multiple
+    candidate project/goal titles, try to pick ONE by scoring each
+    candidate's "extra" words (words present in the candidate title
+    but NOT in the hint) against the task title.
+
+    Example:
+      hint = "Roadmap"
+      substring_matches = [
+          ("roadmap automation", "id-1"),
+          ("roadmaps", "id-2"),
+      ]
+      task_title = "Send note about the automation diagram"
+
+      Candidate "roadmap automation": extra words = {"automation"}.
+                "automation" in title → score = 1.
+      Candidate "roadmaps": extra words = set() (just plural form
+                of the hint). Score = 0.
+      Winner: "roadmap automation".
+
+    Requires a clear winner — if two candidates tie for the top
+    score, returns None (still ambiguous). Single-character or
+    common stop-words are excluded so trivial overlaps don't count.
+
+    Args:
+        substring_matches: List of ``(title_lc, id)`` pairs that all
+            substring-matched the hint.
+        task_title: The candidate task's title (raw, mixed-case).
+        hint_lc: The already-normalised hint (for excluding hint
+            words from the "extra words" set per candidate).
+
+    Returns:
+        The resolved ID, or None if no clear winner.
+    """
+    task_lc = task_title.lower()
+    hint_words = set(hint_lc.split())
+    scored: list[tuple[int, str]] = []
+    for title_lc, eid in substring_matches:
+        # Extra words: candidate title words MINUS hint words.
+        # These are the disambiguating signals.
+        title_words = set(title_lc.split())
+        extra = title_words - hint_words
+        # Score: count how many extra words (length >= 4 to skip
+        # filler) appear as substrings of the task title.
+        score = sum(
+            1 for w in extra
+            if len(w) >= 4 and w in task_lc
+        )
+        scored.append((score, eid))
+    scored.sort(reverse=True)
+    if not scored or scored[0][0] == 0:
+        # No candidate had any extra-word signal — can't disambiguate.
+        return None
+    # Need a clear winner: top score must be > the next-best score.
+    if len(scored) > 1 and scored[0][0] == scored[1][0]:
+        return None
+    return scored[0][1]
+
+
 def _resolve_voice_hint(
     hint: str,
     by_title_lc: dict[str, str],
     *,
     kind: str,
+    task_title: str = "",
 ) -> str | None:
     """Resolve a Claude-emitted voice hint to a real project/goal UUID.
 
@@ -875,16 +951,39 @@ def _resolve_voice_hint(
 
     # Substring fallback. Bidirectional so "audit" matches "IPPM Audit"
     # AND "IPPM Audit" (if Claude adds extra qualifiers) matches "audit".
-    candidates = [
-        eid for title_lc, eid in by_title_lc.items()
+    # Track BOTH the id and the title_lc so we can disambiguate later
+    # via task-title overlap (#252).
+    substring_matches = [
+        (title_lc, eid) for title_lc, eid in by_title_lc.items()
         if hint_lc in title_lc or title_lc in hint_lc
     ]
+    candidates = [eid for _, eid in substring_matches]
     if len(candidates) == 1:
         logger.info(
             "voice hint resolved: %s %r → substring match (1 of %d titles)",
             kind, hint, len(by_title_lc),
         )
         return candidates[0]
+
+    # #252 (2026-05-28): when substring is ambiguous, try to
+    # disambiguate using the task title's word overlap. If exactly
+    # one candidate has a clear word-overlap winner, pick it.
+    # Common repro: Claude returns project_hint="Roadmap" because the
+    # speaker said "Roadmap"; both "Roadmaps" and "Roadmap Automation"
+    # substring-match. If the task title contains "automation", we
+    # can confidently pick "Roadmap Automation".
+    if len(substring_matches) > 1 and task_title:
+        winner = _disambiguate_via_title(
+            substring_matches, task_title, hint_lc,
+        )
+        if winner is not None:
+            logger.info(
+                "voice hint resolved: %s %r → title-context match "
+                "(1 of %d substring candidates picked via task-title "
+                "overlap)",
+                kind, hint, len(substring_matches),
+            )
+            return winner
 
     # #249 (2026-05-28): loose-match fallback. Strip everything that
     # isn't a letter/digit on BOTH sides, then try exact + substring
@@ -1044,11 +1143,16 @@ def _normalise_voice_candidates(
         #      the user's domain stays unresolved.
         # Logs INFO on every resolution path so we can audit hint
         # accuracy from /api/debug/logs.
+        # #252 (2026-05-28): pass `title` to the resolver so it can
+        # disambiguate substring-ambiguous hints by checking the task
+        # title's word overlap with each candidate. See
+        # `_disambiguate_via_title` for the algorithm.
         project_hint = item.get("project_hint")
         project_id: str | None = None
         if isinstance(project_hint, str) and project_hint.strip():
             project_id = _resolve_voice_hint(
                 project_hint.strip(), proj_by_title_lc, kind="project",
+                task_title=title,
             )
 
         goal_hint = item.get("goal_hint")
@@ -1056,6 +1160,7 @@ def _normalise_voice_candidates(
         if isinstance(goal_hint, str) and goal_hint.strip():
             goal_id = _resolve_voice_hint(
                 goal_hint.strip(), goal_by_title_lc, kind="goal",
+                task_title=title,
             )
 
         # #234 cross-domain fallback. Run AFTER the primary attempts so
@@ -1068,6 +1173,7 @@ def _normalise_voice_candidates(
             fallback_goal = _resolve_voice_hint(
                 project_hint.strip(), goal_by_title_lc,
                 kind="project→goal-fallback",
+                task_title=title,
             )
             # If project_hint resolves to a goal AND we don't already
             # have a goal_id (don't clobber a Claude-explicit goal),
@@ -1088,6 +1194,7 @@ def _normalise_voice_candidates(
             fallback_project = _resolve_voice_hint(
                 goal_hint.strip(), proj_by_title_lc,
                 kind="goal→project-fallback",
+                task_title=title,
             )
             if fallback_project is not None and project_id is None:
                 project_id = fallback_project
