@@ -485,7 +485,7 @@ _COVERAGE_JOB_STATE_PATH = Path(
     # behind the @login_required `/api/utilities/*` routes which are
     # AUTHORIZED_EMAIL-locked. Predictable path is the WHOLE POINT —
     # mkstemp here would defeat the cross-worker visibility goal.
-    os.environ.get("TMPDIR", "/tmp"),  # noqa: S108
+    os.environ.get("TMPDIR", "/tmp"),  # noqa: S108  # nosec B108 — intentional shared state path; see comment above
 ) / "taskmanager_coverage_audit_state.json"
 _COVERAGE_IDLE_STATE: dict = {
     "status": "idle",          # idle | running | complete | error
