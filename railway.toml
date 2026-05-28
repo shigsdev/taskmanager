@@ -1,30 +1,30 @@
 [build]
 builder = "nixpacks"
-# #245 (2026-05-27): exclude doc / autofile / CI-only files from the
-# redeploy trigger.
+# #246 (2026-05-27): explicit positive include list + negation
+# overrides. The first attempt (#245, SHA a8fc961) used negation-only
+# globs (`["!BACKLOG.md", "!docs/**", ...]`) and Railway never picked
+# the commit up — most likely because Railway interpreted the list as
+# "deploy ONLY when these specific files (`!BACKLOG.md` etc.) change"
+# with the `!` treated literally, which never matches.
 #
-# Background: the recurring audits (#226-#229) have a `--autofile`
-# step that commits BACKLOG.md updates back to main from a GH Actions
-# runner. Railway's default behavior is to redeploy on ANY push to
-# the watched branch, so every autofile push (potentially several
-# per day across the 4 audits) restarts the prod container. With
-# #244, clicking Run on /utilities ALSO triggers a workflow_dispatch
-# that eventually pushes an autofile commit — creating a feedback
-# loop where each click guarantees a redeploy ~2 minutes later,
-# which can kill any concurrent /utilities audit in flight (the
-# polling-on-idle fix in #244's frontend then shows "interrupted").
+# Switching to .gitignore-style semantics: positive `**` (everything)
+# first, then negation overrides for paths we want excluded.
 #
-# `watchPatterns` is a Railway-specific config. A leading `!` is
-# Railway's notation for "do NOT redeploy on changes to this glob"
-# (negative matcher). See Railway's config-as-code docs.
+# Background (same as #245): the recurring audits (#226-#229) have an
+# `--autofile` step that commits BACKLOG.md updates back to main from
+# a GH Actions runner. Railway's default behavior is to redeploy on
+# ANY push to the watched branch, so every autofile push restarts the
+# prod container. With #244, /utilities clicks ALSO eventually push an
+# autofile commit — feedback loop where every click guaranteed a
+# redeploy ~2 minutes later, killing any concurrent audit.
 #
-# What stays in (triggers redeploy):
-#   - All .py, .js, .css, .html files (code + templates + static)
-#   - requirements*.txt, package*.json, package-lock.json (deps)
+# What still triggers a deploy (matches `**` but no negation):
+#   - All .py / .js / .css / .html (code + templates + static)
+#   - requirements*.txt / package*.json / package-lock.json (deps)
 #   - migrations/ (schema changes)
 #   - railway.toml + nixpacks files (config changes)
 #   - gunicorn.conf.py (runtime config)
-# What's excluded (no redeploy):
+# What's excluded (matched by a `!` negation):
 #   - BACKLOG.md            — autofile churn, zero code impact
 #   - docs/                 — ADRs, design docs, audit baselines
 #   - tests/                — tests don't run on Railway runtime
@@ -32,6 +32,7 @@ builder = "nixpacks"
 #   - .gitignore / .gitattributes / .pre-commit-config.yaml
 #   - README.md, CLAUDE.md, ARCHITECTURE.md (operator docs)
 watchPatterns = [
+    "**",
     "!BACKLOG.md",
     "!docs/**",
     "!tests/**",
