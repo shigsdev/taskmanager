@@ -708,8 +708,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .reopen-dropdown {
     position: absolute;
     right: 0;
-    /* Open upward — Completed cards sit at the bottom of the board so
-       a downward dropdown would fall off the viewport on short pages. */
+    /* Open upward on DESKTOP — Completed cards sit at the bottom of
+       the board so a downward dropdown would fall off the viewport
+       on short pages. On mobile this fails the opposite way — the
+       upward dropdown overflows the TOP of the viewport when the
+       user has scrolled into the middle of a long completed list,
+       leaving most options invisible (#261, 2026-05-29). Mobile
+       override below flips to downward + max-height + scroll. */
     bottom: 100%;
     margin-bottom: 4px;
     z-index: 200;
@@ -731,6 +736,29 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     white-space: nowrap;
 }
 .reopen-dropdown button:hover { background: var(--surface-sunk); }
+/* #261 (2026-05-29): on mobile, open downward + constrain height so
+   all 6 options (Today / Tomorrow / This Week / Next Week / Backlog
+   / Freezer) are reachable even when the row sits near the top of
+   the visible scroll position. Reported with screenshot — user
+   could only see "Freezer" because the upward dropdown was clipped
+   above the viewport. 48px-tall buttons also satisfy iOS touch
+   targets. */
+@media (max-width: 700px) {
+    .reopen-dropdown {
+        bottom: auto;
+        top: 100%;
+        margin-bottom: 0;
+        margin-top: 4px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+        max-height: 50vh;
+        overflow-y: auto;
+    }
+    .reopen-dropdown button {
+        padding: 12px 16px;
+        font-size: 1rem;
+        min-height: 44px;
+    }
+}
 .completed-title { text-decoration: line-through; color: var(--text-muted); }
 .tier-completed { border-top: 1px dashed var(--border); margin-top: 8px; padding-top: 8px; }
 /* Drop-to-complete: highlight Completed section while a card is dragged over it */
@@ -855,8 +883,21 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .parent-picker-result { padding: 6px 8px; cursor: pointer; font-size: 0.85rem; }
 .parent-picker-result:hover { background: var(--surface-sunk); }
 .parent-picker-current { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
-.parent-picker-chip { background: var(--accent, #2563eb); color: #fff; padding: 3px 8px; border-radius: 12px; font-size: 12px; }
-.parent-picker-clear { background: transparent; border: 1px solid var(--border); color: var(--text); padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+.parent-picker-chip { background: var(--accent, #2563eb); color: #fff; padding: 3px 8px; border-radius: 12px; font-size: 12px; min-width: 0; word-break: break-word; }
+.parent-picker-clear { background: transparent; border: 1px solid var(--border); color: var(--text); padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 12px; flex-shrink: 0; }
+/* #260 (2026-05-29): the ✕ button was 24×16 effective on mobile —
+   well below iOS's 44×44 minimum touch-target guideline. Users
+   tapped but missed (reported with screenshot). Bump to 44×44 on
+   mobile while keeping desktop tighter (mouse precision is fine
+   at the smaller size). Same fix shape as #233. */
+@media (max-width: 700px) {
+    .parent-picker-clear {
+        min-width: 44px;
+        min-height: 44px;
+        font-size: 16px;
+        padding: 8px 12px;
+    }
+}
 .parent-link {
     color: var(--accent, #2563eb);
     text-decoration: none;
