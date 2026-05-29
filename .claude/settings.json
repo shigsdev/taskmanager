@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_about": "Project-level Claude Code settings — committed to git. Per-user permission overrides live in .claude/settings.local.json (gitignored). Both files are merged at session start; settings.local.json wins on conflict. Filed as #258 Wave 1 (2026-05-29).",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "_about": "#258-E (2026-05-29) — auto-fix safe ruff rules on every .py edit. Catches UP041 / I001 / D200 etc. at edit time instead of gate time (~50ms feedback loop vs minutes). Hit this exact friction in the #168 ship: UP041 on `socket.gaierror` required manual fix + retry after gates failed. `--exit-zero` keeps it non-blocking so it's signal not noise — gate 1 in scripts/run_all_gates.sh stays authoritative for blocking. Restricted to F/E/W/UP/I (safe auto-fixable rules); does NOT touch S security rules (those need human review).",
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "case \"$CLAUDE_FILE_PATH\" in *.py) python -m ruff check --fix --select F,E,W,UP,I --exit-zero \"$CLAUDE_FILE_PATH\" 2>&1 | tail -5 ;; esac"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "_about": "#258-F (2026-05-29) — defense against re-introducing the #248 prod-log-leak. `app.py` has a `_RUNNING_UNDER_PYTEST` import-time gate that replaces the module-level `app = create_app()` with a bare Flask() stub when pytest is loaded (preventing DBLogHandler from attaching to prod DB during test runs spawned via the /utilities coverage card — see #229b). Any edit that adds new module-level side effects OUTSIDE that guard re-creates the leak silently. This hook prints a reminder so the operator notices BEFORE the edit lands.",
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "case \"$CLAUDE_FILE_PATH\" in *app.py) printf '\\033[33m\\xe2\\x9a\\xa0  Editing app.py — module-level side effects are gated by _RUNNING_UNDER_PYTEST (see line ~880). Adding side effects outside that guard re-introduces the #248 prod-log-leak.\\033[0m\\n' >&2 ;; esac"
+          }
+        ]
+      }
+    ]
+  }
+}
