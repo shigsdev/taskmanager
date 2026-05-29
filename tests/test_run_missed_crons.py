@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import importlib.util
 import pathlib
+import socket
 import sys
 from datetime import date
 
 import pytest
 
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parents[1] / "scripts"
+SCRIPT_PATH = SCRIPTS_DIR / "run_missed_crons.py"
 
 
 @pytest.fixture(scope="module")
@@ -195,3 +197,148 @@ class TestJobRegistry:
         # Bundling digest here would risk an accidental re-send;
         # POST /api/digest/send is the documented manual trigger.
         assert "daily_digest" not in runner.VALID_JOB_IDS
+
+
+class TestPreflightDatabaseUrl:
+    """#168 — fast-fail with a hint when DATABASE_URL is unreachable.
+
+    Exercises the ``_preflight_database_url`` helper directly; it runs
+    before ``create_app()`` so we don't need to boot the Flask app.
+    """
+
+    def test_exits_when_railway_internal_host_unresolvable(
+        self, runner, monkeypatch, capsys,
+    ):
+        monkeypatch.setenv(
+            "DATABASE_URL",
+            "postgres://u:p@postgres.railway.internal:5432/railway",
+        )
+
+        def fake_getaddrinfo(host, _port):
+            raise socket.gaierror("Name or service not known")
+
+        with pytest.raises(SystemExit) as exc:
+            runner._preflight_database_url(getaddrinfo=fake_getaddrinfo)
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "postgres.railway.internal" in err
+        assert "railway ssh" in err
+
+    def test_exits_on_socket_timeout(self, runner, monkeypatch, capsys):
+        monkeypatch.setenv(
+            "DATABASE_URL",
+            "postgres://u:p@postgres.railway.internal:5432/railway",
+        )
+
+        def fake_getaddrinfo(host, _port):
+            raise TimeoutError("timed out")
+
+        with pytest.raises(SystemExit) as exc:
+            runner._preflight_database_url(getaddrinfo=fake_getaddrinfo)
+        assert exc.value.code == 2
+        assert "railway ssh" in capsys.readouterr().err
+
+    def test_noop_when_dns_resolves(self, runner, monkeypatch):
+        """Inside Railway, the lookup succeeds — preflight must return."""
+        monkeypatch.setenv(
+            "DATABASE_URL",
+            "postgres://u:p@postgres.railway.internal:5432/railway",
+        )
+
+        called = {"yes": False}
+
+        def fake_getaddrinfo(host, _port):
+            called["yes"] = True
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.1", 0))]
+
+        # Should NOT raise. No SystemExit.
+        runner._preflight_database_url(getaddrinfo=fake_getaddrinfo)
+        assert called["yes"], "preflight should have probed DNS"
+
+    def test_noop_when_database_url_not_railway_internal(self, runner, monkeypatch):
+        """Local dev / external Postgres URLs skip the check entirely."""
+        monkeypatch.setenv("DATABASE_URL", "postgres://u:p@localhost:5432/dev")
+
+        def boom(host, _port):
+            raise AssertionError(
+                "preflight must not probe DNS for non-Railway hosts"
+            )
+
+        # Should NOT raise — early-returns before calling getaddrinfo.
+        runner._preflight_database_url(getaddrinfo=boom)
+
+    def test_noop_when_database_url_unset(self, runner, monkeypatch):
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+
+        def boom(host, _port):
+            raise AssertionError("preflight must not probe DNS when env is unset")
+
+        runner._preflight_database_url(getaddrinfo=boom)
+
+
+class TestShebangPinned:
+    """#169 — shebang must stay at ``#!/opt/venv/bin/python`` so
+    ``railway ssh && /app/scripts/run_missed_crons.py`` keeps working.
+    A future PR that drops the shebang (e.g. by reformatting the
+    top-of-file docstring) reverts #169 silently — this drift gate
+    catches it at pytest time.
+    """
+
+    def test_shebang_is_first_line(self):
+        first_line = SCRIPT_PATH.read_text(encoding="utf-8").splitlines()[0]
+        assert first_line == "#!/opt/venv/bin/python", (
+            f"shebang drift: expected '#!/opt/venv/bin/python' "
+            f"on line 1, got {first_line!r}. See BACKLOG #169."
+        )
+
+    def test_script_has_executable_bit_in_git(self):
+        """``git update-index --chmod=+x`` set the mode bit so the file
+        ships executable in the deployed image — ``railway ssh && ./scripts/...``
+        depends on it.
+
+        Skipped on filesystems that don't carry execute bits (Windows NTFS).
+        The mode lives in the git index either way; this test just guards
+        the working-tree state where it CAN be observed.
+        """
+        import os
+        import stat
+
+        try:
+            mode = SCRIPT_PATH.stat().st_mode
+        except OSError:
+            pytest.skip("cannot stat script")
+
+        # On Windows, NTFS doesn't carry +x; trust the git index check
+        # in the sibling test below instead.
+        if os.name == "nt":
+            pytest.skip("Windows filesystem has no +x bit")
+
+        assert mode & stat.S_IXUSR, (
+            "scripts/run_missed_crons.py is not user-executable in the "
+            "working tree. See BACKLOG #169 — run "
+            "`git update-index --chmod=+x scripts/run_missed_crons.py`."
+        )
+
+    def test_executable_bit_recorded_in_git(self):
+        """Final-authority check: the git index records mode 100755.
+
+        Survives Windows working-tree limitations because git's index
+        carries the bit regardless of filesystem support.
+        """
+        import subprocess  # noqa: S404 — test-only, fixed-arg invocation
+
+        # noqa S603 + S607 — fixed argv, no user input; "git" is on PATH
+        # in every dev + CI environment we support.
+        result = subprocess.run(  # noqa: S603
+            ["git", "ls-files", "-s", "scripts/run_missed_crons.py"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=str(SCRIPTS_DIR.parent),
+        )
+        # Format: "<mode> <sha> <stage>\t<path>"
+        mode = result.stdout.split()[0]
+        assert mode == "100755", (
+            f"git index has scripts/run_missed_crons.py at mode {mode}, "
+            f"expected 100755 (executable). See BACKLOG #169."
+        )

@@ -365,29 +365,50 @@ scheduler misses the fire, the four jobs silently skip until the
 next 24h cycle — tasks in Tomorrow stay in Tomorrow, today-due
 items don't promote, etc.
 
-To replay them manually, on your laptop with the project checked
-out and `pip install -r requirements.txt` done:
+#### Canonical path — `railway ssh` from inside the container
 
 ```bash
+railway ssh
+
 # Preview what would run (no writes persist)
-railway run python scripts/run_missed_crons.py --dry-run
+/app/scripts/run_missed_crons.py --dry-run
 
 # Real run — all four in scheduler order (00:01 → 00:05)
-railway run python scripts/run_missed_crons.py
+/app/scripts/run_missed_crons.py
 
 # Subset (e.g. just recurring spawn)
-railway run python scripts/run_missed_crons.py --only recurring_spawn
+/app/scripts/run_missed_crons.py --only recurring_spawn
 
 # Spawn for a back-dated day (only meaningful for recurring_spawn)
-railway run python scripts/run_missed_crons.py --date 2026-05-19
+/app/scripts/run_missed_crons.py --date 2026-05-19
+```
+
+The `#!/opt/venv/bin/python` shebang plus the executable mode bit
+in git mean `./scripts/...` resolves the in-container venv
+automatically — no `ModuleNotFoundError: No module named 'dotenv'`
+to debug at 11pm during an outage (#169).
+
+#### Legacy / fallback path — `railway run` from your laptop
+
+```bash
+railway run python scripts/run_missed_crons.py --dry-run
+railway run python scripts/run_missed_crons.py
 ```
 
 `railway run` injects the prod `DATABASE_URL` + `DIGEST_TZ` into
 your local Python so the script touches the production database
-directly — no deploy is required. Every job logs start, finish,
-and rowcount at WARNING through the standard logging chain, so
-the run shows up in `/api/debug/logs` alongside real scheduler
-firings.
+directly — no deploy is required. **Caveat:** Railway's internal
+Postgres hostname (`postgres.railway.internal`) is only resolvable
+from inside the Railway network, so this path will fail with a
+DNS hang on most laptops. The script has a fast-fail pre-flight
+that exits 2 with a hint pointing you back to `railway ssh` (#168)
+rather than blocking for 30s on the SQLAlchemy connect timeout.
+
+#### What gets logged
+
+Every job logs start, finish, and rowcount at WARNING through the
+standard logging chain, so the run shows up in `/api/debug/logs`
+alongside real scheduler firings.
 
 The 07:00 `daily_digest` is intentionally NOT covered by this
 script — use `POST /api/digest/send` for that (avoids accidental

@@ -1,3 +1,4 @@
+#!/opt/venv/bin/python
 """Manually re-run the four midnight cron jobs after a scheduler outage.
 
 When Railway drops a midnight cron fire (container restart at the
@@ -16,11 +17,32 @@ and bundling it here would risk an accidental second digest.
 
 Usage
 -----
+Inside the Railway container (canonical — fastest, no DNS surprises)::
+
+    railway ssh
+    /app/scripts/run_missed_crons.py
+    /app/scripts/run_missed_crons.py --dry-run
+    /app/scripts/run_missed_crons.py --only recurring_spawn
+    /app/scripts/run_missed_crons.py --only tomorrow_roll,recurring_spawn
+    /app/scripts/run_missed_crons.py --date 2026-05-19
+
+The shebang (``#!/opt/venv/bin/python``) pins the in-container venv so
+the script self-resolves the right interpreter — no ``ModuleNotFoundError``
+on ``dotenv``, no need to remember ``/opt/venv/bin/python …`` ceremony.
+The file is checked in with ``+x`` mode bits so ``railway ssh`` + ``./``
+just works.
+
+From your laptop (legacy / fallback — slower, hits Railway's DNS edge):
+
+.. code-block:: console
+
     railway run python scripts/run_missed_crons.py
-    railway run python scripts/run_missed_crons.py --dry-run
-    railway run python scripts/run_missed_crons.py --only recurring_spawn
-    railway run python scripts/run_missed_crons.py --only tomorrow_roll,recurring_spawn
-    railway run python scripts/run_missed_crons.py --date 2026-05-19
+
+This piped path is supported but flagged with a pre-flight DNS check
+(#168) — if ``DATABASE_URL`` points at ``postgres.railway.internal``
+and that hostname can't be resolved from your machine, the script
+exits 2 immediately with a hint to use ``railway ssh`` instead, rather
+than blocking on a 30-second SQLAlchemy hang.
 
 Notes
 -----
@@ -41,14 +63,62 @@ import argparse
 import importlib
 import logging
 import os
+import socket
 import sys
 import time
 from contextlib import contextmanager, nullcontext
 from datetime import date
+from urllib.parse import urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 logger = logging.getLogger("run_missed_crons")
+
+
+def _preflight_database_url(getaddrinfo=socket.getaddrinfo) -> None:
+    """#168 — fast-fail with a hint when invoked outside Railway's network.
+
+    Railway's internal Postgres hostname (``postgres.railway.internal``)
+    only resolves inside the Railway network. Running this script from
+    a developer laptop via ``railway run`` pipes env vars through but
+    does NOT proxy DNS — the connection would hang inside SQLAlchemy
+    for ~30 seconds before surfacing as a 100-line traceback.
+
+    Pre-flight: if ``DATABASE_URL`` points at a ``.railway.internal``
+    host, attempt to resolve it with a 2-second timeout. On failure,
+    print a short hint to stderr and exit 2. The default ``getaddrinfo``
+    is parameterized only so tests can inject a stub — production
+    callers should not pass anything.
+    """
+    db_url = os.environ.get("DATABASE_URL", "")
+    if ".railway.internal" not in db_url:
+        return
+
+    try:
+        host = urlparse(db_url).hostname or ""
+    except Exception:
+        host = ""
+    if not host or ".railway.internal" not in host:
+        return
+
+    original_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(2.0)
+    try:
+        try:
+            getaddrinfo(host, None)
+        except OSError:
+            # socket.gaierror and socket.timeout (now TimeoutError) are
+            # both OSError subclasses — one except clause covers both.
+            print(
+                f"DATABASE_URL points at {host}, which is only resolvable "
+                f"from inside Railway. Use 'railway ssh' then "
+                f"'/app/scripts/run_missed_crons.py' (the shebang pins the "
+                f"in-container venv) instead of 'railway run …'.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+    finally:
+        socket.setdefaulttimeout(original_timeout)
 
 
 JOB_ORDER: list[tuple[str, str, str, str]] = [
@@ -162,6 +232,13 @@ def main(argv: list[str] | None = None) -> int:
     selected_ids = _parse_only(args.only)
     date_override = _parse_date(args.date)
     jobs = [j for j in JOB_ORDER if j[0] in selected_ids]
+
+    # #168 — fail fast if DATABASE_URL is unreachable from this network
+    # (e.g. invoked via `railway run` from a developer laptop, which
+    # pipes env vars but not DNS). Must run BEFORE create_app() — the
+    # default app boot reads DATABASE_URL and would otherwise hang
+    # ~30s in SQLAlchemy's connect path.
+    _preflight_database_url()
 
     from app import create_app
 

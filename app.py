@@ -898,13 +898,14 @@ if _RUNNING_UNDER_PYTEST:
     # context-pushing windows, so inserts and reads landed in
     # different :memory: instances and the test asserted None.
     app = Flask(__name__)
-    # nosem: python.flask.security.audit.hardcoded-config.avoid_hardcoded_config_TESTING
-    # — This line is gated behind `_RUNNING_UNDER_PYTEST` so it can
+    # The line below is gated behind `_RUNNING_UNDER_PYTEST` so it can
     # only execute when pytest is loaded. Gunicorn / Railway prod
     # NEVER imports pytest, so this branch is dead code on prod. The
     # semgrep rule's intent (don't ship a TESTING=True app to prod)
     # is satisfied by the import-time guard; the rule is a heuristic
-    # that doesn't understand the guard.
-    app.config["TESTING"] = True  # noqa: S106
+    # that doesn't understand the guard. The `nosem:` comment must be
+    # on the SAME line as the violation — semgrep ignores it if there
+    # are other comment lines between it and the offending code.
+    app.config["TESTING"] = True  # noqa: S106  # nosem: python.flask.security.audit.hardcoded-config.avoid_hardcoded_config_TESTING
 else:
     app = create_app()
