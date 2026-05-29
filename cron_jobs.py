@@ -25,7 +25,7 @@ from __future__ import annotations
 
 # (job_id, hour, minute, "module:function") — order matches APScheduler
 # fire order (00:01 → 00:02 → 00:03 → 00:05). The board is reconciled
-# in this exact sequence so recurring spawn sees a stable tier
+# in this exact sequence so recurring spawn sees a stable section
 # placement when it materialises today's tasks.
 JOB_ORDER: list[tuple[str, int, int, str]] = [
     ("tomorrow_roll", 0, 1, "task_service:roll_tomorrow_to_today"),
