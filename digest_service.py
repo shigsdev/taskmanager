@@ -202,7 +202,7 @@ def build_digest(*, target_date: date | None = None) -> str:
     lines.append("")
 
     if data["due_today"]:
-        lines.append(f"ALSO DUE TODAY (from other tiers) ({len(data['due_today'])})")
+        lines.append(f"ALSO DUE TODAY (from other sections) ({len(data['due_today'])})")
         for t in data["due_today"]:
             lines.append(_format_task_line(t))
         lines.append("")

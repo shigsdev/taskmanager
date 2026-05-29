@@ -3024,8 +3024,8 @@ async function bulkMove(direction) {
     if (!cls.ok) {
         if (cls.reason === "multiple_tiers") {
             alert(
-                "Move up/down works within a single tier. Your selection "
-                + "spans tiers — drag across columns or use the Tier ▾ menu."
+                "Move up/down works within a single section. Your selection "
+                + "spans sections — drag across columns or use the Section ▾ menu."
             );
         }
         return;
@@ -3096,9 +3096,12 @@ async function bulkDelete() {
 // stage operations. Status (archive/cancel/active) + Delete remain
 // immediate (commit-style; no clear value in staging them).
 
+// Map API field name → user-visible label for the pending-changes
+// summary panel. The KEY ("tier") is the API field name and stays
+// stable — the VALUE is the user-facing label ("Section" per #83).
 const _BULK_PENDING_LABELS = {
     type:                 "Type",
-    tier:                 "Tier",
+    tier:                 "Section",
     due_date:             "Due",
     goal_id:              "Goal",
     project_id:           "Project",

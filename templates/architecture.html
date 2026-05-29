@@ -477,8 +477,8 @@ flowchart TD
                 <li>At <strong>00:05 every night</strong>, an automated job wakes up.</li>
                 <li>It calculates today's date in your timezone (default America/New_York — using UTC would put 10pm-ET spawns on tomorrow's date).</li>
                 <li>It looks up which recurring task templates are scheduled to fire today (e.g. a weekly "Walk dog" template is included on Tuesdays only).</li>
-                <li>For each template, it checks whether you already have a task for today's date — <strong>across all tiers</strong>, not just Today. So if you'd already moved "Walk dog" into "this week" with today's due date, the job sees it and skips spawning a duplicate.</li>
-                <li>For the rest, it creates a new task in the Today tier with today's due date.</li>
+                <li>For each template, it checks whether you already have a task for today's date — <strong>across all sections</strong>, not just Today. So if you'd already moved "Walk dog" into "this week" with today's due date, the job sees it and skips spawning a duplicate.</li>
+                <li>For the rest, it creates a new task in the Today section with today's due date.</li>
                 <li>If the recurring template has subtasks, it creates those too (also in Today).</li>
                 <li>You wake up, open the app, and the day's recurring tasks are waiting in Today.</li>
             </ol>

@@ -147,7 +147,7 @@
         // which dumped raw class names ("AUTO-CATEGORIZE-TIER") and,
         // worse, rendered a stray label over the title cell.
         tr.appendChild(td(textNode(s.title), "auto-categorize-title", s.reason));
-        tr.appendChild(td(tierSelect(s.suggested_tier), "auto-categorize-tier", null, "Tier"));
+        tr.appendChild(td(tierSelect(s.suggested_tier), "auto-categorize-tier", null, "Section"));
         tr.appendChild(td(projectSelect(s.suggested_project_id, s.suggested_type), "auto-categorize-project", null, "Project"));
         tr.appendChild(td(goalSelect(s.suggested_goal_id, s.suggested_type), "auto-categorize-goal", null, "Goal"));
         tr.appendChild(td(dueInput(s.suggested_due_date, s.suggested_tier), "auto-categorize-due", null, "Due"));

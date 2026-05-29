@@ -20,14 +20,14 @@
     <section class="utility-card" data-utility="clear-stale-next-week-due-dates">
         <h2>Clear stale Next Week due dates (#220)</h2>
         <p class="utility-description">
-            Finds active tasks where <code>tier = Next Week</code> AND
+            Finds active tasks where <code>section = Next Week</code> AND
             <code>due_date ≤ today</code>, then clears the due_date so
             the task moves off the calendar's today/past cells and
             lands in the Unscheduled aside.
         </p>
         <p class="utility-description">
-            Originally caused by the pre-#220 tier-button behavior:
-            clicking "Next Week" on a task changed the tier but didn't
+            Originally caused by the pre-#220 section-button behavior:
+            clicking "Next Week" on a task changed the section but didn't
             clear the old due_date, so the calendar still rendered the
             task on the old day. The #220 hook prevents this for new
             punts; this utility cleans up the existing stuck data.

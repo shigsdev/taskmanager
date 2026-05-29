@@ -37,7 +37,7 @@
 
         <h3 class="docs-toc-group">Task lifecycle</h3>
         <ul>
-            <li><a href="#tiers">Tiers and auto-fill</a></li>
+            <li><a href="#tiers">Sections and auto-fill</a></li>
             <li><a href="#recurring">Recurring tasks</a></li>
             <li><a href="#review-mode">Review mode</a></li>
             <li><a href="#subtasks">Subtasks</a></li>
@@ -83,17 +83,17 @@
             <p>
                 The capture bar at the top of every main page accepts
                 plain text for the task title, plus inline
-                <strong>hashtag hints</strong> that set tier, type,
+                <strong>hashtag hints</strong> that set section, type,
                 repeat frequency, and URL in one shot. Hints are
                 stripped from the title before the task is saved.
             </p>
             <p>
-                Default tier is <strong>Inbox</strong>. Default type
+                Default section is <strong>Inbox</strong>. Default type
                 is whatever the dropdown next to the input is set to
                 (Work or Personal). Hashtag hints override both.
             </p>
 
-            <h3>Tier hints</h3>
+            <h3>Section hints</h3>
             <ul>
                 <li><code>#today</code> → Today</li>
                 <li><code>#tomorrow</code> → Tomorrow</li>
@@ -102,7 +102,7 @@
                 <li><code>#backlog</code> → Backlog</li>
                 <li><code>#freezer</code> → Freezer</li>
             </ul>
-            <p>Only one tier hint is honored per capture — the first match wins.</p>
+            <p>Only one section hint is honored per capture — the first match wins.</p>
 
             <h3>Type hints</h3>
             <ul>
@@ -152,7 +152,7 @@
                 <li>Hints are <strong>case-insensitive</strong> — <code>#TODAY</code> works.</li>
                 <li>Hints can appear anywhere — beginning, middle, or end of the text.</li>
                 <li>Longest-first matching: <code>#next_week</code> beats <code>#week</code>, <code>#weekly</code> beats <code>#week</code>.</li>
-                <li>Repeat hints are consumed before tier hints. <code>#weekly</code> on its own leaves the tier at Inbox (the repeat ate the <code>#week</code> substring). Add an explicit tier: <code>#today #weekly</code>.</li>
+                <li>Repeat hints are consumed before section hints. <code>#weekly</code> on its own leaves the section at Inbox (the repeat ate the <code>#week</code> substring). Add an explicit section: <code>#today #weekly</code>.</li>
             </ul>
 
             <h3>What hints do NOT do</h3>
@@ -165,22 +165,22 @@
 
             <h3>Worked examples</h3>
             <pre class="docs-example">Fix login bug #today #work
-  → title: "Fix login bug", tier: Today, type: Work
+  → title: "Fix login bug", section: Today, type: Work
 
 Team retro #weekly
-  → title: "Team retro", tier: Inbox, type: (dropdown), repeats weekly
+  → title: "Team retro", section: Inbox, type: (dropdown), repeats weekly
 
 Plan Q3 #next_week #work
-  → title: "Plan Q3", tier: Next Week, type: Work
+  → title: "Plan Q3", section: Next Week, type: Work
 
 Call mom #tomorrow
-  → title: "Call mom", tier: Tomorrow
+  → title: "Call mom", section: Tomorrow
 
 Take meds #daily #personal
   → title: "Take meds", type: Personal, repeats daily
 
 Prep deck for review @audit #today
-  → title: "Prep deck for review", tier: Today,
+  → title: "Prep deck for review", section: Today,
     project: matched to "IPPM Audit" (substring of @audit)
 
 Read article https://example.com/foo #personal
@@ -215,7 +215,7 @@ https://example.com/foo
                 <li>Opens <code>/voice-memo</code>, a record-and-review flow.</li>
                 <li>Records with <code>MediaRecorder</code>, uploads the audio to the server.</li>
                 <li>Server pipeline: Whisper transcribes → Claude parses the transcript into one or more task candidates.</li>
-                <li>Each candidate comes back with inferred title, type, tier, and due date, plus optional project/goal hints.</li>
+                <li>Each candidate comes back with inferred title, type, section, and due date, plus optional project/goal hints.</li>
                 <li>You review each candidate in a list, tweak any field, and then Add All or Add Selected.</li>
                 <li>Non-task items (reflections, asides) are grouped in a collapsed "Reflections" section, unchecked by default.</li>
             </ul>
@@ -431,7 +431,7 @@ https://example.com/foo
                 <li>Remove date-range headings and section dividers — or trust the ALLCAPS / date-pattern skip rules to drop them. Works for most.</li>
                 <li>Strip anything like "TO DO" / "IN PROGRESS" column labels if OneNote keeps them as their own lines.</li>
                 <li>De-duplicate deliberately — the parser drops dupes within the same paste, but it can't dedupe against existing tasks in your DB automatically. Duplicates across imports are flagged for you to toggle off on the review screen.</li>
-                <li>If you need metadata (tier, type, due date, project, goal): easiest to import first, then use the bulk-select toolbar on the resulting Inbox to apply those in one pass.</li>
+                <li>If you need metadata (section, type, due date, project, goal): easiest to import first, then use the bulk-select toolbar on the resulting Inbox to apply those in one pass.</li>
             </ol>
 
             <h3>Size &amp; undo</h3>
@@ -471,7 +471,7 @@ Skip this line (too short)</pre>
             </ul>
             <p>
                 All 6 successful tasks land in Inbox with type=work.
-                You then bulk-select them, assign tier/project/due_date
+                You then bulk-select them, assign section/project/due_date
                 in one pass, and move on.
             </p>
         </section>
@@ -512,7 +512,7 @@ Skip this line (too short)</pre>
             <ul>
                 <li><code>type</code>: <code>work</code>, <code>personal</code>. Default: <code>work</code>.</li>
                 <li><code>tier</code>: <code>inbox</code>, <code>today</code>, <code>tomorrow</code>, <code>this_week</code>, <code>next_week</code>, <code>backlog</code>, <code>freezer</code>. Default: <code>inbox</code>.</li>
-                <li><code>due_date</code>: ISO <code>YYYY-MM-DD</code>. Excel date cells are normalised automatically. Setting a due_date will auto-route the task to the matching tier on save (e.g. today → Today).</li>
+                <li><code>due_date</code>: ISO <code>YYYY-MM-DD</code>. Excel date cells are normalised automatically. Setting a due_date will auto-route the task to the matching section on save (e.g. today → Today).</li>
                 <li><code>linked_goal</code>: free-text goal title; matched case-insensitively against your active goals at create time. No exact-id needed. Misses are silently dropped (task created without a goal).</li>
                 <li><code>linked_project</code>: free-text project name; same matching as <code>linked_goal</code>. If the linked project has a <code>goal_id</code>, that cascades onto the task automatically.</li>
                 <li><code>notes</code>: free text.</li>
@@ -674,7 +674,7 @@ Skip this line (too short)</pre>
             <h3>What gets created</h3>
             <ul>
                 <li>Each extracted action item → one task candidate
-                    (review screen, default tier <strong>Inbox</strong>,
+                    (review screen, default section <strong>Inbox</strong>,
                     default type <strong>work</strong>).</li>
                 <li>Title is capped at 100 characters; longer items are
                     truncated.</li>
@@ -702,14 +702,14 @@ Skip this line (too short)</pre>
            ============================================================= #}
 
         <section id="tiers" class="docs-section">
-            <h2>Tiers and auto-fill</h2>
+            <h2>Sections and auto-fill</h2>
             <p>
-                Every task lives in exactly one tier. Tiers determine
+                Every task lives in exactly one section. Sections determine
                 where the task renders on the board and drive a few
                 automatic behaviors around due dates.
             </p>
 
-            <h3>Tier list (board display order)</h3>
+            <h3>Section list (board display order)</h3>
             <ol>
                 <li><strong>Inbox</strong> — default for new captures; unsorted queue.</li>
                 <li><strong>Today</strong> — do today.</li>
@@ -720,7 +720,7 @@ Skip this line (too short)</pre>
                 <li><strong>Freezer</strong> — maybe never. Review every so often to Keep, Delete, or pull back.</li>
             </ol>
 
-            <h3>Due-date auto-fill (tier → date)</h3>
+            <h3>Due-date auto-fill (section → date)</h3>
             <p>
                 When a task lands in <strong>Today</strong> or
                 <strong>Tomorrow</strong> with no explicit due date,
@@ -729,7 +729,7 @@ Skip this line (too short)</pre>
             <ul>
                 <li>TODAY → <code>due_date</code> = today (local timezone).</li>
                 <li>TOMORROW → <code>due_date</code> = today + 1.</li>
-                <li>Other tiers → no auto-fill.</li>
+                <li>Other sections → no auto-fill.</li>
             </ul>
             <p>
                 Auto-fill is <strong>fill-if-null only</strong> — it
@@ -739,11 +739,11 @@ Skip this line (too short)</pre>
                 treated as user intent).
             </p>
 
-            <h3>Tier auto-route (date → tier)</h3>
+            <h3>Section auto-route (date → section)</h3>
             <p>
                 The reverse direction also runs: setting a
                 <code>due_date</code> automatically moves the task to
-                the tier that matches the date.
+                the section that matches the date.
             </p>
             <ul>
                 <li>Date = today → <strong>Today</strong>.</li>
@@ -754,10 +754,10 @@ Skip this line (too short)</pre>
             </ul>
             <p>
                 Auto-route runs on every <code>due_date</code> change
-                (always overwrites the tier) <em>except</em> when:
+                (always overwrites the section) <em>except</em> when:
             </p>
             <ul>
-                <li>You set <code>tier</code> and <code>due_date</code> in the same update — your explicit tier wins.</li>
+                <li>You set <code>tier</code> (the API field name) and <code>due_date</code> in the same update — your explicit section wins.</li>
                 <li>The task is in <strong>Freezer</strong> — you parked it on purpose; the date is just a reminder.</li>
                 <li>The task is not Active (archived/cancelled/deleted).</li>
             </ul>
@@ -769,11 +769,11 @@ Skip this line (too short)</pre>
             <p>
                 In the task detail panel, both rules also run
                 <strong>live as you type</strong> — pick a date and the
-                tier dropdown jumps to match; pick Today or Tomorrow
+                Section dropdown jumps to match; pick Today or Tomorrow
                 and the date populates (or advances) to match. Same
                 rules, same exclusions (Freezer is preserved on date
                 change; switching out of Today/Tomorrow into a
-                week-range tier leaves the date alone as a reminder)
+                week-range section leaves the date alone as a reminder)
                 — you just see the result before clicking Save.
             </p>
 
@@ -786,7 +786,7 @@ Skip this line (too short)</pre>
                 by hand.
             </p>
 
-            <h3>Task status (separate from tier)</h3>
+            <h3>Task status (separate from section)</h3>
             <ul>
                 <li><strong>Active</strong> — default.</li>
                 <li><strong>Archived</strong> — completed. Shows on the <a href="{{ url_for('completed_page') }}">/completed</a> page.</li>
@@ -876,7 +876,7 @@ Skip this line (too short)</pre>
             <h3>Actions</h3>
             <p>One button per task. The card advances automatically after each action.</p>
             <ul>
-                <li><strong>Keep</strong> — leave the task in its current tier. Stamps <code>last_reviewed</code> = today, so it drops out of the queue for 7 more days.</li>
+                <li><strong>Keep</strong> — leave the task in its current section. Stamps <code>last_reviewed</code> = today, so it drops out of the queue for 7 more days.</li>
                 <li><strong>Freeze</strong> — move to Freezer and stamp <code>last_reviewed</code>.</li>
                 <li><strong>Snooze</strong> — leave in place and stamp <code>last_reviewed</code> = today. Effectively the same as Keep; separate button for when you're deliberately deferring the decision.</li>
                 <li><strong>Delete</strong> — soft-delete (status = deleted). Does not go through the recycle bin (that's for import undos only).</li>
@@ -892,7 +892,7 @@ Skip this line (too short)</pre>
             <p>
                 Above the Review card, a separate <strong>💡 Triage suggestions</strong>
                 panel surfaces tasks that have gone stale in their
-                current tier with one-click recommended actions. The
+                current section with one-click recommended actions. The
                 panel is hidden when no tasks qualify, so it doesn't
                 distract you on light days.
             </p>
@@ -907,7 +907,7 @@ Skip this line (too short)</pre>
             </ul>
             <p>
                 "Untouched" means <code>updated_at</code> hasn't changed —
-                touching the task in any way (tier change, field edit,
+                touching the task in any way (section change, field edit,
                 marking it reviewed) resets the staleness clock.
             </p>
             <h4>What's excluded</h4>
@@ -917,7 +917,7 @@ Skip this line (too short)</pre>
             </ul>
             <h4>Buttons per row</h4>
             <ul>
-                <li><strong>Apply</strong> — labeled either <code>→ &lt;Tier&gt;</code> or <strong>Delete</strong>. Routes through the same <code>PATCH /api/tasks/&lt;id&gt;</code> or <code>DELETE /api/tasks/&lt;id&gt;</code> endpoint the rest of the app uses, so audit trails stay consistent.</li>
+                <li><strong>Apply</strong> — labeled either <code>→ &lt;Section&gt;</code> or <strong>Delete</strong>. Routes through the same <code>PATCH /api/tasks/&lt;id&gt;</code> or <code>DELETE /api/tasks/&lt;id&gt;</code> endpoint the rest of the app uses, so audit trails stay consistent.</li>
                 <li><strong>Dismiss</strong> — hides the row for this page-load only. Refresh the page and the suggestion comes back. Use it when you've considered a row and decided not to act on it yet, without nagging yourself for the rest of the session.</li>
             </ul>
             <p>
@@ -930,7 +930,7 @@ Skip this line (too short)</pre>
             <p>
                 A task can have child tasks one level deep. Subtasks
                 are useful for breaking a larger thing into concrete
-                steps without leaving the parent tier.
+                steps without leaving the parent section.
             </p>
 
             <h3>Rules</h3>
@@ -977,17 +977,17 @@ Skip this line (too short)</pre>
             <p>
                 When the Inbox has any tasks, a
                 <strong>💡 Auto-categorize</strong> button appears on
-                the Inbox tier header. One click sends every active
+                the Inbox section header. One click sends every active
                 Inbox task to Claude in a single batch and opens a
                 review modal where you can accept or override each
                 suggestion before applying.
             </p>
             <h3>What it suggests per task</h3>
             <ul>
-                <li><strong>Tier</strong> — Today, Tomorrow, This Week, Next Week, Backlog, or Freezer. Never "Inbox" (that's the source).</li>
+                <li><strong>Section</strong> — Today, Tomorrow, This Week, Next Week, Backlog, or Freezer. Never "Inbox" (that's the source).</li>
                 <li><strong>Project</strong> — picked from your active projects, or null if nothing fits.</li>
                 <li><strong>Goal</strong> — picked from your in-progress / not-started goals, or null. If a project is suggested, Claude usually mirrors that project's goal.</li>
-                <li><strong>Due date</strong> — Claude sets one only when the task title implies it (e.g. "Pay rent by 15th"). When it doesn't, a row whose tier is <strong>Today</strong> or <strong>Tomorrow</strong> still pre-fills the date input with that tier's date, so you can see what the <a href="#tiers">tier&nbsp;→&nbsp;date auto-fill</a> will stamp on apply — switch the Tier dropdown and it re-derives. Other tiers leave the date blank unless you set one.</li>
+                <li><strong>Due date</strong> — Claude sets one only when the task title implies it (e.g. "Pay rent by 15th"). When it doesn't, a row whose section is <strong>Today</strong> or <strong>Tomorrow</strong> still pre-fills the date input with that section's date, so you can see what the <a href="#tiers">section&nbsp;→&nbsp;date auto-fill</a> will stamp on apply — switch the Section dropdown and it re-derives. Other sections leave the date blank unless you set one.</li>
                 <li><strong>Type</strong> — Work or Personal.</li>
                 <li><strong>Reason</strong> — one short sentence explaining the most-influential signal.</li>
             </ul>
@@ -1021,7 +1021,7 @@ Skip this line (too short)</pre>
             </p>
             <h3>What goes into the plan</h3>
             <ul>
-                <li><strong>Active tasks</strong> from every tier
+                <li><strong>Active tasks</strong> from every section
                     EXCEPT Freezer — frozen tasks are deliberately parked
                     and aren't re-suggested in the main plan.</li>
                 <li><strong>4 weeks of completed history</strong> — used
@@ -1041,7 +1041,7 @@ Skip this line (too short)</pre>
             <h3>What comes back</h3>
             <ul>
                 <li><strong>Per-task action</strong>: keep / move / delete /
-                    freeze. "Move" includes a suggested tier and a
+                    freeze. "Move" includes a suggested section and a
                     suggested due_date inside the target week.</li>
                 <li><strong>Day-by-day plan</strong> grouped Mon–Sun by
                     suggested due_date.</li>
@@ -1057,7 +1057,7 @@ Skip this line (too short)</pre>
             </ul>
             <h3>Review then apply</h3>
             <ul>
-                <li>Each suggestion is a row with editable selects (tier,
+                <li>Each suggestion is a row with editable selects (section,
                     due date, project, goal). Override anything before
                     accepting.</li>
                 <li><strong>Accept</strong> per row — runs
@@ -1071,7 +1071,7 @@ Skip this line (too short)</pre>
                     <code>Task.planner_ignore = true</code> so the task
                     drops out of the next planner run. The flag
                     auto-resets to false the moment you touch the task
-                    in any meaningful way (tier change, retitle, project
+                    in any meaningful way (section change, retitle, project
                     link, etc.) — silence is per-suggestion, never
                     permanent.</li>
             </ul>
@@ -1102,10 +1102,10 @@ Skip this line (too short)</pre>
                 pick it up the next day without retyping everything: open
                 the task's detail panel and click
                 <strong>⧉ Copy to tomorrow</strong>. The original stays
-                put; a fresh clone appears in the Tomorrow tier with
+                put; a fresh clone appears in the Tomorrow section with
                 <code>due_date</code> set to tomorrow. The detail panel
                 automatically re-opens on the clone so you can change
-                the tier or due date right away if "tomorrow" isn't
+                the section or due date right away if "tomorrow" isn't
                 where you want it.
             </p>
             <h3>What carries over to the clone</h3>
@@ -1118,7 +1118,7 @@ Skip this line (too short)</pre>
             </ul>
             <h3>What's reset on the clone</h3>
             <ul>
-                <li><strong>Tier</strong> → Tomorrow</li>
+                <li><strong>Section</strong> → Tomorrow</li>
                 <li><strong>Due date</strong> → tomorrow's date (your
                     local timezone, same as the rest of the app)</li>
                 <li><strong>Status</strong> → Active (even if you
@@ -1154,16 +1154,16 @@ Skip this line (too short)</pre>
                 <li>The checkbox on the left edge of every task card is selection — tap it to add the card to the bulk selection.</li>
                 <li>The sticky toolbar appears at the bottom of the screen as soon as one card is checked.</li>
                 <li>Selection persists across reorders (↑/↓), so you can repeat actions without re-checking.</li>
-                <li><strong>Multi-drag:</strong> drag any card that's part of a 2+ selection and the whole group moves together — into another tier, or onto the Completed drop-zone. Use the toolbar's ↑/↓ buttons for within-tier reordering (drag works for cross-tier moves; within-tier ordering on This Week / Next Week is by day-of-week, not free-form).</li>
+                <li><strong>Multi-drag:</strong> drag any card that's part of a 2+ selection and the whole group moves together — into another section, or onto the Completed drop-zone. Use the toolbar's ↑/↓ buttons for within-section reordering (drag works for cross-section moves; within-section ordering on This Week / Next Week is by day-of-week, not free-form).</li>
                 <li><strong>To complete a single task</strong>, use the green ✓ button on the right edge of the card (always visible). The left checkbox is for selection only.</li>
             </ul>
 
             <h3>Toolbar actions</h3>
             <ul>
-                <li><strong>↑ / ↓</strong> — move every selected card up or down by one slot within its tier. Contiguous selections stay a block; non-contiguous selections move independently. Selection persists across clicks so you can press ↑ repeatedly to walk a card to the top. Works only when the selection is in a single tier (move across tiers via the Tier ▾ menu or drag-and-drop instead).</li>
+                <li><strong>↑ / ↓</strong> — move every selected card up or down by one slot within its section. Contiguous selections stay a block; non-contiguous selections move independently. Selection persists across clicks so you can press ↑ repeatedly to walk a card to the top. Works only when the selection is in a single section (move across sections via the Section ▾ menu or drag-and-drop instead).</li>
                 <li><strong>Type</strong> — set all selected to Work or Personal.</li>
-                <li><strong>Tier</strong> — move all selected to a target tier.</li>
-                <li><strong>Due</strong> — set a due date on all selected (auto-routes the tier per the date → tier rules above).</li>
+                <li><strong>Section</strong> — move all selected to a target section.</li>
+                <li><strong>Due</strong> — set a due date on all selected (auto-routes the section per the date → section rules above).</li>
                 <li><strong>Goal</strong> — link all selected to a goal (or clear the link).</li>
                 <li><strong>Project</strong> — link all selected to a project (or clear).</li>
                 <li><strong>Complete</strong> — archive all selected.</li>
@@ -1172,7 +1172,7 @@ Skip this line (too short)</pre>
 
             <h3>Staged changes (Apply pattern)</h3>
             <p>
-                Type / Tier / Due / Goal / Project picks
+                Type / Section / Due / Goal / Project picks
                 <strong>stage</strong> instead of firing immediately.
                 A "Pending changes" panel inside the toolbar shows
                 each pick as a chip — click a chip to remove it. The
@@ -1191,7 +1191,7 @@ Skip this line (too short)</pre>
             <ul>
                 <li><strong>Max 200 tasks per call</strong>. Beyond that, the request is rejected at the API layer.</li>
                 <li>Best-effort semantics: per-task failures are reported individually but don't roll back successful ones.</li>
-                <li>Cascade rules still apply — if you move a parent to a different tier, nothing forces subtasks to follow (subtasks stay put unless you include them in the selection).</li>
+                <li>Cascade rules still apply — if you move a parent to a different section, nothing forces subtasks to follow (subtasks stay put unless you include them in the selection).</li>
                 <li>Subtask goal/project inheritance still applies when the parent is changed.</li>
             </ul>
         </section>
@@ -1203,7 +1203,7 @@ Skip this line (too short)</pre>
                 board (and the dedicated /completed and /tier pages).
                 All three persist across page loads via
                 <code>localStorage</code>, so the filter you set on the
-                main board still applies when you click into a tier
+                main board still applies when you click into a section
                 detail page.
             </p>
 
@@ -1251,15 +1251,15 @@ Skip this line (too short)</pre>
                 by dragging the card onto a calendar day instead of
                 editing the date field by hand. Both share the same
                 rule: the dropped date sets <code>due_date</code> on
-                the task, which then auto-routes the tier per the
-                <a href="#tiers">date → tier rules</a>.
+                the task, which then auto-routes the section per the
+                <a href="#tiers">date → section rules</a>.
             </p>
 
             <h3>Day strip (above Today on the main board)</h3>
             <ul>
                 <li>14 cells: this Mon–Sun plus next Mon–Sun. Today is highlighted; past days dimmed.</li>
-                <li>Drop any task card on a cell → the task gets that calendar date as its <code>due_date</code> and auto-routes (e.g. drop on Tue this week → tier becomes <strong>This Week</strong>).</li>
-                <li>Drop on today's cell → tier becomes <strong>Today</strong>.</li>
+                <li>Drop any task card on a cell → the task gets that calendar date as its <code>due_date</code> and auto-routes (e.g. drop on Tue this week → section becomes <strong>This Week</strong>).</li>
+                <li>Drop on today's cell → section becomes <strong>Today</strong>.</li>
             </ul>
 
             <h3><a href="{{ url_for('calendar_page') }}">/calendar</a> page</h3>
@@ -1430,14 +1430,14 @@ Skip this line (too short)</pre>
             <h3>What prints</h3>
             <ul>
                 <li><strong>Overdue</strong> — tasks with a due date before today, not archived.</li>
-                <li><strong>Today</strong> — everything in the Today tier.</li>
-                <li><strong>This Week</strong> — everything in the This Week tier.</li>
+                <li><strong>Today</strong> — everything in the Today section.</li>
+                <li><strong>This Week</strong> — everything in the This Week section.</li>
             </ul>
 
             <h3>What doesn't</h3>
             <ul>
                 <li>Navigation chrome, capture bar, action buttons — hidden via <code>@media print</code> CSS.</li>
-                <li>Inbox, Tomorrow, Next Week, Backlog, Freezer, Completed. If you need to print a specific tier, use the browser's Print to PDF after navigating there.</li>
+                <li>Inbox, Tomorrow, Next Week, Backlog, Freezer, Completed. If you need to print a specific section, use the browser's Print to PDF after navigating there.</li>
             </ul>
 
             <h3>Layout</h3>
@@ -1470,8 +1470,8 @@ Skip this line (too short)</pre>
 
             <h3>What's in it</h3>
             <ol>
-                <li>Today's tasks (everything in the Today tier).</li>
-                <li>Tasks due today from any other tier (excluding those already listed above).</li>
+                <li>Today's tasks (everything in the Today section).</li>
+                <li>Tasks due today from any other section (excluding those already listed above).</li>
                 <li>Overdue tasks (due date before today, not archived).</li>
                 <li>Goals that have active tasks in Today.</li>
                 <li>Tomorrow count and This Week remaining count.</li>
