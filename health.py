@@ -131,6 +131,7 @@ EXPECTED_TABLES = {
     "tasks",
     "recurring_tasks",
     "import_log",
+    "cron_audit",  # #167 scheduler self-heal
 }
 
 # Static files that ``base.html`` and the service worker depend on.

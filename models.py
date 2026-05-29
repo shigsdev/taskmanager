@@ -555,3 +555,33 @@ class AppSetting(db.Model):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now
     )
+
+
+class CronAudit(db.Model):
+    """Per-cron audit row tracking the last fire of each nightly job.
+
+    Powers the scheduler self-heal path (#167): when the container boots
+    after a Railway outage that straddled 00:00-00:05, the startup
+    replay loop checks this table for each job_id — if today's
+    scheduled fire is in the past AND ``last_fire_at`` is older than
+    that, the job ran (in the previous fire today wouldn't be recorded
+    yet, so this becomes a missed-fire signal).
+
+    Single-row-per-job. ``job_id`` is the PK (well-known strings from
+    ``cron_jobs.JOB_ORDER``: ``tomorrow_roll``, ``promote_due_today``,
+    ``realign_tiers_with_due_dates``, ``recurring_spawn``).
+
+    Schema deliberately mirrors the ``Manual cron run report`` output
+    from ``scripts/run_missed_crons.py`` so both paths log the same
+    shape and the existing operator UX carries over.
+    """
+
+    __tablename__ = "cron_audit"
+
+    job_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    last_fire_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now
+    )
+    last_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    last_rowcount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_elapsed_ms: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)

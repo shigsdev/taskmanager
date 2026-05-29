@@ -365,6 +365,25 @@ scheduler misses the fire, the four jobs silently skip until the
 next 24h cycle — tasks in Tomorrow stay in Tomorrow, today-due
 items don't promote, etc.
 
+#### Auto-heal at container boot (default — #167, no manual action required)
+
+As of 2026-05-28, the scheduler self-heals at container boot. After
+`scheduler.start()` runs in worker 1, a `replay_missed()` loop walks
+every nightly job and replays any whose `cron_audit.last_fire_at`
+predates today's scheduled time. So when Railway recovers from a
+midnight outage, the four nightly crons run automatically inside
+the first boot — the user doesn't need to remember to ssh in.
+
+The manual script below is now the FALLBACK path for:
+
+  - Cases the auto-replay didn't cover (e.g. you want to re-run
+    `recurring_spawn` for a back-dated day via `--date`)
+  - Re-running before the auto-replay window (a deploy that lands
+    BETWEEN 00:00 and 00:05 will see "scheduled time is in the
+    future today" and skip; for that case manual replay after
+    00:05 is still useful)
+  - Debugging which row a given fire would touch via `--dry-run`
+
 #### Canonical path — `railway ssh` from inside the container
 
 ```bash

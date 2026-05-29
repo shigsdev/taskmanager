@@ -463,6 +463,17 @@ commit — the check will fail otherwise.
 - `scheduler_heartbeat` — every 45s, proves scheduler is alive
   so non-scheduler gunicorn workers can read the heartbeat JSON
 
+**Resilience: missed-fire replay at startup (#167).** After
+`scheduler.start()` in worker 1, the boot path calls
+`cron_audit_service.replay_missed()` which walks
+`cron_jobs.JOB_ORDER` and re-runs any nightly cron whose
+`cron_audit.last_fire_at` predates today's scheduled fire. Closes
+the loop on the manual `scripts/run_missed_crons.py` path (#166,
+#168, #169) — a Railway outage that straddles 00:00-00:05 now
+self-heals on the next boot. Mitigated against the
+deploy-during-fire-window race by skipping any job whose scheduled
+time is in the future today. See ADR-033 for the full design.
+
 ### Top-level Flask routes (app.py `@app.route`)
 - `/` — board
 - `/login` — Google OAuth entry

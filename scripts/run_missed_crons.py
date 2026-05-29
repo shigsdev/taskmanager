@@ -6,10 +6,10 @@ wrong second, a deploy that overlapped 00:00, an outage), the four
 midnight jobs silently skip until the next 24h cycle. This script
 replays them in the same order the APScheduler runs them:
 
-    00:01  tomorrow_roll        roll_tomorrow_to_today
-    00:02  promote_due_today    promote_due_today_tasks
-    00:03  realign_tiers        realign_tiers_with_due_dates
-    00:05  recurring_spawn      spawn_today_tasks
+    00:01  tomorrow_roll                  roll_tomorrow_to_today
+    00:02  promote_due_today              promote_due_today_tasks
+    00:03  realign_tiers_with_due_dates   realign_tiers_with_due_dates
+    00:05  recurring_spawn                spawn_today_tasks
 
 The 07:00 ``daily_digest`` is intentionally NOT included — the
 existing ``POST /api/digest/send`` endpoint already covers that path,
@@ -121,14 +121,25 @@ def _preflight_database_url(getaddrinfo=socket.getaddrinfo) -> None:
         socket.setdefaulttimeout(original_timeout)
 
 
-JOB_ORDER: list[tuple[str, str, str, str]] = [
-    ("tomorrow_roll",     "task_service",      "roll_tomorrow_to_today",       "00:01"),
-    ("promote_due_today", "task_service",      "promote_due_today_tasks",      "00:02"),
-    ("realign_tiers",     "task_service",      "realign_tiers_with_due_dates", "00:03"),
-    ("recurring_spawn",   "recurring_service", "spawn_today_tasks",            "00:05"),
-]
+# JOB_ORDER lives in ``cron_jobs.py`` so the live scheduler in
+# ``app.py`` and this manual replay script (and #167's boot-time
+# auto-replay in ``cron_audit_service``) all share one source of
+# truth. The shared table uses ``(job_id, hour, minute, "module:fn")``
+# tuples; this script re-shapes them locally into the
+# ``(job_id, module, function, "HH:MM")`` form the summary printer
+# expects.
+from cron_jobs import JOB_ORDER as _SHARED_JOB_ORDER  # noqa: E402
+from cron_jobs import VALID_JOB_IDS  # noqa: E402
 
-VALID_JOB_IDS = frozenset(j[0] for j in JOB_ORDER)
+JOB_ORDER: list[tuple[str, str, str, str]] = [
+    (
+        job_id,
+        spec.split(":")[0],
+        spec.split(":")[1],
+        f"{hour:02d}:{minute:02d}",
+    )
+    for job_id, hour, minute, spec in _SHARED_JOB_ORDER
+]
 
 
 def _parse_only(value: str | None) -> set[str]:

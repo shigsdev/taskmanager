@@ -210,6 +210,25 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "value":  {"desc": "String value (caller parses to int / etc.)", "notes": "500 char cap"},
         },
     },
+    "cron_audit": {
+        "blurb": (
+            "Per-nightly-cron audit row backing the scheduler self-heal "
+            "path (#167). After every fire (success or error), the "
+            "scheduler closure writes the last_fire_at + result here. "
+            "On container boot the replay loop reads this table to "
+            "detect a missed nightly fire (e.g. after a Railway outage "
+            "that straddled 00:00-00:05) and runs the helper inline so "
+            "the operator never has to remember "
+            "`scripts/run_missed_crons.py`."
+        ),
+        "columns": {
+            "job_id":          {"desc": "Well-known cron name from cron_jobs.JOB_ORDER (tomorrow_roll / promote_due_today / realign_tiers_with_due_dates / recurring_spawn)", "notes": "Primary key — one row per job"},
+            "last_fire_at":    {"desc": "Wall-clock timestamp of the last fire (scheduled or replay)", "notes": "TZ-aware UTC"},
+            "last_status":     {"desc": "Outcome string: 'OK' or 'ERROR'", "notes": "Free-form for future status values"},
+            "last_rowcount":   {"desc": "Rows touched by the helper (e.g. tasks promoted)", "notes": "0 if the helper returned nothing measurable"},
+            "last_elapsed_ms": {"desc": "Wall-clock duration of the last fire in milliseconds", "notes": "Useful for spotting slow nightly drift"},
+        },
+    },
     # #188 (2026-05-22): a `flask_dance_oauth` entry used to live here,
     # describing a token table with an "encrypted OAuth token" column.
     # No such table exists — Flask-Dance runs on its default session

@@ -185,11 +185,17 @@ class TestDryRun:
 
 class TestJobRegistry:
     def test_job_order_matches_scheduler(self, runner):
+        # #167: realigned to match the actual scheduler job IDs in
+        # ``app.py:_start_digest_scheduler`` (sourced from
+        # ``cron_jobs.JOB_ORDER``). The pre-#167 script kept a local
+        # rename (``realign_tiers`` → 3rd) that drifted from the
+        # scheduler's ``realign_tiers_with_due_dates`` — the two
+        # paths are now reconciled to one ID per job.
         ids = [j[0] for j in runner.JOB_ORDER]
         assert ids == [
             "tomorrow_roll",
             "promote_due_today",
-            "realign_tiers",
+            "realign_tiers_with_due_dates",
             "recurring_spawn",
         ]
 

@@ -792,25 +792,56 @@ def _start_digest_scheduler(app: Flask) -> None:
     #   Well past 00:01 + any DST-edge jitter; spawn_today_tasks() is
     #   idempotent (title-match suppression) so a manual re-run via
     #   /api/recurring/spawn the same day is a safe no-op.
-    _NIGHTLY_CRONS = [
-        # (job_id, hour, minute, "module:function")
-        ("tomorrow_roll", 0, 1, "task_service:roll_tomorrow_to_today"),
-        ("promote_due_today", 0, 2, "task_service:promote_due_today_tasks"),
-        ("realign_tiers_with_due_dates", 0, 3, "task_service:realign_tiers_with_due_dates"),
-        ("recurring_spawn", 0, 5, "recurring_service:spawn_today_tasks"),
-    ]
+    #
+    # The table itself now lives in ``cron_jobs.JOB_ORDER`` so the
+    # scheduler and ``scripts/run_missed_crons.py`` (manual replay) +
+    # ``cron_audit_service.replay_missed`` (auto-replay at boot) all
+    # iterate the same source-of-truth tuple. #167 + #168 + #169.
+    from cron_jobs import JOB_ORDER
 
-    def _make_cron_runner(spec):
+    def _make_cron_runner(job_id, spec):
+        """Build the per-cron closure: run the service fn under an
+        app context, then write a ``cron_audit`` row (#167) so the
+        boot-time replay loop can detect a missed fire next time the
+        container restarts after an outage.
+        """
         module_name, func_name = spec.split(":")
+
         def _run():
+            import importlib
+            import time as _time
+
+            import cron_audit_service as _audit
+
             with app.app_context():
-                import importlib
-                getattr(importlib.import_module(module_name), func_name)()
+                t0 = _time.perf_counter()
+                try:
+                    result = getattr(importlib.import_module(module_name), func_name)()
+                except Exception as exc:  # noqa: BLE001
+                    elapsed_ms = (_time.perf_counter() - t0) * 1000
+                    _log.error(
+                        "scheduled cron %s FAILED after %.1fms: %s: %s",
+                        job_id, elapsed_ms, type(exc).__name__, exc,
+                        exc_info=True,
+                    )
+                    _audit.record(
+                        job_id, status="ERROR", rowcount=0,
+                        elapsed_ms=elapsed_ms,
+                    )
+                    # Re-raise so APScheduler logs the failure too;
+                    # the cron is independent of the audit write.
+                    raise
+                elapsed_ms = (_time.perf_counter() - t0) * 1000
+                rows = len(result) if isinstance(result, list) else int(result or 0)
+                _audit.record(
+                    job_id, status="OK", rowcount=rows,
+                    elapsed_ms=elapsed_ms,
+                )
         return _run
 
-    for job_id, hour, minute, spec in _NIGHTLY_CRONS:
+    for job_id, hour, minute, spec in JOB_ORDER:
         scheduler.add_job(
-            _make_cron_runner(spec), "cron",
+            _make_cron_runner(job_id, spec), "cron",
             hour=hour, minute=minute, id=job_id, replace_existing=True,
         )
 
@@ -849,6 +880,33 @@ def _start_digest_scheduler(app: Flask) -> None:
     # actually registered and has a future-dated next run, not just
     # that apscheduler is importable.
     _health.register_scheduler(scheduler)
+
+    # #167 — scheduler self-heal. Replay any nightly cron whose last
+    # fire predates today's scheduled time. Wrapped in try/except so
+    # a replay failure can NEVER block the scheduler from coming up
+    # and serving normal traffic / the real cron fires later today.
+    # Only fires in worker 1 (the same worker that owns `scheduler`),
+    # so there's no multi-worker race.
+    try:
+        with app.app_context():
+            import cron_audit_service as _audit
+
+            replay_results = _audit.replay_missed()
+            ran = [r for r in replay_results if r["status"] in {"OK", "ERROR"}]
+            if ran:
+                _log.warning(
+                    "cron self-heal at boot ran %d/%d nightly jobs: %s",
+                    len(ran), len(replay_results),
+                    [f"{r['job_id']}={r['status']}" for r in ran],
+                )
+    except Exception as exc:  # noqa: BLE001
+        _log.error(
+            "cron self-heal at boot FAILED: %s: %s — real crons will still "
+            "fire on schedule today; manual replay via "
+            "scripts/run_missed_crons.py remains the fallback.",
+            type(exc).__name__, exc,
+            exc_info=True,
+        )
 
 
 # #248 (2026-05-27): The module-level `app = create_app()` runs WHENEVER

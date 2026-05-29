@@ -210,6 +210,7 @@ _ER_TABLE_GROUPS: dict[str, str] = {
     "app_logs": "ops",
     "import_log": "ops",
     "app_settings": "ops",
+    "cron_audit": "ops",  # #167 scheduler self-heal
     # #188 (2026-05-22): the "auth" group held a `flask_dance_oauth`
     # entry describing a DB table that does NOT exist — Flask-Dance is
     # configured with its DEFAULT session storage (no `storage=` on
@@ -233,6 +234,7 @@ _ER_TABLE_ORDER = (
     "app_logs",
     "import_log",
     "app_settings",
+    "cron_audit",
     # #188: `flask_dance_oauth` removed — no such table exists.
 )
 

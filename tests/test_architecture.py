@@ -349,16 +349,30 @@ class TestBuildErDiagram:
                       "app_logs", "import_log"):
             assert table in out, f"ER diagram missing table {table!r}"
 
-    def test_no_pk_marker_when_id_columns_hidden(self, app):
+    def test_no_pk_marker_on_id_columns(self, app):
         """#43: `id` is hidden from the ER diagram (universal column,
-        all tables have UUID PK — the marker added noise without
-        info). PK markers correspondingly disappear; the template
-        footnote tells the user every table has an id PK + timestamps."""
+        all data tables have UUID `id` PK — the marker added noise
+        without info). The template footnote tells the user every
+        data table has an id PK + timestamps.
+
+        #167: ``cron_audit`` is an exception — its PK is the
+        well-known ``job_id`` (no `id` column). The PK marker on
+        ``job_id`` is informative because the column itself is
+        rendered. So the invariant is now "the literal `id` column
+        is gone, and no `id PK` substring appears", not "no PK
+        markers anywhere".
+        """
         from architecture_service import build_er_diagram
         with app.app_context():
             out = build_er_diagram()
-        # No id column rendered anywhere = no PK markers anywhere
-        assert " PK" not in out
+        # The literal `id` column shouldn't appear.
+        assert " id PK" not in out
+        assert "uuid id\n" not in out
+        # job_id PK is allowed (cron_audit, #167) — it's the visible PK
+        # of a single-row-per-cron table where there's no synthetic id.
+        # Quick sanity: cron_audit has exactly the job_id PK we expect.
+        if "cron_audit" in out:
+            assert "job_id PK" in out
 
     def test_includes_fk_relationship_arrows(self, app):
         from architecture_service import build_er_diagram
