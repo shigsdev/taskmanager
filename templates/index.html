@@ -16,29 +16,37 @@
 {% endblock %}
 
 {% block content %}
-{# Task-view filter sub-nav: only on the Tasks page. Previously lived
-   in the top nav, which meant All/Work/Personal disappeared on every
-   other page. Moved here so the canonical page nav stays consistent. #}
-<div class="view-filter-bar">
-    <a href="#" class="nav-tab view-filter-btn active" data-view="all">All</a>
-    <a href="#" class="nav-tab view-filter-btn" data-view="work">Work</a>
-    <a href="#" class="nav-tab view-filter-btn" data-view="personal">Personal</a>
-    {# 2026-05-08 user redesign: removed the "Select" toggle. Selection
-       is now the primary role of the per-card checkbox (always visible);
-       the bulk toolbar appears at the bottom whenever ≥1 card is checked.
-       Old behavior gated checkboxes behind a #bulkSelectToggle modal-ish
-       mode — felt redundant once selection became the dominant action. #}
+{# #159 (2026-05-29): the three filter dimensions (View / Project /
+   Objective) live in ONE centered region. Previously they were three
+   sibling divs, each individually max-width:1200px + margin:auto —
+   which centered them but didn't visually relate them. User-flagged
+   2026-05-09 with screenshot.
+
+   Task-view filter sub-nav (All/Work/Personal) previously lived in
+   the top nav, which meant it disappeared on every other page. Moved
+   inline here so the canonical page nav stays consistent across pages. #}
+<div class="filters-region" aria-label="Task filters">
+    <div class="view-filter-bar">
+        <a href="#" class="nav-tab view-filter-btn active" data-view="all">All</a>
+        <a href="#" class="nav-tab view-filter-btn" data-view="work">Work</a>
+        <a href="#" class="nav-tab view-filter-btn" data-view="personal">Personal</a>
+        {# 2026-05-08 user redesign: removed the "Select" toggle. Selection
+           is now the primary role of the per-card checkbox (always visible);
+           the bulk toolbar appears at the bottom whenever ≥1 card is checked.
+           Old behavior gated checkboxes behind a #bulkSelectToggle modal-ish
+           mode — felt redundant once selection became the dominant action. #}
+    </div>
+    <div class="project-filter-bar" id="projectFilterBar"></div>
+    {# #92 (PR25): always-visible objective/goal filter dropdown. Sits below
+       the work/personal tabs + project filter so the three filter dimensions
+       stack cleanly. Persists across page loads via localStorage. #}
+    <div class="goal-filter-bar" id="goalFilterBar"></div>
 </div>
-<div class="project-filter-bar" id="projectFilterBar"></div>
-{# #92 (PR25): always-visible objective/goal filter dropdown. Sits below
-   the work/personal tabs + project filter so the three filter dimensions
-   stack cleanly. Persists across page loads via localStorage. #}
 <div class="task-search-bar">
     <input type="search" id="taskSearchInput" placeholder="Search tasks (title, notes, URL)..." autocomplete="off" spellcheck="false" maxlength="200">
     <button type="button" id="taskSearchClear" class="btn-sm" title="Clear search">Clear</button>
     <span class="task-search-meta" id="taskSearchMeta"></span>
 </div>
-<div class="goal-filter-bar" id="goalFilterBar"></div>
 {# Feature 1 (2026-05-09): "This Week's Focus" — N free-form focus
    statements per ISO week (configurable, default 3). Each slot can
    optionally link to a Goal. ✨ Plan kicks off Claude to propose

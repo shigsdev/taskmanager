@@ -244,20 +244,31 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .nav .btn-link { color: rgba(255, 255, 255, 0.82); padding: 4px 10px; border-radius: var(--radius); }
 .nav .btn-link:hover { color: #fff; background: rgba(255, 255, 255, 0.15); }
 
+/* #159 (2026-05-29): single centered container that groups the three
+   filter dimensions (View / Project / Objective) into one visual region
+   instead of three separately-centered sibling bars. The 2026-05-09
+   PARTIAL ship gave each bar its own max-width:1200px + margin:auto
+   which centered them but left them visually fragmented (three rows
+   floating, no shared edge). Wrapping in `.filters-region` lets the
+   parent handle the 1200px centering once and the inner bars inherit
+   it cleanly. Each bar still renders on its own row (preserves the
+   "each filter dimension is its own row" property the user asked for).
+
+   Padding mirrors the per-bar padding so total height is unchanged
+   from the pre-#159 state. */
+.filters-region {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0;
+}
+
 /* View filter sub-nav: All / Work / Personal (Tasks page only) */
 .view-filter-bar {
     display: flex;
     gap: 4px;
     padding: 6px 14px 0;
     margin-bottom: 4px;
-    /* #159 (2026-05-09): match the 1200px-centered pattern of every
-       other content bar (project-filter, task-search, goal-filter,
-       day-strip, tier-board). Without this the View pills sat
-       left-aligned at the viewport edge while everything below them
-       was centered — visually fragmented (user-reported with screenshot). */
-    max-width: 1200px;
-    margin-left: auto;
-    margin-right: auto;
+    /* Centering now provided by `.filters-region` parent (#159). */
 }
 .view-filter-btn {
     font-size: 0.8rem;
