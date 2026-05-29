@@ -495,11 +495,41 @@ def configure_logging(app: Flask) -> DBLogHandler | None:
     level_name = os.environ.get("APP_LOG_LEVEL", "WARNING").upper()
     level = getattr(logging, level_name, logging.WARNING)
 
+    # #259 (2026-05-29): idempotency guard. With ``preload_app=True`` in
+    # ``gunicorn.conf.py``, the master process imports ``app:app`` which
+    # runs ``app = create_app()`` at module load → ``configure_logging()``
+    # attaches DBLogHandler #1 to root. Workers fork inheriting #1. Then
+    # ``post_worker_init`` calls ``create_app()`` a SECOND time in worker 1
+    # → ``configure_logging()`` would attach DBLogHandler #2. Every
+    # subsequent ``logger.warning(...)`` would emit through BOTH handlers,
+    # doubling every row in ``app_logs``.
+    #
+    # Caught during the #167 boot replay verification — the burst of 9
+    # WARNINGs in ~70ms made the doubling obvious in /api/debug/logs
+    # (distinct UUIDs, ~38ms apart). Pre-#167 the app emitted ~0 WARNINGs
+    # in steady state so the bug was invisible.
+    #
+    # Fix: if a DBLogHandler is already attached to the root logger, skip
+    # the attach and return the existing handler. The hooks-installed
+    # guard at line 512 covers the same class for ``before_request`` /
+    # ``after_request`` — this just extends the same discipline to the
+    # handler itself.
+    root = logging.getLogger()
+    existing = next(
+        (h for h in root.handlers if isinstance(h, DBLogHandler)),
+        None,
+    )
+    if existing is not None:
+        # Keep the existing root level low enough; don't return early
+        # until we've raised it if needed.
+        if root.level > level:
+            root.setLevel(level)
+        return existing
+
     handler = DBLogHandler(app, level=level)
     handler.addFilter(RequestContextFilter())
 
     # Attach to the root logger so every module's logger inherits it.
-    root = logging.getLogger()
     # Don't clobber existing handlers (gunicorn installs its own).
     # But ensure root's level is low enough that our handler actually
     # sees the records.

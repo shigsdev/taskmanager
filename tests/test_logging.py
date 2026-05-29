@@ -988,3 +988,107 @@ class TestBackfillTodayTomorrowDueDate:
         with app.app_context():
             t2 = db.session.get(Task, tid)
             assert t2.due_date is None
+
+
+class TestConfigureLoggingIdempotent:
+    """#259 — ``configure_logging(app)`` must be idempotent.
+
+    With ``preload_app=True`` in gunicorn.conf.py, the master process
+    runs ``create_app()`` at module load → DBLogHandler #1 attaches to
+    root. Then ``post_worker_init`` calls ``create_app()`` AGAIN in
+    worker 1 → without the idempotency guard, DBLogHandler #2 would
+    attach, and every WARNING+ log row would land twice in app_logs
+    (distinct UUIDs, ~38ms apart — as observed during the #167 boot
+    replay verification on 2026-05-29 02:30 UTC).
+
+    The fix: ``configure_logging`` checks if a DBLogHandler is already
+    on root and returns the existing one without attaching a second.
+    Same discipline as the existing ``_logging_hooks_installed`` guard
+    for before/after request hooks.
+    """
+
+    @pytest.fixture(autouse=True)
+    def isolate_root_handlers(self):
+        """Snapshot root handlers, restore after each test.
+
+        Configure_logging mutates the root logger globally. Without
+        this fixture a test that leaks an attached handler poisons
+        every subsequent test in the file.
+        """
+        import logging as _logging
+
+        root = _logging.getLogger()
+        saved = list(root.handlers)
+        saved_level = root.level
+        # Strip any DBLogHandlers that survived from the conftest
+        # ``app`` fixture so we can assert on counts from a known
+        # baseline.
+        from logging_service import DBLogHandler as _DBH
+        root.handlers = [h for h in saved if not isinstance(h, _DBH)]
+        try:
+            yield
+        finally:
+            root.handlers = saved
+            root.level = saved_level
+
+    def test_second_call_does_not_attach_a_second_handler(self, app):
+        """Two configure_logging calls on the same root → still one DBLogHandler."""
+        import logging as _logging
+
+        from logging_service import DBLogHandler, configure_logging
+
+        root = _logging.getLogger()
+        baseline = sum(1 for h in root.handlers if isinstance(h, DBLogHandler))
+        assert baseline == 0, "test fixture failed to strip baseline handlers"
+
+        h1 = configure_logging(app)
+        h2 = configure_logging(app)
+
+        dbh_count = sum(1 for h in root.handlers if isinstance(h, DBLogHandler))
+        assert dbh_count == 1, (
+            f"configure_logging is not idempotent: {dbh_count} DBLogHandlers "
+            "on root (expected 1). See BACKLOG #259."
+        )
+        # The second call returns the SAME handler instance (test contract
+        # is just "no second attach"; identity is a nice-to-have signal).
+        assert h2 is h1
+
+    def test_warning_emits_once_after_repeated_configure(self, app):
+        """End-to-end repro: configure twice, emit one WARNING, expect
+        exactly ONE row in app_logs. This is the test that would have
+        caught the original bug if it had existed pre-2026-05-29.
+        """
+        import logging as _logging
+
+        from logging_service import configure_logging
+        from models import AppLog, db
+
+        configure_logging(app)
+        configure_logging(app)
+
+        with app.app_context():
+            db.session.query(AppLog).delete()
+            db.session.commit()
+
+            _logging.getLogger("test_259").warning(
+                "single emit should land once not twice"
+            )
+
+            count = db.session.query(AppLog).count()
+        assert count == 1, (
+            f"#259 regression: WARNING produced {count} rows in app_logs "
+            "(expected 1). configure_logging is attaching DBLogHandler "
+            "multiple times to root."
+        )
+
+    def test_idempotency_returns_existing_handler(self, app):
+        """The second call returns the SAME handler instance so callers
+        that rely on the return value (e.g. tests that inspect the
+        handler) don't break under repeated configure.
+        """
+        from logging_service import configure_logging
+
+        h1 = configure_logging(app)
+        h2 = configure_logging(app)
+        assert h1 is not None
+        assert h2 is h1
