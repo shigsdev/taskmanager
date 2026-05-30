@@ -827,6 +827,7 @@ as ✅ done / ⏭️ N/A:
 | Refactored a security-sensitive function (e.g. broadened a scope, changed an auth check) | Write a new ADR superseding the old one in `docs/adr/`; grep all docstrings/comments for the OLD claim and update them; add a regression test that asserts the new scope |
 | Bumped a dependency in requirements.txt or package.json | `pip-audit` / `npm audit` clean; pytest still passes (some bumps break APIs) |
 | Added a new SOP rule or process change to CLAUDE.md | Mention it in the next commit message so future sessions notice; consider whether `run_all_gates.sh` can enforce it |
+| **Changed this cascade table** (added / removed / edited a row) | Update `.claude/skills/cascade-check/SKILL.md` to match — it's a hand-maintained mirror of this table with NO automated drift gate. The `cascade-check` skill (#258-D) walks the mirror mechanically, so a stale mirror silently skips rows |
 
 If a row triggers and you're not sure how to handle it: STOP, write
 a one-paragraph note, and commit-message it. Don't silently skip.
