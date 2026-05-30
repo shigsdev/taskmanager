@@ -199,6 +199,42 @@
                 else { delete dueEl.dataset.auto; }
             });
         }
+        // #263 (2026-05-29): symmetric reverse direction — when the user
+        // types/picks a date, re-route the section dropdown to the tier
+        // that naturally matches that date (today / tomorrow / Mon-Sat
+        // boundaries / beyond → backlog). Mirrors the detail-panel
+        // bidirectional sync from #149 (same `window.tierHelpers`).
+        //
+        // Without this, the user could pick a date 3 days from now (e.g.
+        // 2026-06-01) but the section stayed at whatever Claude
+        // originally suggested (e.g. Tomorrow). At Apply time both
+        // fields are PATCHed and the server's "explicit tier wins on
+        // tie" rule (docs.html:758) landed the task in the stale
+        // section — user-reported 2026-05-29 with screenshot showing
+        // a task in Tomorrow with due_date 2026-06-01.
+        //
+        // FREEZER is preserved (matching the detail-panel rule) — if
+        // the user has explicitly parked the task in Freezer the date
+        // is just a reminder and shouldn't move the section.
+        var dueEl = tr.querySelector('input[data-field="due_date"]');
+        if (dueEl) {
+            dueEl.addEventListener("change", function () {
+                var TH = window.tierHelpers;
+                if (!TH || typeof TH.tierForDueDate !== "function") { return; }
+                if (!tierSel || tierSel.value === "freezer") { return; }
+                var iso = dueEl.value;
+                if (!iso) { return; }
+                var naturalTier = TH.tierForDueDate(iso);
+                if (!naturalTier) { return; }
+                if (tierSel.value !== naturalTier) {
+                    tierSel.value = naturalTier;
+                    // Clear data-auto so resolveDueForTier doesn't
+                    // overwrite the user's explicit date on a
+                    // subsequent tier-driven re-derive.
+                    delete dueEl.dataset.auto;
+                }
+            });
+        }
         // #117 cascade on this row too — same pattern as the detail
         // panel (taskDetailProjectChanged). Wire ONCE on first render;
         // re-wire after the type-change rebuild via _wireProjectCascade.
