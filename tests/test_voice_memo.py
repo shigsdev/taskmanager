@@ -1167,6 +1167,138 @@ class TestVoiceNormaliser:
         assert _normalise_title("foo-bar_baz—qux") == "foo bar baz qux"
         assert _normalise_title("foo - bar") == "foo bar"
 
+    # --- #234 fifth pass (2026-05-29): token-stem fallback ----------
+    # User-reported: hint="Roadmaps" (plural) + project="Roadmap
+    # Automation" (singular) → previous "no match" because neither
+    # side is a substring of the other. Token-level overlap with
+    # min-stem-len=4 catches this without becoming over-eager on
+    # short stop-words.
+
+    def test_234_5p_plural_hint_resolves_to_singular_title(self):
+        """The literal user-reported repro: 'Roadmaps' → 'Roadmap Automation'."""
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "Reschedule Compute Pilot meeting", "project_hint": "Roadmaps"}],
+            projects=[("p-ra", "Roadmap Automation")],
+            goals=[],
+        )
+        assert result[0]["project_id"] == "p-ra"
+
+    def test_234_5p_singular_hint_resolves_to_plural_title(self):
+        """Inverse direction: hint='Audit', title='Audits Q3'."""
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "review audit findings", "project_hint": "Audit"}],
+            projects=[("p-aq3", "Audits Q3")],
+            goals=[],
+        )
+        assert result[0]["project_id"] == "p-aq3"
+
+    def test_234_5p_stop_word_token_does_not_false_match(self):
+        """The min-stem-len=4 guard prevents stop-word tokens ("the",
+        "of", "and", "to") from matching. Without it, a hint
+        "Send the report" would resolve to a project "The Database"
+        purely on the shared "the" word.
+
+        Setup is contrived so the substring fallback does NOT catch
+        (neither side contains the other), forcing the token-stem
+        fallback to be the candidate code path.
+        """
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "x", "project_hint": "Send the report"}],
+            projects=[("p-the", "The Database")],
+            goals=[],
+        )
+        # "send the report" not in "the database" + reverse also fails →
+        # substring miss. Token-stem with guard: hint_tokens={"send",
+        # "report"} (drops "the"); title_tokens={"database"} (drops
+        # "the"). No overlap → None. Without the guard, "the" would
+        # match "the" and resolve incorrectly.
+        assert result[0]["project_id"] is None
+
+    def test_234_5p_ambiguous_token_match_leaves_unresolved(self):
+        """Multiple titles all token-match the hint AND no task-title
+        disambiguator wins → still no match (preserves the existing
+        single-match requirement).
+        """
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "no clear disambig", "project_hint": "Roadmaps"}],
+            projects=[
+                ("p-ra", "Roadmap Automation"),
+                ("p-rbp", "Roadmap Best Practices"),
+            ],
+            goals=[],
+        )
+        # Both projects token-match "roadmaps" via "roadmap"; task title
+        # has no overlap with "automation" or "practices" → no winner
+        assert result[0]["project_id"] is None
+
+    def test_234_5p_ambiguous_token_match_disambiguates_via_title(self):
+        """Multiple token-match candidates → existing _disambiguate_via_title
+        runs on them too. If the task title mentions one candidate's
+        extra word, that one wins.
+        """
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{
+                "title": "Wire up the automation pipeline next week",
+                "project_hint": "Roadmaps",
+            }],
+            projects=[
+                ("p-ra", "Roadmap Automation"),
+                ("p-rbp", "Roadmap Best Practices"),
+            ],
+            goals=[],
+        )
+        # Task title contains "automation" → "Roadmap Automation" wins
+        assert result[0]["project_id"] == "p-ra"
+
+    def test_234_5p_goal_hint_plural_resolves(self):
+        """Same fallback applies to goal hints, not just project hints."""
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "x", "goal_hint": "Roadmaps"}],
+            projects=[],
+            goals=[("g-ra", "Roadmap Automation")],
+        )
+        assert result[0]["goal_id"] == "g-ra"
+
+    def test_234_5p_generic_word_project_does_not_false_match(self):
+        """Regression: the literal word "project" appears in many
+        project titles. Without the stop-list, hint "Hallucinated
+        Project" would token-match "Real Project" purely on the
+        shared "project" word. Captured by the existing test
+        test_unknown_project_hint_stays_as_free_text — added here
+        explicitly so the intent is documented next to the other
+        fifth-pass cases.
+        """
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "x", "project_hint": "Hallucinated Project"}],
+            projects=[("p-rp", "Real Project")],
+            goals=[],
+        )
+        assert result[0]["project_id"] is None
+
+    def test_234_5p_exact_match_still_preferred_over_token_match(self):
+        """When there's an exact match somewhere in the title map, the
+        token-stem fallback must NEVER override it. Order of fallbacks
+        matters: exact → substring → loose-alnum → token-stem.
+        """
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates(
+            [{"title": "x", "project_hint": "Roadmap Automation"}],
+            projects=[
+                ("p-ra", "Roadmap Automation"),     # exact match
+                ("p-rbp", "Roadmap Best Practices"),  # token match too
+            ],
+            goals=[],
+        )
+        # Exact match must win, even though both would token-match
+        assert result[0]["project_id"] == "p-ra"
+
     def test_234_fetch_logs_counts_on_success(self, app, caplog):
         """The #234 fetch surfaces project/goal counts to logs so a
         future 'all hints missed' report can be diagnosed from

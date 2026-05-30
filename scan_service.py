@@ -1016,6 +1016,89 @@ def _resolve_voice_hint(
                 kind, hint, hint_alnum, len(loose_map),
             )
             return loose_exact
+
+    # #234 fifth pass (2026-05-29): token-stem fallback. When the bare
+    # substring check above misses because the hint and the title use
+    # different word forms (plurals, common short/long form), try
+    # tokenising both sides and check whether ANY hint token is a
+    # substring of ANY title token (or vice versa) at the word level.
+    #
+    # Repro from user screenshot 2026-05-29:
+    #   hint="Roadmaps"  (Claude transcribed the plural)
+    #   project title="Roadmap Automation"
+    #   - "roadmaps" in "roadmap automation"  → False (no 's' after roadmap)
+    #   - "roadmap automation" in "roadmaps"  → False
+    #   → substring_matches = []  → previous "no match"
+    #
+    # With token-stem:
+    #   hint tokens  = {"roadmaps"}
+    #   title tokens = {"roadmap", "automation"}
+    #   → "roadmap" is substring of "roadmaps"  ✓ → match!
+    #
+    # TWO filters prevent false positives:
+    #   (a) Min token length of 4 — drops "the"/"and"/"of" etc.
+    #   (b) Generic-word stop-list — drops "project"/"goal"/"task"
+    #       which appear in many project/goal titles literally and
+    #       would otherwise resolve EVERY hint containing "project"
+    #       to whatever single title has it. Caught by the existing
+    #       test_unknown_project_hint_stays_as_free_text case: hint
+    #       "Hallucinated Project" must NOT resolve to "Real Project"
+    #       just because both contain "project".
+    #
+    # Single-match requirement preserved across all titles —
+    # multi-match still falls through to ambiguous + the existing
+    # title-context disambiguator runs.
+    _MIN_STEM_LEN = 4
+    _STEM_STOP_WORDS = frozenset({
+        # Domain-generic nouns that appear in titles literally
+        "project", "projects", "goal", "goals", "task", "tasks",
+        # Common verbs that show up in hint-as-sentence cases
+        "with", "from", "that", "this", "what", "when", "where",
+        "send", "make", "have", "take", "need", "want", "into",
+        "next", "last",
+    })
+    def _stem_tokens(s: str) -> set[str]:
+        return {
+            t for t in s.split()
+            if len(t) >= _MIN_STEM_LEN and t not in _STEM_STOP_WORDS
+        }
+    hint_tokens = _stem_tokens(hint_lc)
+    if hint_tokens:
+        token_matches = []
+        for title_lc, eid in by_title_lc.items():
+            title_tokens = _stem_tokens(title_lc)
+            # Bidirectional check: any hint token in any title token, or
+            # any title token in any hint token. Plurals work both ways
+            # (e.g. hint="audits" + title token "audit" → "audit" in
+            # "audits"; or hint="roadmap" + title token "roadmaps" →
+            # "roadmap" in "roadmaps").
+            overlap = any(
+                h in t or t in h
+                for h in hint_tokens for t in title_tokens
+            )
+            if overlap:
+                token_matches.append((title_lc, eid))
+        token_candidates = [eid for _, eid in token_matches]
+        if len(token_candidates) == 1:
+            logger.info(
+                "voice hint resolved: %s %r → token-stem match (1 of %d "
+                "titles) hint_tokens=%s",
+                kind, hint, len(by_title_lc), sorted(hint_tokens),
+            )
+            return token_candidates[0]
+        if len(token_candidates) > 1 and task_title:
+            # Try the existing title-context disambiguator on the token
+            # matches too — same shape as the substring path.
+            winner = _disambiguate_via_title(
+                token_matches, task_title, hint_lc,
+            )
+            if winner is not None:
+                logger.info(
+                    "voice hint resolved: %s %r → token-stem + "
+                    "title-context match (1 of %d candidates)",
+                    kind, hint, len(token_candidates),
+                )
+                return winner
     # #234 (2026-05-26, second pass): promote the "miss" + "ambiguous"
     # paths from INFO → WARNING so they surface in /api/debug/logs.
     # Per logging_service.py, only WARNING+ rows persist to the
