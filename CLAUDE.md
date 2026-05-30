@@ -8,6 +8,57 @@ previous system failed because of complexity overhead.
 
 ---
 
+## Commands (quick reference)
+
+```bash
+# Full pre-commit gate suite (11 gates — ruff, pytest, jest, playwright x3,
+# bandit, pip-audit, npm-audit, docs/arch-sync, semgrep, gitleaks). Run before
+# EVERY commit. Manages its own dev-bypass server (trap-cleanup on exit).
+bash scripts/run_all_gates.sh
+
+# One test file/class, quietly (coverage addopts otherwise drown the output):
+python -m pytest tests/test_x.py::TestClass --no-cov -q
+
+npm test                                          # full Jest suite
+
+# Post-push deploy validation (auto-detects expected SHA from HEAD):
+python scripts/validate_deploy.py --monitor-minutes 5   # 0 for doc-only
+
+# Prod Playwright smoke (REQUIRES the cookie env — see Gotchas):
+export TASKMANAGER_SESSION_COOKIE="$(tr -d '\r\n' < ~/.taskmanager-session-cookie)"
+npm run test:e2e:prod
+
+# Local dev / Phase 6: seed data, then start the bypass (port 5111).
+# Always navigate with ?nosw=1 to avoid SW reload loops.
+python scripts/seed_dev_data.py
+python scripts/stop_dev_bypass.py                 # canonical teardown
+```
+
+## Local-dev gotchas (read before running the gates)
+
+- **Stale dev DB → spurious 500s in Phase 6 / Playwright.** `instance/dev.db`
+  doesn't auto-migrate. If `/healthz` shows `migrations: fail` or a local page
+  500s, run `FLASK_ENV=development python -m flask db upgrade`. (Distinct from
+  the prod healthz `migrations: fail` row below.)
+- **Prod smoke needs the cookie env.** The `chromium-prod` Playwright project
+  self-disables and reports "No tests found" unless `TASKMANAGER_SESSION_COOKIE`
+  is set (see Commands). The value is the validator token in
+  `~/.taskmanager-session-cookie`.
+- **Windows pytest pass-count is uncapturable.** A post-suite OneDrive
+  `PermissionError` swallows the `N passed` summary line. Trust the exit code +
+  coverage %; cite "all passed, <coverage>%" in commit trailers, not a raw count.
+- **Worktree/main trap.** If `main` gets checked out in a `.claude/worktrees/*`
+  worktree, the primary repo is stuck on a feature branch and `main` looks
+  "behind." Fix: `git worktree remove <path>` (or `git worktree prune` if the
+  dir is gone), then `git checkout main && git merge --ff-only origin/main`.
+- **CI auto-files to BACKLOG.md.** The recurring audits (#226–229) commit
+  `chore(autofile): … [skip ci]` rows to the "Auto-filed by recurring audits"
+  section as the github-actions bot — expect bot commits on `main`. Don't
+  hand-edit the `<!-- audit-row: … -->` markers; free-text Notes/Status edits
+  are preserved across re-renders.
+
+---
+
 ## Branching Workflow (mandatory for all changes)
 
 Never commit directly to `main`. All work happens on a feature branch,
