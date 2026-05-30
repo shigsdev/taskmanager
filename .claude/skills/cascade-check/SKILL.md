@@ -45,8 +45,10 @@ git diff --name-only origin/main...HEAD
 # ADDED lines. ALWAYS scope to the relevant code path with `-- <path>`,
 # never the whole diff. Helper — added lines in a path filter:
 #   git diff origin/main...HEAD -- <pathspec> | grep -E '^\+' | grep -v '^\+\+\+'
-# e.g. row 11 (new DB column) is scoped to models.py:
-git diff origin/main...HEAD -- 'models.py' | grep -E '^\+' | grep -v '^\+\+\+' | grep -E 'db\.Column\('
+# e.g. row 11 (new DB column) is scoped to models.py. NOTE: this repo uses
+# SQLAlchemy 2.0 — match `mapped_column(` / `Mapped[` AS WELL AS the legacy
+# `db.Column(`, or you'll miss every modern model (e.g. CronAudit):
+git diff origin/main...HEAD -- 'models.py' | grep -E '^\+' | grep -v '^\+\+\+' | grep -E 'db\.Column\(|mapped_column\(|Mapped\['
 ```
 
 **Self-match caveat (learned the hard way):** documentation files
@@ -81,9 +83,9 @@ files and whether each is already handled in the diff.
 | 8 | **New HTML template / route renderer** — new `templates/*.html` or a new `render_template(...)` route | Add to nav in `base.html` if user-visible (or a capture-bar button); set `active_page`; **Phase 6 desktop + mobile** (Playwright/bandit don't substitute); update `ARCHITECTURE.md` Components + Data Flows + Route catalog (`arch_sync_check` enforces) |
 | 9 | **New background job** — diff adds APScheduler `add_job(` / a new cron closure in `app.py` `_init_scheduler` | `ARCHITECTURE.md` Components (scheduler box + the job by `job_id` + what it does); Data Flows if user-observable; **literal `job_id` must appear in the Route catalog** (arch_sync_check enforces) |
 | 10 | **New `/api/…` endpoint** — diff adds `@bp.get/post/...` under an `/api/...` blueprint | `ARCHITECTURE.md` Data Flows (request→response); **literal URL pattern in the Route catalog** (arch_sync_check enforces) |
-| 11 | **New DB column / enum member** — added `db.Column(` in `models.py`, or a new enum value | `ARCHITECTURE.md` PostgreSQL box + matching Components bullet (ER diagram auto-generates from `db.Model.registry`); if user-visible (new tier/field), also `templates/docs.html` per row 15 |
-| 12 | **New `db.Model` subclass (new table)** — added `class X(db.Model)` | In `architecture_service.py`: add the table to `_ER_TABLE_GROUPS` (`core`/`ops`/`auth`) + `_ER_TABLE_ORDER`, and a `_SCHEMA_DESCRIPTIONS` entry (`blurb` + `columns:{col:{desc,notes,fk_target?}}`). Drift-gate tests `test_every_model_table_has_a_group` + `test_every_column_has_a_description` fail otherwise |
-| 13 | **New column on an existing model** — added `db.Column(` on a model that already exists | If not in `_HIDDEN_ER_COLUMNS`/`_DESCRIPTION_OPTIONAL_COLUMNS`, add `_SCHEMA_DESCRIPTIONS[table]['columns'][col]` in `architecture_service.py` (FK cols include `fk_target`). `test_every_column_has_a_description` fails otherwise |
+| 11 | **New DB column / enum member** — added `db.Column(` / `mapped_column(` / `Mapped[` in `models.py`, or a new enum value | `ARCHITECTURE.md` PostgreSQL box + matching Components bullet (ER diagram auto-generates from `db.Model.registry`); if user-visible (new tier/field), also `templates/docs.html` per row 15 |
+| 12 | **New `db.Model` subclass (new table)** — added `class X(db.Model)` | Add the table to `_ER_TABLE_GROUPS` (`core`/`ops`/`auth`) + `_ER_TABLE_ORDER`, and a `_SCHEMA_DESCRIPTIONS` entry (`blurb` + `columns:{col:{desc,notes,fk_target?}}`). **Resolve the real definition site with `grep -rn "_SCHEMA_DESCRIPTIONS ="`** — it now lives in `architecture_schemas.py` (re-exported into `architecture_service.py`), not where older docs say. Drift-gate tests `test_every_model_table_has_a_group` + `test_every_column_has_a_description` fail otherwise |
+| 13 | **New column on an existing model** — added `db.Column(` / `mapped_column(` / `Mapped[` on a model that already exists | If not in `_HIDDEN_ER_COLUMNS`/`_DESCRIPTION_OPTIONAL_COLUMNS`, add `_SCHEMA_DESCRIPTIONS[table]['columns'][col]` (in `architecture_schemas.py` — `grep` for it) with FK cols including `fk_target`. `test_every_column_has_a_description` fails otherwise |
 | 14 | **New gate in `run_all_gates.sh`** — diff touches `scripts/run_all_gates.sh` adding a gate/check | Update the "11 quality gates" OR "Drift-prevention gates" table in `templates/architecture.html` (#54); note the bug it prevents in the Prevents-recurrence-of column; update the Engineering-details run-command if syntax changed |
 | 15 | **User-visible behavior** — diff touches `parse_capture.js`, tier rules, a voice-memo prompt, recurring spawn timing, a user-facing error message / button label / time window, or any new affordance | Update `templates/docs.html` (Help, #33/#40); walk the user-facing **fact-check SOP** (every claim cited to `file:line`); add a section if genuinely new; verify desktop + mobile in Phase 6 |
 | 16 | **Process flow with a sequence diagram** — diff touches the recurring-spawn, voice-memo, or auth flow (others added later) | Update the Mermaid sequence diagram in `templates/architecture.html` to match the code path (re-walk per fact-check SOP); keep the prose + "Related ADRs" list accurate; new flow worth a diagram → draft one + add a TOC entry |
