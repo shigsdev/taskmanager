@@ -41,6 +41,9 @@ ALLOWED_IMPLICIT_VARS = {
     "USER",
     "USERPROFILE",
     "PWD",
+    # OS temp dir — utilities_api reads os.environ.get("TMPDIR", "/tmp")
+    # for a predictable cross-worker scratch path (not an app setting).
+    "TMPDIR",
     # Railway-injected (documented as a class — we don't list every one)
     # The triple-tripwire rejects ANY of these being set in dev.
     "RAILWAY_PROJECT_ID",

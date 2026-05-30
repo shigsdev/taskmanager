@@ -515,10 +515,14 @@ Each item must be a JSON object with these keys:
   * "work" — job deliverables, projects, professional objectives
   * "bau" — operational / maintenance / "business as usual" upkeep
     that is not growth or a deliverable
-  Always emit a category for every item. When unclear, use
-  "personal_growth". Note this is DISTINCT from `type` ("work" /
-  "personal") — a personal-type item can still have a "work"
-  category goal, and vice versa, though that is rare.
+  Always emit a category for every item. The category MUST be
+  consistent with the item's `type`:
+  * type "work"     → category must be "work" or "bau"
+  * type "personal" → category must be "health", "personal_growth",
+    or "relationships"
+  When unclear, default to "work" for work-type items and
+  "personal_growth" for personal-type items. Do NOT pair a
+  work-type task with a personal-leaning category (or vice versa).
 
 Rules:
 - Split independent tasks into separate items; consolidate fragments
@@ -741,6 +745,15 @@ _VOICE_VALID_CATEGORIES = {
     "health", "personal_growth", "relationships", "work", "bau",
 }
 _VOICE_DEFAULT_CATEGORY = "personal_growth"
+# #262 (2026-05-29): the GoalCategory values that belong to a "work"
+# type task. Anything else is a "personal"-side category. Used to
+# enforce category↔type consistency after Claude returns — the model
+# sometimes pairs a clearly work-type task with a personal-leaning
+# category (user-reported: "Reschedule Compute Pilot Roadmap meeting"
+# → type=work but category="personal_growth"). The detail-panel goal
+# dropdown is already type-scoped, so a mismatched category just
+# surfaces as a confusing pre-selection the user has to fix by hand.
+_VOICE_WORK_CATEGORIES = {"work", "bau"}
 
 
 # #234 third pass (2026-05-26): Unicode-aware normalization.
@@ -1191,6 +1204,17 @@ def _normalise_voice_candidates(
         # routed to a goal. Coerce unknowns to the neutral default.
         category_val = item.get("category")
         if category_val not in _VOICE_VALID_CATEGORIES:
+            category_val = _VOICE_DEFAULT_CATEGORY
+
+        # #262: enforce category↔type consistency (belt-and-braces to
+        # the prompt rule). type_val is already coerced to work/personal
+        # above; category_val to a valid GoalCategory. A work-type task
+        # must carry a work-side category (work/bau); a personal-type
+        # task must carry a personal-side category. On mismatch, fall
+        # back to the same-side default (work / personal_growth).
+        if type_val == "work" and category_val not in _VOICE_WORK_CATEGORIES:
+            category_val = "work"
+        elif type_val == "personal" and category_val in _VOICE_WORK_CATEGORIES:
             category_val = _VOICE_DEFAULT_CATEGORY
 
         due_date: str | None = None

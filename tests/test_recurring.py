@@ -423,6 +423,113 @@ class TestRecurringTemplateIntegrityPR4:
             assert rt.week_of_month == 1
             assert rt.day_of_week == 0
 
+    # --- #162: remaining create_recurring_template_from_voice_candidate
+    # coverage. PR4 (above) covered multi_day_of_week + monthly_nth_weekday;
+    # these add weekly-with-end_date / monthly_date happy paths, the
+    # malformed-input → None rejections, and project/goal forwarding.
+
+    def test_voice_candidate_weekly_with_end_date(self, app):
+        """#162: happy path — weekly + end_date (the #101 sunset bound)
+        forwarded to a real template."""
+        from recurring_service import create_recurring_template_from_voice_candidate
+        with app.app_context():
+            rt = create_recurring_template_from_voice_candidate({
+                "title": "Standup",
+                "type": "work",
+                "repeat": {
+                    "frequency": "weekly",
+                    "day_of_week": 2,        # Wednesday
+                    "end_date": "2026-12-31",
+                },
+            })
+            assert rt is not None
+            assert rt.frequency == RecurringFrequency.WEEKLY
+            assert rt.day_of_week == 2
+            assert rt.end_date == date(2026, 12, 31)
+
+    def test_voice_candidate_monthly_date(self, app):
+        """#162: happy path — monthly_date needs day_of_month forwarded."""
+        from recurring_service import create_recurring_template_from_voice_candidate
+        with app.app_context():
+            rt = create_recurring_template_from_voice_candidate({
+                "title": "Pay rent",
+                "type": "personal",
+                "repeat": {
+                    "frequency": "monthly_date",
+                    "day_of_month": 1,
+                },
+            })
+            assert rt is not None
+            assert rt.frequency == RecurringFrequency.MONTHLY_DATE
+            assert rt.day_of_month == 1
+
+    def test_voice_candidate_missing_frequency_returns_none(self, app):
+        """#162: a repeat object with no frequency is malformed — the
+        helper returns None so the confirm endpoint silently skips the
+        row instead of raising and killing the whole batch."""
+        from recurring_service import create_recurring_template_from_voice_candidate
+        with app.app_context():
+            rt = create_recurring_template_from_voice_candidate({
+                "title": "No freq",
+                "type": "work",
+                "repeat": {"day_of_week": 0},   # frequency omitted
+            })
+            assert rt is None
+
+    def test_voice_candidate_bad_shape_returns_none(self, app):
+        """#162: defensive — missing title, a non-dict repeat, and a
+        frequency that fails create_recurring's dependent-field
+        validation all return None instead of raising."""
+        from recurring_service import create_recurring_template_from_voice_candidate
+        with app.app_context():
+            # No title.
+            assert create_recurring_template_from_voice_candidate({
+                "type": "work", "repeat": {"frequency": "daily"},
+            }) is None
+            # repeat is not a dict.
+            assert create_recurring_template_from_voice_candidate({
+                "title": "x", "type": "work", "repeat": "weekly",
+            }) is None
+            # weekly with no day_of_week → create_recurring raises 422,
+            # which the helper swallows → None.
+            assert create_recurring_template_from_voice_candidate({
+                "title": "x", "type": "work",
+                "repeat": {"frequency": "weekly"},
+            }) is None
+
+    def test_voice_candidate_forwards_project_and_goal(self, app):
+        """#162: when Claude resolved a project_id + goal_id on the
+        candidate, both are forwarded onto the recurring template."""
+        from models import (
+            Goal,
+            GoalCategory,
+            GoalPriority,
+            GoalStatus,
+            Project,
+            ProjectType,
+        )
+        from recurring_service import create_recurring_template_from_voice_candidate
+        with app.app_context():
+            goal = Goal(title="Ship Q3", category=GoalCategory.WORK,
+                        priority=GoalPriority.SHOULD,
+                        status=GoalStatus.IN_PROGRESS)
+            db.session.add(goal)
+            db.session.commit()
+            project = Project(name="Roadmap", type=ProjectType.WORK,
+                              goal_id=goal.id)
+            db.session.add(project)
+            db.session.commit()
+            rt = create_recurring_template_from_voice_candidate({
+                "title": "Weekly roadmap sync",
+                "type": "work",
+                "repeat": {"frequency": "weekly", "day_of_week": 0},
+                "project_id": str(project.id),
+                "goal_id": str(goal.id),
+            })
+            assert rt is not None
+            assert rt.project_id == project.id
+            assert rt.goal_id == goal.id
+
     # --- #173: frequency change re-validates dependent fields ---
 
     def test_patch_frequency_to_monthly_date_without_day_of_month_422(

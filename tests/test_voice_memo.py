@@ -788,6 +788,49 @@ class TestVoiceNormaliser:
         assert expected == _VOICE_VALID_TIERS
         assert "freezer" not in _VOICE_VALID_TIERS
 
+    def test_work_type_with_personal_category_coerced_to_work(self):
+        """#262: the exact user repro — a clearly work-type task that
+        Claude tagged with a personal-leaning category. The category↔type
+        guard rewrites it to the work-side default."""
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates([
+            {"title": "Reschedule Compute Pilot Roadmap meeting",
+             "type": "work", "category": "personal_growth"},
+        ])
+        assert result[0]["type"] == "work"
+        assert result[0]["category"] == "work"
+
+    def test_personal_type_with_work_category_coerced_to_default(self):
+        """#262: inverse direction — a personal-type item tagged with a
+        work-side category coerces to the personal-side default."""
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates([
+            {"title": "Call mom", "type": "personal", "category": "bau"},
+        ])
+        assert result[0]["type"] == "personal"
+        assert result[0]["category"] == "personal_growth"
+
+    def test_consistent_category_preserved(self):
+        """#262: when Claude already returns a consistent type+category
+        pair, the guard leaves it untouched (no over-correction)."""
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates([
+            {"title": "File expense report", "type": "work",
+             "category": "bau"},                       # work + bau: ok
+            {"title": "Gym session", "type": "personal",
+             "category": "health"},                    # personal + health: ok
+        ])
+        assert result[0]["category"] == "bau"
+        assert result[1]["category"] == "health"
+
+    def test_work_category_set_membership(self):
+        """#262: contract test — guards against the work-side category
+        set drifting (e.g. someone moving 'bau' to the personal side
+        without rethinking the guard)."""
+        from scan_service import _VOICE_WORK_CATEGORIES
+        expected = {"work", "bau"}
+        assert expected == _VOICE_WORK_CATEGORIES
+
     def test_validates_due_date_format(self):
         from scan_service import _normalise_voice_candidates
         result = _normalise_voice_candidates([
@@ -836,11 +879,21 @@ class TestVoiceNormaliser:
 
     def test_valid_category_preserved(self):
         """#172: a valid GoalCategory value from Claude survives
-        normalisation unchanged."""
+        normalisation unchanged — provided it is consistent with the
+        item's `type` (#262 added the type↔category guard, so a category
+        must be paired with a matching-side type to survive verbatim)."""
         from scan_service import _normalise_voice_candidates
-        for cat in ("health", "personal_growth", "relationships", "work", "bau"):
+        # personal-side categories with a personal-type item.
+        for cat in ("health", "personal_growth", "relationships"):
             result = _normalise_voice_candidates([
                 {"title": "x", "type": "personal", "tier": "inbox",
+                 "category": cat},
+            ])
+            assert result[0]["category"] == cat
+        # work-side categories with a work-type item.
+        for cat in ("work", "bau"):
+            result = _normalise_voice_candidates([
+                {"title": "x", "type": "work", "tier": "inbox",
                  "category": cat},
             ])
             assert result[0]["category"] == cat
@@ -861,12 +914,19 @@ class TestVoiceNormaliser:
             )
 
     def test_missing_category_key_defaults(self):
-        """#172: Claude omitting the key entirely → default applied."""
+        """#172: Claude omitting the key entirely → default applied.
+        #262: the default is now type-aware — a work-type item with no
+        category defaults to the work-side "work"; a personal-type item
+        defaults to "personal_growth"."""
         from scan_service import _normalise_voice_candidates
-        result = _normalise_voice_candidates([
+        work = _normalise_voice_candidates([
             {"title": "x", "type": "work", "tier": "inbox"},
         ])
-        assert result[0]["category"] == "personal_growth"
+        assert work[0]["category"] == "work"
+        personal = _normalise_voice_candidates([
+            {"title": "y", "type": "personal", "tier": "inbox"},
+        ])
+        assert personal[0]["category"] == "personal_growth"
 
     # --- #37 hint resolution --------------------------------------------
 
