@@ -37,27 +37,37 @@ def _read(path: Path) -> str:
 
 
 def _scheduler_job_ids() -> list[str]:
-    """Scrape every scheduler job id from app.py.
+    """Scrape every scheduler job id the code defines.
 
     Two shapes are recognised:
     - ``scheduler.add_job(..., id="<job_id>")`` — the direct form used by
-      ``daily_digest`` and ``scheduler_heartbeat``.
-    - ``("<job_id>", hour, minute, "module:func")`` rows of the
-      ``_NIGHTLY_CRONS`` table (#199) — the four nightly maintenance
-      crons are table-driven, so their ids live as the first element of
-      a 4-tuple rather than behind a literal ``id=`` kwarg.
+      ``daily_digest`` and ``scheduler_heartbeat``, defined in ``app.py``.
+    - ``("<job_id>", hour, minute, "module:func")`` rows — the four
+      nightly maintenance crons are table-driven, so their ids live as
+      the first element of a 4-tuple rather than behind a literal
+      ``id=`` kwarg.
+
+    #264 (2026-05-30): the nightly-cron table moved out of ``app.py``
+    (where it was ``_NIGHTLY_CRONS``, #199) into ``cron_jobs.py`` as
+    ``JOB_ORDER`` (#167). Scraping ``app.py`` ONLY silently dropped the
+    four nightly job ids from enforcement — the check went from 6 jobs
+    to 2 without ever failing (shrinking the scrape input can't make
+    ``_missing_from_arch`` go red). So the tuple shape is now scraped
+    from BOTH files. The ``test_scheduler_job_ids_finds_all_known``
+    guard asserts the count can't silently shrink again.
     """
-    text = _read(REPO / "app.py")
-    # add_job(...) can span multiple lines; match the id= kwarg anywhere
-    # in the call. Cheap and sufficient — we only have a handful.
-    ids = re.findall(r'id=["\']([^"\']+)["\']', text)
-    # _NIGHTLY_CRONS table rows: ("job_id", H, M, "module:function").
-    # The "module:function" string at the end disambiguates these tuples
-    # from any other 4-element literal in the file.
-    ids += re.findall(
-        r'\(\s*["\']([^"\']+)["\']\s*,\s*\d+\s*,\s*\d+\s*,\s*["\'][\w.]+:[\w.]+["\']\s*\)',
-        text,
+    # add_job(..., id=) lives in app.py only.
+    ids = re.findall(r'id=["\']([^"\']+)["\']', _read(REPO / "app.py"))
+    # ("job_id", H, M, "module:function") tuple rows. The "module:func"
+    # string at the end disambiguates these from any other 4-element
+    # literal. Scrape both app.py (legacy/direct add_job tables) AND
+    # cron_jobs.py (JOB_ORDER, #167) so a relocation can't drop coverage.
+    tuple_re = (
+        r'\(\s*["\']([^"\']+)["\']\s*,\s*\d+\s*,\s*\d+\s*,'
+        r'\s*["\'][\w.]+:[\w.]+["\']\s*\)'
     )
+    for src in ("app.py", "cron_jobs.py"):
+        ids += re.findall(tuple_re, _read(REPO / src))
     return ids
 
 
