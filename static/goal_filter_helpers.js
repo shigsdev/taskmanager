@@ -61,8 +61,46 @@ function filterGoalsByType(goals, filterType) {
     return goals.filter((g) => typeForCategory(g.category) === filterType);
 }
 
+/**
+ * The set of goals to render in the detail-panel goal dropdown (#272).
+ *
+ * Returns the type-scoped goals (the #142 strict bipartition for
+ * discovery) UNION any goals whose id is in `keepIds` — used to ALWAYS
+ * surface the selected project's linked goal and the task's current
+ * goal, even when they sit on the OTHER side of the bipartition.
+ *
+ * Why: a project may legitimately link to a cross-side goal — e.g. the
+ * *personal* project "AI Training" points at the *work*-category goal
+ * "AI Upskilling". Under the strict type filter alone that goal is
+ * invisible on a Personal task, so it neither appears in the dropdown
+ * nor auto-fills via the project→goal cascade (the cascade checks the
+ * rendered options and finds it absent). Keeping such linked/current
+ * goals in the list fixes both symptoms without widening the scope for
+ * the common case (the bulk of the list stays relevance-scoped).
+ *
+ * Order is stable: goals are returned in their original `goals` order,
+ * naturally de-duped (a goal that's both in-scope and a keepId appears
+ * once). When `filterType` is falsy every goal is in-scope, so keepIds
+ * is a no-op and all goals are returned (matches filterGoalsByType).
+ *
+ * @param {Array<{id: string, category: string}>} goals  All goals.
+ * @param {string|null|undefined} filterType  "work"/"personal"/falsy.
+ * @param {Set<string>|Array<string>|null} keepIds  Goal ids to always
+ *     include regardless of the type filter.
+ */
+function goalsForDropdown(goals, filterType, keepIds) {
+    if (!Array.isArray(goals)) return [];
+    const keep = keepIds instanceof Set
+        ? keepIds
+        : new Set(Array.isArray(keepIds) ? keepIds : []);
+    const inScope = new Set(filterGoalsByType(goals, filterType).map((g) => g.id));
+    return goals.filter(
+        (g) => g && (inScope.has(g.id) || (g.id && keep.has(g.id))),
+    );
+}
+
 if (typeof module !== "undefined" && module.exports) {
-    module.exports = { typeForCategory, filterGoalsByType };
+    module.exports = { typeForCategory, filterGoalsByType, goalsForDropdown };
 } else if (typeof window !== "undefined") {
-    window.goalFilterHelpers = { typeForCategory, filterGoalsByType };
+    window.goalFilterHelpers = { typeForCategory, filterGoalsByType, goalsForDropdown };
 }

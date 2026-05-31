@@ -6,7 +6,7 @@
  */
 "use strict";
 
-const { typeForCategory, filterGoalsByType } = require(
+const { typeForCategory, filterGoalsByType, goalsForDropdown } = require(
     "../../../static/goal_filter_helpers"
 );
 
@@ -72,5 +72,61 @@ describe("filterGoalsByType", () => {
         const personal = filterGoalsByType(goals, "personal");
         expect(work.find((g) => g.category === "personal_growth")).toBeUndefined();
         expect(personal.find((g) => g.category === "personal_growth")).toBeDefined();
+    });
+});
+
+describe("goalsForDropdown — type scope ∪ keep set (#272)", () => {
+    // Models the exact reported scenario: a Personal task whose project
+    // "AI Training" links to the work-category goal "AI Upskilling".
+    const goals = [
+        { id: "g_work", category: "work" },        // AI Upskilling-like
+        { id: "g_bau", category: "bau" },
+        { id: "g_health", category: "health" },
+        { id: "g_rel", category: "relationships" },
+        { id: "g_growth", category: "personal_growth" },
+    ];
+
+    test("personal scope with NO keep set hides the work-side goal (the bug)", () => {
+        const out = goalsForDropdown(goals, "personal", null).map((g) => g.id);
+        expect(out).toEqual(["g_health", "g_rel", "g_growth"]);
+        expect(out).not.toContain("g_work");
+    });
+
+    test("personal scope keeps the linked work-side goal when in the keep set (the fix)", () => {
+        const out = goalsForDropdown(goals, "personal", ["g_work"]).map((g) => g.id);
+        expect(out).toContain("g_work");                // cross-side linked goal surfaced
+        expect(out).toEqual(["g_work", "g_health", "g_rel", "g_growth"]);  // stable order
+    });
+
+    test("keep set accepts a Set as well as an array", () => {
+        const out = goalsForDropdown(goals, "personal", new Set(["g_work"])).map((g) => g.id);
+        expect(out).toContain("g_work");
+    });
+
+    test("a goal that is BOTH in-scope and a keepId appears exactly once", () => {
+        const out = goalsForDropdown(goals, "personal", ["g_health"]).map((g) => g.id);
+        expect(out.filter((id) => id === "g_health")).toHaveLength(1);
+        expect(out).toEqual(["g_health", "g_rel", "g_growth"]);
+    });
+
+    test("keepIds for a goal that doesn't exist is ignored (no phantom option)", () => {
+        const out = goalsForDropdown(goals, "personal", ["g_nonexistent"]).map((g) => g.id);
+        expect(out).toEqual(["g_health", "g_rel", "g_growth"]);
+    });
+
+    test("falsy filterType returns every goal — keepIds is a no-op", () => {
+        const out = goalsForDropdown(goals, null, ["g_work"]).map((g) => g.id);
+        expect(out).toEqual(["g_work", "g_bau", "g_health", "g_rel", "g_growth"]);
+    });
+
+    test("multiple keepIds (linked project goal + task's current goal) both surface", () => {
+        // e.g. project links to g_work but the task is currently on g_bau
+        const out = goalsForDropdown(goals, "personal", ["g_work", "g_bau"]).map((g) => g.id);
+        expect(out).toEqual(["g_work", "g_bau", "g_health", "g_rel", "g_growth"]);
+    });
+
+    test("non-array goals is safe", () => {
+        expect(goalsForDropdown(null, "personal", ["g_work"])).toEqual([]);
+        expect(goalsForDropdown(undefined, "personal", null)).toEqual([]);
     });
 });

@@ -2286,7 +2286,10 @@ function taskDetailOpen(task) {
     document.getElementById("detailProject").value = task.project_id || "";
     document.getElementById("detailDueDate").value = task.due_date || "";
     // #142 (2026-05-09): scope goals by type, same pattern as projects.
-    taskDetailPopulateGoals(task.type);
+    // #272: pass task.goal_id so an existing cross-side assignment (e.g.
+    // a Personal task already on the work-category goal "AI Upskilling")
+    // is kept in the option list and the value below sticks.
+    taskDetailPopulateGoals(task.type, task.goal_id ? [task.goal_id] : []);
     document.getElementById("detailGoal").value = task.goal_id || "";
     const urlInput = document.getElementById("detailUrl");
     const urlOpen = document.getElementById("detailUrlOpen");
@@ -2395,6 +2398,15 @@ function taskDetailToggleProject(type) {
 function taskDetailProjectChanged(projectId) {
     const goalSel = document.getElementById("detailGoal");
     if (!goalSel) return;
+    // #272: repopulate the goal options FIRST so the newly-selected
+    // project's linked goal is present in the dropdown even when the
+    // #142 type filter would exclude it (cross-side personal→work link,
+    // e.g. AI Training→AI Upskilling). taskDetailPopulateGoals reads the
+    // (already-updated) detailProject value and adds that project's goal
+    // to its keep set; without this re-render the cascade below sees the
+    // stale option list, can't find the cross-side goal in `allowed`,
+    // and silently leaves the goal blank (the reported #272 symptom).
+    taskDetailPopulateGoals();
     const allowed = new Set(Array.from(goalSel.options).map((o) => o.value));
     const newGoalId = window.filterHelpers.projectCascadeGoalId(
         projectId, allProjects, allowed,
@@ -2547,17 +2559,32 @@ function _setupParentPicker(task) {
     input.onblur = () => setTimeout(() => { results.style.display = "none"; }, 200);
 }
 
-function taskDetailPopulateGoals(filterType) {
+function taskDetailPopulateGoals(filterType, extraKeepIds) {
     filterType = _taskDetailActiveTypeFilter(filterType);
     const sel = document.getElementById("detailGoal");
     if (!sel) return;
     const currentValue = sel.value;
     while (sel.options.length > 1) sel.remove(1);
+    // #272: always-keep set — the currently-selected goal, the selected
+    // project's linked goal, and any explicit extras (e.g. task.goal_id
+    // on panel open). A cross-side project→goal link (a personal project
+    // pointing at a work-category goal like AI Training→AI Upskilling)
+    // would otherwise be filtered out by the #142 type bipartition,
+    // hiding it from the dropdown AND breaking the project→goal auto-fill
+    // cascade (which checks the rendered options).
+    const keep = new Set();
+    if (currentValue) keep.add(currentValue);
+    const projSel = document.getElementById("detailProject");
+    if (projSel && projSel.value && Array.isArray(allProjects)) {
+        const proj = allProjects.find((p) => p && p.id === projSel.value);
+        if (proj && proj.goal_id) keep.add(proj.goal_id);
+    }
+    if (extraKeepIds) for (const id of extraKeepIds) if (id) keep.add(id);
     // #142 (2026-05-09, locked option A): strict bipartition by
-    // category. Pure helper in static/goal_filter_helpers.js so the
-    // mapping table is Jest-tested.
-    const filtered = (window.goalFilterHelpers && filterType)
-        ? window.goalFilterHelpers.filterGoalsByType(allGoals, filterType)
+    // category, now unioned with the #272 keep set. Pure helper in
+    // static/goal_filter_helpers.js so the mapping table is Jest-tested.
+    const filtered = window.goalFilterHelpers
+        ? window.goalFilterHelpers.goalsForDropdown(allGoals, filterType, keep)
         : (allGoals || []);
     for (const goal of filtered) {
         const opt = document.createElement("option");

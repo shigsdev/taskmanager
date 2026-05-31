@@ -105,6 +105,17 @@ def _seed():
                 name="Fitness", color="#ef4444",
                 type=ProjectType.PERSONAL, goal_id=goals[2].id,
             ),
+            # #272 regression fixture: a PERSONAL project linked to a
+            # WORK-category goal (goals[0]). Mirrors the real-world
+            # "AI Training" (personal) → "AI Upskilling" (work) cross-side
+            # link that the #142 type bipartition used to hide from the
+            # detail-panel goal dropdown. Phase 6 selects this project on
+            # a Personal task and asserts the work-side goal auto-fills
+            # AND appears in the dropdown.
+            Project(
+                name="AI Upskilling (personal)", color="#a855f7",
+                type=ProjectType.PERSONAL, goal_id=goals[0].id,
+            ),
         ]
         db.session.add_all(projects)
         db.session.flush()
