@@ -856,6 +856,41 @@ test.describe("Prod smoke — feature surfaces", () => {
         ).toHaveCount(1);
         expect(errors).toEqual([]);
     });
+
+    test("/utilities renders persistent 'View latest runs' links per workflow card (#276)", async ({ page }) => {
+        // #276: each scheduled / workflow_dispatch card links to its GitHub
+        // Actions run history, server-rendered from GITHUB_REPO. Behavioral —
+        // asserts the rendered anchors + hrefs on live prod (the validator
+        // cookie authenticates this GET route).
+        await page.goto("/utilities?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const links = page.locator("a.utility-runs-link");
+        await expect(links).toHaveCount(6);
+        // Every link points at an actions/workflows/*.yml URL, opens in a new
+        // tab, and is noopener-safe.
+        const hrefs = await links.evaluateAll((els) => els.map((a) => ({
+            href: a.getAttribute("href"),
+            target: a.getAttribute("target"),
+            rel: a.getAttribute("rel"),
+        })));
+        for (const l of hrefs) {
+            expect(l.href).toMatch(/^https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/workflows\/[\w-]+\.yml$/);
+            expect(l.target).toBe("_blank");
+            expect(l.rel).toContain("noopener");
+        }
+        // The 6 expected workflow files are all present.
+        const joined = hrefs.map((l) => l.href).join("\n");
+        for (const wf of [
+            "daily-backup.yml",
+            "weekly-bug-pattern-scan.yml",
+            "monthly-security-audit.yml",
+            "weekly-coverage-audit.yml",
+            "weekly-tech-debt-audit.yml",
+            "monthly-restore-drill.yml",
+        ]) {
+            expect(joined).toContain(`/actions/workflows/${wf}`);
+        }
+    });
 });
 
 test.describe("Prod smoke — admin endpoints (read-only checks)", () => {
