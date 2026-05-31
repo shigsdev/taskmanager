@@ -420,6 +420,31 @@ test.describe("Prod smoke — feature surfaces", () => {
         }
     });
 
+    test("/calendar within-cell reorder helper is wired and correct (#267)", async ({ page }) => {
+        await page.goto("/calendar?nosw=1");
+        await page.waitForLoadState("networkidle");
+        // #267: the within-cell drag-reorder math ships in
+        // calendar_bucket_helpers and is wired to window. Assert it's present
+        // AND computes the right order on the LIVE page (behavioral — asserts
+        // outputs, not a source string-match per anti-pattern #3) so a revert
+        // that drops the helper or breaks the insertion math is caught on prod.
+        const result = await page.evaluate(() => {
+            const h = window.calendarBucketHelpers;
+            if (!h || typeof h.calendarReorderIds !== "function") return { wired: false };
+            const items = [{ id: "a", mid: 10 }, { id: "b", mid: 30 }, { id: "c", mid: 50 }];
+            return {
+                wired: true,
+                toTop: h.calendarReorderIds(items, "c", 5),      // drop above all
+                toBottom: h.calendarReorderIds(items, "a", 60),  // drop below all
+                intoGap: h.calendarReorderIds(items, "a", 35),   // between b and c
+            };
+        });
+        expect(result.wired).toBe(true);
+        expect(result.toTop).toEqual(["c", "a", "b"]);
+        expect(result.toBottom).toEqual(["b", "c", "a"]);
+        expect(result.intoGap).toEqual(["b", "a", "c"]);
+    });
+
     test("/calendar does not horizontally overflow at desktop 1280×800 (#138 D-B1)", async ({ page }) => {
         // Regression for #138 Phase B audit defect D-B1: long task titles
         // in day cells were pushing the 240px Unscheduled aside off-screen

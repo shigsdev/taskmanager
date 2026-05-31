@@ -572,6 +572,74 @@ test.describe("Calendar drag-and-drop (#94)", () => {
             await request.delete(`/api/tasks/${task.id}`);
         }
     });
+
+    test("drag a task to the top of its own day cell reorders it within the day (#267)", async ({
+        page, request,
+    }) => {
+        // Three today-tier tasks (no due_date → today's cell via the tier
+        // fallback). New tasks default sort_order=0, so they list newest-first
+        // (created_at desc): created[2], created[1], created[0]. created[0] is
+        // therefore at the BOTTOM — dragging it to the very top is a real move.
+        const created = [];
+        for (let i = 0; i < 3; i++) {
+            const r = await request.post("/api/tasks", {
+                data: { title: `CAL-REORDER ${Date.now()}-${i}`, type: "work", tier: "today" },
+            });
+            created.push(await r.json());
+        }
+        try {
+            await page.goto("/calendar?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const todayIso = await page.evaluate(() => {
+                const d = new Date(); d.setHours(0, 0, 0, 0);
+                const y = d.getFullYear();
+                const m = String(d.getMonth() + 1).padStart(2, "0");
+                const day = String(d.getDate()).padStart(2, "0");
+                return `${y}-${m}-${day}`;
+            });
+            const cell = page.locator(`.calendar-cell[data-date="${todayIso}"]`);
+            await expect(cell).toBeVisible();
+            await expect(
+                cell.locator(`li[data-task-id="${created[0].id}"]`)
+            ).toBeVisible();
+
+            // Dispatch a real within-cell drag of created[0] to the very top.
+            // clientY just above the first row makes the pure helper insert it
+            // at index 0. dragstart on the li sets _dragSourceDate=todayIso;
+            // the cell drop handler sees source===target → reorder path.
+            await page.evaluate((args) => {
+                const sel = `.calendar-cell[data-date="${args.iso}"]`;
+                const li = document.querySelector(`${sel} li[data-task-id="${args.id}"]`);
+                const cellEl = document.querySelector(sel);
+                const list = cellEl.querySelector(".calendar-cell-tasks");
+                const firstLi = list.querySelector("li[data-task-id]");
+                const topY = firstLi.getBoundingClientRect().top - 3;
+                const dt = new DataTransfer();
+                dt.setData("text/plain", args.id);
+                li.dispatchEvent(new DragEvent("dragstart", { dataTransfer: dt, bubbles: true }));
+                cellEl.dispatchEvent(new DragEvent("dragover", { dataTransfer: dt, bubbles: true, cancelable: true, clientY: topY }));
+                cellEl.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true, clientY: topY }));
+            }, { id: created[0].id, iso: todayIso });
+
+            // Wait for the reorder PATCH + re-render + DB to land.
+            await page.waitForTimeout(600);
+
+            // created[0] was dropped at the absolute top of the cell → it must
+            // now have the smallest sort_order of the three (index 0 in the
+            // cell's new order).
+            const after = await Promise.all(created.map(async (c) => {
+                const res = await request.get(`/api/tasks/${c.id}`);
+                return res.json();
+            }));
+            const so = Object.fromEntries(after.map((t) => [t.id, t.sort_order]));
+            expect(so[created[0].id]).toBeLessThan(so[created[1].id]);
+            expect(so[created[0].id]).toBeLessThan(so[created[2].id]);
+        } finally {
+            for (const c of created) {
+                await request.delete(`/api/tasks/${c.id}`);
+            }
+        }
+    });
 });
 
 test.describe("Multi-drag: dragging a selected card moves the whole group", () => {

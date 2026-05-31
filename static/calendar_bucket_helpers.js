@@ -79,8 +79,43 @@ function bucketTasks(tasks, todayIso, tomorrowIso) {
     return { byDate: byDate, unscheduled: unscheduled };
 }
 
+/**
+ * #267: compute the new in-cell task order after a within-day drag-reorder.
+ *
+ * Pure mirror of app.js getDragAfterElement: insert `draggedId` BEFORE the
+ * first existing item whose vertical midpoint sits below the pointer `y`
+ * (i.e. the closest item whose center is past the cursor); if none, append.
+ * Keeping the math here (DOM-free) lets Jest exercise every insertion
+ * position without a browser — calendar.js only supplies the measured
+ * midpoints (getBoundingClientRect) and persists the result.
+ *
+ * @param {Array<{id: string, mid: number}>} items - the cell's current task
+ *   rows in display order, each with its vertical midpoint (top + height/2).
+ *   May include the dragged item itself — it's filtered out before insert.
+ * @param {string} draggedId - the task id being dropped
+ * @param {number} y - pointer clientY at drop
+ * @returns {Array<string>} the new ordered list of task ids for the cell
+ */
+function calendarReorderIds(items, draggedId, y) {
+    const others = items.filter((it) => it.id !== draggedId);
+    let insertBefore = others.length; // default: append to the end
+    let closestOffset = Number.NEGATIVE_INFINITY;
+    for (let i = 0; i < others.length; i++) {
+        const offset = y - others[i].mid;
+        // offset < 0 → this item's center is below the cursor; pick the
+        // one closest to the cursor (largest still-negative offset).
+        if (offset < 0 && offset > closestOffset) {
+            closestOffset = offset;
+            insertBefore = i;
+        }
+    }
+    const ids = others.map((o) => o.id);
+    ids.splice(insertBefore, 0, draggedId);
+    return ids;
+}
+
 if (typeof module !== "undefined" && module.exports) {
-    module.exports = { bucketTasks };
+    module.exports = { bucketTasks, calendarReorderIds };
 } else if (typeof window !== "undefined") {
-    window.calendarBucketHelpers = { bucketTasks };
+    window.calendarBucketHelpers = { bucketTasks, calendarReorderIds };
 }

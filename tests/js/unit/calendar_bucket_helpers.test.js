@@ -10,7 +10,10 @@
  * The helper is dual-exported (window + module.exports) — same code path
  * runs in production and in this test.
  */
-const { bucketTasks } = require("../../../static/calendar_bucket_helpers");
+const {
+    bucketTasks,
+    calendarReorderIds,
+} = require("../../../static/calendar_bucket_helpers");
 
 const TODAY = "2026-05-25";
 const TOMORROW = "2026-05-26";
@@ -197,5 +200,51 @@ describe("bucketTasks — edge cases", () => {
         const { byDate, unscheduled } = bucketTasks(tasks, TODAY, TOMORROW);
         expect(Object.keys(byDate)).toHaveLength(0);
         expect(unscheduled).toHaveLength(0);
+    });
+});
+
+describe("calendarReorderIds — within-cell drag-reorder math (#267)", () => {
+    // Three rows, each ~20px tall, midpoints at 10 / 30 / 50.
+    const items = [
+        { id: "a", mid: 10 },
+        { id: "b", mid: 30 },
+        { id: "c", mid: 50 },
+    ];
+
+    test("drop above the first item → dragged goes to the front", () => {
+        expect(calendarReorderIds(items, "c", 5)).toEqual(["c", "a", "b"]);
+    });
+
+    test("drop below the last item → dragged appended to the end", () => {
+        expect(calendarReorderIds(items, "a", 60)).toEqual(["b", "c", "a"]);
+    });
+
+    test("drop into the gap between two items → inserted at that gap", () => {
+        // y=35 sits just below b's midpoint (30) and above c's (50):
+        // insert before c.
+        expect(calendarReorderIds(items, "a", 35)).toEqual(["b", "a", "c"]);
+    });
+
+    test("dropping an item back on its own midpoint is a no-op order", () => {
+        expect(calendarReorderIds(items, "b", 30)).toEqual(["a", "b", "c"]);
+    });
+
+    test("result preserves length and contains every id exactly once", () => {
+        const out = calendarReorderIds(items, "b", 5);
+        expect(out).toHaveLength(items.length);
+        expect(new Set(out)).toEqual(new Set(["a", "b", "c"]));
+    });
+
+    test("two items — drop above vs below the single other row", () => {
+        const two = [{ id: "a", mid: 10 }, { id: "b", mid: 30 }];
+        expect(calendarReorderIds(two, "b", 5)).toEqual(["b", "a"]);   // above a
+        expect(calendarReorderIds(two, "b", 25)).toEqual(["a", "b"]);  // below a's center
+    });
+
+    test("dragged id absent from items → inserted at the drop position (defensive)", () => {
+        // In practice the dragged id is always one of the measured rows;
+        // if it isn't, the helper still just inserts at the drop position.
+        expect(calendarReorderIds(items, "zzz", 999)).toEqual(["a", "b", "c", "zzz"]); // below all → end
+        expect(calendarReorderIds(items, "zzz", 5)).toEqual(["zzz", "a", "b", "c"]);   // above all → front
     });
 });

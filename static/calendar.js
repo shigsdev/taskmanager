@@ -53,6 +53,17 @@
     // intermediate stale calls drop silently.
     let _renderGeneration = 0;
 
+    // #267 (2026-05-31): the day-cell ISO a drag STARTED in, captured on
+    // dragstart. The cell drop handler reads it to tell the two drag
+    // intents apart: dropping in the SAME cell = reorder within the day
+    // (reassign sort_order), dropping in a DIFFERENT cell = reschedule
+    // (set due_date). Null when the drag started from the Unscheduled
+    // aside (always a reschedule — no in-cell order there). Can't rely on
+    // the task's own due_date for this: today/tomorrow tier-fallback tasks
+    // sit in a cell with a null due_date, so the source cell's ISO is the
+    // only reliable signal.
+    let _dragSourceDate = null;
+
     async function renderCalendar() {
         const myGen = ++_renderGeneration;
         const grid = document.getElementById("calendarGrid");
@@ -184,6 +195,7 @@
                     });
                     li.addEventListener("dragstart", function (e) {
                         li.classList.add("dragging");
+                        _dragSourceDate = iso;  // #267: this drag began in this day cell
                         if (e.dataTransfer) {
                             e.dataTransfer.effectAllowed = "move";
                             e.dataTransfer.setData("text/plain", t.id);
@@ -240,7 +252,12 @@
 
                 cell.addEventListener("dragover", function (e) {
                     e.preventDefault();
-                    cell.classList.add("calendar-cell-hover");
+                    // #267: a same-cell drag is a REORDER, not a reschedule —
+                    // skip the whole-cell drop highlight so the UI doesn't
+                    // imply a date change. Cross-cell drags still highlight.
+                    if (_dragSourceDate !== iso) {
+                        cell.classList.add("calendar-cell-hover");
+                    }
                 });
                 cell.addEventListener("dragleave", function () {
                     cell.classList.remove("calendar-cell-hover");
@@ -250,6 +267,13 @@
                     cell.classList.remove("calendar-cell-hover");
                     const taskId = e.dataTransfer && e.dataTransfer.getData("text/plain");
                     if (!_isValidUuid(taskId)) return;  // PR28 audit fix #6
+
+                    // #267: same-cell drop → reorder within the day (reassign
+                    // sort_order); different-cell drop → reschedule (due_date).
+                    if (_dragSourceDate === iso) {
+                        await _reorderWithinCell(cell, taskId, e.clientY);
+                        return;
+                    }
                     try {
                         // PR67 #132: window.apiFetch (auto-retry + recovery)
                         await window.apiFetch(`/api/tasks/${taskId}`, {
@@ -265,6 +289,54 @@
                 row.appendChild(cell);
             }
             grid.appendChild(row);
+        }
+    }
+
+    // #267 (2026-05-31): reorder tasks within a single day cell, like the
+    // board's vertical drag-reorder. Reads the measured midpoint of every
+    // real task row in the cell, asks the pure helper where the dropped
+    // task lands, then persists the new order by reassigning sort_order
+    // through the SAME /api/tasks/reorder endpoint the board uses (it sets
+    // sort_order = list index for each id; the `tier` field is validated
+    // but not used to scope, so any of the cell tasks' tiers is fine).
+    // Calendar cells render in sort_order asc (list_tasks order_by), so the
+    // re-render reflects the new order — and because sort_order is shared,
+    // the board shows the same order too (one notion of "my order").
+    async function _reorderWithinCell(cell, taskId, clientY) {
+        const list = cell.querySelector(".calendar-cell-tasks:not(.calendar-cell-previews)");
+        if (!list) return;
+        // Measure every real task row (previews have no data-task-id).
+        const items = Array.from(list.querySelectorAll("li[data-task-id]")).map(
+            function (li) {
+                const box = li.getBoundingClientRect();
+                return { id: li.dataset.taskId, mid: box.top + box.height / 2 };
+            },
+        );
+        // Nothing to reorder against (only the dragged item present).
+        if (items.length < 2) return;
+        const newOrder = window.calendarBucketHelpers.calendarReorderIds(
+            items, taskId, clientY,
+        );
+        // No-op if the order didn't actually change — skip the round-trip.
+        const currentOrder = items.map(function (i) { return i.id; });
+        if (newOrder.join(",") === currentOrder.join(",")) return;
+        // Pick a valid tier for the endpoint's validation. Prefer the
+        // dragged task's own tier (allTasks is preloaded on /calendar per
+        // #270); fall back to "today" — the value doesn't affect the
+        // sort_order assignment, only passes the enum check.
+        let tier = "today";
+        if (typeof allTasks !== "undefined" && allTasks) {
+            const dragged = allTasks.find(function (t) { return t.id === taskId; });
+            if (dragged && dragged.tier) tier = dragged.tier;
+        }
+        try {
+            await window.apiFetch("/api/tasks/reorder", {
+                method: "POST",
+                body: JSON.stringify({ tier: tier, task_ids: newOrder }),
+            });
+            await renderCalendar();
+        } catch (err) {
+            alert("Failed to reorder tasks: " + err.message);
         }
     }
 
@@ -313,6 +385,7 @@
             });
             li.addEventListener("dragstart", function (e) {
                 li.classList.add("dragging");
+                _dragSourceDate = null;  // #267: from Unscheduled → always a reschedule
                 if (e.dataTransfer) {
                     e.dataTransfer.effectAllowed = "move";
                     e.dataTransfer.setData("text/plain", t.id);
