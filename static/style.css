@@ -1513,7 +1513,10 @@ input[type="time"]::-webkit-calendar-picker-indicator {
    own ellipsis keep long titles from blowing out a track (#138 D-B1). */
 .goals-card-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    /* min(300px,100%) keeps the track from forcing 300px on viewports
+       narrower than 300+padding (#275 follow-up to the #217 overflow guard;
+       same fix as .recurring-list). */
+    grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
     gap: 12px;
     align-items: start;
 }
@@ -1689,7 +1692,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 
 /* === Weekly Review === */
 .review-container {
-    max-width: 640px;
+    max-width: 1100px;  /* #275: widen form/reading pages */
     margin: 32px auto;
     padding: 0 16px;
 }
@@ -1698,7 +1701,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
    plan has more sections (day-by-day + goal hints + velocity warning +
    stale freezer review) than fit a modal cleanly. */
 .plan-container {
-    max-width: 900px;
+    max-width: 1100px;  /* #275: widen form/reading pages */
     margin: 24px auto;
     padding: 0 16px;
 }
@@ -2236,7 +2239,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 
 /* === Scan Page === */
 .scan-container {
-    max-width: 640px;
+    max-width: 1100px;  /* #275: widen form/reading pages */
     margin: 32px auto;
     padding: 0 16px;
 }
@@ -2321,7 +2324,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .scan-done-actions { margin-top: 16px; display: flex; gap: 8px; justify-content: center; }
 
 /* === Import === */
-.import-container { max-width: 700px; margin: 0 auto; padding: 16px; }
+.import-container { max-width: 1100px; margin: 0 auto; padding: 16px; }  /* #275 */
 .import-mode-buttons { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
 .import-textarea {
     width: 100%; box-sizing: border-box; padding: 12px;
@@ -2373,7 +2376,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     border-radius: 4px; white-space: nowrap;
 }
 .import-review-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.import-confirm { max-width: 700px; margin: 0 auto; padding: 16px; }
+.import-confirm { max-width: 1100px; margin: 0 auto; padding: 16px; }  /* #275 */
 .import-confirm h2 { color: var(--warning, #b8860b); }
 .import-confirm-list {
     margin: 12px 0; padding: 12px 16px 12px 32px;
@@ -2387,7 +2390,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .import-done-actions { margin-top: 16px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 
 /* === Settings === */
-.settings-container { max-width: 700px; margin: 0 auto; padding: 16px; }
+.settings-container { max-width: 1100px; margin: 0 auto; padding: 16px; }  /* #275 */
 .settings-section { margin-bottom: 24px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .settings-section > :not(h3) { margin-left: 16px; margin-right: 16px; }
 .settings-section > :last-child { margin-bottom: 16px; }
@@ -3256,9 +3259,28 @@ input[type="time"]::-webkit-calendar-picker-indicator {
  * with click targets on the desktop. Mirrors the goals/projects
  * pattern: centered, max-width capped, modest padding. */
 .recurring-page {
-    max-width: 1000px;
+    /* #275 (2026-05-31): widen + grid the row list so wide desktops
+       aren't half-empty. */
+    max-width: 1600px;
     margin: 0 auto;
     padding: 16px;
+}
+/* #275: recurring templates flow in a responsive grid (rows are wider
+   than goal cards — title + meta + day badges — so minmax(360px,1fr)).
+   1 column on mobile, 2–4 as the container widens. No drag-reorder here,
+   so a grid is a pure-CSS win (unlike /projects). */
+.recurring-list {
+    display: grid;
+    /* min(360px,100%) so the 360px track min collapses to the container
+       width on narrow viewports — a bare minmax(360px,…) forces 360px even
+       at 375 (−32px padding = 343px available) and overflows by 1px (#217). */
+    grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr));
+    gap: 10px;
+    align-items: start;
+}
+.recurring-list .recurring-row {
+    margin-bottom: 0;  /* grid gap owns the spacing now */
+    min-width: 0;
 }
 .recurring-hint {
     color: var(--text-muted, #6b7280);
@@ -4302,7 +4324,7 @@ table.quality-gates code {
 
 /* === Weekly Reflection (#165, 2026-05-17) === */
 .reflection-container {
-    max-width: 760px;
+    max-width: 1100px;  /* #275: widen form/reading pages */
     margin: 0 auto;
     padding: 16px;
 }
