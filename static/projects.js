@@ -165,14 +165,18 @@ function projectsRender() {
         const dropList = document.createElement("div");
         dropList.className = "project-drop-list";
         dropList.dataset.type = type;
+        // #275 (2026-05-31): dragover/drop live on the LIST, not each card,
+        // so reorder works when cards flow in a 2-D grid (multi-column on
+        // desktop). Cards keep only dragstart/dragend. The old per-card
+        // dragover used a Y-axis-only midpoint that breaks across columns.
+        dropList.addEventListener("dragover", onListDragOver);
+        dropList.addEventListener("drop", onListDrop);
         for (const project of group) {
             const card = projectCardEl(project);
             if (project.is_active) {
                 card.draggable = true;
                 card.dataset.id = project.id;
                 card.addEventListener("dragstart", onCardDragStart);
-                card.addEventListener("dragover", onCardDragOver);
-                card.addEventListener("drop", onCardDrop);
                 card.addEventListener("dragend", onCardDragEnd);
             }
             dropList.appendChild(card);
@@ -195,24 +199,48 @@ function onCardDragStart(e) {
     }
 }
 
-function onCardDragOver(e) {
+// #275: 2-D reading-order insertion point for the project-card grid.
+// Returns the card to insert the dragged card BEFORE, or null = append at
+// the end. Works for both a multi-column grid (desktop) and a single
+// column (mobile): in multi-column we read left→right, top→bottom (a card
+// is "after the cursor" if the cursor is in a row above it, or in its row
+// band and left of its centre); in single column we fall back to the
+// classic vertical midpoint. `multiCol` is detected by whether any cards
+// share a row (same rounded top).
+function projectInsertBeforeTarget(list, x, y) {
+    const cards = Array.from(
+        list.querySelectorAll(".project-card[data-id]:not(.dragging)"),
+    );
+    if (!cards.length) return null;
+    const tops = new Set(cards.map((c) => Math.round(c.getBoundingClientRect().top)));
+    const multiCol = tops.size < cards.length;
+    for (const card of cards) {
+        const r = card.getBoundingClientRect();
+        const cx = r.left + r.width / 2;
+        const cy = r.top + r.height / 2;
+        const cursorBefore = multiCol
+            ? (y < r.top || (y <= r.bottom && x < cx))  // row above, or same row & left half
+            : (y < cy);                                  // single column: upper half
+        if (cursorBefore) return card;
+    }
+    return null;  // cursor is past every card → append at the end
+}
+
+function onListDragOver(e) {
     if (!_dragSrcId) return;
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-    const target = e.currentTarget;
-    const srcCard = document.querySelector(`.project-card.dragging`);
-    if (!srcCard || srcCard === target) return;
-    const list = target.parentElement;
-    if (!list || list !== srcCard.parentElement) return;  // can't cross type groups
-    // Insert before or after based on cursor position relative to midpoint.
-    const rect = target.getBoundingClientRect();
-    const before = e.clientY < rect.top + rect.height / 2;
-    list.insertBefore(srcCard, before ? target : target.nextSibling);
+    const list = e.currentTarget;
+    const srcCard = list.querySelector(".project-card.dragging");
+    if (!srcCard || list !== srcCard.parentElement) return;  // can't cross type groups
+    const before = projectInsertBeforeTarget(list, e.clientX, e.clientY);
+    if (before === srcCard) return;  // no-op
+    list.insertBefore(srcCard, before);  // before === null → appended at end
 }
 
-async function onCardDrop(e) {
+async function onListDrop(e) {
     e.preventDefault();
-    const list = e.currentTarget.parentElement;
+    const list = e.currentTarget;
     if (!list) return;
     const ids = Array.from(list.querySelectorAll(".project-card[data-id]"))
         .map((el) => el.dataset.id);

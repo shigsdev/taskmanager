@@ -3252,7 +3252,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
  * Reuses .goal-card / .goals-category-section chrome from the Goals
  * page for visual consistency. These rules add just the project-
  * specific bits (color swatch, wider toolbar, archived badge spacing). */
-.projects-page { max-width: 1100px; margin: 0 auto; padding: 16px; }
+.projects-page { max-width: 1600px; margin: 0 auto; padding: 16px; }  /* #275: widen for the card grid */
 
 /* #213 (2026-05-23): /recurring had ZERO page-wrapper CSS — content
  * sat flush at x=0, where Chrome's bookmark/menu overlay competes
@@ -3346,7 +3346,16 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 /* #62: drag-and-drop reorder list. Cards inside become draggable
    targets; the list container scopes the drop zone per type group. */
-.project-drop-list { display: flex; flex-direction: column; gap: 8px; }
+/* #275 (2026-05-31): project cards flow in a responsive grid (multi-
+   column on desktop, 1 on mobile). The drag-reorder is 2-D-aware
+   (projects.js onListDragOver). min(320px,100%) keeps the track from
+   forcing 320px on narrow viewports (the #217 1px-overflow guard). */
+.project-drop-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+    gap: 10px;
+    align-items: start;
+}
 .project-card[draggable="true"] { cursor: grab; }
 .project-card[draggable="true"]:active { cursor: grabbing; }
 .project-card.dragging { opacity: 0.5; }
