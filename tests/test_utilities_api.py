@@ -1213,3 +1213,53 @@ class TestCoverageAuditAsync:
                 "result": None,
                 "error": None,
             })
+
+
+class TestUtilitiesPageRunLinks:
+    """#276 (2026-05-31): every utility card with a scheduled /
+    workflow_dispatch counterpart renders a persistent 'View latest runs'
+    link to its GitHub Actions run history. The 6 card→workflow links are
+    server-rendered from the GITHUB_REPO env (default shigsdev/taskmanager),
+    so a route test can assert the exact hrefs without driving a browser.
+    """
+
+    # Card data-utility → the workflow file its 'View latest runs' link
+    # must point at. Mirrors _AUDIT_NAME_TO_WORKFLOW + the two dispatch
+    # cards; if either drifts, this test fails (intended drift gate).
+    _EXPECTED_WORKFLOWS = [
+        "daily-backup.yml",
+        "weekly-bug-pattern-scan.yml",
+        "monthly-security-audit.yml",
+        "weekly-coverage-audit.yml",
+        "weekly-tech-debt-audit.yml",
+        "monthly-restore-drill.yml",
+    ]
+
+    def test_page_renders_all_six_workflow_run_links(self, authed_client):
+        html = authed_client.get("/utilities").get_data(as_text=True)
+        for wf in self._EXPECTED_WORKFLOWS:
+            href = (
+                "https://github.com/shigsdev/taskmanager"
+                f"/actions/workflows/{wf}"
+            )
+            assert href in html, f"missing run-history link for {wf}"
+        # The visible affordance text is present once per workflow card.
+        assert html.count("View latest runs") == len(self._EXPECTED_WORKFLOWS)
+
+    def test_run_links_honor_github_repo_env(self, authed_client, monkeypatch):
+        monkeypatch.setenv("GITHUB_REPO", "forkowner/myfork")
+        html = authed_client.get("/utilities").get_data(as_text=True)
+        assert (
+            "https://github.com/forkowner/myfork/actions/workflows/daily-backup.yml"
+            in html
+        )
+        # Default repo must NOT appear when the env override is set.
+        assert "github.com/shigsdev/taskmanager/actions/workflows" not in html
+
+    def test_non_workflow_cards_have_no_run_link(self, authed_client):
+        # The two pure-Flask cards (no scheduled counterpart) must NOT
+        # render a run-history link — only the 6 workflow-backed cards do.
+        html = authed_client.get("/utilities").get_data(as_text=True)
+        # Exactly 6 links total — guards against accidentally adding one to
+        # clear-stale-next-week-due-dates or project-goal-cleanup.
+        assert html.count('class="utility-runs-link"') == 6

@@ -106,6 +106,12 @@
             Run
         </button>
         <p class="utility-result" data-result aria-live="polite"></p>
+        {# #276: persistent link to this utility's GitHub Actions run
+           history — visible without having to Run it first. #}
+        <a class="utility-runs-link"
+           href="https://github.com/{{ github_repo }}/actions/workflows/daily-backup.yml"
+           target="_blank" rel="noopener noreferrer"
+           title="Open this utility's GitHub Actions run history in a new tab">View latest runs ↗</a>
     </section>
 
     {# #236 (2026-05-26): on-demand cards for the recurring audit scripts.
@@ -134,6 +140,11 @@
             Run
         </button>
         <p class="utility-result" data-result aria-live="polite"></p>
+        {# #276: persistent link to this utility's GitHub Actions run history. #}
+        <a class="utility-runs-link"
+           href="https://github.com/{{ github_repo }}/actions/workflows/weekly-bug-pattern-scan.yml"
+           target="_blank" rel="noopener noreferrer"
+           title="Open this utility's GitHub Actions run history in a new tab">View latest runs ↗</a>
     </section>
 
     <section class="utility-card" data-utility="run-security-posture-scan">
@@ -163,6 +174,11 @@
             Run
         </button>
         <p class="utility-result" data-result aria-live="polite"></p>
+        {# #276: persistent link to this utility's GitHub Actions run history. #}
+        <a class="utility-runs-link"
+           href="https://github.com/{{ github_repo }}/actions/workflows/monthly-security-audit.yml"
+           target="_blank" rel="noopener noreferrer"
+           title="Open this utility's GitHub Actions run history in a new tab">View latest runs ↗</a>
     </section>
 
     <section class="utility-card" data-utility="run-coverage-audit">
@@ -191,6 +207,11 @@
             Run
         </button>
         <p class="utility-result" data-result aria-live="polite"></p>
+        {# #276: persistent link to this utility's GitHub Actions run history. #}
+        <a class="utility-runs-link"
+           href="https://github.com/{{ github_repo }}/actions/workflows/weekly-coverage-audit.yml"
+           target="_blank" rel="noopener noreferrer"
+           title="Open this utility's GitHub Actions run history in a new tab">View latest runs ↗</a>
     </section>
 
     <section class="utility-card" data-utility="run-tech-debt-audit">
@@ -218,6 +239,11 @@
             Run
         </button>
         <p class="utility-result" data-result aria-live="polite"></p>
+        {# #276: persistent link to this utility's GitHub Actions run history. #}
+        <a class="utility-runs-link"
+           href="https://github.com/{{ github_repo }}/actions/workflows/weekly-tech-debt-audit.yml"
+           target="_blank" rel="noopener noreferrer"
+           title="Open this utility's GitHub Actions run history in a new tab">View latest runs ↗</a>
     </section>
 
     <section class="utility-card" data-utility="trigger-restore-drill">
@@ -244,6 +270,11 @@
             Run
         </button>
         <p class="utility-result" data-result aria-live="polite"></p>
+        {# #276: persistent link to this utility's GitHub Actions run history. #}
+        <a class="utility-runs-link"
+           href="https://github.com/{{ github_repo }}/actions/workflows/monthly-restore-drill.yml"
+           target="_blank" rel="noopener noreferrer"
+           title="Open this utility's GitHub Actions run history in a new tab">View latest runs ↗</a>
     </section>
 </div>
 {% endblock %}

@@ -4733,6 +4733,19 @@ table.quality-gates code {
 .utility-result.utility-result-ok { color: var(--green, #16a34a); }
 .utility-result.utility-result-err { color: var(--red, #dc2626); }
 
+/* #276: persistent "View latest runs ↗" link on cards with a GitHub
+   Actions counterpart. Subtle footer link below the result line. */
+.utility-runs-link {
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 0.85rem;
+    color: var(--accent, #2563eb);
+    text-decoration: none;
+}
+.utility-runs-link:hover {
+    text-decoration: underline;
+}
+
 /* #236 (2026-05-26): inline-scan result lists — per-check breakdown
  * (always shown) + findings collapsible (non-clean runs only). */
 .utility-scan-breakdown {

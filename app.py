@@ -512,7 +512,14 @@ def create_app(config: dict | None = None) -> Flask:
         app — AUTHORIZED_EMAIL gate via @login_required is sufficient
         auth (no admin-token split needed; the OAuth user IS the
         admin). Future utility actions go here too."""
-        return render_template("utilities.html")
+        # #276 (2026-05-31): cards with a scheduled / workflow_dispatch
+        # counterpart render a persistent "View latest runs ↗" link to
+        # their GitHub Actions run history. Repo is env-overridable (forks)
+        # — mirrors _dispatch_github_workflow's default in utilities_api.py.
+        return render_template(
+            "utilities.html",
+            github_repo=os.environ.get("GITHUB_REPO", "shigsdev/taskmanager"),
+        )
 
     @app.route("/print")
     @login_required
