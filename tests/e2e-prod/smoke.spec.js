@@ -311,6 +311,28 @@ test.describe("Prod smoke — feature surfaces", () => {
         }
     });
 
+    test("/utilities project→goal cleanup card renders + populates from live data (#273)", async ({ page }) => {
+        // Behavioral check (not a string-match): the card fetches
+        // /api/projects + /api/goals, runs auditProjectGoalLinks, and
+        // renders a ".pg-summary" line ("N cross-side · M unlinked").
+        // Asserting that summary appears proves goal_filter_helpers.js
+        // loaded on /utilities, both fetches succeeded under prod CSP
+        // (the #55 dev-bypass-masks-CSP gap), and the audit ran — none
+        // of which the dev-bypass Phase 6 can guarantee for prod.
+        const errors = [];
+        page.on("pageerror", (err) => errors.push(err.message));
+        await page.goto("/utilities?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const card = page.locator('.utility-card[data-utility="project-goal-cleanup"]');
+        await expect(card).toBeVisible();
+        const summary = card.locator(".pg-summary");
+        await expect(summary).toBeVisible({ timeout: 10_000 });
+        await expect(summary).toContainText("cross-side");
+        // Refresh button is the manual re-audit affordance.
+        await expect(card.locator("[data-pg-refresh]")).toBeVisible();
+        expect(errors).toEqual([]);
+    });
+
     test("/calendar renders day cells + Unscheduled side panel (#94)", async ({ page }) => {
         await page.goto("/calendar?nosw=1");
         await page.waitForLoadState("networkidle");
