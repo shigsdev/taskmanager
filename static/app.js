@@ -2267,12 +2267,57 @@ function setupDetailPanel() {
 // and the snapshot lifetime is the same as the panel's.
 let _detailOpenSnapshot = null;
 
+// #269 (2026-05-31): toggle the detail panel between "edit existing" and
+// "create new" mode. In create mode there's no task yet, so the controls
+// that act on an existing row (Complete / Copy / Cancel / Delete), the
+// subtasks section (nothing to attach children to pre-creation), and the
+// created/updated meta are hidden; the header reads "New Task". Save then
+// POSTs instead of PATCHing (see taskDetailSave).
+function _setDetailCreateMode(isCreate) {
+    var hide = [
+        "detailComplete", "detailDuplicate", "detailCancel", "detailDelete",
+        "subtaskSection", "detailMeta",
+    ];
+    hide.forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.style.display = isCreate ? "none" : "";
+    });
+    var hdr = document.getElementById("detailHeaderTitle");
+    if (hdr) hdr.textContent = isCreate ? "New Task" : "Task Detail";
+}
+
+// #269: open the detail panel in create mode for a brand-new task, so the
+// user can fill in every field (Section, project, goal, due date, …) up
+// front instead of quick-capturing to Inbox and triaging later. Optional
+// prefill from the capture bar (title text + the Work/Personal toggle).
+function taskDetailOpenNew(prefillTitle, prefillType) {
+    taskDetailOpen({
+        id: "",
+        title: prefillTitle || "",
+        tier: "inbox",
+        type: prefillType || "work",
+        project_id: null,
+        due_date: "",
+        goal_id: null,
+        url: "",
+        notes: "",
+        checklist: [],
+        repeat: null,
+        subtasks: [],
+        parent_id: null,
+    });
+    var titleEl = document.getElementById("detailTitle");
+    if (titleEl) titleEl.focus();
+}
+
 function taskDetailOpen(task) {
     // Capture a deep copy so subsequent allTasks reloads can't mutate
     // it under us. JSON round-trip is safe — the API serializer's
     // shape is plain JSON-compatible (strings, numbers, arrays of
     // {id, text, checked} dicts, nullable timestamps).
     _detailOpenSnapshot = task ? JSON.parse(JSON.stringify(task)) : null;
+    // #269: create mode when there's no id (a brand-new task).
+    _setDetailCreateMode(!task.id);
     document.getElementById("detailId").value = task.id;
     document.getElementById("detailTitle").value = task.title;
     document.getElementById("detailTier").value = task.tier;
@@ -2353,10 +2398,18 @@ function taskDetailOpen(task) {
             parentLinkSection.style.display = "";
             taskDetailPopulateParentLink(task.parent_id);
         }
-    } else {
+    } else if (task.id) {
         subtaskSection.style.display = "";
         if (parentLinkSection) parentLinkSection.style.display = "none";
         taskDetailLoadSubtasks(task.id);
+    } else {
+        // #269 create mode: no task yet, so nothing to attach subtasks to
+        // and no parent-link. Keep both hidden (also done by
+        // _setDetailCreateMode; re-asserted here because the else-above
+        // would otherwise re-show subtaskSection AND fetch /api/tasks//…
+        // with an empty id).
+        subtaskSection.style.display = "none";
+        if (parentLinkSection) parentLinkSection.style.display = "none";
     }
 
     // #78 (2026-04-26): parent picker — visible unless this task has its
@@ -2742,7 +2795,10 @@ function taskDetailCollectRepeat() {
 async function taskDetailSave(e) {
     e.preventDefault();
     const id = document.getElementById("detailId").value;
-    if (!id) return;
+    // #269: no id → create mode (opened via taskDetailOpenNew). POST a new
+    // task with all the fields the user filled in (handled in the create
+    // branch below) instead of the existing-task PATCH.
+    const isCreate = !id;
 
     // Collect checklist
     const clItems = [];
@@ -2784,6 +2840,20 @@ async function taskDetailSave(e) {
     }
 
     try {
+        if (isCreate) {
+            // #269: POST a new task with the chosen fields (incl. Section),
+            // so it lands where the user put it instead of defaulting to
+            // Inbox. Then clear the capture input that may have seeded it.
+            await apiFetch(API, {
+                method: "POST",
+                body: JSON.stringify(data),
+            });
+            const capInput = document.getElementById("captureInput");
+            if (capInput) capInput.value = "";
+            await loadTasks();
+            taskDetailClose();
+            return;
+        }
         await apiFetch(`${API}/${id}`, {
             method: "PATCH",
             body: JSON.stringify(data),

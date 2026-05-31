@@ -48,11 +48,17 @@
            of nav-bar width on mobile (user-reported). `aria-label` is
            the screen-reader-visible label; `title` is the hover
            tooltip. #}
+        {# #268 (2026-05-31): the scan/upload 📷 used to sit LEFT of the
+           capture bar, splitting it from the other capture icons
+           (🎤 voice, 🎙️ memo, ✓ add) on the right. Moved AFTER the
+           capture block so all the action icons cluster together on the
+           right of the input. One edit covers every page (the 📷 is
+           shared chrome; the capture bar is per-page). #}
+        {% block capture %}{% endblock %}
         <a href="{{ url_for('scan_page') }}" class="icon-btn upload-btn"
            id="topUploadBtn"
            aria-label="Upload an image to scan"
            title="Upload an image to scan">📷</a>
-        {% block capture %}{% endblock %}
         <nav class="nav-links">
             {# Canonical page nav. Pages set `active_page` (e.g. goals,
                import) to highlight the current tab. Defined here so

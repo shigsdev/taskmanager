@@ -102,6 +102,43 @@ test.describe("Prod smoke — page renders", () => {
         expect(errors).toEqual([]);
     });
 
+    test("capture bar 'open full task window' enters create mode (#269)", async ({ page }) => {
+        // Behavioral (not string-match): clicking #captureFull must open
+        // the detail panel in CREATE mode — header "New Task" + the
+        // existing-task-only controls (Complete/Delete) hidden. Read-only
+        // (no save), so it never mutates prod data. Guards the #269 wiring
+        // under prod CSP/SW, which the dev-bypass Phase 6 can't.
+        const errors = [];
+        page.on("pageerror", (err) => errors.push(err.message));
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+
+        await page.fill("#captureInput", "Prod smoke draft");
+        await page.click("#captureFull");
+
+        const panel = page.locator("#detailOverlay");
+        await expect(panel).toBeVisible();
+        await expect(page.locator("#detailHeaderTitle")).toHaveText("New Task");
+        await expect(page.locator("#detailTitle")).toHaveValue("Prod smoke draft");
+        // create-mode hides the existing-task controls
+        await expect(page.locator("#detailComplete")).toBeHidden();
+        await expect(page.locator("#detailDelete")).toBeHidden();
+        expect(errors).toEqual([]);
+    });
+
+    test("capture bar action icons are grouped on the right (#268)", async ({ page }) => {
+        // The scan 📷 used to sit LEFT of the capture bar; #268 moved it
+        // to the right cluster. Assert #topUploadBtn now sits to the RIGHT
+        // of the capture bar (its left edge >= the bar's right edge).
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const barRight = await page.locator("#captureBar").evaluate(
+            (el) => el.getBoundingClientRect().right);
+        const scanLeft = await page.locator("#topUploadBtn").evaluate(
+            (el) => el.getBoundingClientRect().left);
+        expect(scanLeft).toBeGreaterThanOrEqual(barRight - 8);
+    });
+
     test("goals page renders without JS errors", async ({ page }) => {
         const errors = [];
         page.on("pageerror", (err) => errors.push(err.message));

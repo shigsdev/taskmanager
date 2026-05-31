@@ -11,6 +11,12 @@
     </select>
     <button type="button" id="captureVoice" class="icon-btn" title="Voice input (real-time dictation)">🎤</button>
     <a href="{{ url_for('voice_memo_page') }}" class="icon-btn" id="captureVoiceMemo" title="Voice memo (record long-form, parse to tasks)" role="button">🎙️</a>
+    {# #269 (2026-05-31): open the full task window to fill every field
+       (Section, project, goal, due date, …) up front — for when you want
+       to add a fully-specified task instead of quick-capturing to Inbox
+       and triaging later. Sits next to ✓ as the "detailed add" sibling of
+       the "quick add". #}
+    <button type="button" id="captureFull" class="icon-btn" title="Open full task window (set all fields, skip Inbox)">🗗</button>
     <button type="button" id="captureSubmit" class="icon-btn" title="Add task">✓</button>
 </div>
 {% endblock %}

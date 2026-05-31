@@ -78,6 +78,24 @@
         submitBtn.addEventListener("click", () => submitCapture());
     }
 
+    // #269: "open full task window" — open the detail panel in create mode,
+    // seeded with whatever's typed + the Work/Personal toggle, so the user
+    // can set every field (incl. Section) before the task exists. Only on
+    // pages that host the detail panel (the board); guarded by the function
+    // existing. Clears nothing here — taskDetailSave clears the input on
+    // successful create.
+    const fullBtn = document.getElementById("captureFull");
+    if (fullBtn) {
+        fullBtn.addEventListener("click", () => {
+            if (typeof taskDetailOpenNew === "function") {
+                taskDetailOpenNew(
+                    input.value.trim(),
+                    typeSelect ? typeSelect.value : "work",
+                );
+            }
+        });
+    }
+
     // --- Parse hashtags, @project, and URLs ---
     // parseCapture() lives in parse_capture.js (loaded before this file
     // via a <script> tag in base.html).  This keeps capture.js focused on
