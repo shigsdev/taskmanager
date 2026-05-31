@@ -54,6 +54,33 @@ fail() {
     printf "${RED}✗${NC} %s\n" "$1" >&2
 }
 
+# Run a NETWORK-BOUND gate command under a hard wall-clock cap so a
+# transient registry / advisory-fetch stall fails fast instead of hanging
+# the whole suite with no detection. Real incident 2026-05-31: pip-audit
+# hung ~80 min on the OSV advisory fetch — its own `--timeout` is only a
+# per-socket READ timeout (default 15s), NOT a bound on the total operation
+# (many requests, or a trickling connection, never trip a single-socket
+# timeout). GNU `timeout` exits 124 when it has to terminate the command.
+# A timeout is surfaced as a gate FAILURE (re-run needed), never a silent
+# pass — a network stall must not let a CVE gate slip through unverified.
+# Falls back to running uncapped (with a loud warning) if `timeout` isn't
+# installed, so the script stays portable.
+# Usage: capped_run <seconds> <label> <cmd> [args...]
+capped_run() {
+    local cap="$1" label="$2"; shift 2
+    local rc=0
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "$cap" "$@" || rc=$?
+        if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+            fail "${label} exceeded its ${cap}s wall-clock cap — likely a transient network stall (PyPI / OSV / npm registry). Re-run; if it persists, check connectivity. This is NOT treated as a pass."
+        fi
+    else
+        printf "${YELLOW}!${NC} 'timeout' not on PATH — running %s WITHOUT a wall-clock cap (a network stall can hang here).\n" "$label" >&2
+        "$@" || rc=$?
+    fi
+    return "$rc"
+}
+
 # --- Preflight: tools available ---------------------------------------------
 
 banner "Preflight"
@@ -219,10 +246,16 @@ banner "6. pip-audit (dependency CVEs)"
 # the dev/test deps (pytest, ruff, …) in one pass. A bare `pip-audit`
 # would instead sweep in unrelated co-installed tooling (MCP servers,
 # etc.) that this repo doesn't ship.
-if python -m pip_audit -r requirements-dev.txt --ignore-vuln PYSEC-2026-89; then
+# Wall-clock cap (override with PIP_AUDIT_TIMEOUT=<seconds>). pip-audit is
+# network-bound — see capped_run for the 2026-05-31 hang incident.
+PIP_AUDIT_CAP="${PIP_AUDIT_TIMEOUT:-300}"
+if capped_run "$PIP_AUDIT_CAP" "pip-audit" \
+        python -m pip_audit -r requirements-dev.txt --ignore-vuln PYSEC-2026-89; then
     pass "pip-audit"
 else
-    fail "pip-audit found a known vulnerability — bump the affected package in requirements.txt / requirements-dev.txt"
+    # capped_run already printed the timeout-specific hint on a 124. This
+    # covers the real-vulnerability case (non-zero, non-timeout exit).
+    fail "pip-audit gate failed — a known vulnerability (bump the affected package in requirements.txt / requirements-dev.txt) OR a timeout (see hint above)."
     exit 1
 fi
 
@@ -231,10 +264,13 @@ fi
 banner "7. npm audit (dependency CVEs)"
 # --audit-level=high means low/medium are reported but don't fail the
 # gate. High and critical do.
-if npm audit --audit-level=high; then
+# Wall-clock cap (override with NPM_AUDIT_TIMEOUT=<seconds>). npm audit is
+# network-bound (hits the npm registry advisory endpoint).
+NPM_AUDIT_CAP="${NPM_AUDIT_TIMEOUT:-180}"
+if capped_run "$NPM_AUDIT_CAP" "npm audit" npm audit --audit-level=high; then
     pass "npm audit"
 else
-    fail "npm audit found a HIGH/CRITICAL vulnerability — bump the affected package in package.json"
+    fail "npm audit gate failed — a HIGH/CRITICAL vulnerability (bump the affected package in package.json) OR a timeout (see hint above)."
     exit 1
 fi
 

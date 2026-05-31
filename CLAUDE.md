@@ -44,6 +44,17 @@ python scripts/stop_dev_bypass.py                 # canonical teardown
   self-disables and reports "No tests found" unless `TASKMANAGER_SESSION_COOKIE`
   is set (see Commands). The value is the validator token in
   `~/.taskmanager-session-cookie`.
+- **Network gates are wall-clock-capped (`124` = re-run, not a real vuln).**
+  `pip-audit` (gate 6) and `npm audit` (gate 7) hit external advisory DBs
+  (OSV / PyPI / npm registry) and can stall indefinitely on a transient
+  network hiccup — pip-audit hung ~80 min on the OSV fetch on 2026-05-31
+  with no detection. They now run under a GNU-`timeout` wall-clock cap
+  (`capped_run` helper; defaults 300s / 180s, override with
+  `PIP_AUDIT_TIMEOUT` / `NPM_AUDIT_TIMEOUT`). A cap breach fails the gate
+  loudly (exit 124, never a silent pass) with a "transient network stall —
+  re-run" hint. If you see it, just re-run; it's not a CVE. (pip-audit's
+  own `--timeout` is only a per-socket read timeout, so it does NOT bound
+  the total operation — the wall-clock cap is the real guard.)
 - **Windows pytest pass-count is uncapturable.** A post-suite OneDrive
   `PermissionError` swallows the `N passed` summary line. Trust the exit code +
   coverage %; cite "all passed, <coverage>%" in commit trailers, not a raw count.
