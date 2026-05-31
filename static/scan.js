@@ -52,11 +52,14 @@
     const MAX_IMAGE_DIMENSION = 2048;
     const COMPRESSED_JPEG_QUALITY = 0.85;
 
+    // #277: keep in sync with the GoalCategory enum (models.py) — a
+    // missing value drops it from the scan-review goal category picker.
     const GOAL_CATEGORIES = [
         ["health", "Health"],
         ["personal_growth", "Personal Growth"],
         ["relationships", "Relationships"],
         ["work", "Work"],
+        ["bau", "BAU"],
     ];
     const GOAL_PRIORITIES = [
         ["must", "Must"],

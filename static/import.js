@@ -735,7 +735,9 @@
 
             var catSelect = document.createElement("select");
             catSelect.className = "import-candidate-type";
-            ["health", "personal_growth", "relationships", "work"].forEach(function (val) {
+            // #277: keep in sync with the GoalCategory enum (models.py) —
+            // a missing value drops it from the import category picker.
+            ["health", "personal_growth", "relationships", "work", "bau"].forEach(function (val) {
                 var opt = document.createElement("option");
                 opt.value = val;
                 opt.textContent = val.replace("_", " ").replace(/\b\w/g, function (l) {

@@ -1,11 +1,19 @@
 /* goals.js — Goals view: grouped by category, progress, linked tasks */
 "use strict";
 
+// Must cover EVERY GoalCategory enum member (models.py) — goalsRender()
+// groups goals by iterating this list, so a category missing here renders
+// NO section and its goals silently vanish from the page. #277 (2026-05-30):
+// BAU (added to the enum in #68) was missing here, so BAU goals disappeared
+// from /goals even though the data was intact. tests/test_goal_category_
+// pickers.py is the drift guard that fails if this list (or the scan/import
+// pickers) ever falls behind the enum again.
 const GOALS_CATEGORIES = [
     { value: "health", label: "Health" },
     { value: "personal_growth", label: "Personal Growth" },
     { value: "relationships", label: "Relationships" },
     { value: "work", label: "Work" },
+    { value: "bau", label: "BAU" },
 ];
 
 const PRIORITY_LABELS = {

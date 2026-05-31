@@ -88,6 +88,18 @@ def _seed():
                 target_quarter="2026-Q2",
                 actions="Weekly family dinner, monthly video call with parents",
             ),
+            # #277 fixture: a BAU-category goal so /goals renders a BAU
+            # section (regression for BAU goals silently vanishing when
+            # GOALS_CATEGORIES omitted the enum member).
+            Goal(
+                title="Keep recurring ops running (BAU)",
+                category=GoalCategory.BAU,
+                priority=GoalPriority.SHOULD,
+                priority_rank=4,
+                status=GoalStatus.IN_PROGRESS,
+                target_quarter="2026-Q2",
+                actions="Weekly inbox zero, monthly dependency bumps",
+            ),
         ]
         db.session.add_all(goals)
         db.session.flush()
