@@ -384,6 +384,42 @@ test.describe("Prod smoke — feature surfaces", () => {
         await expect(page.locator("#calendarUnscheduled")).toBeVisible();
     });
 
+    test("/calendar opens the detail panel in place, not on the board (#270)", async ({ page }) => {
+        await page.goto("/calendar?nosw=1");
+        await page.waitForLoadState("networkidle");
+        // #270: the shared detail panel is embedded on /calendar so tasks
+        // open here instead of navigating to /?task=<id>. Assert it's in
+        // the DOM (hidden until opened).
+        await expect(page.locator("#detailOverlay")).toHaveCount(1);
+
+        // Empty day cells render a "click to add" placeholder; clicking it
+        // opens the CREATE panel pre-dated to that day WITHOUT leaving
+        // /calendar. (Targets the day-cell placeholder specifically, not the
+        // Unscheduled empty-state <li>.)
+        const emptyCell = page.locator(".calendar-cell .calendar-cell-empty").first();
+        if (await emptyCell.count()) {
+            await emptyCell.click();
+            await expect(page.locator("#detailOverlay")).toBeVisible({ timeout: 5_000 });
+            await expect(page.locator("#detailHeaderTitle")).toHaveText("New Task");
+            expect(new URL(page.url()).pathname).toBe("/calendar");
+            // The clicked cell's date seeds the due-date field.
+            expect(await page.locator("#detailDueDate").inputValue())
+                .toMatch(/^\d{4}-\d{2}-\d{2}$/);
+            await page.locator("#detailClose").click();
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+        }
+
+        // If any task is listed (in a cell or the Unscheduled list), clicking
+        // it opens the panel in EDIT mode in place — still no navigation.
+        const taskLink = page.locator(".calendar-task-link").first();
+        if (await taskLink.count()) {
+            await taskLink.click();
+            await expect(page.locator("#detailOverlay")).toBeVisible({ timeout: 5_000 });
+            await expect(page.locator("#detailHeaderTitle")).toHaveText("Task Detail");
+            expect(new URL(page.url()).pathname).toBe("/calendar");
+        }
+    });
+
     test("/calendar does not horizontally overflow at desktop 1280×800 (#138 D-B1)", async ({ page }) => {
         // Regression for #138 Phase B audit defect D-B1: long task titles
         // in day cells were pushing the 240px Unscheduled aside off-screen

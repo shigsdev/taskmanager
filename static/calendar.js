@@ -169,10 +169,18 @@
                     // (no movement) fires click. Both wired here.
                     li.classList.add("calendar-task-link");
                     li.addEventListener("click", function () {
-                        // Detail panel lives on the home page (index.html);
-                        // navigate there with ?task=<id> and let app.js'
-                        // open-from-url hook do the rest.
-                        window.location.href = "/?task=" + encodeURIComponent(t.id);
+                        // #270 (2026-05-31): open the detail panel IN PLACE on
+                        // /calendar (the panel is embedded here now) instead of
+                        // navigating to /?task=<id>. Stays on the calendar so the
+                        // user keeps their place; saving refreshes the cell via
+                        // the window.taskDetailAfterSave hook (set in init).
+                        // The list payload is the same shape the board passes to
+                        // taskDetailOpen, so `t` is sufficient — no extra fetch.
+                        if (typeof taskDetailOpen === "function") {
+                            taskDetailOpen(t);
+                        } else {
+                            window.location.href = "/?task=" + encodeURIComponent(t.id);
+                        }
                     });
                     li.addEventListener("dragstart", function (e) {
                         li.classList.add("dragging");
@@ -209,22 +217,25 @@
                     empty.textContent = "Drop here · click to add";
                     cell.appendChild(empty);
                 }
-                // #156 (2026-05-09): click empty space on a cell →
-                // navigate to / with ?new_task_due=<iso>; app.js init
-                // hook opens the detail panel in "create new" mode
-                // pre-filled with that date. Click handler attached
-                // to the cell itself; drop handler stays separate
-                // (drop is on .calendar-cell too — distinguish by
-                // whether dataTransfer carries a task UUID).
+                // #156 (2026-05-09): click empty space on a cell to add a
+                // task for that day.
+                // #270 (2026-05-31): open the create panel IN PLACE (seeded
+                // with this cell's date) instead of navigating to
+                // /?new_task_due=<iso>. Same "stay on the calendar" principle
+                // as the task-open change above. Falls back to navigation if
+                // the panel isn't present (defensive — it always is now).
                 cell.addEventListener("click", function (e) {
-                    // If the click landed on a task line (li), the li's
-                    // own click handler navigates to ?task=<id>; this
-                    // cell-level handler fires AFTER but we don't want
-                    // to re-navigate. Bail when the target is inside
-                    // an existing list item.
+                    // If the click landed on a task line (li), the li's own
+                    // click handler opens that task; this cell-level handler
+                    // fires AFTER but must not also open a create panel. Bail
+                    // when the target is inside an existing list item.
                     if (e.target.closest("li")) return;
-                    window.location.href =
-                        "/?new_task_due=" + encodeURIComponent(iso);
+                    if (typeof taskDetailOpenNew === "function") {
+                        taskDetailOpenNew("", "work", iso);
+                    } else {
+                        window.location.href =
+                            "/?new_task_due=" + encodeURIComponent(iso);
+                    }
                 });
 
                 cell.addEventListener("dragover", function (e) {
@@ -293,7 +304,12 @@
             // fires dragstart/dragend instead.
             li.classList.add("calendar-task-link");
             li.addEventListener("click", function () {
-                window.location.href = "/?task=" + encodeURIComponent(t.id);
+                // #270: open in place (see the day-cell handler above).
+                if (typeof taskDetailOpen === "function") {
+                    taskDetailOpen(t);
+                } else {
+                    window.location.href = "/?task=" + encodeURIComponent(t.id);
+                }
             });
             li.addEventListener("dragstart", function (e) {
                 li.classList.add("dragging");
@@ -345,6 +361,12 @@
     }
 
     function init() {
+        // #270 (2026-05-31): the embedded detail panel funnels every
+        // mutation through app.js loadTasks(); register renderCalendar as the
+        // host refresh hook so saving/completing/cancelling/deleting a task
+        // from the panel re-renders the calendar cells in place rather than
+        // trying to render a task board that doesn't exist on this page.
+        window.taskDetailAfterSave = renderCalendar;
         renderCalendar();
         // PR51 #114: multi-device + multi-window staleness. PR44 added a
         // visibilitychange refresh in app.js that calls loadTasks() — but

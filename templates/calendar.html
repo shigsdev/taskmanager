@@ -29,6 +29,11 @@
         <aside class="calendar-unscheduled" id="calendarUnscheduled"></aside>
     </div>
 </div>
+{# #270: embed the shared task detail panel so clicking a task on the
+   calendar opens it IN PLACE (edit/complete/cancel/delete) instead of
+   navigating to the tasks board. app.js detects the absence of a tier
+   board and wires up just the panel; calendar.js drives the refresh. #}
+{% include "_task_detail_panel.html" %}
 {% endblock %}
 
 {% block scripts %}
@@ -36,6 +41,8 @@
 <script src="{{ url_for('static', filename='api_helpers.js') }}"></script>
     <script src="{{ url_for('static', filename='voice_input.js') }}"></script>
     <script src="{{ url_for('static', filename='filter_helpers.js') }}"></script>
+    {# #270: goal-dropdown scoping for the embedded detail panel. #}
+    <script src="{{ url_for('static', filename='goal_filter_helpers.js') }}"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 <script src="{{ url_for('static', filename='parse_capture.js') }}"></script>
 <script src="{{ url_for('static', filename='capture.js') }}"></script>

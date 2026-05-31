@@ -109,6 +109,18 @@ async function loadTasks() {
         }
         return;
     }
+    // #270 (2026-05-31): a page can host the detail panel WITHOUT being the
+    // full task board (e.g. /calendar embeds the panel so tasks open in
+    // place instead of navigating to /). Such a host has no tier board to
+    // render — it provides its own refresh via window.taskDetailAfterSave.
+    // Every panel mutation (save / complete / cancel / delete / subtask)
+    // funnels through loadTasks(), so delegating here keeps the host page
+    // (calendar cells, unscheduled list) in sync after any of them. allTasks
+    // is still populated above for parent-link lookups.
+    if (typeof window.taskDetailAfterSave === "function") {
+        window.taskDetailAfterSave();
+        return;
+    }
     renderBoard();
 }
 
@@ -189,11 +201,35 @@ async function loadRecurringPreviews() {
 }
 
 async function init() {
-    // Only run task-board setup on the tasks page (index.html).
-    // Other pages (goals, review, etc.) load app.js for shared utilities
-    // like apiFetch() but don't have the task detail panel DOM elements.
-    const isTasksPage = !!document.getElementById("detailOverlay");
-    if (!isTasksPage) return;
+    // Pages with no detail panel (goals, review, etc.) load app.js only for
+    // shared utilities like apiFetch() — nothing to set up here.
+    const hasPanel = !!document.getElementById("detailOverlay");
+    if (!hasPanel) return;
+
+    // #270 (2026-05-31): a page can host the detail panel without being the
+    // full task board. /calendar embeds the panel (so a task opens IN PLACE
+    // rather than navigating to /) but has no tier lists. Detect the board
+    // by its tier lists; when absent, wire up JUST the panel — the goal /
+    // project dropdowns plus the panel's own handlers — and let the host
+    // page drive refresh via window.taskDetailAfterSave (see loadTasks).
+    const isBoard = !!document.querySelector('.task-list[data-tier]');
+    if (!isBoard) {
+        // Preload the active-task cache so the panel's parent-picker chip and
+        // subtask lookups resolve names from the FIRST open (the host page —
+        // /calendar — renders its own view; app.js just needs `allTasks`
+        // populated). Fetch directly rather than via loadTasks(), which now
+        // delegates to the host refresh hook (#270) and would no-op the cache
+        // fill. Non-fatal on failure — the parent LINK still has an API
+        // fallback; only the picker chip label degrades to "(unknown)".
+        try {
+            allTasks = await apiFetch(API);
+        } catch (e) {
+            console.warn("Panel-only host: could not preload tasks:", e);
+        }
+        await Promise.all([loadGoals(), loadProjects()]);
+        setupDetailPanel();
+        return;
+    }
 
     await Promise.all([
         loadTasks(), loadGoals(), loadProjects(), loadRecurringPreviews(),
@@ -2290,14 +2326,17 @@ function _setDetailCreateMode(isCreate) {
 // user can fill in every field (Section, project, goal, due date, …) up
 // front instead of quick-capturing to Inbox and triaging later. Optional
 // prefill from the capture bar (title text + the Work/Personal toggle).
-function taskDetailOpenNew(prefillTitle, prefillType) {
+// #270: optional prefillDue (ISO yyyy-mm-dd) — the /calendar empty-cell
+// click seeds the date of the cell that was clicked so the new task lands
+// on that day without leaving the calendar.
+function taskDetailOpenNew(prefillTitle, prefillType, prefillDue) {
     taskDetailOpen({
         id: "",
         title: prefillTitle || "",
         tier: "inbox",
         type: prefillType || "work",
         project_id: null,
-        due_date: "",
+        due_date: prefillDue || "",
         goal_id: null,
         url: "",
         notes: "",
