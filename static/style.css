@@ -353,7 +353,14 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 
 /* === /calendar page (#73) === */
 .calendar-page {
-    max-width: 1200px;
+    /* #265 (2026-05-30): widen on desktop to use the side whitespace —
+       the 1200px cap squeezed the 7 day columns + Unscheduled aside so
+       task titles ellipsis-truncated on wide screens. 1800px is strictly
+       ≥ the old width at every viewport (below 1800 the margin:auto is a
+       no-op and the page fills the available width; above 1800 it's far
+       wider than 1200). The .calendar-row / .calendar-layout minmax(0,1fr)
+       tracks still clamp long titles, so no #138 D-B1 overflow. */
+    max-width: 1800px;
     margin: 0 auto;
     padding: 16px;
 }
