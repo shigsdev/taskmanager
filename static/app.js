@@ -2659,6 +2659,11 @@ function taskDetailRepeatChanged() {
     const freq = document.getElementById("detailRepeat").value;
     document.getElementById("repeatWeeklyField").style.display =
         freq === "weekly" ? "" : "none";
+    // #271: multi-weekday selector for MULTI_DAY_OF_WEEK.
+    const multiDayField = document.getElementById("repeatMultiDayField");
+    if (multiDayField) {
+        multiDayField.style.display = freq === "multi_day_of_week" ? "" : "none";
+    }
     document.getElementById("repeatMonthlyDateField").style.display =
         freq === "monthly_date" ? "" : "none";
     document.getElementById("repeatMonthlyNthField").style.display =
@@ -2674,6 +2679,10 @@ function taskDetailPopulateRepeat(task) {
     const sel = document.getElementById("detailRepeat");
     const endInput = document.getElementById("detailRepeatEndDate");
     if (endInput) endInput.value = "";
+    // #271: reset the multi-weekday checkboxes every open so a prior
+    // template's selection can't bleed into the next one.
+    document.querySelectorAll("#detailRepeatDays input[type=checkbox]")
+        .forEach((cb) => { cb.checked = false; });
     if (!repeat) {
         sel.value = "";
     } else {
@@ -2681,6 +2690,14 @@ function taskDetailPopulateRepeat(task) {
         if (repeat.day_of_week != null) {
             document.getElementById("detailRepeatDay").value = String(repeat.day_of_week);
             document.getElementById("detailRepeatNthDay").value = String(repeat.day_of_week);
+        }
+        // #271: pre-check the weekday boxes for a MULTI_DAY_OF_WEEK template.
+        if (Array.isArray(repeat.days_of_week)) {
+            repeat.days_of_week.forEach((d) => {
+                const cb = document.querySelector(
+                    `#detailRepeatDays input[value="${d}"]`);
+                if (cb) cb.checked = true;
+            });
         }
         if (repeat.day_of_month != null) {
             document.getElementById("detailRepeatDayOfMonth").value = String(repeat.day_of_month);
@@ -2700,6 +2717,13 @@ function taskDetailCollectRepeat() {
     const repeat = { frequency: freq };
     if (freq === "weekly") {
         repeat.day_of_week = parseInt(document.getElementById("detailRepeatDay").value);
+    } else if (freq === "multi_day_of_week") {
+        // #271: collect the checked weekdays (0=Mon … 6=Sun). The backend
+        // (recurring_service) rejects an empty set with a 422 that the
+        // save handler surfaces, so no silent no-op.
+        repeat.days_of_week = Array.from(
+            document.querySelectorAll("#detailRepeatDays input[type=checkbox]:checked"),
+        ).map((cb) => parseInt(cb.value, 10));
     } else if (freq === "monthly_date") {
         repeat.day_of_month = parseInt(document.getElementById("detailRepeatDayOfMonth").value);
     } else if (freq === "monthly_nth_weekday") {

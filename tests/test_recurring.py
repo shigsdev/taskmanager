@@ -385,6 +385,34 @@ class TestRecurringTemplateIntegrityPR4:
             assert rt.frequency == RecurringFrequency.MULTI_DAY_OF_WEEK
             assert rt.days_of_week == [1, 3]
 
+    def test_serialize_repeat_includes_days_of_week(self, app):
+        """#271: _serialize_repeat must expose days_of_week so the detail
+        panel can pre-check the weekday boxes when re-opening a
+        MULTI_DAY_OF_WEEK task. The create/spawn path already round-trips
+        it; the read-back serialization was the missing piece."""
+        from models import Task, TaskStatus, Tier
+        from task_service import _apply_repeat, _serialize_repeat
+        with app.app_context():
+            task = Task(
+                title="MWF standup",
+                type=TaskType.WORK,
+                tier=Tier.TODAY,
+                status=TaskStatus.ACTIVE,
+            )
+            db.session.add(task)
+            db.session.commit()
+            _apply_repeat(task, {
+                "frequency": "multi_day_of_week",
+                "days_of_week": [0, 2, 4],  # Mon / Wed / Fri
+            })
+            db.session.commit()
+            repeat = _serialize_repeat(task)
+            assert repeat is not None
+            assert repeat["frequency"] == "multi_day_of_week"
+            assert repeat["days_of_week"] == [0, 2, 4]
+            # day_of_week must NOT be present for a multi-day template.
+            assert "day_of_week" not in repeat
+
     def test_voice_candidate_multi_day_of_week_creates_real_template(self, app):
         """A voice memo dictating 'every Mon/Wed/Fri' produces a real
         MULTI_DAY_OF_WEEK template — previously the candidate's

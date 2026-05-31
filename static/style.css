@@ -1058,6 +1058,33 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .detail-panel textarea:focus,
 .detail-panel select:focus { border-color: var(--accent); }
 
+/* #271 (2026-05-31): multi-weekday selector (MULTI_DAY_OF_WEEK). Chips
+   flex-wrap so all 7 fit at mobile 375 without horizontal overflow. */
+.repeat-days {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.repeat-day {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 9px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    user-select: none;
+    background: var(--surface);
+}
+.repeat-day input { margin: 0; cursor: pointer; }
+/* Progressive highlight for the selected days (no-op where :has() is
+   unsupported — the visible checkbox still conveys state). */
+.repeat-day:has(input:checked) {
+    background: var(--accent-soft, #e8f0fe);
+    border-color: var(--accent);
+}
+
 .form-row {
     display: flex;
     gap: 10px;

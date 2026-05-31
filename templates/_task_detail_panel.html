@@ -81,6 +81,7 @@
                         <option value="daily">Daily</option>
                         <option value="weekdays">Weekdays (Mon-Fri)</option>
                         <option value="weekly">Weekly</option>
+                        <option value="multi_day_of_week">Specific weekdays</option>
                         <option value="monthly_date">Monthly (same date)</option>
                         <option value="monthly_nth_weekday">Monthly (nth weekday)</option>
                     </select>
@@ -99,6 +100,25 @@
                         <option value="5">Saturday</option>
                         <option value="6">Sunday</option>
                     </select>
+                </div>
+            </div>
+
+            {# #271 (2026-05-31): MULTI_DAY_OF_WEEK — pick one or more
+               weekdays (e.g. Mon + Wed). Maps to the days_of_week JSON
+               column; the spawn cron fires on each selected weekday. #}
+            <div class="form-row" id="repeatMultiDayField" style="display:none">
+                <div class="form-field">
+                    <label>Days of week</label>
+                    <div class="repeat-days" id="detailRepeatDays">
+                        <label class="repeat-day"><input type="checkbox" value="0">Mon</label>
+                        <label class="repeat-day"><input type="checkbox" value="1">Tue</label>
+                        <label class="repeat-day"><input type="checkbox" value="2">Wed</label>
+                        <label class="repeat-day"><input type="checkbox" value="3">Thu</label>
+                        <label class="repeat-day"><input type="checkbox" value="4">Fri</label>
+                        <label class="repeat-day"><input type="checkbox" value="5">Sat</label>
+                        <label class="repeat-day"><input type="checkbox" value="6">Sun</label>
+                    </div>
+                    <small class="form-hint">Pick one or more days.</small>
                 </div>
             </div>
 

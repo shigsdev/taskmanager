@@ -70,6 +70,13 @@ def _serialize_repeat(task: Task) -> dict | None:
     }
     if rt.day_of_week is not None:
         result["day_of_week"] = rt.day_of_week
+    # #271 (2026-05-31): expose the MULTI_DAY_OF_WEEK weekday set so the
+    # detail panel's "Specific weekdays" selector can pre-check the boxes
+    # when re-opening an existing multi-day template. The create/spawn
+    # path (_apply_repeat, _template_fires_on) already round-trips this;
+    # only the read-back serialization was missing it.
+    if rt.days_of_week:
+        result["days_of_week"] = rt.days_of_week
     if rt.day_of_month is not None:
         result["day_of_month"] = rt.day_of_month
     if rt.week_of_month is not None:
