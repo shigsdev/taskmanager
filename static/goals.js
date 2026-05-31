@@ -84,9 +84,14 @@ function goalsRender() {
         header.innerHTML += ` <span class="tier-count">${catGoals.length}</span>`;
         section.appendChild(header);
 
+        // #275: cards flow in a responsive grid (.goals-card-grid) so wide
+        // desktops show 2–5 cards per row instead of one stretched card.
+        const grid = document.createElement("div");
+        grid.className = "goals-card-grid";
         for (const goal of catGoals) {
-            section.appendChild(goalCardEl(goal));
+            grid.appendChild(goalCardEl(goal));
         }
+        section.appendChild(grid);
         board.appendChild(section);
     }
 

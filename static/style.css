@@ -1499,9 +1499,27 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 
 /* === Goals Page === */
 .goals-page {
-    max-width: 1000px;
+    /* #275 (2026-05-31): widen + multi-column card grid so wide desktops
+       aren't half-empty. 1600px caps it on ultra-wide screens; below that
+       it fills the viewport. Cards flow via .goals-card-grid below. */
+    max-width: 1600px;
     margin: 0 auto;
     padding: 16px;
+}
+
+/* #275: each category section's cards flow in a responsive grid —
+   auto-fill at minmax(300px, 1fr) gives 1 column on mobile (300>375/2)
+   and 2–5 columns as the container widens. The min-width:0 + the card's
+   own ellipsis keep long titles from blowing out a track (#138 D-B1). */
+.goals-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
+    align-items: start;
+}
+.goals-card-grid .goal-card {
+    margin-bottom: 0;  /* grid gap owns the spacing now */
+    min-width: 0;
 }
 
 .goals-toolbar {
