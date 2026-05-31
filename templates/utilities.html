@@ -43,6 +43,39 @@
         <p class="utility-result" data-result aria-live="polite"></p>
     </section>
 
+    {# #273 (2026-05-30): project→goal mapping cleanup. Self-loading
+       audit (no count/run button — it renders on page load) with inline
+       reassign/clear controls per flagged project. Companion to the #272
+       detail-panel fix. Flags cross-side links (project type-side ≠ goal
+       category-side per the #142 bipartition) and unlinked projects.
+       Cross-side links can be intentional, so nothing is auto-fixed —
+       the user reassigns or clears each row themselves. Writes go through
+       the existing validated PATCH /api/projects/<id>. #}
+    <section class="utility-card" data-utility="project-goal-cleanup">
+        <h2>Project → Goal mapping cleanup (#273)</h2>
+        <p class="utility-description">
+            Audits every active project's linked goal and flags two
+            things: <strong>cross-side links</strong> — a project whose
+            type (work / personal) doesn't match its goal's side (work
+            goals are <code>work</code>/<code>bau</code>; personal goals
+            are <code>health</code>/<code>relationships</code>/<code>personal_growth</code>)
+            — and <strong>unlinked</strong> projects with no goal.
+        </p>
+        <p class="utility-description">
+            Cross-side links can be <em>intentional</em> (e.g. a personal
+            "AI Training" project tracked under the work "AI Upskilling"
+            goal), so nothing is changed automatically. Reassign or clear
+            each one as you see fit — changes save immediately.
+        </p>
+        <div class="pg-cleanup" data-pg-audit aria-live="polite">
+            <p class="utility-description">Loading project → goal map…</p>
+        </div>
+        <button type="button" class="btn btn-secondary" data-pg-refresh>
+            Refresh
+        </button>
+        <p class="utility-result" data-pg-result aria-live="polite"></p>
+    </section>
+
     {# #223 (2026-05-24): on-demand backup + restore-drill dispatch cards.
        Action-only — no count preview (the result is async / external).
        The .utility-status row is hidden by utilities.js's countUrl-absent
@@ -218,5 +251,6 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='api_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='api_client.js') }}"></script>
+<script src="{{ url_for('static', filename='goal_filter_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='utilities.js') }}"></script>
 {% endblock %}

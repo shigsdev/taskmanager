@@ -99,8 +99,60 @@ function goalsForDropdown(goals, filterType, keepIds) {
     );
 }
 
+/**
+ * Audit project→goal links for the /utilities cleanup card (#273).
+ *
+ * Companion to #272: surfaces project→goal mappings the user may want
+ * to clean up. Two flag classes (dangling links are impossible — the
+ * Project.goal_id FK is ondelete=SET NULL):
+ *
+ *   crossSide — the project's type-side and the linked goal's
+ *     category-side disagree per the #142 strict bipartition (e.g. a
+ *     PERSONAL project linked to a WORK-category goal). These can be
+ *     INTENTIONAL (AI Training→AI Upskilling is legitimate), so they're
+ *     reported for the user to decide, never auto-fixed.
+ *   unlinked — the project has no goal at all (goal_id null/absent).
+ *
+ * A project whose goal_id points at a goal not present in `goals`
+ * (e.g. an archived goal filtered out of the list) is left UNFLAGGED —
+ * we can't classify a side we can't see, and SET NULL means it's not a
+ * dangling row. Pass goals fetched with is_active=all to minimise this.
+ *
+ * @param {Array<{id,type,goal_id,name}>} projects
+ * @param {Array<{id,category,title}>} goals
+ * @returns {{crossSide: Array, unlinked: Array}} each crossSide entry is
+ *     {project, goal, projectSide, goalSide}; each unlinked entry is
+ *     {project}. Order follows the input `projects` order.
+ */
+function auditProjectGoalLinks(projects, goals) {
+    const out = { crossSide: [], unlinked: [] };
+    if (!Array.isArray(projects)) return out;
+    const byId = new Map(
+        (Array.isArray(goals) ? goals : []).map((g) => [g && g.id, g]),
+    );
+    for (const p of projects) {
+        if (!p) continue;
+        if (!p.goal_id) {
+            out.unlinked.push({ project: p });
+            continue;
+        }
+        const goal = byId.get(p.goal_id);
+        if (!goal) continue;  // goal not in list (archived/unknown) — can't classify
+        const goalSide = typeForCategory(goal.category);
+        const projectSide = p.type === "work" ? "work" : "personal";
+        if (goalSide !== projectSide) {
+            out.crossSide.push({ project: p, goal, projectSide, goalSide });
+        }
+    }
+    return out;
+}
+
 if (typeof module !== "undefined" && module.exports) {
-    module.exports = { typeForCategory, filterGoalsByType, goalsForDropdown };
+    module.exports = {
+        typeForCategory, filterGoalsByType, goalsForDropdown, auditProjectGoalLinks,
+    };
 } else if (typeof window !== "undefined") {
-    window.goalFilterHelpers = { typeForCategory, filterGoalsByType, goalsForDropdown };
+    window.goalFilterHelpers = {
+        typeForCategory, filterGoalsByType, goalsForDropdown, auditProjectGoalLinks,
+    };
 }

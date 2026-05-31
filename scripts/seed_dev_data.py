@@ -113,7 +113,7 @@ def _seed():
             # a Personal task and asserts the work-side goal auto-fills
             # AND appears in the dropdown.
             Project(
-                name="AI Upskilling (personal)", color="#a855f7",
+                name="AI Training", color="#a855f7",
                 type=ProjectType.PERSONAL, goal_id=goals[0].id,
             ),
         ]

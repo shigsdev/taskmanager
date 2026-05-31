@@ -6,9 +6,9 @@
  */
 "use strict";
 
-const { typeForCategory, filterGoalsByType, goalsForDropdown } = require(
-    "../../../static/goal_filter_helpers"
-);
+const {
+    typeForCategory, filterGoalsByType, goalsForDropdown, auditProjectGoalLinks,
+} = require("../../../static/goal_filter_helpers");
 
 describe("typeForCategory — strict bipartition (#142)", () => {
     test.each([
@@ -128,5 +128,84 @@ describe("goalsForDropdown — type scope ∪ keep set (#272)", () => {
     test("non-array goals is safe", () => {
         expect(goalsForDropdown(null, "personal", ["g_work"])).toEqual([]);
         expect(goalsForDropdown(undefined, "personal", null)).toEqual([]);
+    });
+});
+
+describe("auditProjectGoalLinks — project→goal cleanup audit (#273)", () => {
+    const goals = [
+        { id: "gw", category: "work", title: "AI Upskilling" },
+        { id: "gh", category: "health", title: "Run a half marathon" },
+        { id: "gr", category: "relationships", title: "Family" },
+    ];
+
+    test("flags a personal project linked to a work-side goal as cross-side", () => {
+        const projects = [
+            { id: "p1", name: "AI Training", type: "personal", goal_id: "gw" },
+        ];
+        const out = auditProjectGoalLinks(projects, goals);
+        expect(out.crossSide).toHaveLength(1);
+        expect(out.crossSide[0].project.id).toBe("p1");
+        expect(out.crossSide[0].goal.id).toBe("gw");
+        expect(out.crossSide[0].projectSide).toBe("personal");
+        expect(out.crossSide[0].goalSide).toBe("work");
+        expect(out.unlinked).toHaveLength(0);
+    });
+
+    test("flags a work project linked to a personal-side goal as cross-side", () => {
+        const projects = [
+            { id: "p2", name: "Side Gig", type: "work", goal_id: "gh" },
+        ];
+        const out = auditProjectGoalLinks(projects, goals);
+        expect(out.crossSide).toHaveLength(1);
+        expect(out.crossSide[0].projectSide).toBe("work");
+        expect(out.crossSide[0].goalSide).toBe("personal");
+    });
+
+    test("a same-side link is NOT flagged", () => {
+        const projects = [
+            { id: "p3", name: "Marathon Prep", type: "personal", goal_id: "gh" },
+            { id: "p4", name: "AI Work", type: "work", goal_id: "gw" },
+        ];
+        const out = auditProjectGoalLinks(projects, goals);
+        expect(out.crossSide).toHaveLength(0);
+        expect(out.unlinked).toHaveLength(0);
+    });
+
+    test("a project with no goal is flagged unlinked", () => {
+        const projects = [
+            { id: "p5", name: "Home Reno", type: "personal", goal_id: null },
+            { id: "p6", name: "Misc", type: "work" },  // goal_id absent
+        ];
+        const out = auditProjectGoalLinks(projects, goals);
+        expect(out.unlinked.map((u) => u.project.id)).toEqual(["p5", "p6"]);
+        expect(out.crossSide).toHaveLength(0);
+    });
+
+    test("a goal_id not present in the goals list is left unflagged (archived/unknown)", () => {
+        const projects = [
+            { id: "p7", name: "Ghost link", type: "personal", goal_id: "deleted" },
+        ];
+        const out = auditProjectGoalLinks(projects, goals);
+        expect(out.crossSide).toHaveLength(0);
+        expect(out.unlinked).toHaveLength(0);
+    });
+
+    test("mixed set: order follows input, both buckets populated", () => {
+        const projects = [
+            { id: "a", name: "A", type: "personal", goal_id: "gw" },   // cross
+            { id: "b", name: "B", type: "personal", goal_id: null },    // unlinked
+            { id: "c", name: "C", type: "work", goal_id: "gw" },        // same-side OK
+            { id: "d", name: "D", type: "work", goal_id: "gr" },        // cross
+        ];
+        const out = auditProjectGoalLinks(projects, goals);
+        expect(out.crossSide.map((x) => x.project.id)).toEqual(["a", "d"]);
+        expect(out.unlinked.map((x) => x.project.id)).toEqual(["b"]);
+    });
+
+    test("non-array / empty inputs are safe", () => {
+        expect(auditProjectGoalLinks(null, goals)).toEqual({ crossSide: [], unlinked: [] });
+        expect(auditProjectGoalLinks([], goals)).toEqual({ crossSide: [], unlinked: [] });
+        expect(auditProjectGoalLinks([{ id: "x", type: "work", goal_id: "gw" }], null))
+            .toEqual({ crossSide: [], unlinked: [] });  // goals null → goal not found → unflagged
     });
 });

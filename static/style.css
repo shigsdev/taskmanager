@@ -4682,3 +4682,47 @@ table.quality-gates code {
     color: var(--accent);
 }
 
+/* #273 (2026-05-30): project→goal mapping cleanup card. Rows flex-wrap
+ * so the reassign <select> + Clear button drop below the label at mobile
+ * 375px instead of pushing the row past the viewport (the capture-bar
+ * #138 D-B1 overflow lesson). min-width:0 on the label + select keeps
+ * long project/goal names from blowing out the track. */
+.pg-cleanup { margin: 8px 0 12px; }
+.pg-summary {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin: 0 0 8px;
+}
+.pg-subhead {
+    font-size: 0.92rem;
+    margin: 12px 0 6px;
+    color: var(--text);
+}
+.pg-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-sunk);
+    font-size: 0.9rem;
+}
+.pg-row-cross { border-left: 3px solid var(--warn, #d97706); }
+.pg-row-unlinked { border-left: 3px solid var(--border); }
+.pg-flag { flex: 0 0 auto; font-size: 1rem; }
+.pg-label {
+    flex: 1 1 200px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--text);
+}
+.pg-goal-select {
+    flex: 0 1 auto;
+    max-width: 100%;
+    min-width: 0;
+}
+.pg-clear { flex: 0 0 auto; }
+

@@ -398,6 +398,171 @@
         }
     }
 
+    // ============================================================
+    // #273 — project→goal mapping cleanup card.
+    //
+    // A self-loading audit card (no countUrl/runUrl registry entry —
+    // it renders on page load and after each fix). The pure audit logic
+    // lives in goal_filter_helpers.auditProjectGoalLinks (Jest-tested);
+    // this is the DOM-glue + the inline reassign/clear wiring. Rows are
+    // built with createElement/textContent (NOT innerHTML) so a project
+    // name or goal title can never inject markup.
+    // ============================================================
+
+    function buildGoalSelect(goals, currentGoalId) {
+        const sel = document.createElement("select");
+        sel.className = "pg-goal-select";
+        const none = document.createElement("option");
+        none.value = "";
+        none.textContent = "— None —";
+        sel.appendChild(none);
+        (goals || []).forEach(function (g) {
+            const opt = document.createElement("option");
+            opt.value = g.id;
+            opt.textContent = g.title + " (" + g.category + ")";
+            sel.appendChild(opt);
+        });
+        sel.value = currentGoalId || "";
+        return sel;
+    }
+
+    function buildPgRow(card, project, goals, flag, flagClass, detail) {
+        const row = document.createElement("div");
+        row.className = "pg-row " + flagClass;
+
+        const flagEl = document.createElement("span");
+        flagEl.className = "pg-flag";
+        flagEl.textContent = flag;
+        row.appendChild(flagEl);
+
+        const label = document.createElement("span");
+        label.className = "pg-label";
+        const name = document.createElement("strong");
+        name.textContent = project.name;
+        label.appendChild(name);
+        label.appendChild(document.createTextNode(" " + detail));
+        row.appendChild(label);
+
+        const sel = buildGoalSelect(goals, project.goal_id);
+        sel.addEventListener("change", function () {
+            applyProjectGoal(card, project, sel.value);
+        });
+        row.appendChild(sel);
+
+        // Quick "Clear" only for rows that currently HAVE a goal.
+        if (project.goal_id) {
+            const clear = document.createElement("button");
+            clear.type = "button";
+            clear.className = "btn btn-secondary pg-clear";
+            clear.textContent = "Clear";
+            clear.addEventListener("click", function () {
+                applyProjectGoal(card, project, "");
+            });
+            row.appendChild(clear);
+        }
+        return row;
+    }
+
+    function renderProjectGoalAudit(container, audit, goals, card) {
+        container.textContent = "";
+        const cross = (audit && audit.crossSide) || [];
+        const unlinked = (audit && audit.unlinked) || [];
+
+        const summary = document.createElement("p");
+        summary.className = "pg-summary";
+        summary.textContent =
+            cross.length + " cross-side · " + unlinked.length + " unlinked";
+        container.appendChild(summary);
+
+        if (cross.length === 0 && unlinked.length === 0) {
+            const ok = document.createElement("p");
+            ok.className = "utility-description";
+            ok.textContent = "✓ Every active project links to a same-side goal.";
+            container.appendChild(ok);
+            return;
+        }
+
+        if (cross.length) {
+            const h = document.createElement("h3");
+            h.className = "pg-subhead";
+            h.textContent = "Cross-side links";
+            container.appendChild(h);
+            cross.forEach(function (item) {
+                container.appendChild(buildPgRow(
+                    card, item.project, goals, "⚠", "pg-row-cross",
+                    "(" + item.projectSide + ") → " + item.goal.title
+                    + " [" + item.goalSide + "]",
+                ));
+            });
+        }
+        if (unlinked.length) {
+            const h = document.createElement("h3");
+            h.className = "pg-subhead";
+            h.textContent = "Unlinked (no goal)";
+            container.appendChild(h);
+            unlinked.forEach(function (item) {
+                container.appendChild(buildPgRow(
+                    card, item.project, goals, "ℹ", "pg-row-unlinked",
+                    "(" + item.project.type + ") → (no goal)",
+                ));
+            });
+        }
+    }
+
+    async function applyProjectGoal(card, project, goalId) {
+        const resultEl = card.querySelector("[data-pg-result]");
+        try {
+            await window.apiFetch("/api/projects/" + project.id, {
+                method: "PATCH",
+                body: JSON.stringify({ goal_id: goalId || null }),
+            });
+            if (resultEl) {
+                resultEl.textContent = goalId
+                    ? "Reassigned goal on “" + project.name + "”."
+                    : "Cleared goal on “" + project.name + "”.";
+                resultEl.classList.remove("utility-result-err");
+            }
+            await loadProjectGoalAudit(card);  // re-render with fresh data
+        } catch (err) {
+            if (resultEl) {
+                resultEl.textContent = "Failed to update “" + project.name
+                    + "”: " + (err.message || err);
+                resultEl.classList.add("utility-result-err");
+            }
+        }
+    }
+
+    async function loadProjectGoalAudit(card) {
+        const container = card.querySelector("[data-pg-audit]");
+        if (!container) return;
+        if (!window.goalFilterHelpers
+            || !window.goalFilterHelpers.auditProjectGoalLinks) {
+            container.textContent = "";
+            const p = document.createElement("p");
+            p.className = "utility-result utility-result-err";
+            p.textContent = "Audit helper not loaded.";
+            container.appendChild(p);
+            return;
+        }
+        try {
+            const [projects, goals] = await Promise.all([
+                window.apiFetch("/api/projects"),            // active projects
+                window.apiFetch("/api/goals?is_active=all"), // all goals (resolve archived links)
+            ]);
+            const audit = window.goalFilterHelpers.auditProjectGoalLinks(
+                projects, goals,
+            );
+            renderProjectGoalAudit(container, audit, goals, card);
+        } catch (err) {
+            container.textContent = "";
+            const p = document.createElement("p");
+            p.className = "utility-result utility-result-err";
+            p.textContent = "Failed to load project → goal map: "
+                + (err.message || err);
+            container.appendChild(p);
+        }
+    }
+
     function init() {
         // Load counts for every utility card on page load (skipped
         // for action-only cards via the countUrl-absent branch).
@@ -409,6 +574,19 @@
                 if (card) runUtility(card);
             });
         });
+        // #273 — self-loading project→goal cleanup card + Refresh button.
+        const pgCard = document.querySelector(
+            '.utility-card[data-utility="project-goal-cleanup"]',
+        );
+        if (pgCard) {
+            loadProjectGoalAudit(pgCard);
+            const refresh = pgCard.querySelector("[data-pg-refresh]");
+            if (refresh) {
+                refresh.addEventListener("click", function () {
+                    loadProjectGoalAudit(pgCard);
+                });
+            }
+        }
     }
 
     if (document.readyState === "loading") {
