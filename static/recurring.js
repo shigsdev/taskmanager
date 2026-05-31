@@ -86,6 +86,17 @@
                 " · goal: " + escapeHtml(_goalTitle(rt.goal_id)) +
                 (rt.is_active ? "" : " · <strong>PAUSED</strong>") +
             "</div>";
+        // #266: click the row body to edit the template — unless we're in
+        // bulk-select mode, where a click toggles the checkbox instead.
+        info.style.cursor = "pointer";
+        info.addEventListener("click", function () {
+            if (row.classList.contains("select-mode")) {
+                cb.checked = !cb.checked;
+                updateToolbar();
+            } else {
+                openEditor(rt);
+            }
+        });
         row.appendChild(info);
         return row;
     }
@@ -187,6 +198,156 @@
         await load();
     }
 
+    // ====================================================================
+    // #266 — per-template editor (dedicated panel, task-detail-panel look).
+    // ====================================================================
+
+    var _editId = null;
+
+    function _el(id) { return document.getElementById(id); }
+
+    function _populateEditorDropdowns() {
+        // Day-of-month options 1–31 (built once).
+        var dom = _el("recurEditDayOfMonth");
+        if (dom && dom.options.length === 0) {
+            for (var d = 1; d <= 31; d++) {
+                var o = document.createElement("option");
+                o.value = String(d); o.textContent = String(d);
+                dom.appendChild(o);
+            }
+        }
+        // Project + Goal dropdowns (all projects/goals; — None — first).
+        var proj = _el("recurEditProject");
+        var goal = _el("recurEditGoal");
+        proj.length = 1; goal.length = 1;  // keep the "— None —" option
+        allProjects.forEach(function (p) {
+            var o = document.createElement("option");
+            o.value = p.id; o.textContent = p.name;
+            proj.appendChild(o);
+        });
+        allGoals.forEach(function (g) {
+            var o = document.createElement("option");
+            o.value = g.id; o.textContent = g.title + " (" + g.category + ")";
+            goal.appendChild(o);
+        });
+    }
+
+    function recurEditFreqChanged() {
+        var f = _el("recurEditFrequency").value;
+        _el("recurEditWeeklyField").style.display = f === "weekly" ? "" : "none";
+        _el("recurEditMultiDayField").style.display = f === "multi_day_of_week" ? "" : "none";
+        _el("recurEditMonthlyDateField").style.display = f === "monthly_date" ? "" : "none";
+        _el("recurEditMonthlyNthField").style.display = f === "monthly_nth_weekday" ? "" : "none";
+    }
+
+    function openEditor(rt) {
+        _populateEditorDropdowns();
+        _editId = rt.id;
+        _el("recurEditId").value = rt.id;
+        _el("recurEditTitle").value = rt.title || "";
+        _el("recurEditFrequency").value = rt.frequency;
+        _el("recurEditType").value = rt.type;
+        _el("recurEditProject").value = rt.project_id || "";
+        _el("recurEditGoal").value = rt.goal_id || "";
+        _el("recurEditUrl").value = rt.url || "";
+        _el("recurEditEndDate").value = rt.end_date || "";
+        _el("recurEditNotes").value = rt.notes || "";
+        // Frequency-specific fields.
+        if (rt.day_of_week != null) {
+            _el("recurEditDay").value = String(rt.day_of_week);
+            _el("recurEditNthDay").value = String(rt.day_of_week);
+        }
+        if (rt.day_of_month != null) _el("recurEditDayOfMonth").value = String(rt.day_of_month);
+        if (rt.week_of_month != null) _el("recurEditWeekOfMonth").value = String(rt.week_of_month);
+        // Multi-day chips.
+        document.querySelectorAll("#recurEditDays input[type=checkbox]")
+            .forEach(function (c) { c.checked = false; });
+        (rt.days_of_week || []).forEach(function (d) {
+            var c = document.querySelector('#recurEditDays input[value="' + d + '"]');
+            if (c) c.checked = true;
+        });
+        // Pause/Resume button reflects current state.
+        _el("recurEditPause").textContent = rt.is_active ? "Pause" : "Resume";
+        _el("recurEditPause").dataset.next = rt.is_active ? "false" : "true";
+        _el("recurEditResult").textContent = "";
+        recurEditFreqChanged();
+        _el("recurEditOverlay").style.display = "";
+    }
+
+    function closeEditor() {
+        _el("recurEditOverlay").style.display = "none";
+        _editId = null;
+    }
+
+    function collectEditor() {
+        var f = _el("recurEditFrequency").value;
+        // Gather raw DOM values; the pure payload shaping (frequency
+        // branching + stale-field clearing) lives in recurring_helpers.js
+        // so it's Jest-tested (#266 / anti-pattern #3).
+        return window.recurringHelpers.buildRecurringEditPayload({
+            title: _el("recurEditTitle").value,
+            frequency: f,
+            type: _el("recurEditType").value,
+            projectId: _el("recurEditProject").value,
+            goalId: _el("recurEditGoal").value,
+            url: _el("recurEditUrl").value,
+            notes: _el("recurEditNotes").value,
+            endDate: _el("recurEditEndDate").value,
+            dayOfWeek: f === "monthly_nth_weekday"
+                ? parseInt(_el("recurEditNthDay").value, 10)
+                : parseInt(_el("recurEditDay").value, 10),
+            daysOfWeek: Array.from(
+                document.querySelectorAll("#recurEditDays input[type=checkbox]:checked"),
+            ).map(function (c) { return parseInt(c.value, 10); }),
+            dayOfMonth: parseInt(_el("recurEditDayOfMonth").value, 10),
+            weekOfMonth: parseInt(_el("recurEditWeekOfMonth").value, 10),
+        });
+    }
+
+    async function saveEditor(e) {
+        if (e) e.preventDefault();
+        if (!_editId) return;
+        var resultEl = _el("recurEditResult");
+        try {
+            await window.apiFetch("/api/recurring/" + _editId, {
+                method: "PATCH",
+                body: JSON.stringify(collectEditor()),
+            });
+            closeEditor();
+            await load();
+        } catch (err) {
+            resultEl.textContent = "Save failed: " + (err.message || err);
+            resultEl.classList.add("utility-result-err");
+        }
+    }
+
+    async function togglePauseEditor() {
+        if (!_editId) return;
+        var next = _el("recurEditPause").dataset.next === "true";
+        try {
+            await window.apiFetch("/api/recurring/" + _editId, {
+                method: "PATCH",
+                body: JSON.stringify({ is_active: next }),
+            });
+            closeEditor();
+            await load();
+        } catch (err) {
+            _el("recurEditResult").textContent = "Failed: " + (err.message || err);
+        }
+    }
+
+    async function deleteEditor() {
+        if (!_editId) return;
+        if (!window.confirm("Delete this recurring template? Existing spawned tasks are kept.")) return;
+        try {
+            await window.apiFetch("/api/recurring/" + _editId, { method: "DELETE" });
+            closeEditor();
+            await load();
+        } catch (err) {
+            _el("recurEditResult").textContent = "Delete failed: " + (err.message || err);
+        }
+    }
+
     function init() {
         document.getElementById("recurringSelectToggle").addEventListener("click", function () {
             var rows = document.querySelectorAll(".recurring-row");
@@ -225,6 +386,16 @@
             ]);
         });
         document.getElementById("recurringBulkDelete").addEventListener("click", bulkDelete);
+
+        // #266: editor wiring.
+        _el("recurEditFrequency").addEventListener("change", recurEditFreqChanged);
+        _el("recurEditForm").addEventListener("submit", saveEditor);
+        _el("recurEditClose").addEventListener("click", closeEditor);
+        _el("recurEditPause").addEventListener("click", togglePauseEditor);
+        _el("recurEditDelete").addEventListener("click", deleteEditor);
+        _el("recurEditOverlay").addEventListener("click", function (e) {
+            if (e.target === _el("recurEditOverlay")) closeEditor();  // backdrop click closes
+        });
 
         load();
     }

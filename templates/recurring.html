@@ -34,6 +34,137 @@
 
     <div class="recurring-list" id="recurringList"></div>
 </div>
+
+{# #266 (2026-05-31): dedicated per-template editor. Reuses the
+   .detail-panel chrome from the task detail panel for an identical look,
+   but it's recurring-shaped (frequency/days/end-date, no section/due-date)
+   and saves to PATCH /api/recurring/<id>. Opened by clicking a row when
+   NOT in bulk-select mode. #}
+<div class="detail-overlay" id="recurEditOverlay" style="display:none">
+    <div class="detail-panel" id="recurEditPanel">
+        <div class="detail-header">
+            <h3>Edit recurring template</h3>
+            <button type="button" class="icon-btn" id="recurEditClose" title="Close">✕</button>
+        </div>
+        <form id="recurEditForm">
+            <input type="hidden" id="recurEditId">
+
+            <label for="recurEditTitle">Title</label>
+            <input type="text" id="recurEditTitle" required spellcheck="true">
+
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="recurEditFrequency">Repeat</label>
+                    <select id="recurEditFrequency">
+                        <option value="daily">Daily</option>
+                        <option value="weekdays">Weekdays (Mon-Fri)</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="multi_day_of_week">Specific weekdays</option>
+                        <option value="monthly_date">Monthly (same date)</option>
+                        <option value="monthly_nth_weekday">Monthly (nth weekday)</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="recurEditType">Type</label>
+                    <select id="recurEditType">
+                        <option value="work">Work</option>
+                        <option value="personal">Personal</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row" id="recurEditWeeklyField" style="display:none">
+                <div class="form-field">
+                    <label for="recurEditDay">Day of week</label>
+                    <select id="recurEditDay">
+                        <option value="0">Monday</option>
+                        <option value="1">Tuesday</option>
+                        <option value="2">Wednesday</option>
+                        <option value="3">Thursday</option>
+                        <option value="4">Friday</option>
+                        <option value="5">Saturday</option>
+                        <option value="6">Sunday</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row" id="recurEditMultiDayField" style="display:none">
+                <div class="form-field">
+                    <label>Days of week</label>
+                    <div class="repeat-days" id="recurEditDays">
+                        <label class="repeat-day"><input type="checkbox" value="0">Mon</label>
+                        <label class="repeat-day"><input type="checkbox" value="1">Tue</label>
+                        <label class="repeat-day"><input type="checkbox" value="2">Wed</label>
+                        <label class="repeat-day"><input type="checkbox" value="3">Thu</label>
+                        <label class="repeat-day"><input type="checkbox" value="4">Fri</label>
+                        <label class="repeat-day"><input type="checkbox" value="5">Sat</label>
+                        <label class="repeat-day"><input type="checkbox" value="6">Sun</label>
+                    </div>
+                    <small class="form-hint">Pick one or more days.</small>
+                </div>
+            </div>
+
+            <div class="form-row" id="recurEditMonthlyDateField" style="display:none">
+                <div class="form-field">
+                    <label for="recurEditDayOfMonth">Day of month</label>
+                    <select id="recurEditDayOfMonth"></select>
+                </div>
+            </div>
+
+            <div class="form-row" id="recurEditMonthlyNthField" style="display:none">
+                <div class="form-field">
+                    <label for="recurEditWeekOfMonth">Which week</label>
+                    <select id="recurEditWeekOfMonth">
+                        <option value="1">First</option>
+                        <option value="2">Second</option>
+                        <option value="3">Third</option>
+                        <option value="4">Fourth</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="recurEditNthDay">Day of week</label>
+                    <select id="recurEditNthDay">
+                        <option value="0">Monday</option>
+                        <option value="1">Tuesday</option>
+                        <option value="2">Wednesday</option>
+                        <option value="3">Thursday</option>
+                        <option value="4">Friday</option>
+                        <option value="5">Saturday</option>
+                        <option value="6">Sunday</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="recurEditProject">Project</label>
+                    <select id="recurEditProject"><option value="">— None —</option></select>
+                </div>
+                <div class="form-field">
+                    <label for="recurEditGoal">Goal</label>
+                    <select id="recurEditGoal"><option value="">— None —</option></select>
+                </div>
+            </div>
+
+            <label for="recurEditUrl">Article / Link URL</label>
+            <input type="url" id="recurEditUrl" placeholder="https://…">
+
+            <label for="recurEditEndDate">Stop after (optional)</label>
+            <input type="date" id="recurEditEndDate">
+            <small class="form-hint">Leave blank to repeat forever.</small>
+
+            <label for="recurEditNotes">Notes</label>
+            <textarea id="recurEditNotes" rows="3"></textarea>
+
+            <div class="detail-actions">
+                <button type="submit" class="btn">Save</button>
+                <button type="button" class="btn" id="recurEditPause">Pause</button>
+                <button type="button" class="btn btn-danger" id="recurEditDelete">Delete</button>
+            </div>
+            <p class="utility-result" id="recurEditResult" aria-live="polite"></p>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -44,5 +175,6 @@
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 <script src="{{ url_for('static', filename='parse_capture.js') }}"></script>
 <script src="{{ url_for('static', filename='capture.js') }}"></script>
+<script src="{{ url_for('static', filename='recurring_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='recurring.js') }}"></script>
 {% endblock %}

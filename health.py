@@ -155,6 +155,7 @@ EXPECTED_STATIC_FILES = (
     "static/calendar.js",
     "static/calendar_bucket_helpers.js",  # #231 — Jest-importable bucket + subtask filter
     "static/recurring.js",
+    "static/recurring_helpers.js",
     "static/inbox_categorize_helpers.js",  # #208 — Jest-importable due-date helpers
     "static/inbox_categorize.js",
     "static/plan.js",
