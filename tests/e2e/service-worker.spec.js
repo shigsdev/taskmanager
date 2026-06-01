@@ -49,7 +49,11 @@ async function setupFreshSW(page) {
     await page.waitForLoadState("networkidle");
 }
 
-test.describe("Service Worker lifecycle", () => {
+// #274: SW lifecycle (register/activate/cache/fetch-routing) is entirely
+// viewport-independent — tag @noviewport so the chromium-mobile project
+// skips it. The dedicated chromium-sw project + the desktop chromium
+// project still exercise these fully.
+test.describe("Service Worker lifecycle @noviewport", () => {
     test("SW registers and activates on first visit", async ({ page }) => {
         // Navigate WITHOUT ?nosw=1 so the SW registers
         await page.goto("/");

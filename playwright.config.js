@@ -92,8 +92,24 @@ module.exports = defineConfig({
             // gate time. Same testDir as `chromium`; only the viewport
             // differs. Per-spec mobile-only opt-outs use the
             // `test.skip(viewport.width < 700, "desktop-only")` idiom.
+            //
+            // #274 (2026-05-31): skip describe blocks tagged `@noviewport`
+            // here. The mobile re-run exists to catch LAYOUT regressions;
+            // tests that assert pure DB/JS state through programmatic
+            // interaction (DataTransfer drags, page.evaluate races, SW
+            // lifecycle) or only console-error-free page loads gain nothing
+            // from a second viewport — `ui_audit.spec.js` already audits
+            // EVERY route for console errors + horizontal overflow + the
+            // 44px touch-target floor at 375px, which is the real mobile
+            // safety net. Opt-OUT model (default still runs at mobile) so a
+            // new test is covered by default; only certified
+            // viewport-independent groups carry the tag. Cut the mobile run
+            // ~4.2m → ~1.9m. Real-interaction tests (capture bar, filter
+            // chips, detail-panel clicks) stay — they exercise 375px
+            // reachability.
             name: "chromium-mobile",
             testDir: "./tests/e2e",
+            grepInvert: /@noviewport/,
             use: {
                 baseURL: "http://localhost:5111",
                 headless: true,

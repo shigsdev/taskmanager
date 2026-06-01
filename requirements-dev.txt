@@ -6,3 +6,9 @@
 # bisect-this-file searcher.
 ruff==0.6.3
 pre-commit==4.6.0
+# #274 (2026-05-31): parallelize the pytest gate (run_all_gates.sh). Tests
+# are fully isolated (function-scoped sqlite:///:memory: DB per test), so
+# `pytest -n auto` is safe and cuts the suite ~214s → ~43s (~5x) with
+# identical coverage. Dev/test-only — the Railway coverage-audit card runs
+# pytest serially and doesn't need it.
+pytest-xdist==3.8.0

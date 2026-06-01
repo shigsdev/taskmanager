@@ -81,6 +81,49 @@ capped_run() {
     return "$rc"
 }
 
+# #274 (2026-05-31): the 5 security/CVE scanners (bandit, pip-audit, npm
+# audit, semgrep, gitleaks) are read-only and independent of one another, so
+# run them CONCURRENTLY and join at the end instead of serially (~saves the
+# sum-minus-max wall clock). bg_scan launches one in the background, capturing
+# its combined output + real exit code under $SCAN_TMP. The `set +e` in the
+# subshell is load-bearing: without it the parent's `set -e` would abort the
+# subshell the instant the scanner exits non-zero, BEFORE we record the rc —
+# and a security gate whose failure is silently dropped is worse than a slow
+# one. scan_join prints the captured output in a deterministic order and turns
+# any non-zero rc into a suite failure.
+SCAN_TMP=""
+SCAN_FAILED=0
+SCAN_PIDS=()
+bg_scan() {
+    local key="$1"; shift
+    [ -n "$SCAN_TMP" ] || SCAN_TMP="$(mktemp -d)"
+    ( set +e; "$@" > "$SCAN_TMP/$key.out" 2>&1; echo $? > "$SCAN_TMP/$key.rc" ) &
+    # Track ONLY the scanner PIDs. A bare `wait` would also block on the
+    # long-lived dev-bypass server (started with `&` for the Playwright gate)
+    # which never exits → the join would hang forever. wait on these PIDs.
+    SCAN_PIDS+=("$!")
+}
+scan_await() {
+    # Join all launched scanners. Subshells always exit 0 (set +e + echo), so
+    # this never trips the parent's set -e; `|| true` is belt-and-braces.
+    [ "${#SCAN_PIDS[@]}" -gt 0 ] && { wait "${SCAN_PIDS[@]}" || true; }
+}
+scan_join() {
+    # Usage: scan_join <key> <label> <fail-line> [more-fail-lines...]
+    local key="$1" label="$2"; shift 2
+    banner "scanner result: $label"
+    cat "$SCAN_TMP/$key.out" 2>/dev/null || true
+    local rc
+    rc="$(cat "$SCAN_TMP/$key.rc" 2>/dev/null || echo 1)"
+    if [ "$rc" -eq 0 ]; then
+        pass "$label"
+    else
+        local line
+        for line in "$@"; do fail "$line"; done
+        SCAN_FAILED=1
+    fi
+}
+
 # --- Preflight: tools available ---------------------------------------------
 
 banner "Preflight"
@@ -102,7 +145,21 @@ fi
 # --- 2. Pytest --------------------------------------------------------------
 
 banner "2. Pytest"
-if python -m pytest --cov -q; then
+# #274 (2026-05-31): parallelize with pytest-xdist. Every test gets its own
+# in-memory SQLite DB (function-scoped `app` fixture, sqlite:///:memory:),
+# so there is ZERO shared state between tests — xdist is safe, and pytest-cov
+# correctly combines per-worker coverage (same --cov-fail-under=80 floor).
+# Measured 214s → 43s (~5x) on a 32-core box. Falls back to serial if
+# pytest-xdist isn't installed so the gate stays portable. Override the
+# worker count with PYTEST_WORKERS (e.g. PYTEST_WORKERS=0 to debug serially).
+PYTEST_WORKERS="${PYTEST_WORKERS:-auto}"
+PYTEST_PARALLEL=""
+if python -c "import xdist" >/dev/null 2>&1; then
+    PYTEST_PARALLEL="-n ${PYTEST_WORKERS}"
+else
+    printf "${YELLOW}!${NC} pytest-xdist not installed — running pytest serially (slower). Install: pip install pytest-xdist\n" >&2
+fi
+if python -m pytest ${PYTEST_PARALLEL} --cov -q; then
     pass "pytest (coverage floor enforced)"
 else
     fail "pytest failed or coverage below floor"
@@ -178,36 +235,22 @@ else
     done
 fi
 
-if npm run test:e2e; then
-    pass "local Playwright"
+# #274 (2026-05-31): run all three local projects in ONE `playwright test`
+# invocation (test:e2e:local) instead of three sequential `npm run` calls.
+# Each separate invocation paid its own Node + Playwright + browser
+# cold-start (~3-5s each); one process pays it once and Playwright schedules
+# all three projects (workers:1 keeps them serial = same DB-safety as
+# before). Covers:
+#   - chromium        — desktop 1280×800, ?nosw=1 (tests/e2e)
+#   - chromium-sw     — SW-active path (tests/e2e-sw) — PR39 audit E2: the
+#                       entire service-worker code path was otherwise only
+#                       smoked on prod
+#   - chromium-mobile — 375×812 re-run (#141) MINUS @noviewport-tagged
+#                       viewport-independent groups (#274)
+if npm run test:e2e:local; then
+    pass "local Playwright (chromium + sw + mobile, one run)"
 else
     fail "local Playwright failed"
-    exit 1
-fi
-
-# PR39 (audit E2): SW-active suite. The default e2e suite uses ?nosw=1
-# which means the entire service-worker code path was only tested on
-# prod. This runs the same dev bypass server with the SW active so
-# install/activate/cache-strategy/fetch-routing regressions are caught
-# locally before deploy.
-if npm run test:e2e:sw; then
-    pass "local Playwright (SW-active)"
-else
-    fail "local Playwright (SW-active) failed"
-    exit 1
-fi
-
-# #141: re-run the same local e2e suite at mobile viewport (375×812).
-# Phase 6 SOP requires manual desktop+mobile regression on every UI
-# change, but it's manual — easy to skip the mobile half on a "small"
-# change. This is the mechanical guard. If a viewport-specific bug
-# (overflow, off-screen element, missing affordance) lands in the
-# changed surface, the existing test suite re-run at mobile catches
-# it at gate time.
-if npm run test:e2e:mobile; then
-    pass "local Playwright (mobile 375×812)"
-else
-    fail "local Playwright (mobile 375×812) failed"
     exit 1
 fi
 
@@ -219,14 +262,8 @@ banner "5. Bandit (security lint)"
 # finding (some fixed in code, the rest documented as skips in
 # .bandit.yml with rationale). Locking the gate at LOW/LOW catches any
 # regression early — see backlog #20 + ADR-024.
-if python -m bandit -r . -c .bandit.yml --quiet; then
-    pass "bandit"
-else
-    fail "bandit found a security issue (LOW/LOW threshold). Review the report"
-    fail "  above. If it's a true positive, fix it. If it's a documented"
-    fail "  exception, add a per-line '# nosec BXXX  # reason' or update .bandit.yml."
-    exit 1
-fi
+# #274: launch in background (joined after the fast sync checks below).
+bg_scan bandit python -m bandit -r . -c .bandit.yml --quiet
 
 # --- 6. pip-audit (Python CVE check) ----------------------------------------
 
@@ -249,15 +286,10 @@ banner "6. pip-audit (dependency CVEs)"
 # Wall-clock cap (override with PIP_AUDIT_TIMEOUT=<seconds>). pip-audit is
 # network-bound — see capped_run for the 2026-05-31 hang incident.
 PIP_AUDIT_CAP="${PIP_AUDIT_TIMEOUT:-300}"
-if capped_run "$PIP_AUDIT_CAP" "pip-audit" \
-        python -m pip_audit -r requirements-dev.txt --ignore-vuln PYSEC-2026-89; then
-    pass "pip-audit"
-else
-    # capped_run already printed the timeout-specific hint on a 124. This
-    # covers the real-vulnerability case (non-zero, non-timeout exit).
-    fail "pip-audit gate failed — a known vulnerability (bump the affected package in requirements.txt / requirements-dev.txt) OR a timeout (see hint above)."
-    exit 1
-fi
+# #274: launch in background; capped_run still enforces the wall-clock cap
+# (its 124-timeout hint is captured in the scanner's output + joined below).
+bg_scan pipaudit capped_run "$PIP_AUDIT_CAP" "pip-audit" \
+        python -m pip_audit -r requirements-dev.txt --ignore-vuln PYSEC-2026-89
 
 # --- 7. npm audit (Node CVE check) ------------------------------------------
 
@@ -267,12 +299,8 @@ banner "7. npm audit (dependency CVEs)"
 # Wall-clock cap (override with NPM_AUDIT_TIMEOUT=<seconds>). npm audit is
 # network-bound (hits the npm registry advisory endpoint).
 NPM_AUDIT_CAP="${NPM_AUDIT_TIMEOUT:-180}"
-if capped_run "$NPM_AUDIT_CAP" "npm audit" npm audit --audit-level=high; then
-    pass "npm audit"
-else
-    fail "npm audit gate failed — a HIGH/CRITICAL vulnerability (bump the affected package in package.json) OR a timeout (see hint above)."
-    exit 1
-fi
+# #274: launch in background (joined below).
+bg_scan npmaudit capped_run "$NPM_AUDIT_CAP" "npm audit" npm audit --audit-level=high
 
 # --- 8. Docs sync check (env vars in code <-> README) -----------------------
 
@@ -353,16 +381,12 @@ fi
 # --error makes findings exit non-zero. p/python = standard Python rule
 # pack; p/security-audit = OWASP-aligned cross-language audit pack.
 # --metrics=off opts out of telemetry.
-if "$SEMGREP_BIN" scan --config=p/python --config=p/security-audit \
+# #274: launch in background (joined below).
+bg_scan semgrep "$SEMGREP_BIN" scan --config=p/python --config=p/security-audit \
         --error --quiet --metrics=off \
         --exclude=.venv --exclude=.venv-mac \
         --exclude=node_modules --exclude=.claude --exclude=tests \
-        --exclude=migrations --exclude=docs; then
-    pass "semgrep"
-else
-    fail "semgrep found a security issue — review the report above"
-    exit 1
-fi
+        --exclude=migrations --exclude=docs
 
 # --- 10. gitleaks (secrets scanner) -----------------------------------------
 
@@ -389,14 +413,34 @@ fi
 
 # --no-git scans the working tree (vs. git history); --redact ensures
 # any incidental match is shown without the actual secret.
-if "$GITLEAKS_BIN" detect --source . --no-banner --redact --no-git \
-        --config .gitleaks.toml --exit-code 1; then
-    pass "gitleaks"
-else
-    fail "gitleaks found a potential secret — review the report above"
-    fail "  If it's a false positive, add a path/regex allowlist entry to .gitleaks.toml"
-    exit 1
-fi
+# #274: launch in background (joined below).
+bg_scan gitleaks "$GITLEAKS_BIN" detect --source . --no-banner --redact --no-git \
+        --config .gitleaks.toml --exit-code 1
+
+# --- 5–10. Join the parallel security scanners (#274) -----------------------
+# All 5 read-only scanners were launched with bg_scan above and ran
+# concurrently with each other AND with the fast docs/arch/heuristic checks
+# (gates 8–8d). Join them now: wait ONLY on the scanner PIDs (never the
+# bypass server), print each result in a fixed order, and fail the suite on
+# ANY non-zero rc. A scanner whose failure is dropped silently would be worse
+# than a slow gate — scan_join enforces every rc.
+banner "5–10. Joining parallel security scanners"
+scan_await
+scan_join bandit "bandit" \
+    "bandit found a security issue (LOW/LOW threshold). Review the report above." \
+    "  If it's a true positive, fix it. If it's a documented exception, add a" \
+    "  per-line '# nosec BXXX  # reason' or update .bandit.yml."
+scan_join pipaudit "pip-audit" \
+    "pip-audit gate failed — a known vulnerability (bump the affected package in requirements.txt / requirements-dev.txt) OR a timeout (see hint above)."
+scan_join npmaudit "npm audit" \
+    "npm audit gate failed — a HIGH/CRITICAL vulnerability (bump the affected package in package.json) OR a timeout (see hint above)."
+scan_join semgrep "semgrep" \
+    "semgrep found a security issue — review the report above."
+scan_join gitleaks "gitleaks" \
+    "gitleaks found a potential secret — review the report above." \
+    "  If it's a false positive, add a path/regex allowlist entry to .gitleaks.toml"
+rm -rf "$SCAN_TMP"
+[ "$SCAN_FAILED" -eq 0 ] || exit 1
 
 # --- 11. No embedded credentials in git remote URLs --------------------------
 

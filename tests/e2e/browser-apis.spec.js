@@ -8,7 +8,11 @@
 // @ts-check
 const { test, expect } = require("@playwright/test");
 
-test.describe("Web Speech API", () => {
+// #274: every block in this file asserts browser-API / DOM-state behavior
+// that is independent of viewport width — tag @noviewport so the
+// chromium-mobile project skips them (ui_audit.spec.js still covers each
+// page's mobile console-error + overflow + touch-target parity).
+test.describe("Web Speech API @noviewport", () => {
     test("voice button is visible when Speech API is available", async ({
         page,
     }) => {
@@ -41,7 +45,7 @@ test.describe("Web Speech API", () => {
     });
 });
 
-test.describe("Client error reporter", () => {
+test.describe("Client error reporter @noviewport", () => {
     test("uncaught errors are reported to /api/debug/client-error", async ({
         page,
     }) => {
@@ -96,7 +100,7 @@ test.describe("Client error reporter", () => {
     });
 });
 
-test.describe("Update banner", () => {
+test.describe("Update banner @noviewport", () => {
     test("update banner exists in DOM but is hidden", async ({ page }) => {
         await page.goto("/?nosw=1");
         await page.waitForLoadState("networkidle");
@@ -119,7 +123,7 @@ test.describe("Update banner", () => {
     });
 });
 
-test.describe("Logout clears SW cache", () => {
+test.describe("Logout clears SW cache @noviewport", () => {
     test("logout is a POST form with the CLEAR_CACHE submit handler", async ({
         page,
     }) => {

@@ -17,7 +17,11 @@
 require("../playwright-globalSetup");
 const { test, expect } = require("@playwright/test");
 
-test.describe("Page navigation — no console errors", () => {
+// #274: pure page-load console-error checks — ui_audit.spec.js audits the
+// SAME routes for console errors (plus overflow + touch targets) at 375px,
+// so re-running these at mobile is redundant. @noviewport skips them on
+// chromium-mobile.
+test.describe("Page navigation — no console errors @noviewport", () => {
     const pages = [
         { path: "/?nosw=1", title: "Home" },
         { path: "/goals?nosw=1", title: "Goals" },
@@ -514,7 +518,12 @@ test.describe("Filter chips actually filter the board (#92)", () => {
     });
 });
 
-test.describe("Calendar drag-and-drop (#94)", () => {
+// #274: these drag tests dispatch DataTransfer events programmatically and
+// assert the resulting DB state (due_date / tier / sort_order) — not pixel
+// layout — so they're viewport-independent. @noviewport skips them at
+// mobile. (Real-pointer reachability at 375px is covered by the
+// interaction tests that stay, plus ui_audit's touch-target floor.)
+test.describe("Calendar drag-and-drop (#94) @noviewport", () => {
     test("drop unscheduled task on a day cell sets due_date + auto-routes tier (#100)", async ({
         page, request,
     }) => {
@@ -642,7 +651,7 @@ test.describe("Calendar drag-and-drop (#94)", () => {
     });
 });
 
-test.describe("Multi-drag: dragging a selected card moves the whole group", () => {
+test.describe("Multi-drag: dragging a selected card moves the whole group @noviewport", () => {
     // User-requested 2026-05-09: "when I select two at a time, i cannot
     // drag them up/down in unison." Fix: when the dragged card is part
     // of a 2+ selection, the whole .bulk-selected set drags together;
@@ -701,7 +710,7 @@ test.describe("Multi-drag: dragging a selected card moves the whole group", () =
     });
 });
 
-test.describe("Tier-column drag updates due_date for today/tomorrow", () => {
+test.describe("Tier-column drag updates due_date for today/tomorrow @noviewport", () => {
     test("dragging a dated task to Tomorrow advances due_date (user report 2026-05-05)", async ({
         page, request,
     }) => {
@@ -1189,7 +1198,7 @@ test.describe("Auto-categorize Inbox: project dropdown labels", () => {
     });
 });
 
-test.describe("Calendar concurrent-render race (#219)", () => {
+test.describe("Calendar concurrent-render race (#219) @noviewport", () => {
     // User-reported 2026-05-24 (screenshot showed the current week
     // repeated under next week). Root cause: renderCalendar is async
     // and awaits two apiFetch calls. If a second renderCalendar fires
