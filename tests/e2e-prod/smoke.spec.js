@@ -891,6 +891,36 @@ test.describe("Prod smoke — feature surfaces", () => {
             expect(joined).toContain(`/actions/workflows/${wf}`);
         }
     });
+
+    test("task cards give the title the full width — quick-actions are out of flow on desktop (#278)", async ({ page }) => {
+        // #278: the hover-only quick actions used to sit in the flex flow and
+        // reserve up to 50% of the card width even while invisible, squeezing
+        // the title. They're now position:absolute on desktop so the body
+        // spans the card. Behavioral — asserts the live computed layout (not a
+        // source string-match). ui_audit guards overflow but NOT this (a
+        // revert wastes space without overflowing), so this is its own guard.
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const card = page.locator(".task-card").first();
+        if (!(await card.count())) return; // no tasks on prod board → skip
+        const layout = await card.evaluate((el) => {
+            const qa = el.querySelector(".task-quick-actions");
+            const body = el.querySelector(".task-body");
+            return {
+                hasQa: !!qa,
+                qaPosition: qa ? getComputedStyle(qa).position : null,
+                bodyPctOfCard: body
+                    ? body.getBoundingClientRect().width / el.getBoundingClientRect().width
+                    : 0,
+            };
+        });
+        if (layout.hasQa) {
+            // Out of the flex flow → reclaims the reserved width.
+            expect(layout.qaPosition).toBe("absolute");
+        }
+        // Body should now dominate the card (was ~40% before the fix).
+        expect(layout.bodyPctOfCard).toBeGreaterThan(0.7);
+    });
 });
 
 test.describe("Prod smoke — admin endpoints (read-only checks)", () => {

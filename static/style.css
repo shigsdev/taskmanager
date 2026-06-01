@@ -957,14 +957,30 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .subtask-title:hover { text-decoration: underline; }
 
 .task-card .task-quick-actions {
+    /* #278 (2026-06-01): on desktop the hover-only quick actions used to sit
+       in the flex flow with flex-shrink:0 + max-width:50%, so they RESERVED
+       up to half the card width even while invisible (opacity:0) — squeezing
+       the title/body to ~40% of a wide card and truncating titles with tons
+       of empty space to the right. Take them OUT of the flow (absolute,
+       anchored to the card's right edge, left of the always-visible complete
+       button) so the body now spans the full card width and long titles stay
+       readable. They overlay on hover — the standard hover-reveal pattern.
+       Mobile (no hover) puts them back in-flow + always-visible below. */
+    position: absolute;
+    top: 6px;
+    right: 44px;
     display: flex;
     gap: 2px;
     opacity: 0;
     transition: opacity 0.15s;
-    flex-shrink: 0;
     flex-wrap: wrap;
     justify-content: flex-end;
-    max-width: 50%;
+    max-width: 60%;
+    background: var(--surface);
+    border-radius: 6px;
+    padding: 2px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+    z-index: 5;
 }
 
 /* (Removed 2026-05-08: rule that hid .task-checkbox on inbox — the
@@ -2672,10 +2688,18 @@ input[type="time"]::-webkit-calendar-picker-indicator {
         height: 20px;
     }
 
-    /* Quick actions always visible (no hover on touch) */
+    /* Quick actions always visible (no hover on touch). #278: put them BACK
+       in the flex flow on mobile (the desktop rule lifts them out with
+       position:absolute) so they render below the row, visible + tappable,
+       instead of overlaying the card content. */
     .task-card .task-quick-actions {
+        position: static;
         opacity: 1;
         flex-wrap: wrap;
+        max-width: 100%;
+        background: none;
+        box-shadow: none;
+        padding: 0;
     }
     .task-quick-actions button {
         font-size: 0.8rem;
