@@ -114,8 +114,37 @@ function calendarReorderIds(items, draggedId, y) {
     return ids;
 }
 
+/**
+ * #279: build a tier's FULL new order after a within-cell reorder, so the
+ * persisted sort_order can't collide across cells.
+ *
+ * A calendar cell holds only a SUBSET of a tier's tasks. Reordering just the
+ * cell's ids (writing sort_order 0..N for them) can collide with the same
+ * tier's tasks in other cells. Instead, walk the tier's CURRENT order and,
+ * wherever a cell task sits, drop in the next id from the cell's NEW order —
+ * leaving every non-cell task in its existing slot. The caller then sends the
+ * whole tier to /api/tasks/reorder, which renumbers it 0..N with every member
+ * distinct (no collision), while non-cell tasks keep their relative position.
+ *
+ * @param {Array<string>} tierOrderedIds - all of the tier's task ids in their
+ *   current display order (sort_order asc).
+ * @param {Array<string>} cellNewOrder - the cell's task ids in the desired new
+ *   order. Every id MUST also appear in tierOrderedIds.
+ * @returns {Array<string>} the full tier order with the cell's tasks
+ *   substituted into the positions they currently occupy.
+ */
+function reorderTierWithCell(tierOrderedIds, cellNewOrder) {
+    const cellSet = new Set(cellNewOrder);
+    let k = 0;
+    return tierOrderedIds.map(function (id) {
+        return cellSet.has(id) ? cellNewOrder[k++] : id;
+    });
+}
+
 if (typeof module !== "undefined" && module.exports) {
-    module.exports = { bucketTasks, calendarReorderIds };
+    module.exports = { bucketTasks, calendarReorderIds, reorderTierWithCell };
 } else if (typeof window !== "undefined") {
-    window.calendarBucketHelpers = { bucketTasks, calendarReorderIds };
+    window.calendarBucketHelpers = {
+        bucketTasks, calendarReorderIds, reorderTierWithCell,
+    };
 }

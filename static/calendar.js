@@ -294,14 +294,22 @@
 
     // #267 (2026-05-31): reorder tasks within a single day cell, like the
     // board's vertical drag-reorder. Reads the measured midpoint of every
-    // real task row in the cell, asks the pure helper where the dropped
-    // task lands, then persists the new order by reassigning sort_order
-    // through the SAME /api/tasks/reorder endpoint the board uses (it sets
-    // sort_order = list index for each id; the `tier` field is validated
-    // but not used to scope, so any of the cell tasks' tiers is fine).
-    // Calendar cells render in sort_order asc (list_tasks order_by), so the
-    // re-render reflects the new order — and because sort_order is shared,
-    // the board shows the same order too (one notion of "my order").
+    // real task row in the cell, asks the pure helper where the dropped task
+    // lands, then persists the new order. Calendar cells render in sort_order
+    // asc (list_tasks order_by), so the re-render reflects the new order, and
+    // because sort_order is shared with the board, the board shows it too.
+    //
+    // #279 (2026-06-01): a calendar cell holds only a SUBSET of a tier's tasks
+    // (whatever falls on that day). The original approach wrote sort_order =
+    // 0,1,2… for JUST the cell's tasks via /api/tasks/reorder, which could
+    // collide with the SAME tier's tasks in other cells and make the board's
+    // order for that tier ambiguous. Fix: when the cell's tasks all belong to
+    // one tier, rebuild that tier's FULL order — substitute the cell tasks (in
+    // their new visual order) into the positions they currently occupy, leave
+    // every other same-tier task in place — and send the whole tier to
+    // /reorder so it renumbers 0..N consistently. Every same-tier task then
+    // has a distinct sort_order; no collision. Falls back to the cell-only
+    // reorder for a mixed-tier cell or a cache miss (rare, narrow residual).
     async function _reorderWithinCell(cell, taskId, clientY) {
         const list = cell.querySelector(".calendar-cell-tasks:not(.calendar-cell-previews)");
         if (!list) return;
@@ -320,19 +328,48 @@
         // No-op if the order didn't actually change — skip the round-trip.
         const currentOrder = items.map(function (i) { return i.id; });
         if (newOrder.join(",") === currentOrder.join(",")) return;
-        // Pick a valid tier for the endpoint's validation. Prefer the
-        // dragged task's own tier (allTasks is preloaded on /calendar per
-        // #270); fall back to "today" — the value doesn't affect the
-        // sort_order assignment, only passes the enum check.
-        let tier = "today";
-        if (typeof allTasks !== "undefined" && allTasks) {
-            const dragged = allTasks.find(function (t) { return t.id === taskId; });
-            if (dragged && dragged.tier) tier = dragged.tier;
+
+        const cache = (typeof allTasks !== "undefined" && allTasks) ? allTasks : [];
+        const dragged = cache.find(function (t) { return t.id === taskId; });
+        const tier = dragged && dragged.tier ? dragged.tier : null;
+
+        // #279: collision-free path — only when the whole cell is one tier and
+        // every cell task is resolvable in the cache (so we can place them in
+        // the full tier order).
+        if (tier) {
+            const tierOrdered = cache
+                .filter(function (t) { return t.tier === tier; })
+                .slice()
+                .sort(function (a, b) { return a.sort_order - b.sort_order; });
+            const tierIds = new Set(tierOrdered.map(function (t) { return t.id; }));
+            const cellAllInTier = newOrder.every(function (id) { return tierIds.has(id); });
+            if (cellAllInTier && tierOrdered.length <= 200) {
+                // Substitute the cell's tasks (new order) into their positions
+                // within the tier's current order; non-cell tasks stay put.
+                const fullOrder = window.calendarBucketHelpers.reorderTierWithCell(
+                    tierOrdered.map(function (t) { return t.id; }),
+                    newOrder,
+                );
+                try {
+                    await window.apiFetch("/api/tasks/reorder", {
+                        method: "POST",
+                        body: JSON.stringify({ tier: tier, task_ids: fullOrder }),
+                    });
+                    await renderCalendar();
+                } catch (err) {
+                    alert("Failed to reorder tasks: " + err.message);
+                }
+                return;
+            }
         }
+
+        // Fallback: mixed-tier cell / no tier / oversize / cache miss. Original
+        // cell-only reorder (writes 0..N for just these ids). `tier` only
+        // passes the endpoint's enum check.
         try {
             await window.apiFetch("/api/tasks/reorder", {
                 method: "POST",
-                body: JSON.stringify({ tier: tier, task_ids: newOrder }),
+                body: JSON.stringify({ tier: tier || "today", task_ids: newOrder }),
             });
             await renderCalendar();
         } catch (err) {

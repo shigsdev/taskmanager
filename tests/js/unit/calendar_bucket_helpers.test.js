@@ -13,6 +13,7 @@
 const {
     bucketTasks,
     calendarReorderIds,
+    reorderTierWithCell,
 } = require("../../../static/calendar_bucket_helpers");
 
 const TODAY = "2026-05-25";
@@ -246,5 +247,52 @@ describe("calendarReorderIds — within-cell drag-reorder math (#267)", () => {
         // if it isn't, the helper still just inserts at the drop position.
         expect(calendarReorderIds(items, "zzz", 999)).toEqual(["a", "b", "c", "zzz"]); // below all → end
         expect(calendarReorderIds(items, "zzz", 5)).toEqual(["zzz", "a", "b", "c"]);   // above all → front
+    });
+});
+
+describe("reorderTierWithCell — collision-free full-tier reorder (#279)", () => {
+    test("partial cell: only the cell's tasks move; other-cell tasks stay put", () => {
+        // Tier this_week = [A,B,C,D] (A on Mon, B+C on Tue, D on Thu).
+        // Reorder the Tuesday cell B,C → C,B. A (Mon) and D (Thu) must NOT move.
+        const tier = ["A", "B", "C", "D"];
+        expect(reorderTierWithCell(tier, ["C", "B"])).toEqual(["A", "C", "B", "D"]);
+    });
+
+    test("whole-cell == whole-tier: the new order is applied directly", () => {
+        expect(reorderTierWithCell(["A", "B", "C"], ["C", "A", "B"]))
+            .toEqual(["C", "A", "B"]);
+    });
+
+    test("dragged task moved to the end of its cell sits after its cell-mates", () => {
+        // Cell = B,C,E (positions 1,2,4 in tier [A,B,C,D,E]); D (position 3) is
+        // in a DIFFERENT cell. Reorder the cell to C,E,B → the cell tasks fill
+        // their original positions 1,2,4 (C,E,B), D keeps position 3.
+        const tier = ["A", "B", "C", "D", "E"];
+        const out = reorderTierWithCell(tier, ["C", "E", "B"]);
+        expect(out).toEqual(["A", "C", "E", "D", "B"]);
+        // B now comes after C and E in the full order.
+        expect(out.indexOf("B")).toBeGreaterThan(out.indexOf("C"));
+        expect(out.indexOf("B")).toBeGreaterThan(out.indexOf("E"));
+        // D (other cell) keeps its slot — untouched by the Tuesday reorder.
+        expect(out[3]).toBe("D");
+    });
+
+    test("result is a permutation — same ids, no loss/dup (→ distinct sort_order after 0..N renumber)", () => {
+        const tier = ["t1", "t2", "t3", "t4", "t5"];
+        const out = reorderTierWithCell(tier, ["t4", "t2"]); // reorder t2,t4 cell
+        expect(out).toHaveLength(tier.length);
+        expect(new Set(out)).toEqual(new Set(tier));
+    });
+
+    test("non-cell tasks keep their RELATIVE order", () => {
+        const tier = ["A", "B", "C", "D", "E"];
+        const out = reorderTierWithCell(tier, ["E", "B"]); // cell = B,E
+        // A, C, D (non-cell) keep order A < C < D.
+        expect(out.indexOf("A")).toBeLessThan(out.indexOf("C"));
+        expect(out.indexOf("C")).toBeLessThan(out.indexOf("D"));
+    });
+
+    test("single-task cell is a no-op shape (still returns the full tier)", () => {
+        expect(reorderTierWithCell(["A", "B", "C"], ["B"])).toEqual(["A", "B", "C"]);
     });
 });

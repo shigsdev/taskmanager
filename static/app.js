@@ -2455,10 +2455,25 @@ function taskDetailOpen(task) {
     // own subtasks (one-level-deep model rule).
     _setupParentPicker(task);
 
-    // Meta
-    document.getElementById("detailMeta").innerHTML =
-        `Created: ${new Date(task.created_at).toLocaleDateString()}<br>` +
-        `Updated: ${new Date(task.updated_at).toLocaleDateString()}`;
+    // Meta — created/updated timestamps. #280 (2026-06-01): build with
+    // textContent (not innerHTML) and ONLY for an existing task. In create
+    // mode (#269 capture-bar full window / #270 calendar empty-cell create),
+    // taskDetailOpenNew passes a stub with no created_at/updated_at, which
+    // previously rendered "Created: Invalid Date / Updated: Invalid Date" into
+    // the (hidden) #detailMeta — a latent defect that would surface if the
+    // element were ever shown.
+    const metaEl = document.getElementById("detailMeta");
+    metaEl.textContent = "";
+    if (task.id) {
+        const createdLine = document.createElement("div");
+        createdLine.textContent =
+            `Created: ${new Date(task.created_at).toLocaleDateString()}`;
+        const updatedLine = document.createElement("div");
+        updatedLine.textContent =
+            `Updated: ${new Date(task.updated_at).toLocaleDateString()}`;
+        metaEl.appendChild(createdLine);
+        metaEl.appendChild(updatedLine);
+    }
 
     document.getElementById("detailOverlay").style.display = "";
 }
