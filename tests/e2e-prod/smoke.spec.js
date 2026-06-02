@@ -921,6 +921,43 @@ test.describe("Prod smoke — feature surfaces", () => {
         // Body should now dominate the card (was ~40% before the fix).
         expect(layout.bodyPctOfCard).toBeGreaterThan(0.7);
     });
+
+    test("on mobile, task-card quick-actions drop to their own row below the title (#281)", async ({ page }) => {
+        // #281: #278's mobile reset (position:static) left quick-actions as an
+        // in-flow flex SIBLING of .task-body on the SAME row, so the tier
+        // buttons claimed ~half the card and squeezed the title into a narrow
+        // wrapping column (user-reported mobile screenshot). Fix: card
+        // flex-wrap + quick-actions flex-basis:100% so they wrap to their own
+        // full-width row BELOW the title/complete row. Behavioral — asserts
+        // the live computed layout at the 375px mobile viewport.
+        await page.setViewportSize({ width: 375, height: 812 });
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const card = page.locator(".task-card").first();
+        if (!(await card.count())) return; // no tasks on prod board → skip
+        const layout = await card.evaluate((el) => {
+            const qa = el.querySelector(".task-quick-actions");
+            const body = el.querySelector(".task-body");
+            if (!qa || !body) return { hasQa: !!qa, hasBody: !!body };
+            const qaRect = qa.getBoundingClientRect();
+            const bodyRect = body.getBoundingClientRect();
+            return {
+                hasQa: true,
+                hasBody: true,
+                qaPosition: getComputedStyle(qa).position,
+                // its own row: quick-actions top is at/below the body's bottom
+                // (small tolerance for sub-pixel rounding).
+                qaBelowBody: qaRect.top >= bodyRect.bottom - 4,
+                // full-width row: quick-actions span (near) the whole card.
+                qaWidthPct: qaRect.width / el.getBoundingClientRect().width,
+            };
+        });
+        if (layout.hasQa && layout.hasBody) {
+            expect(layout.qaPosition).toBe("static");
+            expect(layout.qaBelowBody).toBe(true);
+            expect(layout.qaWidthPct).toBeGreaterThan(0.85);
+        }
+    });
 });
 
 test.describe("Prod smoke — admin endpoints (read-only checks)", () => {

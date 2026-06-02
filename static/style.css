@@ -2691,12 +2691,27 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     /* Quick actions always visible (no hover on touch). #278: put them BACK
        in the flex flow on mobile (the desktop rule lifts them out with
        position:absolute) so they render below the row, visible + tappable,
-       instead of overlaying the card content. */
+       instead of overlaying the card content.
+       #281 (2026-06-01): the #278 mobile reset left quick-actions as an
+       in-flow flex SIBLING of .task-body on the SAME row, so the tier
+       buttons (max-width:100%, flex-shrink:0 dropped) claimed ~half the
+       card and squeezed the title into a narrow wrapping column (user
+       reported with a mobile screenshot — "the mobile view looks all
+       screwy"). The #278 comment promised "render below the row" but the
+       CSS never forced a wrap. Fix: let the card wrap and give
+       quick-actions flex-basis:100% so it drops to its OWN full-width row
+       BELOW the title/complete row — body reclaims the full width, title
+       stays on one readable line, buttons wrap left-aligned underneath. */
+    .task-card { flex-wrap: wrap; }
     .task-card .task-quick-actions {
         position: static;
         opacity: 1;
         flex-wrap: wrap;
+        flex-basis: 100%;
+        width: 100%;
         max-width: 100%;
+        justify-content: flex-start;
+        margin-top: 6px;
         background: none;
         box-shadow: none;
         padding: 0;

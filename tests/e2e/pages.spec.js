@@ -127,9 +127,17 @@ test.describe("Detail panel", () => {
         await page.goto("/?nosw=1");
         await page.waitForLoadState("networkidle");
 
-        // Click the first task card
+        // Click the first task card. Target the title's TOP-LEFT (not the
+        // card center): since #281 the mobile card wraps the tier-jump buttons
+        // onto their own row below, so a center-of-card click can land on a
+        // button (which stopPropagation's to move the tier, not open detail).
+        // The x/y offset also dodges the DESKTOP hover-overlay quick-actions —
+        // it's position:absolute right-anchored and (being opacity:0, not
+        // pointer-events:none) still intercepts hit-tests over the title's
+        // right/center. The title's left edge is always clear of both, and a
+        // click there bubbles to the card's open-detail handler.
         const firstCard = page.locator(".task-card").first();
-        await firstCard.click();
+        await firstCard.locator(".task-title").click({ position: { x: 4, y: 4 } });
 
         // Detail panel should be visible
         const panel = page.locator("#detailPanel");
@@ -978,7 +986,7 @@ test.describe("Detail panel: edit completed task → unarchive (#148)", () => {
             await page.goto("/?nosw=1");
             await page.waitForLoadState("networkidle");
             const card = page.locator(`.task-card[data-id="${task.id}"]`);
-            await card.click();
+            await card.locator(".task-title").click({ position: { x: 4, y: 4 } });  // #281: title top-left, not card center (see above)
             await expect(page.locator("#detailPanel")).toBeVisible({ timeout: 2000 });
             // Due date starts empty.
             await expect(page.locator("#detailDueDate")).toHaveValue("");
@@ -1022,7 +1030,7 @@ test.describe("Detail panel: edit completed task → unarchive (#148)", () => {
             await page.goto("/?nosw=1");
             await page.waitForLoadState("networkidle");
             const card = page.locator(`.task-card[data-id="${task.id}"]`);
-            await card.click();
+            await card.locator(".task-title").click({ position: { x: 4, y: 4 } });  // #281: title top-left, not card center (see above)
             await expect(page.locator("#detailPanel")).toBeVisible({ timeout: 2000 });
             // Pick a date 8 days out (definitely past tomorrow, in or
             // beyond next_week range).
@@ -1062,7 +1070,7 @@ test.describe("Detail panel: edit completed task → unarchive (#148)", () => {
                 await freezerToggle.click();
             }
             const card = page.locator(`.task-card[data-id="${task.id}"]`);
-            await card.click();
+            await card.locator(".task-title").click({ position: { x: 4, y: 4 } });  // #281: title top-left, not card center (see above)
             await expect(page.locator("#detailPanel")).toBeVisible({ timeout: 2000 });
             await expect(page.locator("#detailTier")).toHaveValue("freezer");
             const today = new Date().toISOString().slice(0, 10);
