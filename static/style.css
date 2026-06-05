@@ -39,6 +39,7 @@
     /* Motion easings. */
     --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
     --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-settle: cubic-bezier(0.16, 1.08, 0.4, 1);  /* gentle overshoot */
     /* Geometry. */
     --radius:    8px;
     --radius-s:  8px;
@@ -5006,4 +5007,70 @@ table.quality-gates code {
     min-width: 0;
 }
 .pg-clear { flex: 0 0 auto; }
+
+/* ============================================================
+   #224 Soft Concrete — MOTION + ATMOSPHERE layer
+   ------------------------------------------------------------
+   The whole layer is gated behind `prefers-reduced-motion:
+   no-preference`, so it disables entirely for users who request
+   reduced motion. Operator-signed-off design contract:
+   docs/design/224-motion-mockup-detailed.html (keyframes verbatim).
+   ============================================================ */
+@media (prefers-reduced-motion: no-preference) {
+
+    /* 1. Page-load stagger — the tier "concrete slabs" settle in with a
+       gentle overshoot, ~60ms apart. `.tier` elements are STATIC in
+       templates/index.html (only their `.tier-body` task lists are
+       re-rendered by app.js renderBoard), so this animation fires once
+       per page load and never replays on a task re-render. */
+    .tier-board > .tier { animation: scFadeUp 0.62s var(--ease-settle) both; }
+    .tier-board > .tier:nth-child(1) { animation-delay: 0.04s; }
+    .tier-board > .tier:nth-child(2) { animation-delay: 0.10s; }
+    .tier-board > .tier:nth-child(3) { animation-delay: 0.16s; }
+    .tier-board > .tier:nth-child(4) { animation-delay: 0.22s; }
+    .tier-board > .tier:nth-child(5) { animation-delay: 0.28s; }
+    .tier-board > .tier:nth-child(6) { animation-delay: 0.34s; }
+    .tier-board > .tier:nth-child(7) { animation-delay: 0.40s; }
+    .tier-board > .tier:nth-child(8) { animation-delay: 0.46s; }
+    .tier-board > .tier:nth-child(9) { animation-delay: 0.52s; }
+
+    /* 2. Icon buttons lift on hover (capture bar + nav). */
+    .icon-btn {
+        transition: background 0.15s,
+                    transform 0.18s var(--ease-out),
+                    box-shadow 0.18s var(--ease-out);
+    }
+    .icon-btn:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); }
+
+    /* 3. Complete button — spring press feedback (pops on hover, presses
+       in on click). */
+    .task-card .task-complete-btn {
+        transition: background 0.15s, color 0.15s, transform 0.3s var(--ease-spring);
+    }
+    .task-card .task-complete-btn:hover  { transform: scale(1.08); }
+    .task-card .task-complete-btn:active { transform: scale(0.9); }
+
+    /* 4. The Today copper seam breathes — the one piece of "heat" in the
+       UI, given a slow heartbeat. */
+    .tier[data-tier="today"]::before { animation: scSeam 4.5s ease-in-out infinite; }
+
+    /* 5. Detail panel springs in from the right; the backdrop fades.
+       The overlay toggles display:none↔flex (app.js taskDetailOpen/
+       Close), and display:none resets CSS animations — so the
+       animation REPLAYS on every open with no JS hook. `overflow:hidden`
+       on the overlay clips the 48px entrance offset so the slide-in can
+       never produce a horizontal scrollbar (#138/#217 guard). */
+    .detail-overlay { overflow: hidden; animation: scFadeIn 0.3s var(--ease-out) both; }
+    .detail-panel   { animation: scPanelIn 0.5s var(--ease-spring) both; }
+}
+
+/* Keyframes live outside the media query (harmless when unreferenced);
+   they only run via the gated rules above. */
+@keyframes scFadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes scSeam {
+    0%, 100% { box-shadow: 0 0 14px rgba(184,115,51,0.22); opacity: 0.85; }
+    50%      { box-shadow: 0 0 22px rgba(184,115,51,0.42); opacity: 1; }
+}
+@keyframes scFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scPanelIn { from { opacity: 0; transform: translateX(48px); } to { opacity: 1; transform: translateX(0); } }
 
