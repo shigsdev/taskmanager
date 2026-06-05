@@ -179,9 +179,9 @@ The script preserves operator-added prose across re-renders. -->
 | Audit row | Finding | First seen | Last seen | Notes / Status |
 |---|---|---|---|---|
 <!-- audit-row: bug-pattern/bare-1fr-grids/static-style.css -->
-| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 3421: bare `1fr` track on grid-template-columns — wrap in `minmax(0, 1fr)` to let the track shrink past max-content (#138 D-B1) | 2026-05-27 | 2026-06-01 |  |
+| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 3609: bare `1fr` track on grid-template-columns — wrap in `minmax(0, 1fr)` to let the track shrink past max-content (#138 D-B1) | 2026-05-27 | 2026-06-05 |  |
 <!-- audit-row: coverage/overall-coverage-drift/ -->
-| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-06-01 | 🟢 auto-detected resolved 2026-06-01 |
+| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-06-05 | 🟢 auto-detected resolved 2026-06-05 |
 <!-- audit-row: tech-debt/dependency-drift/pip-dep-cryptography-stuck-at-46.0.7-latest-is-48.0.0-2-major-version-s-behind -->
 | `tech-debt/dependency-drift/pip-dep-cryptography-stuck-at-46.0.7-latest-is-48.0.0-2-major-version-s-behind` | pip dep 'cryptography' stuck at 46.0.7 — latest is 48.0.0 (2 major version(s) behind) | 2026-05-28 | 2026-05-28 | 🟢 auto-detected resolved 2026-05-30 |
 <!-- audit-row: tech-debt/dependency-drift/pip-dep-gunicorn-stuck-at-22.0.0-latest-is-26.0.0-4-major-version-s-behind -->
