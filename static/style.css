@@ -889,7 +889,9 @@ input[type="time"]::-webkit-calendar-picker-indicator {
         min-height: 44px;
     }
 }
-.completed-title { text-decoration: line-through; color: var(--text-muted); }
+/* #224 PR7: completed tasks get a sage strikethrough — sage is the
+   "done" accent (matches the complete-button + the mockup's done state). */
+.completed-title { text-decoration: line-through; text-decoration-color: var(--sage); color: var(--cream-faint); }
 .tier-completed { border-top: 1px dashed var(--border); margin-top: 8px; padding-top: 8px; }
 /* Drop-to-complete: highlight Completed section while a card is dragged over it */
 .tier-completed.drag-over {
@@ -984,7 +986,9 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     background: rgba(255, 247, 232, 0.06);
     color: var(--cream-dim);
 }
-.badge-due { color: var(--text-muted); }
+/* #224 PR7: per-card due dates in JetBrains Mono — dates read as
+   metadata, matching the tier counts / calendar headers. */
+.badge-due { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.92em; letter-spacing: 0.01em; }
 .badge-due.due-today { color: var(--amber); font-weight: 700; }
 .badge-due.overdue { color: var(--red); font-weight: 700; }
 .badge-checklist { color: var(--text-muted); }
@@ -1275,7 +1279,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .detail-cancellation label { display: block; font-weight: 600; margin-bottom: 4px; font-size: 0.85rem; }
 .detail-cancellation input { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; }
 .tier-cancelled { border-top: 1px dashed var(--border); margin-top: 8px; padding-top: 8px; }
-.tier-cancelled .tier-header h2 { color: #6b7280; }
+.tier-cancelled .tier-header h2 { color: var(--cream-faint); }  /* #224 PR7: was #6b7280 (cool gray) */
 .cancelled-card {
     opacity: 0.75;
     cursor: pointer;
