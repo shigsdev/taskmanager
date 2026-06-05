@@ -448,19 +448,30 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     flex-direction: column;
     gap: 6px;
 }
+/* #224 PR3: Today cell carries the copper signature — solid copper
+   border, faint copper-tint fill, and a soft copper glow, echoing the
+   home-board Today slab. */
 .calendar-cell-today {
-    border-color: var(--accent, #2563eb);
+    border-color: var(--copper);
     border-style: solid;
+    background: linear-gradient(165deg, var(--slate-200) 0%, rgba(184, 115, 51, 0.05) 100%);
+    box-shadow: 0 0 14px rgba(184, 115, 51, 0.18);
 }
+.calendar-cell-today .calendar-cell-header { color: var(--copper); }
 .calendar-cell-past { opacity: 0.6; }
+/* #224 PR3: drag drop-target uses a copper tint (was solid green). */
 .calendar-cell-hover {
-    background: var(--success, #16a34a) !important;
+    background: rgba(184, 115, 51, 0.18) !important;
+    border-color: var(--copper);
     border-style: solid;
 }
+/* #224 PR3: day-of-week + date header as letterspaced mono metadata. */
 .calendar-cell-header {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: var(--cream-dim);
 }
 .calendar-cell-tasks {
     list-style: none;
@@ -484,8 +495,8 @@ input[type="time"]::-webkit-calendar-picker-indicator {
    ?task=<id> on click; drag still works on grab. Subtle hover so
    the user knows it's interactive. */
 .calendar-cell-tasks li.calendar-task-link:hover {
-    background: var(--accent, #2980b9);
-    color: #fff;
+    background: var(--copper);
+    color: var(--slate-0);
 }
 .calendar-cell-tasks li.dragging,
 .calendar-unscheduled-list li.dragging {
@@ -512,7 +523,14 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     min-height: 200px;
 }
 .calendar-unscheduled h3 {
-    font-size: 0.9rem;
+    /* #224 PR3: small-caps Fraunces, matching tier / category headers. */
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 14, "wght" 600, "SOFT" 100, "WONK" 0;
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--cream-dim);
     margin: 0 0 8px;
 }
 .calendar-unscheduled-list {
@@ -534,7 +552,8 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     cursor: grab;
 }
 .calendar-unscheduled-hover {
-    background: var(--success, #16a34a) !important;
+    background: rgba(184, 115, 51, 0.18) !important;
+    border-color: var(--copper);
     border-style: solid;
 }
 @media (max-width: 700px) {
@@ -1698,9 +1717,10 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .goals-category-section {
     margin-bottom: 24px;
 }
-/* #224 PR2: page titles in Fraunces display serif (opsz 144). */
+/* #224 PR2/PR3: page titles in Fraunces display serif (opsz 144). */
 .goals-toolbar h1,
-.projects-toolbar h1 {
+.projects-toolbar h1,
+.calendar-page > h1 {
     font-family: var(--font-display);
     font-variation-settings: "opsz" 144, "wght" 600, "SOFT" 40, "WONK" 0;
     font-weight: 600;
