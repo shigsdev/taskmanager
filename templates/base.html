@@ -3,11 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="color-scheme" content="light">
+    <meta name="color-scheme" content="dark">
     <title>{% block title %}Task Manager{% endblock %}</title>
+    {# #224 Soft Concrete fonts: Fraunces (display serif, variable opsz/SOFT/
+       WONK axes), IBM Plex Sans (body), JetBrains Mono (metadata). gstatic
+       is already CSP font-src-allowed; googleapis added to style-src in
+       app.py. display=swap → fallback fonts paint immediately (no FOUT
+       block). SW ignores cross-origin (#235) so these load natively. #}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800&family=IBM+Plex+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <meta name="theme-color" content="#2563eb">
+    <meta name="theme-color" content="#131110">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">

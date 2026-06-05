@@ -284,7 +284,12 @@ def create_app(config: dict | None = None) -> Flask:
             # via SRI in the template, so CDN tampering can't substitute
             # arbitrary code. ADR-028.
             "script-src": "'self' 'unsafe-inline' https://cdn.jsdelivr.net",
-            "style-src": "'self' 'unsafe-inline'",
+            # fonts.googleapis.com: #224 Soft Concrete font CSS (Fraunces /
+            # IBM Plex Sans / JetBrains Mono). style-src only — it serves the
+            # @font-face CSS; the actual woff2 binaries come from gstatic
+            # (font-src below). CSS can't execute script, so this is a
+            # low-risk addition (no script-src change).
+            "style-src": "'self' 'unsafe-inline' https://fonts.googleapis.com",
             "img-src": "'self' data:",
             "font-src": "'self' https://fonts.gstatic.com",
             "connect-src": "'self'",

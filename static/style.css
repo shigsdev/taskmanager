@@ -2,70 +2,98 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-    /* #224 (2026-05-24): dark-only theme. User-confirmed: dark only,
-       no light theme, no toggle. `color-scheme: dark` opts every form
-       control into dark UA styling (input borders, scrollbars, etc.)
-       so we don't have to fight white scrollbar tracks on a dark page. */
+    /* #224 PR1 (2026-06-04): "Soft Concrete" dark theme. Materials-first
+       dark mode — warm slate elevations, cream ink, ONE copper accent used
+       sparingly (~5% of UI). Replaces the prior GitHub-dark blue pass
+       (#224 iter1-3, 2026-05-24). Design contract:
+       docs/design/224-dark-theme-design-rationale.md + the mockup HTML
+       beside it. Dark-only — no light theme, no toggle. `color-scheme: dark`
+       opts every form control into dark UA styling (borders, scrollbars). */
     color-scheme: dark;
-    /* Page canvas — deepest layer. GitHub-dark-inspired (well-tested
-       for code/admin UIs at this density). */
-    --bg: #0d1117;
-    /* Panel surfaces — three tiers above the canvas. */
-    --surface: #161b22;
-    --surface-sunk: #0d1117;   /* same as canvas — used for "below" wells */
-    --surface-raised: #1f2937; /* slightly elevated for modals/elevated cards */
-    /* Borders — two weights. */
-    --border: #30363d;
-    --border-strong: #484f58;
-    /* Text — high-contrast off-white avoids pure-white eye strain. */
-    --text: #e6edf3;
-    --text-muted: #8b949e;
-    /* Accent (brand blue) — slightly softer hue/saturation for dark
-       contrast. Hover is brighter (counter to light theme where hover
-       was darker) — common dark-mode pattern: lift on hover, don't deepen. */
-    --accent: #4493f8;
-    --accent-hover: #58a6ff;
-    --accent-soft: #1e2c47;    /* dark navy tint, replaces the pale-blue */
-    /* `--bg-subtle` was referenced 23x via `var(--bg-subtle, #f6f8fa)`
-       fallback pattern but never defined in `:root` — light theme
-       got the fallback. Define a dark equivalent so those refs
-       (table headers, code blocks, hints, etc.) resolve correctly. */
-    --bg-subtle: #21262d;
-    /* `--bg-card` was referenced via `var(--bg-card, #ffffff)` fallback
-       (e.g. `.recurring-row`) but never defined → white fallback won
-       on every page using it. Alias to surface. */
-    --bg-card: var(--surface);
-    /* #224 iter 1: dedicated navbar background. Differentiated from
-       `--accent-soft` (#1e2c47, used for tier-header tinted panels
-       and the .intro-prose informational callout) so the global
-       navbar reads as MORE muted than internal accent surfaces.
-       Deep navy, holds white text comfortably, ~3 luminance stops
-       below the original `--accent` brightness. */
-    --nav-bg: #14213d;
-    /* Status colors — same hues as light theme but desaturated/dimmed
-       to avoid blowing out on a dark background. */
-    --danger: #f85149;
-    --amber: #d29922;
-    --red: #f85149;
-    --green: #3fb950;
-    /* Aliases for legacy/undefined tokens that exist in the codebase */
-    --card: var(--surface);
-    --muted: var(--text-muted);
-    --success: var(--green);
-    --warning: var(--amber);
-    --radius: 8px;
-    /* Elevation tiers — black-tinted for dark canvases. Light theme
-       used (17,24,39) rgba; dark uses (0,0,0) with higher alpha
-       because shadows need to be DEEPER on dark to actually show. */
-    --shadow-sm: 0 1px 2px rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.40);
-    --shadow-md: 0 4px 12px rgba(0,0,0,0.30), 0 1px 3px rgba(0,0,0,0.40);
-    --shadow-lg: 0 16px 40px rgba(0,0,0,0.50), 0 4px 12px rgba(0,0,0,0.30);
-    --shadow: var(--shadow-sm);
+
+    /* === Soft Concrete primitives ===================================== */
+    /* Concrete elevations — each warmer + lighter than the last. */
+    --slate-0:   #131110;   /* viewport canvas (deepest) */
+    --slate-100: #1a1816;   /* tier card / panel surface */
+    --slate-200: #221f1c;   /* raised: Today tier, detail panel, modals */
+    --slate-300: #2c2825;   /* hover / focus (highest elevation) */
+    /* Hairline borders — warm gray, never cool. */
+    --rule:      #3a3531;
+    --rule-soft: #2a2622;
+    /* Ink — warm cream (avoids pure-white eye strain on a warm canvas). */
+    --cream:        #ece4d5;   /* primary text */
+    --cream-bright: #fbf6ec;   /* emphasis / display headlines */
+    --cream-dim:    #a89e8e;   /* secondary text */
+    --cream-faint:  #6a6358;   /* tertiary / metadata */
+    /* Accents — copper carries Today + primary actions; sage = done;
+       rust = overdue. Kept to ~5% of the rendered UI on purpose. */
+    --copper:        #b87333;
+    --copper-bright: #d68b46;  /* hover */
+    --copper-dim:    #7a4d23;  /* muted / focus rings */
+    --sage:          #94a48b;  /* completed / done */
+    --rust:          #c64a2a;  /* overdue (rare) */
+    /* Typography — all free Google Fonts (loaded in base.html <head>). */
+    --font-display: "Fraunces", "Georgia", serif;
+    --font-body:    "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono:    "JetBrains Mono", "SF Mono", "Menlo", monospace;
+    /* Motion easings. */
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
+    /* Geometry. */
+    --radius:    8px;
+    --radius-s:  8px;
+    --radius-m:  14px;
+    --radius-l:  20px;
+    /* Warm shadow stack — 3 stops, a hairline warm top-light + a soft
+       black drop. Warm (not pure-black) so surfaces feel lit, not cut out. */
+    --shadow-1: 0 1px 0 rgba(255,247,232,0.02), 0 1px 2px rgba(0,0,0,0.40);
+    --shadow-2: 0 1px 0 rgba(255,247,232,0.03), 0 8px 24px rgba(0,0,0,0.35);
+    --shadow-3: 0 1px 0 rgba(255,247,232,0.04), 0 16px 40px rgba(0,0,0,0.50);
+
+    /* === Legacy token aliases ========================================= */
+    /* The codebase references these names in hundreds of rules. Aliasing
+       them onto the Soft Concrete primitives re-skins every tokenized
+       surface at once — no rename churn. Hardcoded colors (not tokens)
+       are swept surface-by-surface per the incremental rollout. */
+    --bg:             var(--slate-0);
+    --surface:        var(--slate-100);
+    --surface-sunk:   var(--slate-0);    /* "below" wells */
+    --surface-raised: var(--slate-200);
+    --border:         var(--rule);
+    --border-strong:  #4a423b;           /* warm strong rule */
+    --text:           var(--cream);
+    --text-muted:     var(--cream-dim);
+    --accent:         var(--copper);
+    --accent-hover:   var(--copper-bright);
+    --accent-soft:    #241f19;           /* faint copper-tinted slate panel */
+    --bg-subtle:      var(--slate-200);
+    --bg-card:        var(--surface);
+    --nav-bg:         #15120f;           /* top bar — a touch below slate-100 */
+    --danger:         var(--rust);
+    --amber:          #d29922;
+    --red:            var(--rust);
+    --green:          var(--sage);
+    --card:           var(--surface);
+    --muted:          var(--text-muted);
+    --success:        var(--green);
+    --warning:        var(--amber);
+    --shadow-sm:      var(--shadow-1);
+    --shadow-md:      var(--shadow-2);
+    --shadow-lg:      var(--shadow-3);
+    --shadow:         var(--shadow-1);
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: var(--bg);
+    font-family: var(--font-body);
+    /* Soft Concrete grain (#224): a copper top-light radial + a barely
+       perceptible fractal-noise overlay baked in as a data: URL (no image
+       asset, CSP img-src 'self' data: already allows it). `fixed`
+       attachment keeps the grain still while content scrolls. */
+    background-color: var(--bg);
+    background-image:
+        radial-gradient(ellipse at top, rgba(184,115,51,0.03) 0%, transparent 40%),
+        url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.93 0 0 0 0 0.89 0 0 0 0 0.81 0 0 0 0.018 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-attachment: fixed;
     color: var(--text);
     line-height: 1.5;
     min-height: 100vh;
@@ -84,6 +112,9 @@ select {
     background: var(--surface);
     color: var(--text);
     border-color: var(--border);
+    /* #224: form controls don't inherit body font — opt them into Plex
+       Sans so inputs/selects match the rest of the type. */
+    font-family: var(--font-body);
 }
 input::placeholder,
 textarea::placeholder {
@@ -157,10 +188,15 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 .brand {
-    font-weight: 700;
-    font-size: 1rem;
+    /* #224 Soft Concrete: Fraunces display serif, optical size 144 (the
+       40pt+ cut, proper hairline thins), warm SOFT axis. Cream-bright ink. */
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 144, "wght" 600, "SOFT" 60, "WONK" 0;
+    font-weight: 600;
+    font-size: 1.3rem;
+    letter-spacing: -0.015em;
     text-decoration: none;
-    color: #fff;
+    color: var(--cream-bright);
     white-space: nowrap;
 }
 
@@ -188,14 +224,15 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 
 .nav-tab {
     text-decoration: none;
-    color: rgba(255, 255, 255, 0.82);
+    color: var(--cream-dim);
     font-size: 0.85rem;
     padding: 4px 10px;
     border-radius: var(--radius);
     transition: background 0.15s, color 0.15s;
 }
-.nav-tab:hover { background: rgba(255, 255, 255, 0.15); color: #fff; }
-.nav-tab.active { color: #fff; font-weight: 700; background: rgba(255, 255, 255, 0.22); }
+.nav-tab:hover { background: var(--slate-300); color: var(--cream); }
+/* #224: active tab carries the copper accent (was translucent-white pill). */
+.nav-tab.active { color: var(--copper); font-weight: 600; background: rgba(184, 115, 51, 0.10); }
 
 /* Inbox badge on the navbar.
    #224 iter 2: was a white pill with blue text (high contrast vs
@@ -621,14 +658,54 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 .tier {
+    /* #224 Soft Concrete: each tier is a "concrete slab". Base tiers sit
+       at slate-100 with a light shadow; Today is raised (below) so it
+       reads as the heaviest, most-present slab. */
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-md);
+    border-radius: var(--radius-m);
+    box-shadow: var(--shadow-1);
     /* overflow:visible lets the Re-open dropdown escape the card.
        Children are inset by tier-body padding so rounded corners
        still render cleanly without needing to clip. */
     overflow: visible;
+}
+
+/* #224 signature element: TODAY is the heaviest concrete — raised
+   surface, deepest shadow, copper-tinted border, and a 2px copper rule
+   down the left edge with a soft glow. The one piece of chrome that
+   says "this is the now slab"; every other tier uses material weight
+   alone. `.tier` keeps overflow:visible so the glow isn't clipped. */
+.tier[data-tier="today"] {
+    background: var(--slate-200);
+    box-shadow: var(--shadow-3);
+    border-color: rgba(184, 115, 51, 0.18);
+    position: relative;
+}
+.tier[data-tier="today"]::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 14px;
+    bottom: 14px;
+    width: 2px;
+    background: var(--copper);
+    border-radius: 1px;
+    box-shadow: 0 0 18px rgba(184, 115, 51, 0.3);
+    pointer-events: none;
+}
+.tier[data-tier="today"] .tier-header { background: transparent; }
+.tier[data-tier="today"] .tier-header h2 { color: var(--copper); }
+
+/* #224: INBOX recedes — faint dashed outline against the page, no fill. */
+.tier[data-tier="inbox"] {
+    background: transparent;
+    border-style: dashed;
+    box-shadow: none;
+}
+.tier[data-tier="inbox"] .tier-header {
+    background: transparent;
+    border-bottom-style: dashed;
 }
 
 .tier-header {
@@ -646,8 +723,15 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 .tier-header h2 {
-    font-size: 0.9rem;
+    /* #224: small-caps display serif — letterspaced uppercase Fraunces
+       at the small optical size (opsz 14) for crisp caps. */
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 14, "wght" 600, "SOFT" 100, "WONK" 0;
+    font-size: 0.82rem;
     font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--cream-dim);
     display: flex;
     align-items: center;
     gap: 6px;
@@ -655,16 +739,20 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 
 /* #79: per-tier date / date-range label rendered under the heading */
 .tier-date {
-    font-size: 0.75rem;
-    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.03em;
+    color: var(--cream-faint);
     margin-top: 2px;
     line-height: 1.3;
 }
 
 .tier-count {
-    color: var(--text-muted);
+    font-family: var(--font-mono);
+    color: var(--cream-faint);
     font-weight: 400;
-    font-size: 0.8rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
 }
 
 .tier-warning {
