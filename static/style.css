@@ -4001,7 +4001,7 @@ table.schema-table td:first-child {
     font-weight: 600;
     white-space: nowrap;
 }
-table.schema-table td:nth-child(3) { font-style: italic; color: #444; }
+table.schema-table td:nth-child(3) { font-style: italic; color: var(--cream-dim); }
 table.schema-table tr.group-core td:first-child { border-left: 4px solid #1d4ed8; }
 table.schema-table tr.group-ops td:first-child { border-left: 4px solid #a16207; }
 table.schema-table tr.group-auth td:first-child { border-left: 4px solid #a21caf; }
@@ -4041,13 +4041,13 @@ table.schema-table tr.group-auth td:first-child { border-left: 4px solid #a21caf
     border-radius: 6px;
     padding: 14px 16px;
     margin: 12px 0;
-    background: #fcfcfd;
+    background: var(--slate-200);  /* #224 PR6: was #fcfcfd (light) */
 }
 .db-table-detail h4 {
     margin: 0 0 4px 0;
     font-family: "SF Mono", Menlo, Monaco, monospace;
     font-size: 1.05em;
-    color: #1d4ed8;
+    color: var(--cream-bright);  /* #224 PR6: was #1d4ed8 (blue) */
 }
 .db-group-tag {
     color: var(--text-muted, #6e7681);
@@ -4063,8 +4063,9 @@ table.schema-table tr.group-auth td:first-child { border-left: 4px solid #a21caf
     font-size: 0.88em;
     margin: 0 0 10px 0;
     padding: 4px 10px;
-    background: #fef9c3;
-    border-left: 3px solid #ca8a04;
+    /* #224 PR6: was light yellow (#fef9c3) — dark amber tint. */
+    background: rgba(210, 153, 34, 0.16);
+    border-left: 3px solid var(--amber);
     border-radius: 0 3px 3px 0;
     display: inline-block;
 }
@@ -4079,15 +4080,17 @@ table.schema-table tr.group-auth td:first-child { border-left: 4px solid #a21caf
     margin-left: 6px;
     vertical-align: middle;
 }
+/* #224 PR6: PK/FK key markers — dark tints (were light yellow / lavender),
+   keeping the amber=PK / purple=FK semantic distinction. */
 .key-pk {
-    background: #fef9c3;
-    color: #854d0e;
-    border: 1px solid #ca8a04;
+    background: rgba(210, 153, 34, 0.16);
+    color: var(--amber);
+    border: 1px solid var(--amber);
 }
 .key-fk {
-    background: #ddd6fe;
-    color: #4c1d95;
-    border: 1px solid #7c3aed;
+    background: rgba(155, 109, 214, 0.18);
+    color: #c4a3ec;
+    border: 1px solid #9b6dd6;
 }
 
 /* Column list inside each per-table card. */
@@ -4154,7 +4157,12 @@ table.pages-table td:first-child {
 
 /* Diagram container — used for both simple + detailed Mermaid blocks. */
 .flow-diagram {
-    background: #fafbfc;
+    /* #224 PR6: kept a LIGHT panel on purpose — it hosts the light-themed
+       Mermaid SVG diagrams (dark text + classDef fills are drawn for a
+       light background; a full Mermaid dark-theme conversion would be a
+       riskier Python + template change). Warmed from cold #fafbfc to a
+       cream "paper" so it reads as an inset panel, not a cold white hole. */
+    background: #f1ede4;
     border: 1px solid var(--border, #e1e4e8);
     border-radius: 6px;
     padding: 20px;
@@ -4182,21 +4190,24 @@ table.pages-table td:first-child {
     border-radius: 12px;
     margin-bottom: 8px;
 }
-.flow-label.simple { background: #dbeafe; color: #0c1f4d; }
-.flow-label.detailed { background: #ede9fe; color: #4c1d95; }
+/* #224 PR6: "SIMPLE"/"DETAILED" pill labels → muted slate (were light
+   blue / purple pastels). */
+.flow-label.simple { background: rgba(184, 115, 51, 0.14); color: var(--copper-bright); }
+.flow-label.detailed { background: rgba(148, 164, 139, 0.14); color: var(--sage); }
 
 /* Decision-tree prose used for the auth flow. */
 .decision-tree { margin: 16px 0; }
 .decision-tree h4 {
     margin: 16px 0 4px 0;
-    color: #1d4ed8;
+    color: var(--cream-bright);  /* #224 PR6: was #1d4ed8 */
     font-size: 1.0em;
 }
 .decision-tree .branch {
     margin: 8px 0 16px 24px;
     padding: 10px 14px;
-    background: #fafbfc;
-    border-left: 3px solid #1d4ed8;
+    /* #224 PR6: was light (#fafbfc) — dark slate + copper rule. */
+    background: var(--slate-100);
+    border-left: 3px solid var(--copper-dim);
     border-radius: 0 4px 4px 0;
 }
 .decision-tree .branch p { margin: 4px 0; }
@@ -4205,8 +4216,8 @@ table.pages-table td:first-child {
     font-size: 0.88em;
     color: var(--text-muted, #6e7681);
 }
-.decision-tree .yes { color: #1a7f37; font-weight: 600; }
-.decision-tree .no { color: #b95000; font-weight: 600; }
+.decision-tree .yes { color: var(--sage); font-weight: 600; }
+.decision-tree .no { color: var(--rust); font-weight: 600; }
 
 /* Engineering details collapsibles — visually distinct so it's clear
    they're "behind a click". One per section. */
@@ -4214,7 +4225,7 @@ details.engineering {
     margin-top: 16px;
     border: 1px solid var(--border, #e1e4e8);
     border-radius: 6px;
-    background: #fafbfc;
+    background: var(--slate-100);  /* #224 PR6: was #fafbfc (light) */
 }
 details.engineering > summary {
     cursor: pointer;
@@ -4228,12 +4239,12 @@ details.engineering > summary {
 details.engineering[open] > summary {
     border-radius: 6px 6px 0 0;
     border-bottom: 1px solid var(--border, #e1e4e8);
-    color: #0c1f4d;
+    color: var(--cream-bright);  /* #224 PR6: was #0c1f4d */
 }
 details.engineering > div.eng-body {
     padding: 14px;
     font-size: 0.93em;
-    color: #444;
+    color: var(--cream);  /* #224 PR6: was #444 (invisible on dark) */
 }
 
 /* Numbered prose lists (used inside "What's running" + "step by step" blocks). */
