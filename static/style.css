@@ -1718,12 +1718,14 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .goals-category-section {
     margin-bottom: 24px;
 }
-/* #224 PR2/PR3/PR4: page titles (h1-scale) in Fraunces display serif (opsz 144). */
+/* #224 PR2/PR3/PR4/PR5: page titles (h1-scale) in Fraunces display serif (opsz 144). */
 .goals-toolbar h1,
 .projects-toolbar h1,
 .calendar-page > h1,
 .recurring-page h1,
-.plan-header h1 {
+.plan-header h1,
+.utilities-page h1,
+.docs-content h1 {
     font-family: var(--font-display);
     font-variation-settings: "opsz" 144, "wght" 600, "SOFT" 40, "WONK" 0;
     font-weight: 600;
@@ -1731,17 +1733,31 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     color: var(--cream-bright);
 }
 
-/* #224 PR4: h2-scale page/state titles → Fraunces at a lower optical size
-   (opsz 40) so the serif keeps weight instead of going hairline-thin. */
+/* #224 PR4/PR5: h2-scale page/state titles → Fraunces at a lower optical
+   size (opsz 40) so the serif keeps weight instead of going hairline-thin. */
 .reflection-state > h2,
 .triage-suggestions > h2,
-.review-task-title {
+.review-task-title,
+.settings-container > h2,
+.import-modes > h2,
+.scan-upload > h2,
+.recycle-header h2 {
     font-family: var(--font-display);
     font-variation-settings: "opsz" 40, "wght" 600, "SOFT" 60, "WONK" 0;
     font-weight: 600;
     letter-spacing: -0.01em;
     color: var(--cream-bright);
 }
+
+/* #224 PR5: unclassed content links rendered the UA dark-mode default
+   (lavender-blue #9e9eff) on docs/architecture prose and the import
+   template-download links. Recolor to copper (the link accent). Scoped
+   to `:not([class])` / `[download]` so classed nav/TOC/btn links keep
+   their own treatment. */
+.docs-content a:not([class]),
+.import-container a[download] { color: var(--copper); }
+.docs-content a:not([class]):hover,
+.import-container a[download]:hover { color: var(--copper-bright); }
 
 .goals-category-header {
     /* #224 PR2: small-caps Fraunces section header, matching the tier
