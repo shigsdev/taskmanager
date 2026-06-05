@@ -1718,14 +1718,28 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .goals-category-section {
     margin-bottom: 24px;
 }
-/* #224 PR2/PR3: page titles in Fraunces display serif (opsz 144). */
+/* #224 PR2/PR3/PR4: page titles (h1-scale) in Fraunces display serif (opsz 144). */
 .goals-toolbar h1,
 .projects-toolbar h1,
-.calendar-page > h1 {
+.calendar-page > h1,
+.recurring-page h1,
+.plan-header h1 {
     font-family: var(--font-display);
     font-variation-settings: "opsz" 144, "wght" 600, "SOFT" 40, "WONK" 0;
     font-weight: 600;
     letter-spacing: -0.015em;
+    color: var(--cream-bright);
+}
+
+/* #224 PR4: h2-scale page/state titles → Fraunces at a lower optical size
+   (opsz 40) so the serif keeps weight instead of going hairline-thin. */
+.reflection-state > h2,
+.triage-suggestions > h2,
+.review-task-title {
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 40, "wght" 600, "SOFT" 60, "WONK" 0;
+    font-weight: 600;
+    letter-spacing: -0.01em;
     color: var(--cream-bright);
 }
 
@@ -4713,10 +4727,11 @@ table.quality-gates code {
 .reflection-state-error h2 { color: var(--danger, #c0392b); }
 .reflection-error-message {
     padding: 12px 16px;
-    background: #fff0f0;
-    border-left: 4px solid var(--danger, #c0392b);
+    /* #224 PR4: was light-pink (#fff0f0) — dark rust tint for the dark theme. */
+    background: rgba(198, 74, 42, 0.12);
+    border-left: 4px solid var(--rust);
     border-radius: 4px;
-    color: var(--text, #333);
+    color: var(--cream);
 }
 .reflection-done-summary { margin: 8px 0 0 18px; padding: 0; }
 .reflection-done-error { color: var(--danger, #c0392b); font-size: 0.85rem; }
