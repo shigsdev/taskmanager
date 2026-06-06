@@ -329,12 +329,15 @@ def build_er_diagram() -> str:
 
     # Color-group `classDef`s + per-table assignments. Mermaid's ER
     # diagram supports `classDef name fill:#color,stroke:#color`, then
-    # `class tableName name` to assign. Colors picked for adequate
-    # contrast on the existing pale-grey page background.
+    # `class tableName name` to assign. #224: dark-theme — slate fill +
+    # cream text + a group-colored stroke (blue=core / amber=ops /
+    # purple=auth), matching the HTML legend swatches in style.css
+    # (.er-legend-* / .legend-inline .legend-swatch.*). Keep these in
+    # sync with that CSS if the group colors ever change.
     lines.append("")
-    lines.append("    classDef core fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d")
-    lines.append("    classDef ops fill:#fef3c7,stroke:#a16207,color:#3a2806")
-    lines.append("    classDef auth fill:#fce7f3,stroke:#a21caf,color:#3d0a3a")
+    lines.append("    classDef core fill:#221f1c,stroke:#6d9fe8,color:#ece4d5")
+    lines.append("    classDef ops fill:#221f1c,stroke:#d6a84b,color:#ece4d5")
+    lines.append("    classDef auth fill:#221f1c,stroke:#c678dd,color:#ece4d5")
 
     # Group tables by their classDef so we can emit one `class A,B,C name` line
     # per group instead of per table — Mermaid accepts comma-separated names.

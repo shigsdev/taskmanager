@@ -101,9 +101,9 @@ flowchart LR
     Web -.->|on demand| Ext[External APIs<br/>Whisper, Claude, Vision]
     Web -.->|sign in| Google[Google OAuth]
 
-    classDef user fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
-    classDef internal fill:#fef3c7,stroke:#a16207,color:#3a2806
-    classDef external fill:#fce7f3,stroke:#a21caf,color:#3d0a3a
+    classDef user fill:#221f1c,stroke:#6d9fe8,color:#ece4d5
+    classDef internal fill:#221f1c,stroke:#d6a84b,color:#ece4d5
+    classDef external fill:#221f1c,stroke:#c678dd,color:#ece4d5
     class You user
     class Web,DB,Cron internal
     class Mail,Ext,Google external
@@ -149,9 +149,9 @@ flowchart LR
 
     Auth -.->|OAuth| Google[Google OAuth<br/>email allowlist]
 
-    classDef user fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
-    classDef internal fill:#fef3c7,stroke:#a16207,color:#3a2806
-    classDef external fill:#fce7f3,stroke:#a21caf,color:#3d0a3a
+    classDef user fill:#221f1c,stroke:#6d9fe8,color:#ece4d5
+    classDef internal fill:#221f1c,stroke:#d6a84b,color:#ece4d5
+    classDef external fill:#221f1c,stroke:#c678dd,color:#ece4d5
     class You,Browser user
     class Routes,Auth,Services,DB,Digest,TomorrowRoll,SpawnRecurring,Heartbeat internal
     class SendGrid,Vision,Whisper,Claude,Google external
@@ -432,9 +432,9 @@ flowchart TD
     Create --> Subs[Create subtasks<br/>if template has them]
     Subs --> Done([Tasks waiting<br/>in Today])
 
-    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
-    classDef decision fill:#fef3c7,stroke:#a16207,color:#3a2806
-    classDef endNode fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    classDef startNode fill:#221f1c,stroke:#6d9fe8,color:#ece4d5
+    classDef decision fill:#221f1c,stroke:#d6a84b,color:#ece4d5
+    classDef endNode fill:#221f1c,stroke:#94a48b,color:#ece4d5
     class Start startNode
     class Check decision
     class Done,Skip endNode
@@ -463,9 +463,9 @@ flowchart TD
     SubLoop --> CommitSubs[COMMIT — subtasks persisted]
     CommitSubs --> End([Return spawned tasks])
 
-    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
-    classDef decision fill:#fef3c7,stroke:#a16207,color:#3a2806
-    classDef endNode fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    classDef startNode fill:#221f1c,stroke:#6d9fe8,color:#ece4d5
+    classDef decision fill:#221f1c,stroke:#d6a84b,color:#ece4d5
+    classDef endNode fill:#221f1c,stroke:#94a48b,color:#ece4d5
     class Start startNode
     class Loop,KeyCheck,SubLoop,SubCheck decision
     class End,SkipBranch endNode
@@ -518,10 +518,10 @@ flowchart TD
     Review --> Save[Server creates real tasks]
     Save --> Done([Tasks appear<br/>in your tiers])
 
-    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
-    classDef external fill:#fce7f3,stroke:#a21caf,color:#3d0a3a
-    classDef user fill:#fef3c7,stroke:#a16207,color:#3a2806
-    classDef endNode fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    classDef startNode fill:#221f1c,stroke:#6d9fe8,color:#ece4d5
+    classDef external fill:#221f1c,stroke:#c678dd,color:#ece4d5
+    classDef user fill:#221f1c,stroke:#d6a84b,color:#ece4d5
+    classDef endNode fill:#221f1c,stroke:#94a48b,color:#ece4d5
     class Start startNode
     class Whisper,Claude external
     class Review user
@@ -556,11 +556,11 @@ flowchart TD
     POST2 --> Create[create_tasks_from_candidates:<br/>INSERT Task rows]
     Create --> Final([Tasks live in your tiers])
 
-    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
-    classDef external fill:#fce7f3,stroke:#a21caf,color:#3d0a3a
-    classDef user fill:#fef3c7,stroke:#a16207,color:#3a2806
-    classDef decision fill:#fef3c7,stroke:#a16207,color:#3a2806
-    classDef endNode fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    classDef startNode fill:#221f1c,stroke:#6d9fe8,color:#ece4d5
+    classDef external fill:#221f1c,stroke:#c678dd,color:#ece4d5
+    classDef user fill:#221f1c,stroke:#d6a84b,color:#ece4d5
+    classDef decision fill:#221f1c,stroke:#d6a84b,color:#ece4d5
+    classDef endNode fill:#221f1c,stroke:#94a48b,color:#ece4d5
     classDef errNode fill:#fee2e2,stroke:#b91c1c,color:#5a0a0a
     class Start startNode
     class WhisperCall,ClaudeCall external
@@ -632,9 +632,9 @@ flowchart TD
     Q3 -- YES, email matches --> In3([Logged in<br/>via Google])
     Q3 -- YES, email does NOT match --> Block([403 Unauthorized<br/>single-user lockdown])
 
-    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
-    classDef decision fill:#fef3c7,stroke:#a16207,color:#3a2806
-    classDef ok fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    classDef startNode fill:#221f1c,stroke:#6d9fe8,color:#ece4d5
+    classDef decision fill:#221f1c,stroke:#d6a84b,color:#ece4d5
+    classDef ok fill:#221f1c,stroke:#94a48b,color:#ece4d5
     classDef bad fill:#fee2e2,stroke:#b91c1c,color:#5a0a0a
     class Start startNode
     class Q1,Q2,Q3 decision
@@ -688,9 +688,9 @@ flowchart TD
     EmailCheck -- No --> Bad([403 unauthorized.html<br/>session.clear])
     EmailCheck -- Yes --> In3([Logged in via Google —<br/>view kwargs include email])
 
-    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
-    classDef decision fill:#fef3c7,stroke:#a16207,color:#3a2806
-    classDef ok fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    classDef startNode fill:#221f1c,stroke:#6d9fe8,color:#ece4d5
+    classDef decision fill:#221f1c,stroke:#d6a84b,color:#ece4d5
+    classDef ok fill:#221f1c,stroke:#94a48b,color:#ece4d5
     classDef bad fill:#fee2e2,stroke:#b91c1c,color:#5a0a0a
     class Start startNode
     class BypassEnv,Tripwire,EnvFile,AuthEmail,Cookie,Method,Verify,OAuth,Cached,EmailCheck decision
@@ -791,9 +791,9 @@ flowchart TD
     Smoke -- Any fail --> Investigate
     Smoke -- 5/5 PASS --> Flip[Flip BACKLOG row to ✅<br/>separate commit]
 
-    classDef startNode fill:#dbeafe,stroke:#1d4ed8,color:#0c1f4d
-    classDef decision fill:#fef3c7,stroke:#a16207,color:#3a2806
-    classDef ok fill:#dcfce7,stroke:#15803d,color:#0a3d1d
+    classDef startNode fill:#221f1c,stroke:#6d9fe8,color:#ece4d5
+    classDef decision fill:#221f1c,stroke:#d6a84b,color:#ece4d5
+    classDef ok fill:#221f1c,stroke:#94a48b,color:#ece4d5
     classDef bad fill:#fee2e2,stroke:#b91c1c,color:#5a0a0a
     class Edit startNode
     class Gates,Phase6,Validate,Smoke decision
