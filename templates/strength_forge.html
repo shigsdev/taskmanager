@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% set active_page = 'strength_forge' %}
+{% block title %}Strength Forge — Task Manager{% endblock %}
+
+{% block content %}
+{# #282 Strength Forge — client-rendered from static/strength_forge_data.js
+   into #sf-root by static/strength_forge.js (same render-from-data pattern
+   as the board / goals / calendar). Phase A = static reference. #}
+<div class="sf-page" id="sf-root"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='strength_forge_data.js') }}"></script>
+<script src="{{ url_for('static', filename='strength_forge.js') }}"></script>
+{% endblock %}

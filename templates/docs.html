@@ -56,6 +56,7 @@
             <li><a href="#goals-feature">Goals</a></li>
             <li><a href="#recycle-bin">Recycle bin and undo</a></li>
             <li><a href="#print">Print view</a></li>
+            <li><a href="#strength-forge">Strength Forge (workouts)</a></li>
         </ul>
 
         <h3 class="docs-toc-group">Admin</h3>
@@ -201,6 +202,35 @@ Read article https://example.com/foo #personal
 
 https://example.com/foo
   → title: "https://example.com/foo" (URL-only, title falls back to URL)</pre>
+        </section>
+
+        <section id="strength-forge" class="docs-section">
+            <h2>Strength Forge (workout plans)</h2>
+            <p>
+                The <a href="{{ url_for('strength_forge_page') }}">Strength</a>
+                page is a personalized, back-safe workout reference built
+                around an L4/L5 + L5/S1 disc-protection protocol. It has
+                three tabs:
+            </p>
+            <ul>
+                <li><strong>⚡ Bands</strong> — two rotating full-body
+                    resistance-band workouts (A and B) with warm-up, main
+                    work, and cool-down sections.</li>
+                <li><strong>🎖 Military</strong> — three calisthenics
+                    sessions (Push+Core, Pull+Legs, Full-Body Circuit),
+                    adapted for disc safety (no sit-ups, burpees, or
+                    jumping).</li>
+                <li><strong>🔴 Flare-Up</strong> — a three-phase recovery
+                    protocol (Acute → Recovery → Return to Training) with an
+                    avoid-list and warning signs for when the back flares.</li>
+            </ul>
+            <p>
+                Tap <strong>ℹ️</strong> on any exercise to open its detail
+                modal: a "See Real Photos" Google Images link, the sets/rest,
+                step-by-step instructions, and a safety badge
+                (therapeutic / back-safe / monitor / recovery). The page is a
+                read-only reference — nothing is saved.
+            </p>
         </section>
 
         <section id="voice-input" class="docs-section">

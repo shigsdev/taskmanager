@@ -394,6 +394,7 @@ class TestAllRoutesExist:
         pages = [
             "/", "/goals", "/review", "/scan",
             "/import", "/settings", "/utilities", "/print",
+            "/strength-forge",  # #282
             "/login", "/logout", "/healthz",
         ]
         for page in pages:

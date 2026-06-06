@@ -483,6 +483,14 @@ def create_app(config: dict | None = None) -> Flask:
     def scan_page(email: str):  # noqa: ARG001
         return render_template("scan.html")
 
+    # #282 Strength Forge — personalized workout-plan reference (resistance
+    # bands / military calisthenics / clinical flare-up protocol). Phase A:
+    # static read-only page, client-rendered from static/strength_forge_data.js.
+    @app.route("/strength-forge")
+    @login_required
+    def strength_forge_page(email: str):  # noqa: ARG001
+        return render_template("strength_forge.html")
+
     @app.route("/voice-memo")
     @login_required
     def voice_memo_page(email: str):  # noqa: ARG001

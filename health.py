@@ -176,6 +176,8 @@ EXPECTED_STATIC_FILES = (
     "static/recycle_bin.js",
     "static/swipe.js",
     "static/utilities.js",  # #222 — /utilities admin actions
+    "static/strength_forge_data.js",  # #282 — Strength Forge data
+    "static/strength_forge.js",       # #282 — Strength Forge renderer
     "static/manifest.json",
     "static/favicon.svg",  # #45 — browser tab icon
 )

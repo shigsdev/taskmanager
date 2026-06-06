@@ -52,6 +52,7 @@ const ROUTES = [
     { name: "/settings", url: "/settings?nosw=1" },
     { name: "/recycle-bin", url: "/recycle-bin?nosw=1" },
     { name: "/utilities", url: "/utilities?nosw=1" },  // #222
+    { name: "/strength-forge", url: "/strength-forge?nosw=1" },  // #282
     // /print intentionally omitted — window.print() can stall the
     // headless renderer; covered by pages.spec.js Print: tier grouping.
 ];
