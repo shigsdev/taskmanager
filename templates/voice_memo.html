@@ -33,10 +33,19 @@
 
     <!-- State 2: Recording in progress -->
     <section class="voice-state" id="voiceStateRecording" style="display:none">
-        <h2>Recording…</h2>
-        <div class="voice-recording-indicator">
-            <div class="voice-pulse" aria-hidden="true"></div>
-            <div class="voice-timer" id="voiceTimer">0:00</div>
+        {# #224 voice-memo breathing-glow card (Soft Concrete motion mockup):
+           copper breathing radial glow + pulse dot + "Recording" label +
+           tabular timer + a decorative waveform. Animations are
+           prefers-reduced-motion-gated in style.css. #}
+        <div class="voice-recording-card">
+            <div class="voice-rec-row">
+                <span class="voice-rec-dot" aria-hidden="true"></span>
+                <span class="voice-rec-label">Recording</span>
+                <span class="voice-timer" id="voiceTimer">0:00</span>
+            </div>
+            <div class="voice-waveform" aria-hidden="true">
+                {% for _ in range(28) %}<span class="vw-bar"></span>{% endfor %}
+            </div>
         </div>
         <p class="voice-limit-hint" id="voiceLimitHint">Max 10:00</p>
         <div class="voice-controls">

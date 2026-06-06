@@ -1745,7 +1745,8 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .settings-container > h2,
 .import-modes > h2,
 .scan-upload > h2,
-.recycle-header h2 {
+.recycle-header h2,
+.voice-state > h2 {
     font-family: var(--font-display);
     font-variation-settings: "opsz" 40, "wght" 600, "SOFT" 60, "WONK" 0;
     font-weight: 600;
@@ -3068,29 +3069,87 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     border: 1px solid var(--border);
     cursor: pointer;
 }
-.voice-recording-indicator {
-    text-align: center;
-    margin: 24px 0;
+/* #224: voice-memo breathing-glow recording card (Soft Concrete motion
+   mockup). Replaces the old solid-red pulsing circle. All motion is
+   prefers-reduced-motion-gated below. */
+.voice-recording-card {
+    max-width: 460px;
+    margin: 24px auto;
+    padding: 20px 22px;
+    border-radius: var(--radius-m);
+    background: linear-gradient(140deg, var(--slate-300), var(--slate-200));
+    border: 1px solid rgba(184, 115, 51, 0.15);
+    box-shadow: var(--shadow-2);
+    position: relative;
+    overflow: hidden;
 }
-.voice-pulse {
-    display: inline-block;
-    width: 80px;
-    height: 80px;
+.voice-recording-card::after {
+    content: "";
+    position: absolute;
+    top: -50%; right: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(circle, rgba(184,115,51,0.07) 0%, transparent 60%);
+    pointer-events: none;
+}
+.voice-rec-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: relative;
+    z-index: 1;
+}
+.voice-rec-dot {
+    width: 12px; height: 12px;
     border-radius: 50%;
-    background: var(--danger, #c0392b);
-    animation: voice-pulse-anim 1.2s ease-in-out infinite;
-    margin-bottom: 16px;
+    background: var(--copper);
+    box-shadow: 0 0 12px var(--copper);
+    flex: none;
 }
-@keyframes voice-pulse-anim {
-    0%, 100% { transform: scale(1); opacity: 0.85; }
-    50% { transform: scale(1.15); opacity: 1; }
+.voice-rec-label {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--copper);
 }
 .voice-timer {
-    font-size: 2rem;
-    font-weight: 600;
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 1.6rem;
+    font-weight: 500;
     font-variant-numeric: tabular-nums;
+    color: var(--cream-bright);
 }
+.voice-waveform {
+    margin-top: 16px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    position: relative;
+    z-index: 1;
+}
+.vw-bar {
+    width: 3px;
+    height: 18%;
+    background: var(--cream-dim);
+    border-radius: 2px;
+}
+.vw-bar:nth-child(odd) { background: var(--copper-bright); }
 .voice-limit-hint { text-align: center; font-size: 0.85rem; }
+
+@media (prefers-reduced-motion: no-preference) {
+    .voice-recording-card::after { animation: scBreathe 4s ease-in-out infinite; }
+    .voice-rec-dot { animation: scPulse 1.6s ease-in-out infinite; }
+    .vw-bar { animation: scWave 1.2s ease-in-out infinite; }
+    .vw-bar:nth-child(3n) { animation-delay: 0.10s; }
+    .vw-bar:nth-child(5n) { animation-delay: 0.20s; }
+    .vw-bar:nth-child(7n) { animation-delay: 0.25s; }
+}
+@keyframes scBreathe { 0%,100%{transform:scale(0.95);opacity:0.4;} 50%{transform:scale(1.05);opacity:0.85;} }
+@keyframes scPulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+@keyframes scWave { 0%,100%{height:18%;} 50%{height:80%;} }
 .voice-progress { padding: 16px; background: var(--surface-sunk, #f5f5f5); border-radius: 8px; }
 .voice-progress-step { padding: 8px 0; font-family: monospace; }
 .voice-cost-hint { font-size: 0.85rem; color: var(--text-muted); }
