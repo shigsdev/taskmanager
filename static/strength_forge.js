@@ -316,6 +316,21 @@
       ]),
     ]));
 
+    // Flare tracker (#282 Phase B.2) — sits above the reference content.
+    // syncPhase lets the tracker drive the content selector to the
+    // phase the user is actually in (function declaration → hoisted, so
+    // it can be passed to buildFlareTracker before `sel` is assigned; it
+    // only runs later, on the async loadFlare()).
+    function syncPhase(phaseId) {
+      if (fp === phaseId) return;
+      fp = phaseId;
+      renderPhase();
+      sel.querySelectorAll(".sf-phase-btn").forEach(function (b, i) {
+        b.classList.toggle("active", SF.flarePhases[i].id === fp);
+      });
+    }
+    panel.appendChild(buildFlareTracker(syncPhase));
+
     var fp = SF.flarePhases[0].id;
     var contentMount = el("div");
     function renderPhase() {
@@ -471,6 +486,87 @@
   }
 
   // ============================================================
+  // FLARE TRACKING (#282 Phase B.2 — track current flare phase/day)
+  // ============================================================
+  var flareTrackMount, flareSyncPhase;
+
+  function buildFlareTracker(syncPhase) {
+    flareSyncPhase = syncPhase;
+    flareTrackMount = el("div", { cls: "sf-flare-track" });
+    return flareTrackMount;
+  }
+
+  function renderFlareTracker(state) {
+    var mount = flareTrackMount;
+    if (!mount) return;
+    while (mount.firstChild) mount.removeChild(mount.firstChild);
+
+    if (!state || !state.active) {
+      mount.appendChild(el("div", { cls: "sf-flare-track-idle" }, [
+        el("div", { cls: "sf-flare-track-idle-text", text: "No flare currently tracked." }),
+        el("button", {
+          cls: "sf-flare-track-start", text: "🔴 Start tracking a flare",
+          attrs: { type: "button" },
+          on: { click: function (e) { startFlare(e.currentTarget); } },
+        }),
+      ]));
+      return;
+    }
+
+    var head = el("div", { cls: "sf-flare-track-head" }, [
+      el("span", { cls: "sf-flare-track-day", text: "Day " + state.day }),
+      el("span", { cls: "sf-flare-track-phase", text: state.phase_label + " · " + state.phase_days }),
+      el("span", { cls: "sf-flare-track-since", text: "since " + state.started_on }),
+    ]);
+    var phaseBtns = el("div", { cls: "sf-flare-track-phases" }, SF.flarePhases.map(function (p) {
+      return el("button", {
+        cls: "sf-flare-track-pbtn sf-role-" + p.role + (p.id === state.phase ? " active" : ""),
+        text: p.icon + " " + p.label, attrs: { type: "button" },
+        on: { click: function () { setFlarePhaseTracked(p.id); } },
+      });
+    }));
+    var endBtn = el("button", {
+      cls: "sf-flare-track-end", text: "✓ Mark resolved",
+      attrs: { type: "button" },
+      on: { click: function (e) { endFlare(e.currentTarget); } },
+    });
+    mount.appendChild(el("div", { cls: "sf-flare-track-active" }, [head, phaseBtns, endBtn]));
+
+    // Drive the reference content below to the phase the user is in.
+    if (flareSyncPhase) flareSyncPhase(state.phase);
+  }
+
+  function loadFlare() {
+    if (!window.apiFetch || !flareTrackMount) return;
+    window.apiFetch("/api/strength-forge/flare")
+      .then(function (d) { renderFlareTracker(d); })
+      .catch(function () {});
+  }
+
+  function startFlare(btn) {
+    if (!window.apiFetch) return;
+    if (btn) btn.disabled = true;
+    window.apiFetch("/api/strength-forge/flare", { method: "POST" })
+      .then(function (d) { renderFlareTracker(d); })
+      .catch(function () { if (btn) btn.disabled = false; });
+  }
+
+  function setFlarePhaseTracked(phase) {
+    if (!window.apiFetch) return;
+    window.apiFetch("/api/strength-forge/flare", {
+      method: "PATCH", body: JSON.stringify({ phase: phase }),
+    }).then(function (d) { renderFlareTracker(d); }).catch(function () {});
+  }
+
+  function endFlare(btn) {
+    if (!window.apiFetch) return;
+    if (btn) btn.disabled = true;
+    window.apiFetch("/api/strength-forge/flare", { method: "DELETE" })
+      .then(function () { loadFlare(); })
+      .catch(function () { if (btn) btn.disabled = false; });
+  }
+
+  // ============================================================
   // HEADER + TABS + ASSEMBLY
   // ============================================================
   function buildHeader() {
@@ -532,6 +628,7 @@
     root.appendChild(panels.flare);
 
     loadTracking();
+    loadFlare();
   }
 
   render();

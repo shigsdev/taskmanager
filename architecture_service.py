@@ -207,6 +207,7 @@ _ER_TABLE_GROUPS: dict[str, str] = {
     "weekly_focus": "core",
     "reflections": "core",
     "workout_sessions": "core",  # #282 Strength Forge — user-logged workouts
+    "flare_states": "core",  # #282 Strength Forge — tracked back-flare episodes
     # Operational: system-generated records
     "app_logs": "ops",
     "import_log": "ops",
@@ -232,6 +233,7 @@ _ER_TABLE_ORDER = (
     "weekly_focus",
     "reflections",
     "workout_sessions",  # #282
+    "flare_states",  # #282
     # Operational cluster
     "app_logs",
     "import_log",

@@ -604,3 +604,28 @@ class WorkoutSession(db.Model):
     plan_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     session_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class FlareState(db.Model):
+    """#282 Strength Forge — a tracked back-flare episode (Phase B.2).
+
+    One row per flare-up the user starts on /strength-forge. ``phase``
+    tracks where they are in the clinical 3-phase protocol
+    (immediate → recovery → return). ``started_on`` is the local
+    (DIGEST_TZ) date the flare began, set by the service layer so the
+    day-counter ("Day N") is stable across the UTC/local boundary
+    (cf. #181/#240 date-drift fixes). ``ended_on`` is NULL while the
+    flare is active; the service enforces at most one active flare.
+    Single-user app — no per-user FK.
+    """
+
+    __tablename__ = "flare_states"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    phase: Mapped[str] = mapped_column(String(20), nullable=False, default="immediate")
+    started_on: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    ended_on: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )

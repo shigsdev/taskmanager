@@ -108,3 +108,124 @@ class TestWorkoutSessionAPI:
     def test_delete_missing_returns_404(self, authed_client):
         resp = authed_client.delete(f"/api/strength-forge/sessions/{uuid.uuid4()}")
         assert resp.status_code == 404
+
+
+# ── Phase B.2: flare-up phase/day tracking ───────────────────────────
+from datetime import timedelta  # noqa: E402
+
+from models import FlareState, db  # noqa: E402
+from utils import local_today_date  # noqa: E402
+
+
+class TestFlareStateService:
+    def test_start_flare_creates_active_immediate(self, app):
+        with app.app_context():
+            flare = svc.start_flare()
+            assert flare.phase == "immediate"
+            assert flare.ended_on is None
+            assert svc.active_flare() is not None
+
+    def test_only_one_active_flare(self, app):
+        with app.app_context():
+            svc.start_flare()
+            with pytest.raises(ValueError):
+                svc.start_flare()
+            assert FlareState.query.filter(FlareState.ended_on.is_(None)).count() == 1
+
+    def test_set_phase_advances(self, app):
+        with app.app_context():
+            svc.start_flare()
+            svc.set_flare_phase("recovery")
+            assert svc.active_flare().phase == "recovery"
+
+    def test_set_invalid_phase_rejected(self, app):
+        with app.app_context():
+            svc.start_flare()
+            with pytest.raises(ValueError):
+                svc.set_flare_phase("bogus")
+
+    def test_set_phase_with_no_active_flare_rejected(self, app):
+        with app.app_context(), pytest.raises(ValueError):
+            svc.set_flare_phase("recovery")
+
+    def test_end_flare_clears_active(self, app):
+        with app.app_context():
+            svc.start_flare()
+            assert svc.end_flare() is True
+            assert svc.active_flare() is None
+            assert svc.end_flare() is False  # nothing active now
+
+    def test_day_counter_is_one_based(self, app):
+        with app.app_context():
+            flare = svc.start_flare()
+            assert svc.flare_day(flare) == 1
+            # Backdate two days → Day 3.
+            flare.started_on = local_today_date() - timedelta(days=2)
+            db.session.commit()
+            assert svc.flare_day(flare) == 3
+
+    def test_summary_inactive_when_none(self, app):
+        with app.app_context():
+            assert svc.flare_summary() == {"active": False}
+
+    def test_summary_active_shape(self, app):
+        with app.app_context():
+            svc.start_flare()
+            summary = svc.flare_summary()
+            assert summary["active"] is True
+            assert summary["phase"] == "immediate"
+            assert summary["phase_label"] == "Acute Phase"
+            assert summary["day"] == 1
+
+
+class TestFlareStateAPI:
+    def test_get_flare_inactive(self, authed_client):
+        resp = authed_client.get("/api/strength-forge/flare")
+        assert resp.status_code == 200
+        assert resp.get_json() == {"active": False}
+
+    def test_post_starts_flare(self, authed_client):
+        resp = authed_client.post("/api/strength-forge/flare")
+        assert resp.status_code == 201
+        body = resp.get_json()
+        assert body["active"] is True
+        assert body["phase"] == "immediate"
+
+    def test_post_twice_returns_422(self, authed_client):
+        authed_client.post("/api/strength-forge/flare")
+        resp = authed_client.post("/api/strength-forge/flare")
+        assert resp.status_code == 422
+
+    def test_patch_sets_phase(self, authed_client):
+        authed_client.post("/api/strength-forge/flare")
+        resp = authed_client.patch(
+            "/api/strength-forge/flare", json={"phase": "return"}
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["phase"] == "return"
+
+    def test_patch_invalid_phase_returns_422(self, authed_client):
+        authed_client.post("/api/strength-forge/flare")
+        resp = authed_client.patch(
+            "/api/strength-forge/flare", json={"phase": "bogus"}
+        )
+        assert resp.status_code == 422
+
+    def test_patch_with_no_active_flare_returns_422(self, authed_client):
+        resp = authed_client.patch(
+            "/api/strength-forge/flare", json={"phase": "recovery"}
+        )
+        assert resp.status_code == 422
+
+    def test_delete_ends_flare(self, authed_client):
+        authed_client.post("/api/strength-forge/flare")
+        resp = authed_client.delete("/api/strength-forge/flare")
+        assert resp.status_code == 204
+        # Now inactive.
+        assert authed_client.get("/api/strength-forge/flare").get_json() == {
+            "active": False
+        }
+
+    def test_delete_with_no_active_flare_returns_404(self, authed_client):
+        resp = authed_client.delete("/api/strength-forge/flare")
+        assert resp.status_code == 404

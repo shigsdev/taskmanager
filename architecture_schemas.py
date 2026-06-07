@@ -241,6 +241,20 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "session_date": {"desc": "Local (DIGEST_TZ) date the workout was completed", "notes": "Indexed; set server-side so 'this week' buckets correctly"},
         },
     },
+    "flare_states": {
+        "blurb": (
+            "One row per tracked back-flare episode started on "
+            "/strength-forge (#282 Phase B.2). Tracks where the user is in "
+            "the clinical 3-phase protocol and how many days the flare has "
+            "lasted. The service enforces at most one active flare. "
+            "Single-user — no per-user FK."
+        ),
+        "columns": {
+            "phase":      {"desc": "Protocol stage: immediate (Acute) / recovery / return", "notes": "Defaults to 'immediate' when a flare starts"},
+            "started_on": {"desc": "Local (DIGEST_TZ) date the flare began", "notes": "Indexed; drives the 'Day N' counter (started day = Day 1)"},
+            "ended_on":   {"desc": "Local date the flare was marked resolved", "notes": "Indexed; NULL while the flare is active — the active-flare lookup"},
+        },
+    },
     # #188 (2026-05-22): a `flask_dance_oauth` entry used to live here,
     # describing a token table with an "encrypted OAuth token" column.
     # No such table exists — Flask-Dance runs on its default session

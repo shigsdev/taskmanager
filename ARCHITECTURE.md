@@ -489,7 +489,7 @@ time is in the future today. See ADR-033 for the full design.
 - `/plan` — weekly planner (post-#12 brainstorm Option A, shipped 2026-05-02). Date picker → `POST /api/planner/weekly` → Claude Haiku reviews ALL active non-frozen tasks + 4 weeks of completion history + recurring fires + goals + projects + freezer items > 60 days → returns structured plan: per-task suggestions (action: keep/move/delete/freeze), day-by-day grouping (Mon–Sun), goal hints (on_track / falling_behind / no_progress / ahead), velocity warning, stale freezer review. User accepts / overrides / ignores per row; "Apply all accepted" routes through canonical `PATCH /api/tasks/<id>`. New `Task.planner_ignore` boolean (auto-resets on any task field change) silences specific tasks until next user touch. Service: `weekly_planner_service.py`. Rate-limited 5/min.
 - `/scan` — image → tasks
 - `/voice-memo` — audio → tasks
-- `/strength-forge` — personalized workout-plan reference (#282): 3 tabs (resistance bands / military calisthenics / clinical flare-up protocol), exercise modal (Google-Images photo link + sets/rest + instructions + safety boxes), clinically constrained for L4/L5 + L5/S1 herniated discs. Phase A is a static read-only page client-rendered from `static/strength_forge_data.js` by `static/strength_forge.js` (render-from-data, like the board); no DB yet (tracking is Phase B).
+- `/strength-forge` — personalized workout-plan reference (#282): 3 tabs (resistance bands / military calisthenics / clinical flare-up protocol), exercise modal (Google-Images photo link + sets/rest + instructions + safety boxes), clinically constrained for L4/L5 + L5/S1 herniated discs. Client-rendered from `static/strength_forge_data.js` by `static/strength_forge.js` (render-from-data, like the board). Phase B adds DB-backed tracking via `strength_forge_api.py`: B.1 logs completed workouts (`workout_sessions`, this-week/all-time counts on the bands & military tabs), B.2 tracks the current back-flare episode (`flare_states`, a phase/day tracker on the flare tab).
 - `/reflection` — weekly reflection (type/record → Claude proposes
   create/update/delete across tasks/goals/projects → review + confirm →
   optional "Use as Next Week's Focus"). #165
@@ -626,6 +626,7 @@ the code.
 # strength_forge_api.py — #282 Strength Forge workout tracking (Phase B)
 /api/strength-forge/sessions                      # GET: recent + this-week/all-time counts · POST: log a completed workout {plan_type}
 /api/strength-forge/sessions/<uuid:session_id>    # DELETE: undo a logged workout
+/api/strength-forge/flare                         # GET: current flare phase/day · POST: start a flare · PATCH: set phase {phase} · DELETE: mark resolved
 
 # debug_api.py — used by scripts/validate_deploy.py --check-logs
 /api/debug/logs

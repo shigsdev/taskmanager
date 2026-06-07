@@ -46,3 +46,44 @@ def remove_session(email: str, session_id: uuid.UUID):  # noqa: ARG001
     if not svc.delete_session(session_id):
         return jsonify({"error": "not found"}), 404
     return "", 204
+
+
+# --- Flare-up tracking (Phase B.2) ------------------------------------
+@bp.get("/flare")
+@login_required
+def get_flare(email: str):  # noqa: ARG001
+    """Current flare state (active episode + phase + day, or inactive)."""
+    return jsonify(svc.flare_summary())
+
+
+@bp.post("/flare")
+@login_required
+def start_flare(email: str):  # noqa: ARG001
+    """Begin tracking a new flare (422 if one is already active)."""
+    try:
+        svc.start_flare()
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 422
+    return jsonify(svc.flare_summary()), 201
+
+
+@bp.patch("/flare")
+@login_required
+def update_flare(email: str):  # noqa: ARG001
+    """Move the active flare to a protocol phase (body: {"phase": ...})."""
+    data = request.get_json(silent=True) or {}
+    phase = (data.get("phase") or "").strip()
+    try:
+        svc.set_flare_phase(phase)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 422
+    return jsonify(svc.flare_summary())
+
+
+@bp.delete("/flare")
+@login_required
+def end_flare(email: str):  # noqa: ARG001
+    """Mark the active flare resolved (404 if none active)."""
+    if not svc.end_flare():
+        return jsonify({"error": "no active flare"}), 404
+    return "", 204
