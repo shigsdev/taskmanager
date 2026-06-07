@@ -232,6 +232,7 @@
     panel.appendChild(toggle);
     panel.appendChild(planMount);
     renderPlan();
+    panel.appendChild(logButton("band", function () { return "band-" + bw.toLowerCase(); }));
     notesMount.appendChild(notesBox([
       "Never train on consecutive days — your recovery needs that full rest day.",
       "If your lower back flares during any exercise, stop immediately. Switch to the Flare-Up tab.",
@@ -292,6 +293,7 @@
     panel.appendChild(circuitMount);
     panel.appendChild(planMount);
     renderPlan();
+    panel.appendChild(logButton("mil", function () { return "mil-" + ms; }));
     panel.appendChild(notesBox([
       "Sit-ups and crunches are permanently removed — contraindicated for herniated lumbar discs.",
       "Burpees, jump squats, and any plyometric jumping are excluded.",
@@ -394,6 +396,81 @@
   }
 
   // ============================================================
+  // TRACKING (#282 Phase B.1 — log completed workouts)
+  // ============================================================
+  var trackSummary, trackList;
+
+  function buildTrackingStrip() {
+    trackSummary = el("div", { cls: "sf-track-summary", text: "" });
+    trackList = el("div", { cls: "sf-track-list" });
+    return el("div", { cls: "sf-track" }, [
+      el("div", { cls: "sf-track-head" }, [
+        el("span", { cls: "sf-track-icon", text: "🏋" }),
+        trackSummary,
+      ]),
+      trackList,
+    ]);
+  }
+
+  function loadTracking() {
+    if (!window.apiFetch) return;
+    window.apiFetch("/api/strength-forge/sessions").then(function (d) {
+      if (!d) return;
+      trackSummary.textContent = "This week: " + (d.this_week || 0) + " · all-time: " + (d.total || 0);
+      while (trackList.firstChild) trackList.removeChild(trackList.firstChild);
+      var sessions = d.sessions || [];
+      if (!sessions.length) {
+        trackList.appendChild(el("div", { cls: "sf-track-empty", text: "No workouts logged yet — tap “✓ Log this workout” after a session." }));
+        return;
+      }
+      sessions.slice(0, 6).forEach(function (s) {
+        trackList.appendChild(el("div", { cls: "sf-track-row" }, [
+          el("span", { cls: "sf-track-date", text: s.session_date }),
+          el("span", { cls: "sf-track-label", text: s.label }),
+          el("button", {
+            cls: "sf-track-del", text: "✕",
+            attrs: { type: "button", title: "Undo this log", "aria-label": "Undo" },
+            on: { click: function () { delSession(s.id); } },
+          }),
+        ]));
+      });
+    }).catch(function () { trackSummary.textContent = "Tracking unavailable."; });
+  }
+
+  function logWorkout(planType, btn) {
+    if (!window.apiFetch) return;
+    if (btn) btn.disabled = true;
+    window.apiFetch("/api/strength-forge/sessions", {
+      method: "POST", body: JSON.stringify({ plan_type: planType }),
+    }).then(function () {
+      loadTracking();
+      if (btn) { btn.disabled = false; flashBtn(btn); }
+    }).catch(function () { if (btn) btn.disabled = false; });
+  }
+
+  function delSession(id) {
+    if (!window.apiFetch) return;
+    window.apiFetch("/api/strength-forge/sessions/" + id, { method: "DELETE" })
+      .then(loadTracking).catch(function () {});
+  }
+
+  function flashBtn(btn) {
+    var orig = btn.textContent;
+    btn.textContent = "✓ Logged!";
+    btn.classList.add("logged");
+    setTimeout(function () { btn.textContent = orig; btn.classList.remove("logged"); }, 1400);
+  }
+
+  function logButton(role, planTypeFn) {
+    var btn = el("button", {
+      cls: "sf-log-btn sf-role-" + role, text: "✓ Log this workout",
+      attrs: { type: "button" },
+      on: { click: function () { logWorkout(planTypeFn(), btn); } },
+    });
+    return el("div", { cls: "sf-log-row" }, [btn]);
+  }
+
+  // ============================================================
   // HEADER + TABS + ASSEMBLY
   // ============================================================
   function buildHeader() {
@@ -420,6 +497,7 @@
   function render() {
     buildModal();
     root.appendChild(buildHeader());
+    root.appendChild(buildTrackingStrip());
 
     var panels = {
       band: buildBandPanel(),
@@ -452,6 +530,8 @@
     root.appendChild(panels.band);
     root.appendChild(panels.mil);
     root.appendChild(panels.flare);
+
+    loadTracking();
   }
 
   render();

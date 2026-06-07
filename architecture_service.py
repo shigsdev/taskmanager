@@ -206,6 +206,7 @@ _ER_TABLE_GROUPS: dict[str, str] = {
     "recurring_tasks": "core",
     "weekly_focus": "core",
     "reflections": "core",
+    "workout_sessions": "core",  # #282 Strength Forge — user-logged workouts
     # Operational: system-generated records
     "app_logs": "ops",
     "import_log": "ops",
@@ -230,6 +231,7 @@ _ER_TABLE_ORDER = (
     "recurring_tasks",
     "weekly_focus",
     "reflections",
+    "workout_sessions",  # #282
     # Operational cluster
     "app_logs",
     "import_log",

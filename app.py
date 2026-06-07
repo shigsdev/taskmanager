@@ -31,6 +31,7 @@ import reflection_api
 import review_api
 import scan_api
 import settings_api
+import strength_forge_api
 import tasks_api
 import triage_api
 import utilities_api
@@ -239,6 +240,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(recycle_api.bp)
     app.register_blueprint(settings_api.bp)
     app.register_blueprint(utilities_api.bp)
+    app.register_blueprint(strength_forge_api.bp)  # #282
     app.register_blueprint(debug_api.bp)
     app.register_blueprint(auth_api.bp)
     app.register_blueprint(voice_api.bp)

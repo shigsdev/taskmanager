@@ -229,6 +229,18 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "last_elapsed_ms": {"desc": "Wall-clock duration of the last fire in milliseconds", "notes": "Useful for spotting slow nightly drift"},
         },
     },
+    "workout_sessions": {
+        "blurb": (
+            "One row per completed workout the user logs on "
+            "/strength-forge (#282 Phase B). Powers the 'this week' + "
+            "all-time tracking counts. Single-user — no per-user FK. The "
+            "flare-up protocol is tracked separately, not as a session."
+        ),
+        "columns": {
+            "plan_type":    {"desc": "Which plan was done: band-a / band-b / mil-1 / mil-2 / mil-3", "notes": "Indexed"},
+            "session_date": {"desc": "Local (DIGEST_TZ) date the workout was completed", "notes": "Indexed; set server-side so 'this week' buckets correctly"},
+        },
+    },
     # #188 (2026-05-22): a `flask_dance_oauth` entry used to live here,
     # describing a token table with an "encrypted OAuth token" column.
     # No such table exists — Flask-Dance runs on its default session

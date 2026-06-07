@@ -623,6 +623,10 @@ the code.
 /api/utilities/run-coverage-audit                      # #229b — POST: kick off check_test_coverage.py subprocess in background daemon thread, return {status: "running", started_at} immediately; 409 if another run is in flight
 /api/utilities/coverage-audit-status                   # #229b — GET: poll the in-memory job state; returns {status, started_at, finished_at, duration_seconds, result, error} where status is idle|running|complete|error and `result` (when complete) matches the #236 inline-scan shape {total, per_check, findings, overall}
 
+# strength_forge_api.py — #282 Strength Forge workout tracking (Phase B)
+/api/strength-forge/sessions                      # GET: recent + this-week/all-time counts · POST: log a completed workout {plan_type}
+/api/strength-forge/sessions/<uuid:session_id>    # DELETE: undo a logged workout
+
 # debug_api.py — used by scripts/validate_deploy.py --check-logs
 /api/debug/logs
 /api/debug/client-error

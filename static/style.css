@@ -5209,6 +5209,24 @@ table.quality-gates code {
 .sf-pill-warn { color: #e0876e; border-color: rgba(198,74,42,0.4); background: rgba(198,74,42,0.08); }
 .sf-pill-good { color: var(--sage); border-color: rgba(148,164,139,0.4); background: rgba(148,164,139,0.08); }
 
+/* #282 B.1: tracking strip + log button */
+.sf-track { background: var(--slate-100); border: 1px solid var(--rule-soft); border-radius: var(--radius-m); padding: 12px 16px; margin-bottom: 18px; }
+.sf-track-head { display: flex; align-items: center; gap: 8px; }
+.sf-track-icon { font-size: 15px; }
+.sf-track-summary { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.03em; color: var(--cream-dim); }
+.sf-track-list { display: flex; flex-direction: column; gap: 0; margin-top: 10px; }
+.sf-track-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; font-size: 0.74rem; padding: 5px 0; border-top: 1px solid var(--rule-soft); }
+.sf-track-date { font-family: var(--font-mono); font-size: 0.66rem; color: var(--cream-faint); }
+.sf-track-label { color: var(--cream-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sf-track-del { background: none; border: none; color: var(--cream-faint); cursor: pointer; font-size: 0.8rem; padding: 2px 6px; border-radius: 4px; }
+.sf-track-del:hover { color: var(--rust); background: rgba(198,74,42,0.1); }
+.sf-track-empty { font-size: 0.74rem; color: var(--cream-faint); font-style: italic; margin-top: 8px; }
+.sf-log-row { margin: 4px 0 18px; }
+.sf-log-btn { width: 100%; padding: 11px; border-radius: var(--radius-s); border: 1px solid var(--sf-accent); background: color-mix(in srgb, var(--sf-accent) 12%, transparent); color: var(--sf-accent); font-weight: 700; font-size: 0.8rem; cursor: pointer; transition: all 0.15s; }
+.sf-log-btn:hover { background: color-mix(in srgb, var(--sf-accent) 22%, transparent); }
+.sf-log-btn.logged { background: rgba(148,164,139,0.2); border-color: var(--sage); color: var(--sage); }
+.sf-log-btn:disabled { opacity: 0.6; cursor: default; }
+
 .sf-tabs { display: flex; border: 1px solid var(--rule); border-radius: var(--radius-m); overflow: hidden; margin-bottom: 22px; }
 .sf-tab { flex: 1; padding: 12px 6px; background: var(--slate-100); border: none; cursor: pointer;
     font-size: clamp(12px, 3vw, 15px); font-weight: 700; color: var(--cream-dim);

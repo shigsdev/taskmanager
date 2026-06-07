@@ -585,3 +585,22 @@ class CronAudit(db.Model):
     last_status: Mapped[str] = mapped_column(String(20), nullable=False)
     last_rowcount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_elapsed_ms: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
+
+class WorkoutSession(db.Model):
+    """#282 Strength Forge — a logged completed workout session.
+
+    One row per workout the user marks complete on /strength-forge.
+    ``plan_type`` identifies which plan was done (band-a / band-b /
+    mil-1 / mil-2 / mil-3). Single-user app — no per-user FK.
+    ``session_date`` is the local (DIGEST_TZ) date the workout was done,
+    set by the service layer so "this week" buckets correctly across the
+    UTC/local boundary (cf. #181/#240 date-drift fixes).
+    """
+
+    __tablename__ = "workout_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    plan_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    session_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
