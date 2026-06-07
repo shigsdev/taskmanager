@@ -7,18 +7,6 @@
    into #sf-root by static/strength_forge.js (same render-from-data pattern
    as the board / goals / calendar). Phase A = static reference. #}
 <div class="sf-page" id="sf-root"></div>
-
-{# #282 Phase A.1: server-rendered SVG exercise diagrams (trusted static
-   markup from strength_forge_diagrams.py), hidden + keyed by exercise id.
-   The modal clones the matching one in (cloneNode — hook-safe, no innerHTML). #}
-<div id="sf-diagrams" hidden aria-hidden="true">
-    {# `svg` is trusted, fully-static SVG markup built in
-       strength_forge_diagrams.py — no user input ever reaches it, so the
-       `|safe` is not an XSS vector. Bare nosemgrep (matched-line). #}
-    {% for ex_id, svg in diagrams.items() %}
-    <div class="sf-diagram" data-diagram="{{ ex_id }}">{{ svg|safe }}</div>{# nosemgrep #}
-    {% endfor %}
-</div>
 {% endblock %}
 
 {% block scripts %}
