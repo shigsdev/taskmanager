@@ -12,7 +12,12 @@ import os
 from flask import Blueprint, Response, jsonify, request
 
 from auth import login_required
-from digest_service import build_digest, build_digest_html, send_digest
+from digest_service import (
+    build_digest,
+    build_digest_html,
+    record_send_result,
+    send_digest,
+)
 from rate_limit import LLM_HEAVY, limiter
 
 bp = Blueprint("digest_api", __name__, url_prefix="/api/digest")
@@ -51,7 +56,20 @@ def send_now(email: str):  # noqa: ARG001
     # HTTP failure (#50, ADR-031) — the global error handler catches it
     # and returns JSON 502 with the actual SendGrid status + body.
     # Returns False only for the "no API key set" early-out path.
-    ok = send_digest(to_email=to_email)
+    #
+    # Record the outcome (#286 alert) so a manual resend that SUCCEEDS
+    # clears the /healthz warn left by a failed scheduled send, and a
+    # manual resend that FAILS is captured too. On EgressError we record
+    # fail then re-raise so the global handler still returns the 502.
+    try:
+        ok = send_digest(to_email=to_email)
+    except Exception as e:  # noqa: BLE001
+        record_send_result(status="fail", error=f"{type(e).__name__}: {e}")
+        raise
+    record_send_result(
+        status="ok" if ok else "skip",
+        error=None if ok else "SENDGRID_API_KEY not set",
+    )
     if ok:
         return jsonify({"status": "sent"})
     return jsonify({

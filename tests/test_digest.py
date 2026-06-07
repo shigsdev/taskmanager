@@ -697,3 +697,89 @@ class TestDigestCronCallback:
         # and every subsequent job (recurring spawn, tomorrow roll,
         # heartbeat) would silently stop.
         callback()
+
+    def test_callback_records_ok_on_success(self, app, monkeypatch):
+        """#286: a successful scheduled send persists status=ok so
+        /healthz can report the last good send."""
+        from digest_service import get_last_send_result
+        monkeypatch.setenv("DIGEST_TO_EMAIL", "test-recipient@example.com")
+        monkeypatch.setattr("digest_service.send_digest", lambda *a, **kw: True)
+        callback = self._job_func(app)
+        callback()
+        with app.app_context():
+            rec = get_last_send_result()
+        assert rec is not None and rec["status"] == "ok"
+
+    def test_callback_records_fail_on_error(self, app, monkeypatch):
+        """#286: the 2026-06-07 incident — SendGrid 401 quota. The
+        scheduled callback must persist status=fail + the error so the
+        silent failure surfaces on /healthz."""
+        from digest_service import get_last_send_result
+        monkeypatch.setenv("DIGEST_TO_EMAIL", "test-recipient@example.com")
+        def _boom(*a, **kw):
+            raise RuntimeError("SendGrid returned HTTP 401: Maximum credits exceeded")
+        monkeypatch.setattr("digest_service.send_digest", _boom)
+        callback = self._job_func(app)
+        callback()
+        with app.app_context():
+            rec = get_last_send_result()
+        assert rec is not None and rec["status"] == "fail"
+        assert "401" in rec["error"]
+
+
+class TestDigestLastSendRecord:
+    """#286: persist the most recent digest-send outcome in AppSetting so
+    a silent SendGrid failure becomes a visible /healthz signal."""
+
+    def test_record_then_read_ok(self, app):
+        from digest_service import get_last_send_result, record_send_result
+        with app.app_context():
+            record_send_result(status="ok")
+            rec = get_last_send_result()
+        assert rec["status"] == "ok"
+        assert "at" in rec
+
+    def test_record_fail_includes_error(self, app):
+        from digest_service import get_last_send_result, record_send_result
+        with app.app_context():
+            record_send_result(status="fail", error="SendGrid HTTP 401: credits")
+            rec = get_last_send_result()
+        assert rec["status"] == "fail"
+        assert "401" in rec["error"]
+
+    def test_record_upserts_latest_wins(self, app):
+        """Only one row per the well-known key — the newest result wins."""
+        from digest_service import get_last_send_result, record_send_result
+        from models import AppSetting, db
+        with app.app_context():
+            record_send_result(status="fail", error="first")
+            record_send_result(status="ok")
+            assert get_last_send_result()["status"] == "ok"
+            count = db.session.query(AppSetting).filter_by(
+                key="digest_last_send"
+            ).count()
+        assert count == 1
+
+    def test_get_returns_none_when_never_recorded(self, app):
+        from digest_service import get_last_send_result
+        with app.app_context():
+            assert get_last_send_result() is None
+
+    def test_error_is_capped_under_column_limit(self, app):
+        """AppSetting.value is String(500); a huge error must not overflow."""
+        from digest_service import get_last_send_result, record_send_result
+        with app.app_context():
+            record_send_result(status="fail", error="x" * 5000)
+            rec = get_last_send_result()
+        assert rec["status"] == "fail"
+        assert len(rec["error"]) <= 300
+
+    def test_manual_send_success_records_ok(self, authed_client, monkeypatch):
+        """A manual resend that succeeds clears the alert (records ok)."""
+        from digest_service import get_last_send_result
+        monkeypatch.setenv("DIGEST_TO_EMAIL", "work@example.com")
+        monkeypatch.setenv("SENDGRID_API_KEY", "fake-key")
+        with patch("digest_service._sendgrid_send", return_value=True):
+            resp = authed_client.post("/api/digest/send")
+        assert resp.status_code == 200
+        assert get_last_send_result()["status"] == "ok"

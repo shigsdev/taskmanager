@@ -34,6 +34,63 @@ from models import Goal, GoalStatus, Task, TaskStatus, Tier, db
 
 logger = logging.getLogger(__name__)
 
+# --- Last-send outcome record (#286 digest-failure alert) ------------
+# Persisted in the AppSetting key/value store so a SILENT scheduled-send
+# failure (e.g. SendGrid "Maximum credits exceeded" → HTTP 401, the
+# 2026-06-07 incident) becomes a VISIBLE /healthz signal instead of just
+# an ERROR row nobody scans daily. AppSetting.value is String(500), so
+# the payload is capped well under that.
+LAST_SEND_KEY = "digest_last_send"
+
+
+def record_send_result(*, status: str, error: str | None = None) -> None:
+    """Upsert the outcome of the most recent digest send attempt.
+
+    ``status`` is "ok" | "fail" | "skip". Never raises — recording must
+    not crash the scheduler thread, so any DB error is logged + swallowed.
+    """
+    import json
+    from datetime import UTC, datetime
+
+    from models import AppSetting
+
+    payload = {"status": status, "at": datetime.now(UTC).isoformat()}
+    if error:
+        # Cap so status + at + json overhead stay under the 500-char column.
+        payload["error"] = error[:300]
+    value = json.dumps(payload)[:500]
+    try:
+        row = (
+            db.session.query(AppSetting)
+            .filter_by(key=LAST_SEND_KEY)
+            .one_or_none()
+        )
+        if row is None:
+            db.session.add(AppSetting(key=LAST_SEND_KEY, value=value))
+        else:
+            row.value = value
+        db.session.commit()
+    except Exception:  # noqa: BLE001
+        db.session.rollback()
+        logger.exception("Failed to record digest send result")
+
+
+def get_last_send_result() -> dict | None:
+    """Return the last recorded send outcome dict, or None if never set."""
+    import json
+
+    from models import AppSetting
+
+    row = (
+        db.session.query(AppSetting).filter_by(key=LAST_SEND_KEY).one_or_none()
+    )
+    if row is None:
+        return None
+    try:
+        return json.loads(row.value)
+    except (ValueError, TypeError):
+        return None
+
 
 def _safe_app_url(raw: str) -> str:
     """Return ``raw`` only if it looks like an https URL; else empty.

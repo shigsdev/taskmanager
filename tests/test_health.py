@@ -297,6 +297,51 @@ class TestCheckDigest:
             health._scheduler = None
 
 
+class TestDigestLastSendCheck:
+    """#286: check_digest_last_send surfaces the most recent scheduled
+    send outcome so a silent SendGrid failure (the 2026-06-07 quota
+    incident) becomes a visible /healthz warn."""
+
+    def test_skipped_without_digest_email(self, app, monkeypatch):
+        monkeypatch.delenv("DIGEST_TO_EMAIL", raising=False)
+        with app.app_context():
+            assert health.check_digest_last_send().startswith("skipped")
+
+    def test_skipped_when_no_record(self, app, monkeypatch):
+        monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
+        with app.app_context():
+            result = health.check_digest_last_send()
+        assert result.startswith("skipped")
+        assert "no scheduled send" in result
+
+    def test_ok_when_last_send_ok(self, app, monkeypatch):
+        from digest_service import record_send_result
+        monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
+        with app.app_context():
+            record_send_result(status="ok")
+            result = health.check_digest_last_send()
+        assert result.startswith("ok")
+
+    def test_warn_when_last_send_failed(self, app, monkeypatch):
+        from digest_service import record_send_result
+        monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
+        with app.app_context():
+            record_send_result(
+                status="fail", error="SendGrid HTTP 401: Maximum credits exceeded"
+            )
+            result = health.check_digest_last_send()
+        assert result.startswith("warn:")
+        assert "FAILED" in result
+        # The check is non-critical — must never return a fail: string
+        # (an external quota issue should not flip a deploy RED).
+        assert not result.startswith("fail")
+
+    def test_healthz_report_includes_digest_last_send_key(self, app, db):
+        with app.app_context():
+            report = health.run_health_checks(app, db)
+        assert "digest_last_send" in report["checks"]
+
+
 class TestDigestHeartbeat:
     """Heartbeat fallback path — for non-scheduler Gunicorn workers."""
 

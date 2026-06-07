@@ -771,7 +771,7 @@ def _start_digest_scheduler(app: Flask) -> None:
         with app.app_context():
             import logging
             log = logging.getLogger(__name__)
-            from digest_service import send_digest
+            from digest_service import record_send_result, send_digest
 
             to_email = os.environ.get("DIGEST_TO_EMAIL")
             if not to_email:
@@ -780,12 +780,22 @@ def _start_digest_scheduler(app: Flask) -> None:
             # (#50, ADR-031). The cron shouldn't crash the scheduler
             # thread — log + swallow. The error already lands in
             # app_logs via DBLogHandler so /api/debug/logs surfaces it
-            # post-deploy.
+            # post-deploy. We ALSO persist the outcome (#286 alert) so a
+            # silent failure (e.g. SendGrid quota 401, the 2026-06-07
+            # incident) surfaces on /healthz as a warn — the ERROR log
+            # row is only scanned at deploy time, not daily.
             try:
-                send_digest(to_email=to_email)
+                ok = send_digest(to_email=to_email)
+                record_send_result(
+                    status="ok" if ok else "skip",
+                    error=None if ok else "SENDGRID_API_KEY not set",
+                )
             except Exception as e:  # noqa: BLE001
                 log.exception("Scheduled digest send failed: %s: %s",
                               type(e).__name__, e)
+                record_send_result(
+                    status="fail", error=f"{type(e).__name__}: {e}"
+                )
 
     scheduler = BackgroundScheduler(timezone=tz)
     scheduler.add_job(

@@ -412,6 +412,39 @@ def check_digest() -> str:
     return "warn: scheduler not registered (dev/test or pre-boot)"
 
 
+def check_digest_last_send() -> str:
+    """Report the outcome of the most recent scheduled digest send.
+
+    #286 (2026-06-07): the daily digest fired on schedule but SendGrid
+    rejected it with HTTP 401 "Maximum credits exceeded". The failure
+    was logged as an ERROR row but otherwise SILENT — validate_deploy's
+    log scan only covers the window right after a deploy, not a 07:00
+    send hours later. This check reads the persisted last-send record
+    (``digest_service.record_send_result``) and surfaces a failure as a
+    ``warn:`` so any /healthz poll makes it visible.
+
+    ``warn`` (never ``fail``) on purpose: a SendGrid quota/auth problem
+    is an external-service issue that must not flip a deploy RED.
+    """
+    if not os.environ.get("DIGEST_TO_EMAIL"):
+        return "skipped: DIGEST_TO_EMAIL not set"
+    try:
+        from digest_service import get_last_send_result
+        rec = get_last_send_result()
+    except Exception as e:
+        return f"warn: could not read last-send record: {_short(e)}"
+
+    if rec is None:
+        return "skipped: no scheduled send recorded yet"
+    status = rec.get("status")
+    at = rec.get("at", "?")
+    if status == "ok":
+        return f"ok: last sent {at}"
+    if status == "skip":
+        return f"warn: last send skipped ({rec.get('error', '')}) at {at}"
+    return f"warn: last send FAILED at {at}: {rec.get('error', '')}"
+
+
 def check_static_assets() -> str:
     """Verify critical static files exist on disk in this container."""
     missing = [
@@ -630,6 +663,7 @@ def run_health_checks(app: Any, db: Any) -> dict:
         "writable_db": _safe_call("writable_db", check_writable_db, db),
         "encryption": _safe_call("encryption", check_encryption),
         "digest": _safe_call("digest", check_digest),
+        "digest_last_send": _safe_call("digest_last_send", check_digest_last_send),
         "static_assets": _safe_call("static_assets", check_static_assets),
         "enum_coverage": _safe_call("enum_coverage", check_enum_coverage, db),
         "tls_expiry": _safe_call("tls_expiry", check_tls_expiry),
