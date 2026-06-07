@@ -489,7 +489,12 @@ def create_app(config: dict | None = None) -> Flask:
     @app.route("/strength-forge")
     @login_required
     def strength_forge_page(email: str):  # noqa: ARG001
-        return render_template("strength_forge.html")
+        # #282 Phase A.1: the 30 inline SVG exercise diagrams are
+        # server-rendered (trusted, fully-static markup from our own
+        # module) into hidden keyed divs; the modal clones the matching
+        # one in. Server-rendering dodges the innerHTML security hook.
+        import strength_forge_diagrams
+        return render_template("strength_forge.html", diagrams=strength_forge_diagrams.DIAGRAMS)
 
     @app.route("/voice-memo")
     @login_required

@@ -68,6 +68,17 @@
     modalTitle.textContent = data.title || "";
     while (modalBody.firstChild) modalBody.removeChild(modalBody.firstChild);
 
+    // SVG diagram — clone the matching server-rendered one (hook-safe;
+    // cloneNode, never innerHTML). #282 Phase A.1.
+    if (data.diagramKey) {
+      var src = document.querySelector('#sf-diagrams .sf-diagram[data-diagram="' + data.diagramKey + '"]');
+      if (src && src.firstElementChild) {
+        var dWrap = el("div", { cls: "sf-modal-diagram" });
+        dWrap.appendChild(src.firstElementChild.cloneNode(true));
+        modalBody.appendChild(dWrap);
+      }
+    }
+
     // Google Images link (real photos / GIFs)
     var googleWrap = el("div", { cls: "sf-modal-google" }, [
       el("a", {
@@ -107,11 +118,11 @@
   function openExerciseModal(id) {
     var ex = SF.exercises[id];
     if (!ex) return;
-    openModal({ title: ex.title, search: ex.search, sets: ex.sets, rest: ex.rest, desc: ex.desc, safe: ex.safe });
+    openModal({ title: ex.title, search: ex.search, sets: ex.sets, rest: ex.rest, desc: ex.desc, safe: ex.safe, diagramKey: id });
   }
 
   function openFlareModal(fx) {
-    openModal({ title: fx.name, search: fx.search, sets: fx.duration, rest: fx.rest, desc: fx.how, tip: fx.tip });
+    openModal({ title: fx.name, search: fx.search, sets: fx.duration, rest: fx.rest, desc: fx.how, tip: fx.tip, diagramKey: fx.diagramId });
   }
 
   // ============================================================
