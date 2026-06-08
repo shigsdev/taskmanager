@@ -29,14 +29,33 @@ def list_sessions(email: str):  # noqa: ARG001
 @bp.post("/sessions")
 @login_required
 def create_session(email: str):  # noqa: ARG001
-    """Log a completed workout (dated today)."""
+    """Log a completed workout (dated today).
+
+    Body ``{plan_type}`` logs a bare session (quick-log). An optional
+    ``sets`` array — ``[{exercise_id, name, set_number, reps, resistance}]``
+    — logs per-set detail (#287). Both paths are dated today.
+    """
     data = request.get_json(silent=True) or {}
     plan_type = (data.get("plan_type") or "").strip()
+    sets = data.get("sets")
     try:
-        session = svc.log_session(plan_type)
+        if isinstance(sets, list) and sets:
+            session = svc.log_detailed_session(plan_type, sets)
+        else:
+            session = svc.log_session(plan_type)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 422
     return jsonify(svc.serialize(session)), 201
+
+
+@bp.get("/sessions/<uuid:session_id>")
+@login_required
+def get_session(email: str, session_id: uuid.UUID):  # noqa: ARG001
+    """A single logged session plus its per-set detail."""
+    detail = svc.session_detail(session_id)
+    if detail is None:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(detail)
 
 
 @bp.delete("/sessions/<uuid:session_id>")

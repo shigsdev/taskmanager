@@ -605,6 +605,47 @@ class WorkoutSession(db.Model):
     session_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
+    # #287: optional per-set detail (reps + resistance). A session can be a
+    # bare "I did Band A today" (zero sets) OR a detailed log (many sets).
+    # delete-orphan so deleting the session removes its sets via the ORM
+    # (the existing delete_session() does db.session.delete(session)).
+    sets: Mapped[list[WorkoutSet]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+        order_by="WorkoutSet.set_number",
+    )
+
+
+class WorkoutSet(db.Model):
+    """#287 Strength Forge — one logged set within a workout session.
+
+    Per-set granularity (reps + resistance) so progressive overload is
+    trackable over time. ``exercise_id`` keys into the JS reference catalog
+    (``static/strength_forge_data.js`` ``exercises``); ``exercise_name`` is a
+    SNAPSHOT taken at log time so the historical log stays readable even if
+    the reference data is later renamed. ``reps`` is nullable so time-based
+    moves (planks, breathing, walking) can be logged with resistance/blank
+    reps. Single-user app — no per-user FK.
+    """
+
+    __tablename__ = "workout_sets"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    workout_session_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("workout_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    exercise_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    exercise_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    set_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    reps: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    resistance: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    session: Mapped[WorkoutSession] = relationship(back_populates="sets")
+
 
 class FlareState(db.Model):
     """#282 Strength Forge — a tracked back-flare episode (Phase B.2).

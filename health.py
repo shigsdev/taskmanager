@@ -178,6 +178,7 @@ EXPECTED_STATIC_FILES = (
     "static/utilities.js",  # #222 — /utilities admin actions
     "static/strength_forge_data.js",  # #282 — Strength Forge data
     "static/strength_forge.js",       # #282 — Strength Forge renderer
+    "static/strength_forge_helpers.js",  # #287 — per-set log form logic
     "static/manifest.json",
     "static/favicon.svg",  # #45 — browser tab icon
 )

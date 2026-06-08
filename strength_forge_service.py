@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from models import FlareState, WorkoutSession, db
+from models import FlareState, WorkoutSession, WorkoutSet, db
 from utils import local_today_date
 
 # The 5 loggable plans (band A/B + military sessions 1-3). The flare-up
@@ -76,7 +76,96 @@ def serialize(session: WorkoutSession) -> dict:
         "plan_type": session.plan_type,
         "label": PLAN_LABELS.get(session.plan_type, session.plan_type),
         "session_date": session.session_date.isoformat(),
+        # #287: how many per-set rows this session carries (0 = quick-logged).
+        "set_count": len(session.sets),
     }
+
+
+# --- Per-set detailed logging (#287) ---------------------------------
+# Light, proportionate validation for a single-user tool. The exercise
+# CATALOG lives in JS (static/strength_forge_data.js), so the server
+# snapshots the client-supplied exercise_id/name rather than duplicating
+# the dataset; we only bound types + lengths here.
+_MAX_SETS_PER_LOG = 200  # generous backstop against a runaway payload
+
+
+def _coerce_reps(raw) -> int | None:
+    """Reps → a non-negative int, or None if blank/unparseable."""
+    if raw is None or raw == "":
+        return None
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return max(0, n)
+
+
+def _clean_set_entry(entry: dict) -> WorkoutSet | None:
+    """Build a WorkoutSet from one client entry, or None if it carries
+    neither reps nor resistance (an empty row the UI left blank)."""
+    if not isinstance(entry, dict):
+        return None
+    reps = _coerce_reps(entry.get("reps"))
+    resistance = (entry.get("resistance") or "").strip()[:40] or None
+    if reps is None and not resistance:
+        return None  # blank row — drop it
+    exercise_id = (entry.get("exercise_id") or "").strip()[:50] or "unknown"
+    exercise_name = (entry.get("name") or entry.get("exercise_name") or "").strip()[:120]
+    if not exercise_name:
+        exercise_name = exercise_id
+    try:
+        set_number = int(entry.get("set_number") or 1)
+    except (TypeError, ValueError):
+        set_number = 1
+    set_number = max(1, min(set_number, 99))
+    return WorkoutSet(
+        exercise_id=exercise_id,
+        exercise_name=exercise_name,
+        set_number=set_number,
+        reps=reps,
+        resistance=resistance,
+    )
+
+
+def log_detailed_session(plan_type: str, sets: list) -> WorkoutSession:
+    """Log a workout with per-set detail (reps + resistance).
+
+    Validates plan_type, creates the session (dated today, local TZ), and
+    attaches one WorkoutSet per non-blank entry. Raises ValueError on an
+    invalid plan_type.
+    """
+    if plan_type not in VALID_PLAN_TYPES:
+        raise ValueError(f"invalid plan_type: {plan_type!r}")
+    session = WorkoutSession(plan_type=plan_type, session_date=local_today_date())
+    rows = sets if isinstance(sets, list) else []
+    for entry in rows[:_MAX_SETS_PER_LOG]:
+        ws = _clean_set_entry(entry)
+        if ws is not None:
+            session.sets.append(ws)
+    db.session.add(session)
+    db.session.commit()
+    return session
+
+
+def serialize_set(ws: WorkoutSet) -> dict:
+    return {
+        "id": str(ws.id),
+        "exercise_id": ws.exercise_id,
+        "exercise_name": ws.exercise_name,
+        "set_number": ws.set_number,
+        "reps": ws.reps,
+        "resistance": ws.resistance,
+    }
+
+
+def session_detail(session_id) -> dict | None:
+    """A single session plus its ordered set rows, or None if not found."""
+    session = db.session.get(WorkoutSession, session_id)
+    if session is None:
+        return None
+    data = serialize(session)
+    data["sets"] = [serialize_set(s) for s in session.sets]
+    return data
 
 
 # --- Flare-up tracking (Phase B.2) ------------------------------------

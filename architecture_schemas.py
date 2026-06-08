@@ -241,6 +241,23 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "session_date": {"desc": "Local (DIGEST_TZ) date the workout was completed", "notes": "Indexed; set server-side so 'this week' buckets correctly"},
         },
     },
+    "workout_sets": {
+        "blurb": (
+            "One row per logged SET within a workout session (#287 per-set "
+            "logging) — the reps + resistance you actually did, so "
+            "progressive overload is trackable over time. A session can have "
+            "zero sets (quick-logged) or many (detailed). Single-user — no "
+            "per-user FK."
+        ),
+        "columns": {
+            "workout_session_id": {"desc": "The parent workout session", "notes": "Indexed; ON DELETE CASCADE — deleting the session removes its sets", "fk_target": "workout_sessions"},
+            "exercise_id":        {"desc": "Key into the JS exercise catalog (static/strength_forge_data.js), e.g. band-squat"},
+            "exercise_name":      {"desc": "Snapshot of the exercise name at log time", "notes": "Stored so the historical log stays readable if reference data is renamed"},
+            "set_number":         {"desc": "1-based set index within the exercise"},
+            "reps":               {"desc": "Reps performed in this set", "notes": "Nullable — time-based moves (planks/breathing) can log resistance with blank reps"},
+            "resistance":         {"desc": "Band level / load for this set (free text + Light/Medium/Heavy quick-picks)", "notes": "Nullable"},
+        },
+    },
     "flare_states": {
         "blurb": (
             "One row per tracked back-flare episode started on "

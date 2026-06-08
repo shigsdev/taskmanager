@@ -439,17 +439,74 @@
         return;
       }
       sessions.slice(0, 6).forEach(function (s) {
-        trackList.appendChild(el("div", { cls: "sf-track-row" }, [
-          el("span", { cls: "sf-track-date", text: s.session_date }),
-          el("span", { cls: "sf-track-label", text: s.label }),
-          el("button", {
-            cls: "sf-track-del", text: "✕",
-            attrs: { type: "button", title: "Undo this log", "aria-label": "Undo" },
-            on: { click: function () { delSession(s.id); } },
-          }),
-        ]));
+        trackList.appendChild(trackRow(s));
       });
     }).catch(function () { trackSummary.textContent = "Tracking unavailable."; });
+  }
+
+  // #287: a tracking row. Detailed (set_count > 0) sessions show a count
+  // and expand to their logged sets; quick-logged rows look as before.
+  function trackRow(s) {
+    var hasDetail = (s.set_count || 0) > 0;
+    var labelText = hasDetail
+      ? (s.label + " · " + s.set_count + (s.set_count === 1 ? " set" : " sets"))
+      : s.label;
+    var labelEl = el("span", {
+      cls: "sf-track-label" + (hasDetail ? " sf-track-expandable" : ""), text: labelText,
+    });
+    var detailMount = el("div", { cls: "sf-track-detail", attrs: { hidden: "hidden" } });
+    if (hasDetail) {
+      labelEl.setAttribute("role", "button");
+      labelEl.setAttribute("tabindex", "0");
+      labelEl.setAttribute("aria-label", "Show logged sets for " + s.label);
+      var toggle = function () { toggleDetail(s.id, detailMount); };
+      labelEl.addEventListener("click", toggle);
+      labelEl.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+      });
+    }
+    var row = el("div", { cls: "sf-track-row" }, [
+      el("span", { cls: "sf-track-date", text: s.session_date }),
+      labelEl,
+      el("button", {
+        cls: "sf-track-del", text: "✕",
+        attrs: { type: "button", title: "Undo this log", "aria-label": "Undo" },
+        on: { click: function () { delSession(s.id); } },
+      }),
+    ]);
+    return el("div", { cls: "sf-track-item" }, [row, detailMount]);
+  }
+
+  function toggleDetail(id, mount) {
+    if (!mount.hasAttribute("hidden")) { mount.setAttribute("hidden", "hidden"); return; }
+    if (mount.getAttribute("data-loaded") === "1") { mount.removeAttribute("hidden"); return; }
+    if (!window.apiFetch) return;
+    window.apiFetch("/api/strength-forge/sessions/" + id).then(function (d) {
+      if (!d || !d.sets) return;
+      while (mount.firstChild) mount.removeChild(mount.firstChild);
+      var groups = {}, order = [];
+      d.sets.forEach(function (st) {
+        if (!groups[st.exercise_id]) {
+          groups[st.exercise_id] = { name: st.exercise_name, rows: [] };
+          order.push(st.exercise_id);
+        }
+        groups[st.exercise_id].rows.push(st);
+      });
+      order.forEach(function (eid) {
+        var g = groups[eid];
+        var setsText = g.rows.map(function (st) {
+          var r = (st.reps != null ? st.reps + " reps" : "");
+          var res = st.resistance ? ((r ? " @ " : "") + st.resistance) : "";
+          return (r + res) || "—";
+        }).join(", ");
+        mount.appendChild(el("div", { cls: "sf-track-detail-ex" }, [
+          el("span", { cls: "sf-track-detail-name", text: g.name }),
+          el("span", { cls: "sf-track-detail-sets", text: setsText }),
+        ]));
+      });
+      mount.setAttribute("data-loaded", "1");
+      mount.removeAttribute("hidden");
+    }).catch(function () {});
   }
 
   function logWorkout(planType, btn) {
@@ -482,7 +539,173 @@
       attrs: { type: "button" },
       on: { click: function () { logWorkout(planTypeFn(), btn); } },
     });
-    return el("div", { cls: "sf-log-row" }, [btn]);
+    // #287: sibling "Log details" opens the per-set form. The one-tap
+    // quick-log above stays for fast logging.
+    var detailBtn = el("button", {
+      cls: "sf-log-detail-btn sf-role-" + role, text: "✎ Log details",
+      attrs: { type: "button" },
+      on: { click: function () { openLogForm(planTypeFn()); } },
+    });
+    return el("div", { cls: "sf-log-row" }, [btn, detailBtn]);
+  }
+
+  // ============================================================
+  // PER-SET LOGGING FORM (#287)
+  // ============================================================
+  var PLAN_LABELS_JS = {
+    "band-a": "Bands · Workout A",
+    "band-b": "Bands · Workout B",
+    "mil-1": "Military · Push + Core",
+    "mil-2": "Military · Pull + Legs",
+    "mil-3": "Military · Full-Body Circuit",
+  };
+
+  function planExercises(planType) {
+    var map = {
+      "band-a": SF.bandPlanA, "band-b": SF.bandPlanB,
+      "mil-1": SF.milS1, "mil-2": SF.milS2, "mil-3": SF.milS3,
+    };
+    var items = [];
+    (map[planType] || []).forEach(function (sec) {
+      (sec.items || []).forEach(function (it) { items.push(it); });
+    });
+    return items;
+  }
+
+  var logformOverlay, logformBody, logformTitle, logformSaveBtn, logformPlanType;
+
+  function buildLogForm() {
+    logformTitle = el("div", { cls: "sf-logform-title" });
+    var closeBtn = el("button", {
+      cls: "sf-logform-close", text: "✕",
+      attrs: { type: "button", "aria-label": "Close" }, on: { click: closeLogForm },
+    });
+    logformBody = el("div", { cls: "sf-logform-body" });
+    logformSaveBtn = el("button", {
+      cls: "sf-logform-save", text: "Save workout log",
+      attrs: { type: "button" }, on: { click: saveLogForm },
+    });
+    var foot = el("div", { cls: "sf-logform-foot" }, [
+      el("button", {
+        cls: "sf-logform-cancel", text: "Cancel",
+        attrs: { type: "button" }, on: { click: closeLogForm },
+      }),
+      logformSaveBtn,
+    ]);
+    // Shared resistance quick-picks (band levels; free text still allowed).
+    var datalist = el("datalist", { attrs: { id: "sf-resistance-options" } }, [
+      el("option", { attrs: { value: "Light" } }),
+      el("option", { attrs: { value: "Medium" } }),
+      el("option", { attrs: { value: "Heavy" } }),
+    ]);
+    var card = el("div", { cls: "sf-logform", on: { click: function (e) { e.stopPropagation(); } } }, [
+      el("div", { cls: "sf-logform-head" }, [logformTitle, closeBtn]),
+      logformBody, foot, datalist,
+    ]);
+    logformOverlay = el("div", {
+      cls: "sf-logform-overlay", attrs: { hidden: "hidden" }, on: { click: closeLogForm },
+    }, [card]);
+    document.body.appendChild(logformOverlay);
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !logformOverlay.hasAttribute("hidden")) closeLogForm();
+    });
+  }
+
+  function closeLogForm() { logformOverlay.setAttribute("hidden", "hidden"); }
+
+  function renumberSets(container) {
+    var rows = container.querySelectorAll(".sf-logform-set");
+    Array.prototype.forEach.call(rows, function (r, i) {
+      var lbl = r.querySelector(".sf-logform-setn");
+      if (lbl) lbl.textContent = "Set " + (i + 1);
+    });
+  }
+
+  function addSet(container) {
+    var reps = el("input", {
+      cls: "sf-logform-reps",
+      attrs: { type: "number", inputmode: "numeric", min: "0", placeholder: "reps", "aria-label": "reps" },
+    });
+    var resist = el("input", {
+      cls: "sf-logform-resist",
+      attrs: { type: "text", list: "sf-resistance-options", placeholder: "resistance", "aria-label": "resistance" },
+    });
+    var row = el("div", { cls: "sf-logform-set" }, [
+      el("span", { cls: "sf-logform-setn", text: "Set" }),
+      reps, resist,
+      el("button", {
+        cls: "sf-logform-rm", text: "✕",
+        attrs: { type: "button", title: "Remove set", "aria-label": "Remove set" },
+        on: { click: function () { container.removeChild(row); renumberSets(container); } },
+      }),
+    ]);
+    container.appendChild(row);
+    renumberSets(container);
+  }
+
+  function exerciseBlock(item) {
+    var container = el("div", { cls: "sf-logform-sets" });
+    var block = el("div", {
+      cls: "sf-logform-ex",
+      attrs: { "data-exercise-id": item.id, "data-name": item.name },
+    }, [
+      el("div", { cls: "sf-logform-ex-head" }, [
+        el("div", { cls: "sf-logform-ex-name", text: item.name }),
+        el("div", { cls: "sf-logform-ex-hint", text: item.sets || "" }),
+      ]),
+      container,
+      el("button", {
+        cls: "sf-logform-addset", text: "+ add set",
+        attrs: { type: "button" }, on: { click: function () { addSet(container); } },
+      }),
+    ]);
+    var count = window.strengthForgeHelpers
+      ? window.strengthForgeHelpers.defaultSetCount(item.sets) : 1;
+    for (var i = 0; i < count; i++) addSet(container);
+    return block;
+  }
+
+  function openLogForm(planType) {
+    if (!logformOverlay) return;
+    logformPlanType = planType;
+    logformTitle.textContent = "Log details — " + (PLAN_LABELS_JS[planType] || planType);
+    while (logformBody.firstChild) logformBody.removeChild(logformBody.firstChild);
+    planExercises(planType).forEach(function (item) {
+      logformBody.appendChild(exerciseBlock(item));
+    });
+    logformOverlay.removeAttribute("hidden");
+  }
+
+  function saveLogForm() {
+    if (!window.apiFetch || !window.strengthForgeHelpers) return;
+    var blocks = logformBody.querySelectorAll(".sf-logform-ex");
+    var exercises = [];
+    Array.prototype.forEach.call(blocks, function (b) {
+      var rows = b.querySelectorAll(".sf-logform-set");
+      var sets = [];
+      Array.prototype.forEach.call(rows, function (r) {
+        sets.push({
+          reps: r.querySelector(".sf-logform-reps").value,
+          resistance: r.querySelector(".sf-logform-resist").value,
+        });
+      });
+      exercises.push({
+        exercise_id: b.getAttribute("data-exercise-id"),
+        name: b.getAttribute("data-name"),
+        sets: sets,
+      });
+    });
+    var payload = window.strengthForgeHelpers.buildSetsPayload(exercises);
+    if (!payload.length) { closeLogForm(); return; }  // nothing entered
+    logformSaveBtn.disabled = true;
+    window.apiFetch("/api/strength-forge/sessions", {
+      method: "POST",
+      body: JSON.stringify({ plan_type: logformPlanType, sets: payload }),
+    }).then(function () {
+      logformSaveBtn.disabled = false;
+      closeLogForm();
+      loadTracking();
+    }).catch(function () { logformSaveBtn.disabled = false; });
   }
 
   // ============================================================
@@ -592,6 +815,7 @@
 
   function render() {
     buildModal();
+    buildLogForm();  // #287 per-set logging form (hidden until opened)
     root.appendChild(buildHeader());
     root.appendChild(buildTrackingStrip());
 

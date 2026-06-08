@@ -5221,11 +5221,53 @@ table.quality-gates code {
 .sf-track-del { background: none; border: none; color: var(--cream-faint); cursor: pointer; font-size: 0.8rem; padding: 2px 6px; border-radius: 4px; }
 .sf-track-del:hover { color: var(--rust); background: rgba(198,74,42,0.1); }
 .sf-track-empty { font-size: 0.74rem; color: var(--cream-faint); font-style: italic; margin-top: 8px; }
-.sf-log-row { margin: 4px 0 18px; }
-.sf-log-btn { width: 100%; padding: 11px; border-radius: var(--radius-s); border: 1px solid var(--sf-accent); background: color-mix(in srgb, var(--sf-accent) 12%, transparent); color: var(--sf-accent); font-weight: 700; font-size: 0.8rem; cursor: pointer; transition: all 0.15s; }
+.sf-log-row { display: flex; gap: 8px; margin: 4px 0 18px; }
+.sf-log-btn { flex: 1; min-width: 0; padding: 11px; border-radius: var(--radius-s); border: 1px solid var(--sf-accent); background: color-mix(in srgb, var(--sf-accent) 12%, transparent); color: var(--sf-accent); font-weight: 700; font-size: 0.8rem; cursor: pointer; transition: all 0.15s; }
 .sf-log-btn:hover { background: color-mix(in srgb, var(--sf-accent) 22%, transparent); }
 .sf-log-btn.logged { background: rgba(148,164,139,0.2); border-color: var(--sage); color: var(--sage); }
 .sf-log-btn:disabled { opacity: 0.6; cursor: default; }
+/* #287: "Log details" — secondary (outline) sibling of the quick-log button */
+.sf-log-detail-btn { flex: 1; min-width: 0; padding: 11px; border-radius: var(--radius-s); border: 1px solid var(--rule); background: var(--slate-100); color: var(--cream-dim); font-weight: 700; font-size: 0.8rem; cursor: pointer; transition: all 0.15s; }
+.sf-log-detail-btn:hover { border-color: color-mix(in srgb, var(--sf-accent) 50%, transparent); color: var(--sf-accent); }
+
+/* #287: expandable tracking row detail (logged sets per exercise) */
+.sf-track-item { border-top: 1px solid var(--rule-soft); }
+.sf-track-item .sf-track-row { border-top: none; }
+.sf-track-expandable { cursor: pointer; text-decoration: underline dotted color-mix(in srgb, var(--cream-faint) 60%, transparent); text-underline-offset: 3px; }
+.sf-track-expandable:hover { color: var(--cream); }
+.sf-track-detail { padding: 4px 0 8px 0; display: flex; flex-direction: column; gap: 4px; }
+.sf-track-detail-ex { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 10px; font-size: 0.7rem; }
+.sf-track-detail-name { color: var(--cream-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sf-track-detail-sets { font-family: var(--font-mono); font-size: 0.64rem; color: var(--cream-faint); }
+
+/* #287: per-set logging form (modal) */
+.sf-logform-overlay { position: fixed; inset: 0; background: rgba(8,7,6,0.62); display: flex; align-items: flex-start; justify-content: center; padding: 24px 14px; overflow-y: auto; z-index: 1000; }
+.sf-logform-overlay[hidden] { display: none; }
+.sf-logform { width: 100%; max-width: 560px; background: var(--slate-50); border: 1px solid var(--rule); border-radius: var(--radius-l); box-shadow: 0 24px 60px rgba(0,0,0,0.45); margin: auto; }
+.sf-logform-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--rule-soft); }
+.sf-logform-title { font-family: var(--font-display); font-size: 1rem; font-weight: 700; color: var(--cream); }
+.sf-logform-close { background: none; border: none; color: var(--cream-faint); font-size: 1.1rem; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
+.sf-logform-close:hover { color: var(--cream); background: var(--slate-100); }
+.sf-logform-body { padding: 8px 18px; max-height: 62vh; overflow-y: auto; }
+.sf-logform-ex { padding: 12px 0; border-bottom: 1px solid var(--rule-soft); }
+.sf-logform-ex-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.sf-logform-ex-name { font-weight: 700; font-size: 0.84rem; color: var(--cream); }
+.sf-logform-ex-hint { font-family: var(--font-mono); font-size: 0.62rem; color: var(--cream-faint); white-space: nowrap; }
+.sf-logform-sets { display: flex; flex-direction: column; gap: 6px; }
+.sf-logform-set { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.4fr) auto; align-items: center; gap: 8px; }
+.sf-logform-setn { font-family: var(--font-mono); font-size: 0.6rem; color: var(--cream-faint); white-space: nowrap; }
+.sf-logform-reps, .sf-logform-resist { min-width: 0; min-height: 44px; padding: 8px 10px; border-radius: var(--radius-s); border: 1px solid var(--rule); background: var(--slate-100); color: var(--cream); font-size: 0.82rem; }
+.sf-logform-reps:focus, .sf-logform-resist:focus { outline: none; border-color: color-mix(in srgb, var(--copper) 55%, transparent); }
+.sf-logform-rm { background: none; border: none; color: var(--cream-faint); cursor: pointer; font-size: 0.8rem; padding: 6px 8px; border-radius: 5px; min-height: 44px; }
+.sf-logform-rm:hover { color: var(--rust); background: rgba(198,74,42,0.1); }
+.sf-logform-addset { margin-top: 8px; background: none; border: 1px dashed var(--rule); color: var(--cream-dim); cursor: pointer; font-size: 0.72rem; padding: 6px 12px; border-radius: var(--radius-s); }
+.sf-logform-addset:hover { border-color: color-mix(in srgb, var(--copper) 50%, transparent); color: var(--copper); }
+.sf-logform-foot { display: flex; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--rule-soft); }
+.sf-logform-cancel { flex: 0 0 auto; min-height: 44px; padding: 11px 18px; border-radius: var(--radius-s); border: 1px solid var(--rule); background: var(--slate-100); color: var(--cream-dim); font-weight: 700; font-size: 0.8rem; cursor: pointer; }
+.sf-logform-cancel:hover { color: var(--cream); }
+.sf-logform-save { flex: 1; min-width: 0; min-height: 44px; padding: 11px; border-radius: var(--radius-s); border: 1px solid var(--copper); background: color-mix(in srgb, var(--copper) 16%, transparent); color: var(--copper); font-weight: 700; font-size: 0.82rem; cursor: pointer; transition: all 0.15s; }
+.sf-logform-save:hover { background: color-mix(in srgb, var(--copper) 26%, transparent); }
+.sf-logform-save:disabled { opacity: 0.6; cursor: default; }
 
 .sf-tabs { display: flex; border: 1px solid var(--rule); border-radius: var(--radius-m); overflow: hidden; margin-bottom: 22px; }
 .sf-tab { flex: 1; padding: 12px 6px; background: var(--slate-100); border: none; cursor: pointer;

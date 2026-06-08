@@ -229,3 +229,130 @@ class TestFlareStateAPI:
     def test_delete_with_no_active_flare_returns_404(self, authed_client):
         resp = authed_client.delete("/api/strength-forge/flare")
         assert resp.status_code == 404
+
+
+# ── #287: per-set detailed logging ───────────────────────────────────
+from models import WorkoutSet  # noqa: E402
+
+
+def _sets(*triples):
+    """Build a list of client set-entries from (exercise_id, reps, resistance)."""
+    out = []
+    for i, (eid, reps, resistance) in enumerate(triples, start=1):
+        out.append({
+            "exercise_id": eid, "name": eid.replace("-", " ").title(),
+            "set_number": i, "reps": reps, "resistance": resistance,
+        })
+    return out
+
+
+class TestWorkoutSetService:
+    def test_log_detailed_creates_session_and_sets(self, app):
+        with app.app_context():
+            session = svc.log_detailed_session("band-a", _sets(
+                ("band-squat", 12, "Medium"),
+                ("band-squat", 10, "Medium"),
+            ))
+            assert WorkoutSession.query.count() == 1
+            assert WorkoutSet.query.count() == 2
+            assert len(session.sets) == 2
+
+    def test_invalid_plan_type_rejected(self, app):
+        with app.app_context(), pytest.raises(ValueError):
+            svc.log_detailed_session("nope", _sets(("x", 5, "Light")))
+
+    def test_blank_rows_dropped(self, app):
+        with app.app_context():
+            session = svc.log_detailed_session("band-a", [
+                {"exercise_id": "band-squat", "name": "Squat",
+                 "set_number": 1, "reps": "", "resistance": ""},
+                {"exercise_id": "band-squat", "name": "Squat",
+                 "set_number": 2, "reps": 8, "resistance": ""},
+            ])
+            assert len(session.sets) == 1
+            assert session.sets[0].reps == 8
+
+    def test_reps_only_and_resistance_only_both_kept(self, app):
+        with app.app_context():
+            session = svc.log_detailed_session("mil-1", [
+                {"exercise_id": "plank", "name": "Plank", "set_number": 1,
+                 "reps": None, "resistance": "Bodyweight"},
+                {"exercise_id": "dead-bug", "name": "Dead Bug", "set_number": 1,
+                 "reps": 8, "resistance": ""},
+            ])
+            assert len(session.sets) == 2
+
+    def test_serialize_includes_set_count(self, app):
+        with app.app_context():
+            session = svc.log_detailed_session("band-a", _sets(("band-squat", 12, "Medium")))
+            assert svc.serialize(session)["set_count"] == 1
+            # A quick-logged session has zero sets.
+            bare = svc.log_session("band-b")
+            assert svc.serialize(bare)["set_count"] == 0
+
+    def test_session_detail_shape(self, app):
+        with app.app_context():
+            session = svc.log_detailed_session("band-a", _sets(
+                ("band-squat", 12, "Medium"), ("band-row", 10, "Light"),
+            ))
+            detail = svc.session_detail(session.id)
+            assert detail["set_count"] == 2
+            assert len(detail["sets"]) == 2
+            assert detail["sets"][0]["exercise_id"] == "band-squat"
+            assert detail["sets"][0]["reps"] == 12
+
+    def test_session_detail_missing_returns_none(self, app):
+        with app.app_context():
+            assert svc.session_detail(uuid.uuid4()) is None
+
+    def test_delete_session_cascades_sets(self, app):
+        with app.app_context():
+            session = svc.log_detailed_session("band-a", _sets(
+                ("band-squat", 12, "Medium"), ("band-squat", 10, "Medium"),
+            ))
+            assert WorkoutSet.query.count() == 2
+            assert svc.delete_session(session.id) is True
+            assert WorkoutSession.query.count() == 0
+            assert WorkoutSet.query.count() == 0  # children cascade-deleted
+
+
+class TestWorkoutSetAPI:
+    def test_post_with_sets_returns_201_and_count(self, authed_client):
+        resp = authed_client.post("/api/strength-forge/sessions", json={
+            "plan_type": "band-a",
+            "sets": _sets(("band-squat", 12, "Medium"), ("band-squat", 10, "Heavy")),
+        })
+        assert resp.status_code == 201
+        assert resp.get_json()["set_count"] == 2
+
+    def test_post_without_sets_is_quick_log(self, authed_client):
+        resp = authed_client.post("/api/strength-forge/sessions", json={"plan_type": "band-a"})
+        assert resp.status_code == 201
+        assert resp.get_json()["set_count"] == 0
+
+    def test_post_with_sets_invalid_plan_returns_422(self, authed_client):
+        resp = authed_client.post("/api/strength-forge/sessions", json={
+            "plan_type": "bogus", "sets": _sets(("band-squat", 12, "Medium")),
+        })
+        assert resp.status_code == 422
+
+    def test_get_detail_returns_sets(self, authed_client):
+        created = authed_client.post("/api/strength-forge/sessions", json={
+            "plan_type": "band-a", "sets": _sets(("band-squat", 12, "Medium")),
+        }).get_json()
+        resp = authed_client.get(f"/api/strength-forge/sessions/{created['id']}")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["set_count"] == 1
+        assert body["sets"][0]["resistance"] == "Medium"
+
+    def test_get_detail_missing_returns_404(self, authed_client):
+        resp = authed_client.get(f"/api/strength-forge/sessions/{uuid.uuid4()}")
+        assert resp.status_code == 404
+
+    def test_list_includes_set_count(self, authed_client):
+        authed_client.post("/api/strength-forge/sessions", json={
+            "plan_type": "band-a", "sets": _sets(("band-squat", 12, "Medium")),
+        })
+        body = authed_client.get("/api/strength-forge/sessions").get_json()
+        assert any(s["set_count"] == 1 for s in body["sessions"])
