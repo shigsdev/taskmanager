@@ -774,6 +774,22 @@ class TestDigestLastSendRecord:
         assert rec["status"] == "fail"
         assert len(rec["error"]) <= 300
 
+    def test_error_is_scrubbed_before_storage(self, app):
+        """#288: the stored error is republished on unauthenticated
+        /healthz, so emails/keys must be redacted BEFORE persistence —
+        the app_logs scrubber never sees this copy."""
+        from digest_service import get_last_send_result, record_send_result
+        with app.app_context():
+            record_send_result(
+                status="fail",
+                error="SendGrid rejected recipient user@example.com "
+                "(Authorization: Bearer SG.abc123xyz)",
+            )
+            rec = get_last_send_result()
+        assert "user@example.com" not in rec["error"]
+        assert "SG.abc123xyz" not in rec["error"]
+        assert "rejected recipient" in rec["error"]  # diagnostics survive
+
     def test_manual_send_success_records_ok(self, authed_client, monkeypatch):
         """A manual resend that succeeds clears the alert (records ok)."""
         from digest_service import get_last_send_result

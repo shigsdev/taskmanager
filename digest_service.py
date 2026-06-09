@@ -52,12 +52,17 @@ def record_send_result(*, status: str, error: str | None = None) -> None:
     import json
     from datetime import UTC, datetime
 
+    from logging_service import scrub_sensitive
     from models import AppSetting
 
     payload = {"status": status, "at": datetime.now(UTC).isoformat()}
     if error:
+        # #288: scrub BEFORE storing — this record is republished verbatim
+        # on the unauthenticated /healthz (check_digest_last_send), so it
+        # must never carry an email/key fragment even if a future failure
+        # mode embeds one in the exception text. Same scrubber as app_logs.
         # Cap so status + at + json overhead stay under the 500-char column.
-        payload["error"] = error[:300]
+        payload["error"] = (scrub_sensitive(error) or "")[:300]
     value = json.dumps(payload)[:500]
     try:
         row = (
