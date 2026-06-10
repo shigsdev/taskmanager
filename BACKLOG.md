@@ -185,6 +185,8 @@ The script preserves operator-added prose across re-renders. -->
 | `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 5290: bare `1fr` track on grid-template-columns — wrap in `minmax(0, 1fr)` to let the track shrink past max-content (#138 D-B1) | 2026-05-27 | 2026-06-10 |  |
 <!-- audit-row: coverage/overall-coverage-drift/ -->
 | `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-06-09 |  |
+<!-- audit-row: tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.5-1-major-version-s-behind -->
+| `tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.5-1-major-version-s-behind` | npm dep 'jscpd' stuck at 4.2.4 — latest is 5.0.5 (1 major version(s) behind) | 2026-06-10 | 2026-06-10 |  |
 <!-- audit-row: tech-debt/dependency-drift/pip-dep-cryptography-stuck-at-46.0.7-latest-is-48.0.0-2-major-version-s-behind -->
 | `tech-debt/dependency-drift/pip-dep-cryptography-stuck-at-46.0.7-latest-is-48.0.0-2-major-version-s-behind` | pip dep 'cryptography' stuck at 46.0.7 — latest is 48.0.0 (2 major version(s) behind) | 2026-05-28 | 2026-05-28 | 🟢 auto-detected resolved 2026-05-30 |
 <!-- audit-row: tech-debt/dependency-drift/pip-dep-gunicorn-stuck-at-22.0.0-latest-is-26.0.0-4-major-version-s-behind -->
