@@ -64,6 +64,13 @@
     "box-breathing": { title: "Box Breathing (4-4-4-4)", search: "box breathing technique", sets: "4–6 full cycles", rest: "End of every session — mandatory", desc: "Inhale 4 sec → Hold 4 sec → Exhale 4 sec → Hold empty 4 sec = 1 cycle. Complete 4–6 cycles. Used by Navy SEALs for stress regulation. Clinically activates the parasympathetic nervous system, directly lowering cortisol.", safe: "recovery" },
     "arm-swings": { title: "Arm Circles + Shoulder Rolls", search: "arm circles shoulder rolls warm up", sets: "10 each direction", rest: "No rest", desc: "Stand tall. Make small circles forward for 10 reps, then large circles backward for 10 reps. Then roll both shoulders forward 10 times and backward 10 times. Mobilizes shoulder joints without stressing the lumbar region.", safe: "back-safe" },
     "leg-swings": { title: "Leg Swings", search: "leg swings warm up hip mobility", sets: "10 each direction/leg", rest: "No rest", desc: "Stand facing a wall with one hand for balance. Swing one leg forward and back 10 times. Turn 90° and swing side to side 10 times. Switch legs. Keep spine upright and relaxed. Warms hips without any spinal loading.", safe: "back-safe" },
+    // Cool-down stretches — each has its own entry so the detail modal
+    // shows the right exercise (bug fix: these previously reused another
+    // exercise's id and showed its details/diagram). No SVG diagram yet;
+    // the modal omits it gracefully and the Google Images link still works.
+    "hip-90-90": { title: "90/90 Hip Stretch", search: "90 90 hip stretch mobility", sets: "45s × 2 sides", rest: "15s to switch", desc: "Sit on the floor with the front leg bent 90° in front of you and the back leg bent 90° out to the side. Keep your spine tall and gently hinge forward from the hips over the front shin until you feel a stretch deep in the outer hip and glute. Hold, then switch sides. Opens the hips without loading the lower back.", safe: "back-safe" },
+    "quad-stretch": { title: "Standing Quad Stretch", search: "standing quad stretch", sets: "45s × 2 sides", rest: "15s to switch", desc: "Stand tall and hold a wall or chair for balance. Bend one knee and grasp that ankle, drawing the heel toward your glute. Keep your knees together and push your hips slightly forward — do NOT arch your lower back. Hold, then switch legs.", safe: "back-safe" },
+    "chest-stretch": { title: "Doorway Chest Stretch", search: "doorway chest stretch pec", sets: "30s × 2 sides", rest: "15s to switch", desc: "Stand in a doorway with one forearm against the frame, elbow at shoulder height. Step gently forward through the doorway until you feel a stretch across the chest and front of the shoulder. Keep your core braced and spine neutral. Hold, then switch sides. Counteracts the rounded-shoulder posture from desk work.", safe: "back-safe" },
   };
 
   var bandPlanA = [
@@ -80,7 +87,7 @@
       { id: "pallof-press", name: "Pallof Press", sets: "3 × 10 each", rest: "45s between sets" },
     ] },
     { section: "Cool-Down", badge: "4 min", role: "mil", num: "03", items: [
-      { id: "glute-bridge", name: "90/90 Hip Stretch", sets: "45s × 2 sides", rest: "15s to switch" },
+      { id: "hip-90-90", name: "90/90 Hip Stretch", sets: "45s × 2 sides", rest: "15s to switch" },
       { id: "box-breathing", name: "Box Breathing (4-4-4-4)", sets: "4–6 cycles", rest: "End of session" },
     ] },
   ];
@@ -99,7 +106,7 @@
       { id: "face-pull", name: "Band Face Pull", sets: "3 × 15", rest: "45s between sets" },
     ] },
     { section: "Cool-Down", badge: "4 min", role: "mil", num: "03", items: [
-      { id: "box-breathing", name: "Standing Quad Stretch", sets: "45s × 2 sides", rest: "15s to switch" },
+      { id: "quad-stretch", name: "Standing Quad Stretch", sets: "45s × 2 sides", rest: "15s to switch" },
       { id: "box-breathing", name: "Box Breathing (4-4-4-4)", sets: "4–6 cycles", rest: "End of session" },
     ] },
   ];
@@ -117,7 +124,7 @@
       { id: "dead-bug", name: "Dead Bug", sets: "3 × 8 each", rest: "45s between sets" },
     ] },
     { section: "Cool-Down", badge: "4 min", role: "mil", num: "03", items: [
-      { id: "box-breathing", name: "Doorway Chest Stretch", sets: "30s × 2 sides", rest: "15s to switch" },
+      { id: "chest-stretch", name: "Doorway Chest Stretch", sets: "30s × 2 sides", rest: "15s to switch" },
       { id: "box-breathing", name: "Box Breathing (4-4-4-4)", sets: "4–6 cycles", rest: "End of session" },
     ] },
   ];
