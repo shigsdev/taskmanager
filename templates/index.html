@@ -167,6 +167,17 @@
     </div>
 
     <section class="tier" data-tier="today" id="tierToday">
+        {# #283 "The Foundry" hero rail — cast date numeral + day label +
+           focus count. Decorative/duplicative of the header text, so
+           aria-hidden; the heading + count below remain the accessible
+           source of truth. Populated by updateTodayHero() in app.js
+           (null-guarded — this DOM exists only on the board). #}
+        <div class="today-rail" aria-hidden="true">
+            <span class="today-eyebrow">Today</span>
+            <span class="today-numeral" id="todayNumeral">–</span>
+            <span class="today-weekday" id="todayWeekday"></span>
+            <span class="today-stat"><span id="todayHeroCount">0</span> in focus</span>
+        </div>
         <div class="tier-header">
             <h2><button class="collapse-toggle" aria-expanded="true">▾</button> <a href="{{ url_for('tier_detail_page', name='today') }}" class="tier-heading-link" title="Open Today as full page">Today</a> <span class="tier-count">0</span></h2>
             <span class="tier-warning" id="todayWarning" style="display:none">⚠ 7+ tasks</span>

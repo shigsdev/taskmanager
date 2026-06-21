@@ -751,6 +751,7 @@ function renderBoard() {
     }
     updateInboxBadge();
     updateTodayWarning();
+    updateTodayHero();  // #283 board hero rail (null-guarded)
     updateBulkTriageBtn();
     // Post-#12 brainstorm Option A — toggle the auto-categorize
     // button's visibility with the inbox cohort. Defined in
@@ -1519,6 +1520,31 @@ function updateTodayWarning() {
     if (!warn) return;  // not on this page (e.g. /completed, /tier/<name>)
     const count = filteredTasks().filter((t) => t.tier === "today").length;
     warn.style.display = count > 7 ? "" : "none";
+}
+
+// #283 "The Foundry" hero rail. Sets the cast date numeral, day label,
+// and focus count. Null-guarded to match updateTodayWarning — the rail
+// DOM exists ONLY on the board (index.html), never on /completed or
+// /tier/<name>, both of which load app.js. (cascade-check rule.)
+function updateTodayHero() {
+    const numEl = document.getElementById("todayNumeral");
+    if (!numEl) return;  // not the board page — bail before touching siblings
+    const now = new Date();
+    numEl.textContent = now.getDate();
+    const wd = document.getElementById("todayWeekday");
+    if (wd) {
+        // Build explicitly so the order is deterministic ("SUN · JUN 2026").
+        // toLocaleDateString reorders the parts by locale (observed
+        // "JUN 2026 SUN" with weekday+month+year and no day).
+        const DOW = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+        const MON = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+        wd.textContent = `${DOW[now.getDay()]} · ${MON[now.getMonth()]} ${now.getFullYear()}`;
+    }
+    const cnt = document.getElementById("todayHeroCount");
+    if (cnt) {
+        // Mirror updateTodayWarning's simple tier filter for consistency.
+        cnt.textContent = filteredTasks().filter((t) => t.tier === "today").length;
+    }
 }
 
 // --- Project filter (Work view) ----------------------------------------------

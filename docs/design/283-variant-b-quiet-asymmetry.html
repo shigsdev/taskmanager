@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Task Manager — Board redesign Variant B: Quiet Asymmetry — #283</title>
+<!--
+  #283 Variant B — "Quiet Asymmetry". The restraint option.
+
+  Today leads through SPACE, TYPE SCALE and a single copper hairline — not
+  spectacle. No grain, no glow, no oversized numeral, no grid-breaking
+  overlap. Asymmetric tier weights remain (This Week dominant), and the
+  hierarchy is unmistakable, but the board stays calm + editorial. This is
+  the "tasteful, confident" end of the range vs. Variant A (Foundry) and
+  Variant C (Copper Statement).
+
+  Open directly in a browser — no build step. Static mockup.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --slate-0:#131110; --slate-100:#1a1816; --slate-200:#221f1c; --slate-300:#2c2825;
+    --rule:#3a3531; --rule-soft:#2a2622;
+    --cream:#ece4d5; --cream-bright:#fbf6ec; --cream-dim:#a89e8e; --cream-faint:#6a6358;
+    --copper:#b87333; --copper-bright:#d68b46; --copper-dim:#7a4d23;
+    --sage:#94a48b; --rust:#c64a2a; --amber:#d29922;
+    --font-display:"Fraunces","Georgia",serif;
+    --font-body:"IBM Plex Sans",system-ui,sans-serif;
+    --font-mono:"JetBrains Mono","SF Mono","Menlo",monospace;
+    --radius-s:8px; --radius-m:14px; --radius-l:18px;
+    --shadow-1:0 1px 0 rgba(255,247,232,0.02), 0 1px 2px rgba(0,0,0,0.4);
+    --shadow-2:0 1px 0 rgba(255,247,232,0.03), 0 8px 24px rgba(0,0,0,0.32);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-body); color: var(--cream); background: var(--slate-0); min-height: 100vh; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 36px 28px 80px; }
+
+  .topbar { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 32px; flex-wrap: wrap; gap: 12px; }
+  .brand { font-family: var(--font-display); font-variation-settings:"opsz" 144,"wght" 500,"SOFT" 60; font-size: 1.45rem; color: var(--cream-bright); }
+  .brand .dot { color: var(--copper); }
+  .capture { display: flex; align-items: center; gap: 6px; background: var(--slate-100); border: 1px solid var(--rule); border-radius: var(--radius-m); padding: 5px 6px 5px 14px; flex: 1; max-width: 440px; min-width: 220px; }
+  .capture input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--cream); font-family: var(--font-body); font-size: 0.92rem; }
+  .capture input::placeholder { color: var(--cream-faint); }
+  .cap-btn { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-s); border: 1px solid var(--rule); background: var(--slate-200); color: var(--cream-dim); font-size: 0.95rem; cursor: pointer; }
+  .cap-go { background: none; color: var(--copper-bright); border-color: var(--copper-dim); font-weight: 700; }
+
+  .intake { display: flex; align-items: center; gap: 14px; padding: 4px 2px 18px; margin-bottom: 26px; border-bottom: 1px solid var(--rule-soft); }
+  .intake .lbl { font-family: var(--font-display); font-variation-settings:"opsz" 14,"wght" 500,"SOFT" 100; text-transform: uppercase; letter-spacing: 0.18em; font-size: 0.7rem; color: var(--cream-faint); }
+  .intake .chips { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
+  .intake .chip { font-size: 0.82rem; color: var(--cream-dim); }
+  .intake .chip + .chip::before { content: "·"; margin-right: 8px; color: var(--cream-faint); }
+  .intake .auto { font-size: 0.78rem; color: var(--copper-bright); cursor: pointer; }
+
+  /* Today — calm, leads through space + a single copper hairline */
+  .today { background: var(--slate-200); border: 1px solid var(--rule); border-radius: var(--radius-l); box-shadow: var(--shadow-2); padding: 26px 30px 22px; margin-bottom: 26px; }
+  .today-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 4px; }
+  .today-head .t { font-family: var(--font-display); font-variation-settings:"opsz" 40,"wght" 500,"SOFT" 60; font-size: 1.7rem; color: var(--cream-bright); letter-spacing: -0.01em; }
+  .today-head .d { font-family: var(--font-mono); font-size: 0.78rem; color: var(--cream-faint); }
+  .today-head .n { margin-left: auto; font-family: var(--font-mono); font-size: 0.78rem; color: var(--cream-dim); }
+  .today-rule { height: 2px; width: 64px; background: var(--copper); border-radius: 1px; margin: 10px 0 18px; }
+  .today-list { display: flex; flex-direction: column; gap: 6px; }
+
+  .grid { display: grid; gap: 18px; }
+  .row-week { grid-template-columns: 4fr 6fr; }
+  .row-cold { grid-template-columns: 1fr 1fr; margin-top: 18px; }
+
+  .tier { background: var(--slate-100); border: 1px solid var(--rule); border-radius: var(--radius-m); box-shadow: var(--shadow-1); overflow: hidden; }
+  .tier.cold { background: transparent; border-color: var(--rule-soft); box-shadow: none; }
+  .tier-head { display: flex; align-items: baseline; justify-content: space-between; padding: 13px 16px 9px; }
+  .tier.cold .tier-head .name { color: var(--cream-faint); }
+  .tier-head .l { display: flex; align-items: baseline; gap: 10px; }
+  .tier-head .name { font-family: var(--font-display); font-variation-settings:"opsz" 14,"wght" 500,"SOFT" 100; text-transform: uppercase; letter-spacing: 0.16em; font-size: 0.78rem; color: var(--cream-dim); }
+  .tier-head .date { font-family: var(--font-mono); font-size: 0.7rem; color: var(--cream-faint); }
+  .tier-head .cnt { font-family: var(--font-mono); font-size: 0.72rem; color: var(--cream-faint); }
+  .tier-body { padding: 4px 8px 9px; display: flex; flex-direction: column; gap: 5px; }
+  .daygroup .dh { font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.05em; color: var(--cream-faint); text-transform: uppercase; padding: 8px 6px 4px; margin-bottom: 3px; }
+
+  .card { position: relative; display: flex; align-items: flex-start; gap: 9px; padding: 9px 11px; border-radius: var(--radius-s); cursor: pointer; transition: background .14s; }
+  .card:hover { background: var(--slate-300); }
+  .today .card { padding: 10px 12px; }
+  .chk { flex-shrink: 0; width: 18px; height: 18px; margin-top: 1px; border: 1.5px solid var(--rule); border-radius: 5px; }
+  .card .b { flex: 1; min-width: 0; }
+  .card .title { font-size: 0.92rem; color: var(--cream); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .today .card .title { font-size: 0.96rem; color: var(--cream-bright); }
+  .card .meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+  .bdg { font-size: 0.68rem; font-weight: 600; padding: 1px 7px; border-radius: 4px; line-height: 1.5; }
+  .bdg.work { background: rgba(184,115,51,0.14); color: var(--copper-bright); }
+  .bdg.personal { background: rgba(148,164,139,0.14); color: var(--sage); }
+  .bdg.proj { border: 1px solid var(--rule); color: var(--cream-dim); }
+  .bdg.goal { background: rgba(255,247,232,0.06); color: var(--cream-dim); }
+  .bdg.due { font-family: var(--font-mono); color: var(--cream-faint); font-weight: 500; }
+  .bdg.due.today { color: var(--amber); font-weight: 700; }
+  .bdg.due.over { color: var(--rust); font-weight: 700; }
+  .bdg.rep { color: var(--cream-faint); }
+  .done { flex-shrink: 0; width: 28px; height: 28px; border: 2px solid var(--sage); color: var(--sage); background: transparent; border-radius: 7px; font-size: 0.95rem; font-weight: 700; cursor: pointer; display: grid; place-items: center; margin-top: 1px; transition: background .14s, color .14s; }
+  .done:hover { background: var(--sage); color: #15130f; }
+
+  .notes { margin-top: 46px; border-top: 1px solid var(--rule); padding-top: 22px; }
+  .notes h3 { font-family: var(--font-display); font-variation-settings:"opsz" 30,"wght" 500,"SOFT" 60; font-size: 1.05rem; color: var(--cream-bright); margin-bottom: 12px; }
+  .notes ul { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 28px; }
+  .notes li { font-size: 0.86rem; color: var(--cream-dim); padding-left: 18px; position: relative; line-height: 1.5; }
+  .notes li::before { content: "—"; position: absolute; left: 0; color: var(--copper); }
+  .notes li b { color: var(--cream); font-weight: 600; }
+
+  @media (max-width: 820px) {
+    .row-week, .row-cold { grid-template-columns: 1fr; }
+    .notes ul { grid-template-columns: 1fr; }
+    .today-head { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="brand">Task<span class="dot">·</span>Manager</div>
+    <div class="capture">
+      <input placeholder="Add a task…">
+      <button class="cap-btn" title="Voice">🎤</button>
+      <button class="cap-btn cap-go" title="Add">✓</button>
+    </div>
+  </div>
+
+  <div class="intake">
+    <span class="lbl">Inbox</span>
+    <div class="chips">
+      <span class="chip">Reply to the contractor about the patio quote</span>
+      <span class="chip">Renew domain</span>
+    </div>
+    <span class="auto">Auto-categorize →</span>
+  </div>
+
+  <!-- TODAY — calm hero -->
+  <section class="today">
+    <div class="today-head">
+      <span class="t">Today</span>
+      <span class="d">Sunday · June 21</span>
+      <span class="n">3 of 5 done</span>
+    </div>
+    <div class="today-rule"></div>
+    <div class="today-list">
+      <div class="card"><div class="chk"></div><div class="b"><div class="title">Finalize the Q3 roadmap container and circulate to leadership before the sync</div><div class="meta"><span class="bdg work">work</span><span class="bdg proj">Roadmap</span><span class="bdg due today">due today</span><span class="bdg goal">Q3 OKRs</span></div></div><button class="done">✓</button></div>
+      <div class="card"><div class="chk"></div><div class="b"><div class="title">Strength — bands workout A</div><div class="meta"><span class="bdg personal">personal</span><span class="bdg rep">🔁 Mon/Wed/Fri</span><span class="bdg due today">due today</span></div></div><button class="done">✓</button></div>
+      <div class="card"><div class="chk"></div><div class="b"><div class="title">Pay the quarterly estimated taxes</div><div class="meta"><span class="bdg work">work</span><span class="bdg due over">3d overdue</span></div></div><button class="done">✓</button></div>
+    </div>
+  </section>
+
+  <div class="grid row-week">
+    <section class="tier">
+      <div class="tier-head"><div class="l"><span class="name">Tomorrow</span><span class="date">Mon 22</span></div><span class="cnt">2</span></div>
+      <div class="tier-body">
+        <div class="card"><div class="chk"></div><div class="b"><div class="title">Dentist appointment at 9:30</div><div class="meta"><span class="bdg personal">personal</span><span class="bdg due">Jun 22</span></div></div><button class="done">✓</button></div>
+        <div class="card"><div class="chk"></div><div class="b"><div class="title">Review the vendor SOW redlines</div><div class="meta"><span class="bdg work">work</span><span class="bdg proj">Procurement</span></div></div><button class="done">✓</button></div>
+      </div>
+    </section>
+    <section class="tier">
+      <div class="tier-head"><div class="l"><span class="name">This Week</span><span class="date">Jun 22 – 28</span></div><span class="cnt">4</span></div>
+      <div class="tier-body">
+        <div class="daygroup"><div class="dh">Tuesday</div>
+          <div class="card"><div class="chk"></div><div class="b"><div class="title">Draft the postmortem for the deploy incident</div><div class="meta"><span class="bdg work">work</span><span class="bdg goal">Reliability</span></div></div><button class="done">✓</button></div>
+        </div>
+        <div class="daygroup"><div class="dh">Thursday</div>
+          <div class="card"><div class="chk"></div><div class="b"><div class="title">1:1 prep notes</div><div class="meta"><span class="bdg work">work</span></div></div><button class="done">✓</button></div>
+          <div class="card"><div class="chk"></div><div class="b"><div class="title">Order the replacement bike chain</div><div class="meta"><span class="bdg personal">personal</span></div></div><button class="done">✓</button></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="grid row-cold">
+    <section class="tier cold">
+      <div class="tier-head"><div class="l"><span class="name">Backlog</span></div><span class="cnt">12</span></div>
+      <div class="tier-body">
+        <div class="card"><div class="chk"></div><div class="b"><div class="title">Research a Brevo migration for the digest mailer</div><div class="meta"><span class="bdg work">work</span></div></div><button class="done">✓</button></div>
+        <div class="card"><div class="chk"></div><div class="b"><div class="title">Sort the garage shelving</div><div class="meta"><span class="bdg personal">personal</span></div></div><button class="done">✓</button></div>
+      </div>
+    </section>
+    <section class="tier cold">
+      <div class="tier-head"><div class="l"><span class="name">Freezer</span></div><span class="cnt">5</span></div>
+      <div class="tier-body">
+        <div class="card"><div class="chk"></div><div class="b"><div class="title">Someday: learn to sail</div><div class="meta"><span class="bdg personal">personal</span></div></div><button class="done">✓</button></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="notes">
+    <h3>What's bold here — restraint as the statement</h3>
+    <ul>
+      <li><b>Today leads with air, not spectacle.</b> Larger Fraunces wordmark, generous padding, and a single 64px copper hairline — emphasis without ornament.</li>
+      <li><b>Asymmetric week row kept</b> (This Week wide, Tomorrow narrow), so attention still follows weight.</li>
+      <li><b>Cold storage goes fully transparent</b> — Backlog + Freezer read as background; Inbox is a one-line intake row.</li>
+      <li><b>No grain, glow, vignette or oversized numeral.</b> Flat warm surfaces, two elevation steps only — closest to the current theme.</li>
+      <li><b>Copper at its strictest</b> — one hairline + the add affordance. Nothing else competes.</li>
+      <li><b>Lowest-risk port.</b> Almost entirely spacing + type-scale changes over the shipped CSS; trivial Phase 6.</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

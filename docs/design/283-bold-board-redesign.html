@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Task Manager — Bold board redesign (Soft Concrete) — #283</title>
+<!--
+  #283 Bold home-board redesign — "The Foundry" statement pass.
+
+  This pushes the tier board BEYOND the faithful Soft Concrete port (#224)
+  with the frontend-design lens the backlog item calls for:
+    • Asymmetric tier weights — Today is the unmistakable hero.
+    • A bolder copper "statement" moment — the oversized cast date numeral.
+    • Grid-breaking / overlap — the hero count chip + spine break the frame;
+      the secondary grid tucks under the hero with a shadow seam.
+    • Stronger material depth — top-lit gradients, inset highlights, layered
+      warm shadows, a faint cast-grain overlay, canvas vignette.
+    • Restraint preserved — copper still obeys the ~95/5 rule (Today + primary
+      actions only); everything else is warm slate + cream.
+
+  Open directly in a browser — no build step. Resize 375 ↔ 1280 to see the
+  responsive collapse. This is a STATIC visual mockup: drag/drop, API calls
+  and quick-actions are stubbed. Evaluate the AESTHETIC + HIERARCHY before
+  any CSS is wired into static/style.css. Real port must still pass Phase 6
+  (long+short titles, 0 overflow, 44px touch targets, drag/bulk/complete).
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800;9..144,900&family=IBM+Plex+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --slate-0:#131110; --slate-100:#1a1816; --slate-200:#221f1c; --slate-300:#2c2825;
+    --rule:#3a3531; --rule-soft:#2a2622;
+    --cream:#ece4d5; --cream-bright:#fbf6ec; --cream-dim:#a89e8e; --cream-faint:#6a6358;
+    --copper:#b87333; --copper-bright:#d68b46; --copper-dim:#7a4d23;
+    --sage:#94a48b; --rust:#c64a2a; --amber:#d29922;
+    --font-display:"Fraunces","Georgia",serif;
+    --font-body:"IBM Plex Sans",system-ui,sans-serif;
+    --font-mono:"JetBrains Mono","SF Mono","Menlo",monospace;
+    --radius-s:8px; --radius-m:14px; --radius-l:20px;
+    --shadow-1:0 1px 0 rgba(255,247,232,0.02), 0 1px 2px rgba(0,0,0,0.4);
+    --shadow-2:0 1px 0 rgba(255,247,232,0.03), 0 8px 24px rgba(0,0,0,0.35);
+    --shadow-3:0 1px 0 rgba(255,247,232,0.05), 0 18px 48px rgba(0,0,0,0.55);
+    --ease-out:cubic-bezier(0.22,1,0.36,1);
+    --ease-spring:cubic-bezier(0.34,1.56,0.64,1);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-body);
+    color: var(--cream);
+    background:
+      radial-gradient(120% 80% at 50% -10%, #1d1a17 0%, var(--slate-0) 55%) fixed;
+    min-height: 100vh;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* faint cast-grain overlay — material depth without a raster asset */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    opacity: 0.5; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  }
+
+  .wrap { position: relative; z-index: 1; max-width: 1320px; margin: 0 auto; padding: 28px 24px 80px; }
+
+  /* ---- top bar ---------------------------------------------------------- */
+  .topbar { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 22px; flex-wrap: wrap; gap: 12px; }
+  .brand {
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 144, "wght" 600, "SOFT" 60, "WONK" 0;
+    font-size: 1.5rem; color: var(--cream-bright); letter-spacing: -0.01em;
+  }
+  .brand .dot { color: var(--copper); }
+  .capture {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--slate-100); border: 1px solid var(--rule);
+    border-radius: var(--radius-m); padding: 5px 6px 5px 14px; box-shadow: var(--shadow-1);
+    flex: 1; max-width: 460px; min-width: 220px;
+  }
+  .capture input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--cream); font-family: var(--font-body); font-size: 0.92rem; }
+  .capture input::placeholder { color: var(--cream-faint); }
+  .cap-btn { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-s); border: 1px solid var(--rule); background: var(--slate-200); color: var(--cream-dim); font-size: 0.95rem; cursor: pointer; }
+  .cap-go { background: var(--copper); color: #fff; border-color: var(--copper); font-weight: 700; }
+
+  /* ---- inbox intake strip (de-emphasised) ------------------------------ */
+  .intake {
+    display: flex; align-items: center; gap: 12px;
+    border: 1px dashed var(--rule); border-radius: var(--radius-m);
+    padding: 10px 16px; margin-bottom: 18px; background: rgba(255,247,232,0.012);
+  }
+  .intake .lbl { font-family: var(--font-display); font-variation-settings:"opsz" 14,"wght" 600,"SOFT" 100; text-transform: uppercase; letter-spacing: 0.16em; font-size: 0.72rem; color: var(--cream-faint); }
+  .intake .chips { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
+  .intake .chip { font-size: 0.82rem; color: var(--cream-dim); background: var(--slate-100); border: 1px solid var(--rule-soft); border-radius: 999px; padding: 4px 12px; white-space: nowrap; }
+  .intake .auto { font-size: 0.78rem; color: var(--copper-bright); background: rgba(184,115,51,0.1); border: 1px solid rgba(184,115,51,0.28); border-radius: var(--radius-s); padding: 6px 12px; cursor: pointer; white-space: nowrap; }
+
+  /* ---- HERO: Today ------------------------------------------------------ */
+  .hero {
+    position: relative; display: grid; grid-template-columns: 230px 1fr; gap: 0;
+    background:
+      linear-gradient(180deg, rgba(255,247,232,0.05) 0%, rgba(255,247,232,0) 18%),
+      linear-gradient(180deg, var(--slate-300) 0%, var(--slate-200) 60%);
+    border: 1px solid rgba(184,115,51,0.22);
+    border-radius: var(--radius-l);
+    box-shadow: var(--shadow-3), 0 0 0 1px rgba(0,0,0,0.3);
+    overflow: hidden;
+    /* grid-break: pull the secondary grid up under the hero */
+    margin-bottom: -14px; padding-bottom: 14px;
+    z-index: 3;
+  }
+  /* glowing copper spine */
+  .hero::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+    background: linear-gradient(180deg, var(--copper-bright), var(--copper) 50%, var(--copper-dim));
+    box-shadow: 0 0 26px 2px rgba(184,115,51,0.45);
+  }
+  .hero-rail {
+    position: relative; padding: 26px 20px 22px 28px;
+    border-right: 1px solid rgba(255,247,232,0.05);
+  }
+  .hero-eyebrow { font-family: var(--font-display); font-variation-settings:"opsz" 14,"wght" 700,"SOFT" 100; text-transform: uppercase; letter-spacing: 0.22em; font-size: 0.74rem; color: var(--copper-bright); }
+  /* THE statement moment — oversized cast date numeral */
+  .hero-numeral {
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 144, "wght" 800, "SOFT" 40, "WONK" 1;
+    font-size: 7.4rem; line-height: 0.82; color: var(--copper);
+    letter-spacing: -0.03em; margin: 6px 0 2px -4px;
+    text-shadow: 0 2px 0 rgba(0,0,0,0.35), 0 0 38px rgba(184,115,51,0.28);
+  }
+  .hero-weekday { font-family: var(--font-mono); font-size: 0.82rem; letter-spacing: 0.06em; color: var(--cream-dim); }
+  .hero-stat { margin-top: 18px; display: flex; align-items: center; gap: 12px; }
+  .ring { --p: 62; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--copper) calc(var(--p)*1%), rgba(255,247,232,0.08) 0); }
+  .ring span { width: 36px; height: 36px; border-radius: 50%; background: var(--slate-200); display: grid; place-items: center; font-family: var(--font-mono); font-size: 0.72rem; color: var(--cream-bright); }
+  .hero-stat .txt { font-size: 0.8rem; color: var(--cream-dim); line-height: 1.3; }
+  .hero-stat .txt b { color: var(--cream-bright); font-weight: 600; }
+
+  .hero-body { padding: 20px 22px 18px; display: flex; flex-direction: column; gap: 8px; }
+  .hero-body .hb-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+  .hero-body .hb-head .t { font-family: var(--font-display); font-variation-settings:"opsz" 30,"wght" 600,"SOFT" 60; font-size: 1.1rem; color: var(--cream-bright); }
+  .hero-body .hb-head .warn { font-size: 0.74rem; color: var(--amber); font-weight: 600; }
+
+  /* ---- secondary grid --------------------------------------------------- */
+  .grid { display: grid; gap: 16px; }
+  .row-week { grid-template-columns: 5fr 7fr; }
+  .row-cold { grid-template-columns: 1fr 1fr; margin-top: 16px; }
+
+  .tier {
+    background:
+      linear-gradient(180deg, rgba(255,247,232,0.025) 0%, rgba(255,247,232,0) 14%),
+      var(--slate-100);
+    border: 1px solid var(--rule); border-radius: var(--radius-m);
+    box-shadow: var(--shadow-1); overflow: hidden;
+  }
+  .tier.span2 { grid-column: 1 / -1; }
+  /* cold storage tiers recede */
+  .tier.cold { background: rgba(26,24,22,0.6); border-color: var(--rule-soft); box-shadow: none; }
+  .tier.cold .tier-head { background: transparent; }
+  .tier.cold .tier-head .name { color: var(--cream-faint); }
+
+  .tier-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 11px 16px; background: #211c16; border-bottom: 1px solid var(--rule);
+    position: relative;
+  }
+  .tier-head .l { display: flex; align-items: baseline; gap: 10px; }
+  .tier-head .name {
+    font-family: var(--font-display); font-variation-settings:"opsz" 14,"wght" 600,"SOFT" 100;
+    text-transform: uppercase; letter-spacing: 0.15em; font-size: 0.8rem; color: var(--cream-dim);
+  }
+  .tier-head .date { font-family: var(--font-mono); font-size: 0.7rem; color: var(--cream-faint); }
+  /* grid-breaking count chip — sits half outside the corner */
+  .count-chip {
+    font-family: var(--font-mono); font-size: 0.72rem; color: var(--cream-dim);
+    background: var(--slate-300); border: 1px solid var(--rule);
+    border-radius: 999px; padding: 2px 10px;
+  }
+  .tier-body { padding: 9px; display: flex; flex-direction: column; gap: 5px; }
+
+  .daygroup { padding: 2px 4px 0; }
+  .daygroup .dh { font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.05em; color: var(--cream-faint); text-transform: uppercase; padding: 6px 6px 4px; border-bottom: 1px solid var(--rule-soft); margin-bottom: 5px; }
+
+  /* ---- card ------------------------------------------------------------- */
+  .card {
+    position: relative; display: flex; align-items: flex-start; gap: 9px;
+    padding: 9px 11px; border-radius: var(--radius-s); background: transparent;
+    border: 1px solid transparent; cursor: pointer; transition: background .14s var(--ease-out), border-color .14s;
+  }
+  .card:hover { background: var(--slate-200); border-color: var(--rule-soft); }
+  .card.big { padding: 12px 13px; background: rgba(255,247,232,0.022); border-color: var(--rule-soft); }
+  .chk { flex-shrink: 0; width: 18px; height: 18px; margin-top: 1px; border: 1.5px solid var(--rule); border-radius: 5px; }
+  .card .b { flex: 1; min-width: 0; }
+  .card .title { font-size: 0.92rem; color: var(--cream); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card.big .title { font-size: 0.98rem; color: var(--cream-bright); }
+  .card .meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+  .bdg { font-size: 0.68rem; font-weight: 600; padding: 1px 7px; border-radius: 4px; line-height: 1.5; }
+  .bdg.work { background: rgba(184,115,51,0.16); color: var(--copper-bright); }
+  .bdg.personal { background: rgba(148,164,139,0.16); color: var(--sage); }
+  .bdg.proj { border: 1px solid var(--rule); color: var(--cream-dim); }
+  .bdg.goal { background: rgba(255,247,232,0.06); color: var(--cream-dim); }
+  .bdg.due { font-family: var(--font-mono); color: var(--cream-faint); font-weight: 500; }
+  .bdg.due.today { color: var(--amber); font-weight: 700; }
+  .bdg.due.over { color: var(--rust); font-weight: 700; }
+  .bdg.rep { color: var(--cream-faint); }
+  .done {
+    flex-shrink: 0; width: 28px; height: 28px; border: 2px solid var(--sage);
+    color: var(--sage); background: transparent; border-radius: 7px; font-size: 0.95rem;
+    font-weight: 700; cursor: pointer; display: grid; place-items: center; margin-top: 1px;
+    transition: background .14s, color .14s;
+  }
+  .done:hover { background: var(--sage); color: #15130f; }
+
+  /* ---- legend / annotations -------------------------------------------- */
+  .notes { margin-top: 44px; border-top: 1px solid var(--rule); padding-top: 22px; }
+  .notes h3 { font-family: var(--font-display); font-variation-settings:"opsz" 30,"wght" 600,"SOFT" 60; font-size: 1.05rem; color: var(--cream-bright); margin-bottom: 12px; }
+  .notes ul { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 28px; }
+  .notes li { font-size: 0.86rem; color: var(--cream-dim); padding-left: 18px; position: relative; line-height: 1.5; }
+  .notes li::before { content: "—"; position: absolute; left: 0; color: var(--copper); }
+  .notes li b { color: var(--cream); font-weight: 600; }
+
+  @media (max-width: 820px) {
+    .hero { grid-template-columns: 1fr; }
+    .hero-rail { border-right: none; border-bottom: 1px solid rgba(255,247,232,0.05); display: flex; align-items: center; gap: 18px; padding: 18px 20px; }
+    .hero-numeral { font-size: 4.6rem; margin: 0; }
+    .hero-stat { margin-top: 0; margin-left: auto; }
+    .row-week, .row-cold { grid-template-columns: 1fr; }
+    .notes ul { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="brand">Task<span class="dot">·</span>Forge</div>
+    <div class="capture">
+      <input placeholder="Add a task…">
+      <button class="cap-btn" title="Voice">🎤</button>
+      <button class="cap-btn" title="Expand">🗗</button>
+      <button class="cap-btn cap-go" title="Add">✓</button>
+    </div>
+  </div>
+
+  <!-- INBOX as a slim intake strip -->
+  <div class="intake">
+    <span class="lbl">Inbox</span>
+    <div class="chips">
+      <span class="chip">Reply to the contractor about the patio quote</span>
+      <span class="chip">Renew domain</span>
+    </div>
+    <span class="auto">💡 Auto-categorize</span>
+  </div>
+
+  <!-- HERO — TODAY -->
+  <section class="hero">
+    <div class="hero-rail">
+      <div class="hero-eyebrow">Today</div>
+      <div class="hero-numeral">21</div>
+      <div class="hero-weekday">SUN · JUN 2026</div>
+      <div class="hero-stat">
+        <div class="ring" style="--p:60"><span>3/5</span></div>
+        <div class="txt"><b>5 tasks</b> in focus<br>3 done today</div>
+      </div>
+    </div>
+    <div class="hero-body">
+      <div class="hb-head">
+        <span class="t">In focus</span>
+        <span class="warn">⚠ keep it under 7</span>
+      </div>
+      <div class="card big">
+        <div class="chk"></div>
+        <div class="b">
+          <div class="title">Finalize the Q3 roadmap container and circulate to leadership before the sync</div>
+          <div class="meta"><span class="bdg work">work</span><span class="bdg proj">Roadmap</span><span class="bdg due today">due today</span><span class="bdg goal">Q3 OKRs</span></div>
+        </div>
+        <button class="done">✓</button>
+      </div>
+      <div class="card big">
+        <div class="chk"></div>
+        <div class="b">
+          <div class="title">Strength — bands workout A</div>
+          <div class="meta"><span class="bdg personal">personal</span><span class="bdg rep">🔁 Mon/Wed/Fri</span><span class="bdg due today">due today</span></div>
+        </div>
+        <button class="done">✓</button>
+      </div>
+      <div class="card big">
+        <div class="chk"></div>
+        <div class="b">
+          <div class="title">Pay the quarterly estimated taxes</div>
+          <div class="meta"><span class="bdg work">work</span><span class="bdg due over">3d overdue</span></div>
+        </div>
+        <button class="done">✓</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECONDARY GRID -->
+  <div class="grid row-week">
+    <section class="tier">
+      <div class="tier-head"><div class="l"><span class="name">Tomorrow</span><span class="date">Mon 22</span></div><span class="count-chip">2</span></div>
+      <div class="tier-body">
+        <div class="card"><div class="chk"></div><div class="b"><div class="title">Dentist appointment at 9:30</div><div class="meta"><span class="bdg personal">personal</span><span class="bdg due">Jun 22</span></div></div><button class="done">✓</button></div>
+        <div class="card"><div class="chk"></div><div class="b"><div class="title">Review the vendor SOW redlines</div><div class="meta"><span class="bdg work">work</span><span class="bdg proj">Procurement</span></div></div><button class="done">✓</button></div>
+      </div>
+    </section>
+
+    <section class="tier">
+      <div class="tier-head"><div class="l"><span class="name">This Week</span><span class="date">Jun 22 – 28</span></div><span class="count-chip">4</span></div>
+      <div class="tier-body">
+        <div class="daygroup"><div class="dh">Tuesday</div>
+          <div class="card"><div class="chk"></div><div class="b"><div class="title">Draft the postmortem for the deploy incident</div><div class="meta"><span class="bdg work">work</span><span class="bdg goal">Reliability</span></div></div><button class="done">✓</button></div>
+        </div>
+        <div class="daygroup"><div class="dh">Thursday</div>
+          <div class="card"><div class="chk"></div><div class="b"><div class="title">1:1 prep notes</div><div class="meta"><span class="bdg work">work</span></div></div><button class="done">✓</button></div>
+          <div class="card"><div class="chk"></div><div class="b"><div class="title">Order the replacement bike chain</div><div class="meta"><span class="bdg personal">personal</span></div></div><button class="done">✓</button></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- COLD STORAGE -->
+  <div class="grid row-cold">
+    <section class="tier cold">
+      <div class="tier-head"><div class="l"><span class="name">Backlog</span></div><span class="count-chip">12</span></div>
+      <div class="tier-body">
+        <div class="card"><div class="chk"></div><div class="b"><div class="title">Research a Brevo migration for the digest mailer</div><div class="meta"><span class="bdg work">work</span></div></div><button class="done">✓</button></div>
+        <div class="card"><div class="chk"></div><div class="b"><div class="title">Sort the garage shelving</div><div class="meta"><span class="bdg personal">personal</span></div></div><button class="done">✓</button></div>
+      </div>
+    </section>
+    <section class="tier cold">
+      <div class="tier-head"><div class="l"><span class="name">Freezer</span></div><span class="count-chip">5</span></div>
+      <div class="tier-body">
+        <div class="card"><div class="chk"></div><div class="b"><div class="title">Someday: learn to sail</div><div class="meta"><span class="bdg personal">personal</span></div></div><button class="done">✓</button></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ANNOTATIONS -->
+  <div class="notes">
+    <h3>What's bold here (vs. the current faithful port)</h3>
+    <ul>
+      <li><b>Today is a hero, not a tier.</b> Full-width statement panel, raised slate-300→200 material, deepest shadow — it reads first, every time.</li>
+      <li><b>The cast date numeral</b> is the copper "statement moment" — an oversized Fraunces glyph (opsz 144, WONK 1) that anchors the whole board.</li>
+      <li><b>Grid-breaking overlap.</b> The hero's bottom edge pulls the week grid up under it with a shadow seam; the glowing copper spine bleeds past the frame.</li>
+      <li><b>Asymmetric week row.</b> Tomorrow (5) is narrower than This Week (7) — weight follows attention, not a tidy 50/50 split.</li>
+      <li><b>Cold storage recedes.</b> Backlog + Freezer drop contrast and shadow — present, but clearly "later." Inbox shrinks to a dashed intake strip.</li>
+      <li><b>Material depth.</b> Top-lit gradients, a faint cast-grain overlay, a canvas vignette, and a progress ring — depth without leaving the Soft Concrete palette.</li>
+      <li><b>Copper restraint kept.</b> Accent still ~5% of the surface — Today + the primary add button only. Everything else stays warm slate + cream.</li>
+      <li><b>Port-safe.</b> Cards keep the existing anatomy (chk · title · badges · complete) so drag, bulk-select, quick-actions and the 44px targets port without a rewrite.</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

@@ -666,15 +666,28 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     grid-template-columns: minmax(0, 1fr);
 }
 
+/* #283 "The Foundry": a 12-col board so tiers can carry ASYMMETRIC
+   weight (the brief: "asymmetric tier weights — Today visually
+   heaviest"). Inbox / Today / Next Week span full width; the week row is
+   intentionally lopsided (Tomorrow 5 / This Week 7); Backlog + Freezer
+   share a receding "cold storage" row. minmax(0, ...) keeps the
+   #138/#216 D-B1 horizontal-overflow guard intact on every track.
+   `align-items: start` so a short Tomorrow doesn't stretch to match a
+   tall This Week. */
 @media (min-width: 900px) {
     .tier-board {
-        /* #216: minmax(0, 1fr) instead of plain 1fr — same #138 D-B1
-           reasoning for the two-column desktop layout. */
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        align-items: start;
     }
-    .tier[data-tier="inbox"] {
-        grid-column: 1 / -1;
-    }
+    .tier-board > .tier[data-tier="inbox"]     { grid-column: span 12; }
+    .tier-board > .tier[data-tier="today"]     { grid-column: span 12; }
+    .tier-board > .tier[data-tier="tomorrow"]  { grid-column: span 5; }
+    .tier-board > .tier[data-tier="this_week"] { grid-column: span 7; }
+    .tier-board > .tier[data-tier="next_week"] { grid-column: span 12; }
+    .tier-board > .tier[data-tier="backlog"]   { grid-column: span 6; }
+    .tier-board > .tier[data-tier="freezer"]   { grid-column: span 6; }
+    .tier-board > .tier-completed              { grid-column: span 12; }
+    .tier-board > .tier-cancelled              { grid-column: span 12; }
 }
 
 .tier {
@@ -727,6 +740,127 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     background: transparent;
     border-bottom-style: dashed;
 }
+
+/* ====================================================================
+   #283 "The Foundry" — bold board statement pass (Variant A, signed off
+   2026-06-21). Today becomes a HERO with a statement rail + cast date
+   numeral; cold tiers recede; today cards carry extra weight. All new
+   layout is scoped to `.tier-board >` so the single-tier /tier/<name>
+   detail page (which loads the same CSS but has no rail DOM) keeps the
+   simpler raised-slab treatment. Deferred to the #284 polish pass: the
+   done/total progress ring, the cast-grain overlay, and the canvas
+   vignette (all atmospheric / extra data plumbing).
+   ==================================================================== */
+
+/* Inbox recedes a touch further to an "intake" strip — still a real
+   tier (triage + auto-categorize + drag intact), just slimmer. */
+.tier-board > .tier[data-tier="inbox"] .tier-header { padding-top: 8px; padding-bottom: 8px; }
+
+/* The statement rail. Mobile-first: a slim horizontal strip above the
+   header (eyebrow · numeral · weekday · count). It only exists in the
+   board template, so these rules are inert everywhere else. */
+.today-rail {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 13px 16px 2px;
+    position: relative;
+}
+.today-eyebrow {
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 14, "wght" 700, "SOFT" 100, "WONK" 0;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    font-size: 0.72rem;
+    color: var(--copper-bright);
+}
+.today-numeral {
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 144, "wght" 800, "SOFT" 40, "WONK" 1;
+    font-size: 3.2rem;
+    line-height: 1;
+    color: var(--copper);
+    letter-spacing: -0.03em;
+    text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), 0 0 30px rgba(184, 115, 51, 0.22);
+}
+.today-weekday {
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    letter-spacing: 0.05em;
+    color: var(--cream-dim);
+}
+.today-stat {
+    margin-left: auto;
+    font-size: 0.78rem;
+    color: var(--cream-dim);
+}
+.today-stat span {
+    font-family: var(--font-mono);
+    color: var(--cream-bright);
+    font-weight: 600;
+}
+
+/* Desktop hero: Today becomes a two-column grid — the vertical statement
+   rail beside the focus list. Scoped to the board only. */
+@media (min-width: 700px) {
+    .tier-board > .tier[data-tier="today"] {
+        display: grid;
+        grid-template-columns: 210px minmax(0, 1fr);
+        grid-template-areas: "rail header" "rail body";
+        background:
+            linear-gradient(180deg, rgba(255, 247, 232, 0.05) 0%, rgba(255, 247, 232, 0) 16%),
+            linear-gradient(180deg, var(--slate-300) 0%, var(--slate-200) 60%);
+    }
+    .tier-board > .tier[data-tier="today"] > .tier-header { grid-area: header; }
+    .tier-board > .tier[data-tier="today"] > .tier-body   { grid-area: body; }
+    .tier-board > .tier[data-tier="today"] > .today-rail {
+        grid-area: rail;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        padding: 22px 16px 20px 24px;
+        border-right: 1px solid rgba(255, 247, 232, 0.05);
+    }
+    .tier-board > .tier[data-tier="today"] > .today-rail .today-eyebrow { margin-bottom: 4px; }
+    .tier-board > .tier[data-tier="today"] > .today-rail .today-numeral {
+        font-size: 6.2rem;
+        line-height: 0.82;
+        margin: 0 0 2px -3px;
+        text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), 0 0 38px rgba(184, 115, 51, 0.26);
+    }
+    .tier-board > .tier[data-tier="today"] > .today-rail .today-stat {
+        margin-left: 0;
+        margin-top: 14px;
+    }
+    /* upgrade the spine to a glowing 4px copper rule on the board hero */
+    .tier-board > .tier[data-tier="today"]::before {
+        width: 4px;
+        background: linear-gradient(180deg, var(--copper-bright), var(--copper) 50%, var(--copper-dim));
+        box-shadow: 0 0 24px 2px rgba(184, 115, 51, 0.4);
+    }
+}
+
+/* Today's focus cards carry a touch more weight than the rest. */
+.tier-board > .tier[data-tier="today"] .task-card {
+    background: rgba(255, 247, 232, 0.022);
+    border: 1px solid var(--rule-soft);
+    padding: 10px 12px;
+}
+.tier-board > .tier[data-tier="today"] .task-card:hover { background: var(--slate-300); }
+.tier-board > .tier[data-tier="today"] .task-card .task-title { color: var(--cream-bright); }
+
+/* "Cold storage" — Backlog + Freezer drop contrast + shadow so they read
+   as later/optional vs. the active week. */
+.tier-board > .tier[data-tier="backlog"],
+.tier-board > .tier[data-tier="freezer"] {
+    background: color-mix(in srgb, var(--slate-100) 68%, transparent);
+    border-color: var(--rule-soft);
+    box-shadow: none;
+}
+.tier-board > .tier[data-tier="backlog"] .tier-header,
+.tier-board > .tier[data-tier="freezer"] .tier-header { background: transparent; }
+.tier-board > .tier[data-tier="backlog"] .tier-header h2,
+.tier-board > .tier[data-tier="freezer"] .tier-header h2 { color: var(--cream-faint); }
 
 .tier-header {
     display: flex;
