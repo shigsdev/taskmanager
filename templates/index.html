@@ -176,7 +176,12 @@
             <span class="today-eyebrow">Today</span>
             <span class="today-numeral" id="todayNumeral">–</span>
             <span class="today-weekday" id="todayWeekday"></span>
-            <span class="today-stat"><span id="todayHeroCount">0</span> in focus</span>
+            <span class="today-stat">
+                {# #284 polish: done/total progress ring. --p (0-100) +
+                   the label are set by updateTodayHero(). #}
+                <span class="today-ring" id="todayRing" style="--p:0"><span id="todayRingLabel">0/0</span></span>
+                <span class="today-stat-text"><span id="todayHeroCount">0</span> in focus</span>
+            </span>
         </div>
         <div class="tier-header">
             <h2><button class="collapse-toggle" aria-expanded="true">▾</button> <a href="{{ url_for('tier_detail_page', name='today') }}" class="tier-heading-link" title="Open Today as full page">Today</a> <span class="tier-count">0</span></h2>

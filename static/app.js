@@ -1540,10 +1540,30 @@ function updateTodayHero() {
         const MON = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
         wd.textContent = `${DOW[now.getDay()]} · ${MON[now.getMonth()]} ${now.getFullYear()}`;
     }
+    const activeToday = filteredTasks().filter((t) => t.tier === "today").length;
     const cnt = document.getElementById("todayHeroCount");
-    if (cnt) {
-        // Mirror updateTodayWarning's simple tier filter for consistency.
-        cnt.textContent = filteredTasks().filter((t) => t.tier === "today").length;
+    if (cnt) cnt.textContent = activeToday;
+
+    // #284 done/total progress ring. "Done today" ≈ archived tasks whose
+    // updated_at falls on the local calendar day (Task has no dedicated
+    // completed_at; updated_at is set on completion — an accepted proxy).
+    // allCompleted is loaded async by loadCompletedTasks(), which also
+    // calls this fn on arrival so the ring fills once the data is in.
+    const ring = document.getElementById("todayRing");
+    const ringLabel = document.getElementById("todayRingLabel");
+    if (ring && ringLabel) {
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, "0");
+        const d = String(now.getDate()).padStart(2, "0");
+        const todayIso = `${y}-${m}-${d}`;
+        const completed = Array.isArray(allCompleted) ? allCompleted : [];
+        const doneToday = completed.filter(
+            (t) => (t.updated_at || "").slice(0, 10) === todayIso
+        ).length;
+        const total = doneToday + activeToday;
+        const pct = total > 0 ? Math.round((doneToday / total) * 100) : 0;
+        ring.style.setProperty("--p", pct);
+        ringLabel.textContent = `${doneToday}/${total}`;
     }
 }
 
@@ -1926,6 +1946,9 @@ async function loadCompletedTasks() {
     allCompleted = await apiFetch(API + "?status=archived");
     if (list) renderCompletedList();
     if (dedicatedList) renderCompletedPage();
+    // #284: the hero ring's "done today" count comes from allCompleted,
+    // which only just arrived — refresh it (null-guarded; board-only).
+    updateTodayHero();
 }
 
 // Backlog #29: renders archived tasks onto the dedicated /completed

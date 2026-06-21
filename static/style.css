@@ -756,48 +756,86 @@ input[type="time"]::-webkit-calendar-picker-indicator {
    tier (triage + auto-categorize + drag intact), just slimmer. */
 .tier-board > .tier[data-tier="inbox"] .tier-header { padding-top: 8px; padding-bottom: 8px; }
 
-/* The statement rail. Mobile-first: a slim horizontal strip above the
-   header (eyebrow · numeral · weekday · count). It only exists in the
-   board template, so these rules are inert everywhere else. */
+/* The statement rail. Mobile-first (#284 bold mobile hero): a real hero
+   block — oversized cast numeral on the left, eyebrow / day label /
+   progress stat stacked to its right (the #283 ship only gave mobile a
+   thin strip; user-reported "no change on mobile"). Rail DOM is
+   board-only, so these rules are inert everywhere else. */
 .today-rail {
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-    padding: 13px 16px 2px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+        "numeral eyebrow"
+        "numeral weekday"
+        "numeral stat";
+    align-items: center;
+    column-gap: 18px;
+    padding: 18px 18px 12px;
     position: relative;
 }
 .today-eyebrow {
+    grid-area: eyebrow;
+    align-self: flex-end;
     font-family: var(--font-display);
     font-variation-settings: "opsz" 14, "wght" 700, "SOFT" 100, "WONK" 0;
     text-transform: uppercase;
     letter-spacing: 0.22em;
-    font-size: 0.72rem;
+    font-size: 0.74rem;
     color: var(--copper-bright);
 }
 .today-numeral {
+    grid-area: numeral;
     font-family: var(--font-display);
     font-variation-settings: "opsz" 144, "wght" 800, "SOFT" 40, "WONK" 1;
-    font-size: 3.2rem;
-    line-height: 1;
+    font-size: 5rem;
+    line-height: 0.85;
     color: var(--copper);
     letter-spacing: -0.03em;
-    text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), 0 0 30px rgba(184, 115, 51, 0.22);
+    text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), 0 0 34px rgba(184, 115, 51, 0.24);
 }
 .today-weekday {
+    grid-area: weekday;
     font-family: var(--font-mono);
     font-size: 0.74rem;
     letter-spacing: 0.05em;
     color: var(--cream-dim);
 }
 .today-stat {
-    margin-left: auto;
+    grid-area: stat;
+    align-self: flex-start;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
     font-size: 0.78rem;
     color: var(--cream-dim);
 }
-.today-stat span {
+.today-stat-text span {
     font-family: var(--font-mono);
     color: var(--cream-bright);
     font-weight: 600;
+}
+/* #284 done/total progress ring — copper arc for today's completion. */
+.today-ring {
+    width: 42px;
+    height: 42px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: conic-gradient(var(--copper) calc(var(--p, 0) * 1%), rgba(255, 247, 232, 0.09) 0);
+}
+.today-ring > span {
+    width: 33px;
+    height: 33px;
+    border-radius: 50%;
+    background: var(--slate-200);
+    display: grid;
+    place-items: center;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 600;
+    color: var(--cream-bright);
 }
 
 /* Desktop hero: Today becomes a two-column grid — the vertical statement
@@ -815,12 +853,15 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     .tier-board > .tier[data-tier="today"] > .tier-body   { grid-area: body; }
     .tier-board > .tier[data-tier="today"] > .today-rail {
         grid-area: rail;
+        display: flex;  /* override the mobile grid hero */
         flex-direction: column;
         align-items: flex-start;
         gap: 2px;
         padding: 22px 16px 20px 24px;
         border-right: 1px solid rgba(255, 247, 232, 0.05);
     }
+    /* reset the mobile grid self-alignment so the column stacks left */
+    .tier-board > .tier[data-tier="today"] > .today-rail > * { align-self: flex-start; }
     .tier-board > .tier[data-tier="today"] > .today-rail .today-eyebrow { margin-bottom: 4px; }
     .tier-board > .tier[data-tier="today"] > .today-rail .today-numeral {
         font-size: 6.2rem;
@@ -861,6 +902,21 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .tier-board > .tier[data-tier="freezer"] .tier-header { background: transparent; }
 .tier-board > .tier[data-tier="backlog"] .tier-header h2,
 .tier-board > .tier[data-tier="freezer"] .tier-header h2 { color: var(--cream-faint); }
+
+/* #284 material depth: a faint cast-grain texture + a soft canvas
+   vignette behind the board. Layered backgrounds paint behind the tiers
+   (opaque child boxes), so the grain only reads in the gaps + behind the
+   transparent Inbox / cold-storage tiers — depth with no z-index games.
+   The data: SVG noise is permitted by prod CSP (img-src 'self' data:). */
+.tier-board {
+    background-image:
+        radial-gradient(120% 80% at 50% -5%, rgba(255, 247, 232, 0.03), transparent 55%),
+        radial-gradient(125% 120% at 50% 48%, transparent 60%, rgba(0, 0, 0, 0.25)),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    background-repeat: no-repeat, no-repeat, repeat;
+    background-size: auto, auto, 160px 160px;
+    background-attachment: scroll, scroll, scroll;
+}
 
 .tier-header {
     display: flex;
