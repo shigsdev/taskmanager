@@ -7,7 +7,7 @@
  */
 "use strict";
 
-const { localIsoDate, compareIsoDates } = require(
+const { localIsoDate, compareIsoDates, utcIsoToLocalDate } = require(
     "../../../static/date_helpers"
 );
 
@@ -74,5 +74,33 @@ describe("compareIsoDates", () => {
     test("rejects non-string inputs", () => {
         expect(() => compareIsoDates(null, "2026-05-11")).toThrow();
         expect(() => compareIsoDates("2026-05-11", 12345)).toThrow();
+    });
+});
+
+describe("utcIsoToLocalDate (#294 — board hero ring 'done today')", () => {
+    test("treats a suffix-less timestamp as UTC (not local)", () => {
+        // Same wall-clock with and without an explicit Z must resolve to
+        // the SAME local date — i.e. the naive value is parsed as UTC.
+        const naive = "2026-06-22T00:23:30.153490";
+        expect(utcIsoToLocalDate(naive)).toBe(utcIsoToLocalDate(naive + "Z"));
+    });
+
+    test("a UTC instant maps to the same local date as localIsoDate", () => {
+        const s = "2026-06-22T00:23:30Z";
+        expect(utcIsoToLocalDate(s)).toBe(localIsoDate(new Date(s)));
+    });
+
+    test("respects an explicit +hh:mm offset", () => {
+        const withOffset = "2026-06-22T02:23:30+02:00"; // == 00:23:30Z
+        expect(utcIsoToLocalDate(withOffset)).toBe(
+            utcIsoToLocalDate("2026-06-22T00:23:30Z")
+        );
+    });
+
+    test("returns null for empty / non-string / unparseable input", () => {
+        expect(utcIsoToLocalDate("")).toBeNull();
+        expect(utcIsoToLocalDate(null)).toBeNull();
+        expect(utcIsoToLocalDate(undefined)).toBeNull();
+        expect(utcIsoToLocalDate("not-a-date")).toBeNull();
     });
 });

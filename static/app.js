@@ -1551,19 +1551,21 @@ function updateTodayHero() {
     // calls this fn on arrival so the ring fills once the data is in.
     const ring = document.getElementById("todayRing");
     const ringLabel = document.getElementById("todayRingLabel");
-    if (ring && ringLabel) {
-        const y = now.getFullYear();
-        const m = String(now.getMonth() + 1).padStart(2, "0");
-        const d = String(now.getDate()).padStart(2, "0");
-        const todayIso = `${y}-${m}-${d}`;
+    if (ring && ringLabel && window.dateHelpers) {
+        // #294: convert each archived task's UTC updated_at to its LOCAL
+        // date before comparing to local "today" — naive .slice(0,10) on
+        // a UTC string drifts at the UTC/local midnight boundary
+        // (#181/#240). dateHelpers.utcIsoToLocalDate is Jest-tested.
+        const todayIso = window.dateHelpers.localIsoDate(now);
         const completed = Array.isArray(allCompleted) ? allCompleted : [];
         const doneToday = completed.filter(
-            (t) => (t.updated_at || "").slice(0, 10) === todayIso
+            (t) => window.dateHelpers.utcIsoToLocalDate(t.updated_at) === todayIso
         ).length;
         const total = doneToday + activeToday;
         const pct = total > 0 ? Math.round((doneToday / total) * 100) : 0;
         ring.style.setProperty("--p", pct);
-        ringLabel.textContent = `${doneToday}/${total}`;
+        // #294: a bare "0/0" on a clear day reads like a bug — show a dash.
+        ringLabel.textContent = total > 0 ? `${doneToday}/${total}` : "—";
     }
 }
 

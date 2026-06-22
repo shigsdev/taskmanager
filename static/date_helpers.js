@@ -49,8 +49,30 @@ function compareIsoDates(a, b) {
     return 0;
 }
 
+/**
+ * Convert a server timestamp string to its LOCAL "YYYY-MM-DD".
+ *
+ * The backend serializes naive UTC timestamps (created_at / updated_at)
+ * via isoformat() with NO timezone suffix (e.g. "2026-06-22T00:23:30").
+ * Naively slicing the first 10 chars compares a UTC date against a local
+ * "today" — the #181/#240 drift class (near the UTC/local boundary the
+ * UTC date is already tomorrow). So: treat a suffix-less value as UTC
+ * (append "Z"), parse, then read the LOCAL calendar date.
+ *
+ * @param {string} s — ISO timestamp; an explicit "Z"/"+hh:mm" suffix is
+ *   respected, otherwise the value is assumed UTC.
+ * @returns {string|null} local "YYYY-MM-DD", or null if unparseable.
+ */
+function utcIsoToLocalDate(s) {
+    if (typeof s !== "string" || !s) return null;
+    const hasTz = /[zZ]$|[+-]\d\d:?\d\d$/.test(s);
+    const d = new Date(hasTz ? s : s + "Z");
+    if (isNaN(d.getTime())) return null;
+    return localIsoDate(d);
+}
+
 if (typeof module !== "undefined" && module.exports) {
-    module.exports = { localIsoDate, compareIsoDates };
+    module.exports = { localIsoDate, compareIsoDates, utcIsoToLocalDate };
 } else if (typeof window !== "undefined") {
-    window.dateHelpers = { localIsoDate, compareIsoDates };
+    window.dateHelpers = { localIsoDate, compareIsoDates, utcIsoToLocalDate };
 }
