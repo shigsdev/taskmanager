@@ -377,6 +377,43 @@
         }
     }
 
+    // #292: build one Unscheduled-aside <li> (click opens the detail
+    // panel; drag reschedules). Extracted from _renderUnscheduled so the
+    // grouped sub-sections can reuse it.
+    function _makeUnscheduledLi(t) {
+        const li = document.createElement("li");
+        li.textContent = t.title;
+        li.title = t.title;
+        li.draggable = true;
+        li.dataset.taskId = t.id;
+        // #231 (2026-05-25): click an unscheduled item to open the task
+        // detail panel — mirrors the day-cell item handler (#153). Click
+        // vs drag are distinguished by the browser natively (a fast
+        // mousedown→mouseup with no movement fires click; movement fires
+        // dragstart/dragend instead).
+        li.classList.add("calendar-task-link");
+        li.addEventListener("click", function () {
+            // #270: open in place (see the day-cell handler above).
+            if (typeof taskDetailOpen === "function") {
+                taskDetailOpen(t);
+            } else {
+                window.location.href = "/?task=" + encodeURIComponent(t.id);
+            }
+        });
+        li.addEventListener("dragstart", function (e) {
+            li.classList.add("dragging");
+            _dragSourceDate = null;  // #267: from Unscheduled → always a reschedule
+            if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", t.id);
+            }
+        });
+        li.addEventListener("dragend", function () {
+            li.classList.remove("dragging");
+        });
+        return li;
+    }
+
     // #94 (PR26): render the unscheduled-tasks side panel. Tasks here
     // are draggable onto any calendar day; dropping a calendar task on
     // this panel clears its due_date.
@@ -388,52 +425,33 @@
         h.textContent = `Unscheduled (${tasks.length})`;
         panel.appendChild(h);
 
-        const list = document.createElement("ul");
-        list.className = "calendar-unscheduled-list";
         if (tasks.length === 0) {
+            const list = document.createElement("ul");
+            list.className = "calendar-unscheduled-list";
             const empty = document.createElement("li");
             empty.className = "calendar-cell-empty";
             empty.textContent = "Drop a task here to clear its due date";
             list.appendChild(empty);
-        }
-        for (const t of tasks) {
-            const li = document.createElement("li");
-            li.textContent = t.title;
-            li.title = t.title;
-            li.draggable = true;
-            li.dataset.taskId = t.id;
-            // #231 (2026-05-25): click an unscheduled item to open the
-            // task detail panel — mirrors the day-cell item handler
-            // (#153). Without this, the user could only drag tasks
-            // out of the unscheduled list but never SEE what one was
-            // (a long title is ellipsis-truncated in the narrow side
-            // panel) or edit it without leaving the page. Click and
-            // drag are distinguished by the browser natively: a fast
-            // mousedown→mouseup with no movement fires click; movement
-            // fires dragstart/dragend instead.
-            li.classList.add("calendar-task-link");
-            li.addEventListener("click", function () {
-                // #270: open in place (see the day-cell handler above).
-                if (typeof taskDetailOpen === "function") {
-                    taskDetailOpen(t);
-                } else {
-                    window.location.href = "/?task=" + encodeURIComponent(t.id);
+            panel.appendChild(list);
+        } else {
+            // #292: group the dateless tasks so This Week / Next Week
+            // "no day yet" items read as distinct from the Backlog /
+            // Freezer dump they used to be merged into. Each non-empty
+            // group gets a labeled sub-header + its own list.
+            const groups = window.calendarBucketHelpers.groupUnscheduledByTier(tasks);
+            for (const g of groups) {
+                const label = document.createElement("div");
+                label.className = "calendar-unscheduled-group";
+                label.textContent = `${g.label} (${g.tasks.length})`;
+                panel.appendChild(label);
+                const list = document.createElement("ul");
+                list.className = "calendar-unscheduled-list";
+                for (const t of g.tasks) {
+                    list.appendChild(_makeUnscheduledLi(t));
                 }
-            });
-            li.addEventListener("dragstart", function (e) {
-                li.classList.add("dragging");
-                _dragSourceDate = null;  // #267: from Unscheduled → always a reschedule
-                if (e.dataTransfer) {
-                    e.dataTransfer.effectAllowed = "move";
-                    e.dataTransfer.setData("text/plain", t.id);
-                }
-            });
-            li.addEventListener("dragend", function () {
-                li.classList.remove("dragging");
-            });
-            list.appendChild(li);
+                panel.appendChild(list);
+            }
         }
-        panel.appendChild(list);
 
         // PR28 audit fix (high-confidence #1): the panel is a persistent
         // DOM element — _renderUnscheduled used to attach dragover/

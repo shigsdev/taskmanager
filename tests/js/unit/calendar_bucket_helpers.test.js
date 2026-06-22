@@ -14,6 +14,7 @@ const {
     bucketTasks,
     calendarReorderIds,
     reorderTierWithCell,
+    groupUnscheduledByTier,
 } = require("../../../static/calendar_bucket_helpers");
 
 const TODAY = "2026-05-25";
@@ -294,5 +295,50 @@ describe("reorderTierWithCell — collision-free full-tier reorder (#279)", () =
 
     test("single-task cell is a no-op shape (still returns the full tier)", () => {
         expect(reorderTierWithCell(["A", "B", "C"], ["B"])).toEqual(["A", "B", "C"]);
+    });
+});
+
+describe("groupUnscheduledByTier (#292)", () => {
+    const mk = (id, tier) => ({ id, title: id, tier });
+
+    test("splits into This Week / Next Week / Backlog & Freezer in order", () => {
+        const groups = groupUnscheduledByTier([
+            mk("b1", "backlog"),
+            mk("tw1", "this_week"),
+            mk("nw1", "next_week"),
+            mk("f1", "freezer"),
+            mk("tw2", "this_week"),
+        ]);
+        expect(groups.map((g) => g.key)).toEqual(["this_week", "next_week", "other"]);
+        expect(groups[0].label).toBe("This Week · no day");
+        expect(groups[0].tasks.map((t) => t.id)).toEqual(["tw1", "tw2"]);
+        expect(groups[1].tasks.map((t) => t.id)).toEqual(["nw1"]);
+        // backlog + freezer both fall into the catch-all "other" group
+        expect(groups[2].tasks.map((t) => t.id)).toEqual(["b1", "f1"]);
+    });
+
+    test("omits empty groups (only backlog → single 'other' group)", () => {
+        const groups = groupUnscheduledByTier([mk("b1", "backlog"), mk("b2", "backlog")]);
+        expect(groups).toHaveLength(1);
+        expect(groups[0].key).toBe("other");
+        expect(groups[0].tasks).toHaveLength(2);
+    });
+
+    test("only this_week → single labeled group, no 'other'", () => {
+        const groups = groupUnscheduledByTier([mk("tw1", "this_week")]);
+        expect(groups.map((g) => g.key)).toEqual(["this_week"]);
+    });
+
+    test("inbox / unknown tiers fall into 'other'", () => {
+        const groups = groupUnscheduledByTier([mk("i1", "inbox"), mk("x1", "weird")]);
+        expect(groups).toHaveLength(1);
+        expect(groups[0].key).toBe("other");
+        expect(groups[0].tasks.map((t) => t.id)).toEqual(["i1", "x1"]);
+    });
+
+    test("empty / non-array input → empty array", () => {
+        expect(groupUnscheduledByTier([])).toEqual([]);
+        expect(groupUnscheduledByTier(null)).toEqual([]);
+        expect(groupUnscheduledByTier(undefined)).toEqual([]);
     });
 });

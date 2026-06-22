@@ -80,6 +80,38 @@ function bucketTasks(tasks, todayIso, tomorrowIso) {
 }
 
 /**
+ * #292: split the flat `unscheduled` list (everything in the calendar's
+ * Unscheduled aside) into ordered, labeled groups so the user can tell
+ * THIS-WEEK / NEXT-WEEK "no specific day yet" tasks apart from the
+ * long-horizon Backlog / Freezer dump they were merged into.
+ *
+ * Returns ONLY non-empty groups, in display order:
+ *   This Week (no day) → Next Week (no day) → Backlog & Freezer
+ * Anything that isn't this_week / next_week (backlog, freezer, inbox, …)
+ * falls into the last group — in practice it's overwhelmingly
+ * backlog/freezer.
+ *
+ * @param {Array} unscheduled — the `bucketTasks().unscheduled` list.
+ * @returns {Array<{key:string,label:string,tasks:Array}>}
+ */
+function groupUnscheduledByTier(unscheduled) {
+    const list = Array.isArray(unscheduled) ? unscheduled : [];
+    const thisWeek = [];
+    const nextWeek = [];
+    const other = [];
+    for (const t of list) {
+        if (t.tier === "this_week") thisWeek.push(t);
+        else if (t.tier === "next_week") nextWeek.push(t);
+        else other.push(t);
+    }
+    return [
+        { key: "this_week", label: "This Week · no day", tasks: thisWeek },
+        { key: "next_week", label: "Next Week · no day", tasks: nextWeek },
+        { key: "other", label: "Backlog & Freezer", tasks: other },
+    ].filter((g) => g.tasks.length > 0);
+}
+
+/**
  * #267: compute the new in-cell task order after a within-day drag-reorder.
  *
  * Pure mirror of app.js getDragAfterElement: insert `draggedId` BEFORE the
@@ -142,9 +174,13 @@ function reorderTierWithCell(tierOrderedIds, cellNewOrder) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-    module.exports = { bucketTasks, calendarReorderIds, reorderTierWithCell };
+    module.exports = {
+        bucketTasks, calendarReorderIds, reorderTierWithCell,
+        groupUnscheduledByTier,
+    };
 } else if (typeof window !== "undefined") {
     window.calendarBucketHelpers = {
         bucketTasks, calendarReorderIds, reorderTierWithCell,
+        groupUnscheduledByTier,
     };
 }
