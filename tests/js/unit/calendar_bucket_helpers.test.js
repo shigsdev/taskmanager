@@ -329,11 +329,23 @@ describe("groupUnscheduledByTier (#292)", () => {
         expect(groups.map((g) => g.key)).toEqual(["this_week"]);
     });
 
-    test("inbox / unknown tiers fall into 'other'", () => {
-        const groups = groupUnscheduledByTier([mk("i1", "inbox"), mk("x1", "weird")]);
+    test("#296: inbox gets its own group, ordered first", () => {
+        const groups = groupUnscheduledByTier([
+            mk("b1", "backlog"),
+            mk("i1", "inbox"),
+            mk("tw1", "this_week"),
+            mk("i2", "inbox"),
+        ]);
+        expect(groups.map((g) => g.key)).toEqual(["inbox", "this_week", "other"]);
+        expect(groups[0].label).toBe("Inbox");
+        expect(groups[0].tasks.map((t) => t.id)).toEqual(["i1", "i2"]);
+    });
+
+    test("unknown tiers fall into 'other' (not inbox)", () => {
+        const groups = groupUnscheduledByTier([mk("x1", "weird"), mk("f1", "freezer")]);
         expect(groups).toHaveLength(1);
         expect(groups[0].key).toBe("other");
-        expect(groups[0].tasks.map((t) => t.id)).toEqual(["i1", "x1"]);
+        expect(groups[0].tasks.map((t) => t.id)).toEqual(["x1", "f1"]);
     });
 
     test("empty / non-array input → empty array", () => {

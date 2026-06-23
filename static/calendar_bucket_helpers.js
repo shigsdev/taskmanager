@@ -85,26 +85,30 @@ function bucketTasks(tasks, todayIso, tomorrowIso) {
  * THIS-WEEK / NEXT-WEEK "no specific day yet" tasks apart from the
  * long-horizon Backlog / Freezer dump they were merged into.
  *
- * Returns ONLY non-empty groups, in display order:
- *   This Week (no day) → Next Week (no day) → Backlog & Freezer
- * Anything that isn't this_week / next_week (backlog, freezer, inbox, …)
- * falls into the last group — in practice it's overwhelmingly
- * backlog/freezer.
+ * Returns ONLY non-empty groups, in display order (mirrors the board's
+ * tier order — intake first, long-horizon last):
+ *   Inbox → This Week (no day) → Next Week (no day) → Backlog & Freezer
+ * #296: Inbox is its own group so untriaged tasks don't hide in the
+ * Backlog pile. Anything else (freezer, unknown tiers) joins the last
+ * group — in practice it's overwhelmingly backlog/freezer.
  *
  * @param {Array} unscheduled — the `bucketTasks().unscheduled` list.
  * @returns {Array<{key:string,label:string,tasks:Array}>}
  */
 function groupUnscheduledByTier(unscheduled) {
     const list = Array.isArray(unscheduled) ? unscheduled : [];
+    const inbox = [];
     const thisWeek = [];
     const nextWeek = [];
     const other = [];
     for (const t of list) {
-        if (t.tier === "this_week") thisWeek.push(t);
+        if (t.tier === "inbox") inbox.push(t);
+        else if (t.tier === "this_week") thisWeek.push(t);
         else if (t.tier === "next_week") nextWeek.push(t);
         else other.push(t);
     }
     return [
+        { key: "inbox", label: "Inbox", tasks: inbox },
         { key: "this_week", label: "This Week · no day", tasks: thisWeek },
         { key: "next_week", label: "Next Week · no day", tasks: nextWeek },
         { key: "other", label: "Backlog & Freezer", tasks: other },
