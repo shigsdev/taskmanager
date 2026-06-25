@@ -26,7 +26,7 @@ import os
 import sys
 from functools import wraps
 
-from flask import current_app, jsonify, redirect, render_template, request, session, url_for
+from flask import current_app, g, jsonify, redirect, render_template, request, session, url_for
 from flask_dance.contrib.google import google
 from oauthlib.oauth2.rfc6749.errors import TokenExpiredError
 
@@ -264,5 +264,95 @@ def login_required(view):
     # to distinguish login-required routes from public ones in the
     # auto-generated route table on the /architecture page (#42).
     # No behavioural effect — just a readable boolean for introspection.
+    wrapped._login_required = True
+    return wrapped
+
+
+def _voice_action_revoked_jtis() -> frozenset[str]:
+    """The denylist of revoked voice-action token ids (ADR-034), read from
+    the ``AppSetting`` key. Never raises: on any error return empty (apply
+    no extra revocations) and rely on ``SECRET_KEY`` rotation as the hard
+    kill-switch. The token still needs a valid signature + email + non-
+    expiry regardless, so the denylist is only a secondary control."""
+    try:
+        import json
+
+        import voice_action_token
+        from models import AppSetting
+
+        row = (
+            AppSetting.query.filter_by(key=voice_action_token.REVOKED_JTIS_KEY)
+            .one_or_none()
+        )
+        if row is None or not row.value:
+            return frozenset()
+        data = json.loads(row.value)
+        return frozenset(str(x) for x in data) if isinstance(data, list) else frozenset()
+    except Exception:
+        return frozenset()
+
+
+def voice_action_or_login(view):
+    """Auth for the ``/api/voice-review`` blueprint (ADR-034, #297).
+
+    Accepts EITHER a valid voice-action bearer token (the iOS Shortcut
+    path) OR the normal ``login_required`` paths (OAuth / validator cookie
+    on GET) so the web app + automation keep working. The voice-action
+    token authenticates ONLY routes wearing THIS decorator — it is never
+    inspected by ``login_required``, so it is structurally rejected on
+    ``/api/tasks/*``, settings, exports, and every other route. When the
+    token authenticates, ``g.voice_action`` is set so a handler can apply
+    extra in-scope checks (e.g. a tier whitelist on /move).
+    """
+    fallback = login_required(view)
+
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        # Dev bypass + OAuth/validator all handled uniformly by the
+        # fallback when no bearer token is offered.
+        if _dev_bypass_active():
+            return fallback(*args, **kwargs)
+
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            import voice_action_token
+
+            token = auth_header[len("Bearer "):].strip()
+            authorized = (
+                current_app.config.get("AUTHORIZED_EMAIL") or ""
+            ).strip().lower()
+            secret = current_app.config.get("SECRET_KEY") or ""
+            email = (
+                voice_action_token.parse(
+                    secret_key=secret,
+                    token=token,
+                    authorized_email=authorized,
+                    revoked_jtis=_voice_action_revoked_jtis(),
+                )
+                if (token and authorized)
+                else None
+            )
+            if email:
+                g.voice_action = True
+                # Audit trail so a leaked token's usage is observable in
+                # /api/debug/logs (mirrors the validator-cookie INFO trace).
+                # Message worded WITHOUT the word "token" so semgrep's
+                # logger-credential-leak heuristic doesn't false-positive
+                # on the literal string (we log method/path/email only —
+                # never the credential; email is scrubbed by DBLogHandler).
+                logger.info(
+                    "voice-action auth served %s %s as %s",
+                    request.method,
+                    request.path,
+                    email,
+                )
+                return view(*args, email=email, **kwargs)
+            # A Bearer token was presented but is invalid → 401. Do NOT
+            # fall through to an OAuth redirect for a non-browser client.
+            return jsonify(error="Invalid voice-action token"), 401
+
+        # No bearer token → ordinary web/automation auth.
+        return fallback(*args, **kwargs)
+
     wrapped._login_required = True
     return wrapped

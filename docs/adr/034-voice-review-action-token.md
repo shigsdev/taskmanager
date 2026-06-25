@@ -2,7 +2,7 @@
 
 Date: 2026-06-22
 
-Status: PROPOSED (draft — awaiting operator review before implementation)
+Status: ACCEPTED (operator-approved 2026-06-22; token lifetime default = 90 days)
 
 ## Context
 

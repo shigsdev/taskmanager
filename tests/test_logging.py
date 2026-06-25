@@ -69,6 +69,18 @@ class TestScrubSensitive:
         assert key not in result
         assert "[REDACTED:API_KEY]" in result
 
+    def test_strips_voice_action_token(self):
+        # #297 / ADR-034: the scoped voice-action token travels in an
+        # Authorization: Bearer header; the existing authz/bearer scrub
+        # patterns must redact it so a leaked log can't surface a usable
+        # mutation credential.
+        import voice_action_token
+
+        tok = voice_action_token.mint("test-secret", "me@example.com", 90, jti="abc123")
+        result = scrub_sensitive(f"voice_action served via Authorization: Bearer {tok}")
+        assert tok not in result
+        assert "[REDACTED]" in result
+
     def test_strips_bearer_token(self):
         result = scrub_sensitive("Authorization: Bearer abc123.def456-ghi")
         assert "abc123.def456-ghi" not in result

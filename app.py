@@ -36,6 +36,7 @@ import tasks_api
 import triage_api
 import utilities_api
 import voice_api
+import voice_review_api
 import weekly_focus_api
 from auth import log_bypass_startup_banner, login_required
 from logging_service import configure_logging
@@ -244,6 +245,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(debug_api.bp)
     app.register_blueprint(auth_api.bp)
     app.register_blueprint(voice_api.bp)
+    app.register_blueprint(voice_review_api.bp)  # #297 / ADR-034
     app.register_blueprint(reflection_api.bp)
 
     # --- Global error handlers (#50, ADR-031) ---
@@ -723,6 +725,88 @@ def _register_cli_commands(app: Flask) -> None:
         # Plain print, no trailing metadata — the user pipes this
         # directly into ~/.taskmanager-session-cookie.
         click.echo(token, nl=False)
+
+    @app.cli.command("mint-voice-action-token")
+    @click.option(
+        "--days",
+        default=90,
+        show_default=True,
+        type=click.IntRange(min=1, max=3650),
+        help="Lifetime of the minted token in days (ADR-034 default: 90).",
+    )
+    @click.option(
+        "--email",
+        default=None,
+        help="Email baked into the token. Defaults to AUTHORIZED_EMAIL.",
+    )
+    def mint_voice_action_token(days: int, email: str | None) -> None:
+        """Mint a scoped voice-review action token for the iOS Shortcut
+        (#297 / ADR-034). Prints ``<token>`` then ``jti=<id>`` on stderr
+        so you can later ``flask revoke-voice-action-token <id>``.
+
+        The token authenticates ONLY ``/api/voice-review/*`` (read the
+        queue + complete/move/cancel) — never tasks CRUD, settings, or
+        exports. Paste the token into the Shortcut's Authorization header.
+        """
+        import sys
+
+        import voice_action_token
+
+        secret = app.config.get("SECRET_KEY")
+        if not secret:
+            raise click.ClickException("SECRET_KEY is not configured.")
+        target_email = email or app.config.get("AUTHORIZED_EMAIL")
+        if not target_email:
+            raise click.ClickException(
+                "AUTHORIZED_EMAIL is not set and no --email was provided."
+            )
+        jti = voice_action_token.new_jti()
+        token = voice_action_token.mint(
+            secret_key=secret, email=target_email, days=days, jti=jti
+        )
+        click.echo(token, nl=False)
+        # jti to stderr so piping the token to a file stays clean.
+        click.echo(f"\njti={jti}", file=sys.stderr)
+
+    @app.cli.command("revoke-voice-action-token")
+    @click.argument("jti")
+    def revoke_voice_action_token(jti: str) -> None:
+        """Revoke a single voice-action token by its ``jti`` (ADR-034) —
+        appends to the AppSetting denylist without a full SECRET_KEY
+        rotation. (Rotating SECRET_KEY still kills ALL tokens at once.)
+        """
+        import json
+
+        import voice_action_token
+        from models import AppSetting, db
+
+        with app.app_context():
+            row = (
+                AppSetting.query.filter_by(
+                    key=voice_action_token.REVOKED_JTIS_KEY
+                ).one_or_none()
+            )
+            current = []
+            if row is not None and row.value:
+                try:
+                    parsed = json.loads(row.value)
+                    if isinstance(parsed, list):
+                        current = [str(x) for x in parsed]
+                except (ValueError, TypeError):
+                    current = []
+            if jti in current:
+                click.echo(f"jti {jti} already revoked.")
+                return
+            current.append(jti)
+            value = json.dumps(current)[:500]
+            if row is None:
+                db.session.add(
+                    AppSetting(key=voice_action_token.REVOKED_JTIS_KEY, value=value)
+                )
+            else:
+                row.value = value
+            db.session.commit()
+            click.echo(f"Revoked jti {jti}. ({len(current)} total revoked.)")
 
 
 def _start_digest_scheduler(app: Flask) -> None:

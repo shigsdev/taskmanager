@@ -864,6 +864,17 @@ This app is a **single-user personal tool** with:
   (#188 corrected the docs that claimed otherwise)
 - A long-lived signed validator cookie (`validator_token`) for
   automation — read-only access via the `login_required` GET branch
+- A scoped **voice-action token** (`voice_action_token.py`, ADR-034,
+  #297) for the iOS Shortcut — a `SECRET_KEY`-signed bearer token that
+  authenticates ONLY the `/api/voice-review/*` blueprint
+  (`@voice_action_or_login`): read the today/overdue/tomorrow queue +
+  complete / move-to-{today,tomorrow,next_week,backlog} / cancel a task.
+  It is the FIRST non-OAuth credential that can MUTATE, but is
+  structurally rejected on every other route (they use `@login_required`,
+  which never inspects the bearer). 90-day default; revocable via
+  `SECRET_KEY` rotation (all tokens) or `flask revoke-voice-action-token
+  <jti>` (one token). The scope-rejection matrix in
+  `tests/test_voice_action_token.py` is the load-bearing guard.
 - External API keys for Google (Vision, OAuth), OpenAI (Whisper),
   Anthropic (Claude), SendGrid
 
@@ -902,6 +913,12 @@ about these — they're not relevant here):
   (deliberate — Railway needs it for health probes)
 - Validator cookie can read all your tasks/goals for 90 days if
   leaked (read-only, no mutation, rotatable via `SECRET_KEY`)
+- Voice-action token can complete/move/cancel tasks for up to 90 days
+  if leaked (ADR-034) — accepted because the action whitelist is tiny
+  (no read of unrelated data, no delete, no settings/exports, no auth
+  escalation), it's revocable (per-token `jti` denylist or `SECRET_KEY`
+  rotation), and this is a single-user app. A strictly larger blast
+  radius than the read-only validator cookie, bounded by those four.
 - `LOCAL_DEV_BYPASS_AUTH` exists at all (acceptable because of the
   four-gate defense including the triple Railway tripwire)
 

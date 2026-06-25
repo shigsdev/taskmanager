@@ -335,6 +335,28 @@ Exit codes:
 - `2` — COOKIE EXPIRED (refresh it — the script prints copy-pasteable instructions)
 - `3` — Usage error (missing cookie file or bad args)
 
+### Voice-review action token (#297 / ADR-034)
+
+For the hands-free "review my tasks while driving" iOS Shortcut, mint a
+**scoped voice-action token** — a `SECRET_KEY`-signed bearer token that
+authenticates ONLY `/api/voice-review/*` (read the today/overdue/tomorrow
+queue + complete / move-to-`{today,tomorrow,next_week,backlog}` / cancel
+a task). It cannot touch tasks CRUD, settings, or exports — see
+ADR-034.
+
+```powershell
+# Mint (90-day default). The token prints to stdout; the jti prints to
+# stderr so you can revoke this specific token later.
+railway run python -m flask mint-voice-action-token
+# or the standalone (no app import):
+railway run python scripts/mint_voice_action_token.py --days 90
+```
+
+Paste the token into the iOS Shortcut's `Authorization: Bearer <token>`
+header. **Revoke** a single token with `flask revoke-voice-action-token
+<jti>`; rotating `SECRET_KEY` on the server invalidates *every* token
+(voice-action AND validator cookie) at once — the emergency lever.
+
 Validator cookies expire after the `--days` lifetime they were minted with
 (default 90 days, no sliding refresh). Browser session cookies (legacy
 fallback) follow the app's session lifetime — 30 days of inactivity. On

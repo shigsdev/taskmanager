@@ -572,6 +572,15 @@ the code.
 /api/voice-memo
 /api/voice-memo/confirm                # #36
 
+# voice_review_api.py — #297 / ADR-034. Authenticated by the SCOPED
+# voice-action token (Authorization: Bearer), used by an iOS Shortcut for
+# hands-free task triage while driving. This is the ONLY blueprint the
+# token can reach; every other route uses @login_required and rejects it.
+/api/voice-review/queue                            # GET — today+overdue+tomorrow review queue
+/api/voice-review/<uuid:task_id>/complete          # POST — complete (auto-completes subtasks)
+/api/voice-review/<uuid:task_id>/move              # POST — retier to {today,tomorrow,next_week,backlog} only
+/api/voice-review/<uuid:task_id>/cancel            # POST — cancel (auto-cancels subtasks)
+
 # reflection_api.py — Weekly Reflection (2026-05-16)
 /api/reflection                                  # POST submit (typed/audio), GET list
 /api/reflection/transcribe-segment               # POST — #232 one-segment Whisper transcribe for the pause/resume flow (no Reflection row, no Claude call)
