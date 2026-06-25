@@ -1,6 +1,12 @@
 # Spec #297 — Voice Task Review ("walk my day while driving")
 
-Status: **Draft / spec-first** (operator chose to spec before building, 2026-06-22)
+Status: **Direction locked 2026-06-22** — operator answered §12:
+(1) **fully zero-touch is a hard requirement** → target is **Option B (iOS
+Shortcut + Siri + scoped action token)**; (2) review scope = **today +
+overdue + tomorrow**; (3) **CarPlay matters** (only Option B reaches it).
+Next artifact: the **ADR for the scoped action token** (§7) before any auth code.
+Phase 1 (listen-only briefing) remains an optional safe stepping-stone but does
+NOT satisfy the zero-touch/CarPlay requirement on its own.
 Owner: single-user app
 Related: voice memo (`voice_api.py` / `voice_service.py` / `static/voice_memo.js`),
 voice capture (`static/voice_input.js`), weekly review (`/review`),
@@ -205,16 +211,18 @@ it's deliberately **not** in the Phase-1 MVP.
 
 ---
 
-## 12. Open decisions (for the operator)
+## 12. Decisions (operator, 2026-06-22)
 
-1. **Is fully zero-touch a hard requirement?** If yes → Option B (Shortcut + token
-   + ADR). If a single tap at stoplights is acceptable → Option A (PWA push-to-talk)
-   stays in-stack with no new auth surface.
-2. **Today only, or Today + overdue?** (Overdue items are arguably the most useful
-   to surface on a commute.)
-3. **Should "move" default to a single most-common target** (e.g. "move" = tomorrow)
-   to shrink the spoken grammar?
-4. **CarPlay** matters? Only Option B reaches it.
+1. **Zero-touch a hard requirement?** → **YES.** Target = Option B (iOS Shortcut +
+   Siri + scoped action token + ADR). Option A may still ship as a PWA fallback,
+   but B is the goal.
+2. **Scope?** → **Today + overdue + tomorrow.** The review queue endpoint returns
+   these three buckets, in order (overdue first as the most commute-actionable, then
+   today, then tomorrow — confirm ordering at build time).
+3. **CarPlay?** → **YES.** Reinforces Option B (Siri/Shortcuts reach CarPlay; the
+   PWA does not).
+4. *(still open)* **Should "move" default to a single target** (e.g. "move" =
+   tomorrow) to shrink the spoken grammar? — minor, decide during the grammar build.
 
 ---
 
