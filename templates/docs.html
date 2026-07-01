@@ -23,6 +23,12 @@
     <nav class="docs-toc" aria-label="Table of contents">
         <h2>Docs</h2>
 
+        <h3 class="docs-toc-group">Getting started</h3>
+        <ul>
+            <li><a href="#install-iphone">Install on iPhone (Safari)</a></li>
+            <li><a href="#voice-review-shortcut">Hands-free voice review (Siri Shortcut)</a></li>
+        </ul>
+
         <h3 class="docs-toc-group">Capturing</h3>
         <ul>
             <li><a href="#capture-hints">Capture bar hints</a></li>
@@ -74,6 +80,240 @@
 
     <main class="docs-content">
         <h1>Task Manager — Documentation</h1>
+
+        {# =============================================================
+           GETTING STARTED
+           ============================================================= #}
+        <section id="install-iphone" class="docs-section">
+            <h2>Install on iPhone (Safari)</h2>
+            <p>
+                The app is a Progressive Web App — there's no App Store
+                download. You "install" it by adding it to your iPhone's
+                Home Screen from Safari, which gives you a full-screen,
+                app-like icon with no browser chrome. This <strong>must be
+                done in Safari</strong>; Chrome and Firefox on iOS can't add
+                a web app to the Home Screen.
+            </p>
+
+            <h3>Step by step</h3>
+            <ol>
+                <li>
+                    Open <strong>Safari</strong> on your iPhone and go to
+                    <code>https://web-production-3e3ae.up.railway.app</code>.
+                </li>
+                <li>
+                    Tap <strong>Sign in with Google</strong> and choose your
+                    account. The app is locked to a <strong>single
+                    authorized Google account</strong> — any other account
+                    is rejected with a "Not authorized" page, so sign in
+                    with the one that owns the app.
+                </li>
+                <li>
+                    Once the task board loads, tap the <strong>Share</strong>
+                    button — the square with an upward arrow, in the toolbar
+                    (bottom bar on iPhone, top bar on iPad).
+                </li>
+                <li>
+                    In the share sheet, scroll down and tap
+                    <strong>Add to Home Screen</strong>.
+                </li>
+                <li>
+                    The name is pre-filled as <strong>Tasks</strong>. Tap
+                    <strong>Add</strong> (top-right).
+                </li>
+                <li>
+                    Close Safari and open the new <strong>Tasks</strong> icon
+                    from your Home Screen. It launches
+                    <strong>standalone</strong> — full-screen, no address bar
+                    — like a native app.
+                </li>
+            </ol>
+
+            <h3>Staying signed in</h3>
+            <ul>
+                <li>
+                    Your sign-in lasts <strong>30 days of inactivity</strong>
+                    on a sliding window — every time you open the app the
+                    clock resets, so in day-to-day use you rarely re-auth.
+                </li>
+                <li>
+                    If you ever land on the Sign in page again, just tap
+                    <strong>Sign in with Google</strong> once more — your
+                    Home Screen icon and data are untouched.
+                </li>
+            </ul>
+
+            <h3>Troubleshooting</h3>
+            <ul>
+                <li>
+                    <strong>No "Add to Home Screen" option?</strong> You're
+                    almost certainly in Chrome or Firefox. Re-open the URL in
+                    Safari — the option only exists there on iOS.
+                </li>
+                <li>
+                    <strong>Stale screen after an update?</strong> The app
+                    updates itself in the background and applies the new
+                    version on the next launch. Fully close the app (swipe it
+                    away in the app switcher) and re-open it to pick up a
+                    just-shipped change.
+                </li>
+                <li>
+                    <strong>Voice buttons want microphone access.</strong>
+                    The 🎤 dictation and 🎙️ voice-memo buttons ask for the
+                    mic the first time you use them — tap Allow. See
+                    <a href="#voice-input">Voice memo vs. voice dictation</a>
+                    for the quirks of each in standalone mode.
+                </li>
+            </ul>
+        </section>
+
+        <section id="voice-review-shortcut" class="docs-section">
+            <h2>Hands-free voice review (Siri Shortcut)</h2>
+            <p>
+                Review today's tasks out loud while driving — Siri reads each
+                task and you say what to do with it ("complete", "tomorrow",
+                "cancel", "skip"). It runs entirely by voice, so it works on
+                CarPlay with your phone in your pocket. This is a one-time
+                setup: mint a token, then build an iOS Shortcut that calls
+                the app's voice-review API.
+            </p>
+
+            <h3>What the Shortcut can (and can't) do</h3>
+            <p>
+                The Shortcut authenticates with a <strong>scoped
+                voice-action token</strong> — a bearer token that can reach
+                <strong>only</strong> the four voice-review endpoints. It can
+                read your today / overdue / tomorrow queue and
+                complete / move / cancel those tasks. It <strong>cannot</strong>
+                create or delete tasks, edit anything else, read settings, or
+                run exports. Treat the token like a password; if it ever
+                leaks, revoke it (below). It expires after 90 days by default.
+            </p>
+
+            <h3>Step 1 — Mint the token</h3>
+            <p>
+                On a computer that can reach your Railway deploy, run
+                (PowerShell):
+            </p>
+            <pre><code>railway run python -m flask mint-voice-action-token</code></pre>
+            <p>
+                The <strong>token</strong> is printed to the screen (stdout);
+                a short <strong>jti</strong> id prints alongside it (stderr) —
+                copy both. The token is the long string you'll paste into the
+                Shortcut; the jti is what you'll use to revoke this one token
+                later. Add <code>--days N</code> to change the lifetime
+                (default 90).
+            </p>
+
+            <h3>Step 2 — Build the Shortcut</h3>
+            <p>
+                Open the <strong>Shortcuts</strong> app on your iPhone →
+                <strong>+</strong> → name it something you can say to Siri,
+                e.g. <em>"Review my tasks"</em>. Add these actions in order:
+            </p>
+            <ol>
+                <li>
+                    <strong>Text</strong> — paste your token. (Keeping it in a
+                    Text action at the top makes it easy to swap when you
+                    re-mint.) Rename the action's output variable to
+                    <code>Token</code>.
+                </li>
+                <li>
+                    <strong>Get Contents of URL</strong> — this fetches the
+                    queue.
+                    <ul>
+                        <li>URL:
+                            <code>https://web-production-3e3ae.up.railway.app/api/voice-review/queue</code></li>
+                        <li>Method: <strong>GET</strong></li>
+                        <li>Headers: add <code>Authorization</code> =
+                            <code>Bearer </code> followed by your
+                            <code>Token</code> variable (note the space after
+                            "Bearer").</li>
+                    </ul>
+                </li>
+                <li>
+                    <strong>Get Dictionary Value</strong> → get
+                    <code>items</code> from the previous result. This is the
+                    list of tasks, already ordered <strong>overdue → today →
+                    tomorrow</strong>.
+                </li>
+                <li>
+                    <strong>Repeat with Each</strong> item in
+                    <code>items</code>. Inside the loop:
+                    <ul>
+                        <li><strong>Get Dictionary Value</strong>
+                            <code>title</code> from the Repeat Item →
+                            <strong>Speak Text</strong> it (optionally also
+                            speak the <code>bucket</code> so you hear "overdue"
+                            / "today" / "tomorrow").</li>
+                        <li><strong>Get Dictionary Value</strong>
+                            <code>id</code> from the Repeat Item → rename it
+                            <code>TaskId</code>.</li>
+                        <li><strong>Dictate Text</strong> — captures your
+                            spoken reply.</li>
+                        <li><strong>If</strong> the dictated text
+                            <em>contains</em> "complete" → <strong>Get
+                            Contents of URL</strong>, Method <strong>POST</strong>,
+                            URL
+                            <code>.../api/voice-review/</code><code>TaskId</code><code>/complete</code>,
+                            with the same <code>Authorization: Bearer</code>
+                            header.</li>
+                        <li><strong>Otherwise If</strong> it contains
+                            "tomorrow" / "today" / "next week" / "backlog" →
+                            POST to
+                            <code>.../api/voice-review/</code><code>TaskId</code><code>/move</code>
+                            with the header <em>and</em> a
+                            <strong>JSON request body</strong>
+                            <code>{"tier": "tomorrow"}</code> (use the tier the
+                            driver said — only
+                            <code>today</code>, <code>tomorrow</code>,
+                            <code>next_week</code>, <code>backlog</code> are
+                            accepted).</li>
+                        <li><strong>Otherwise If</strong> it contains "cancel"
+                            → POST to
+                            <code>.../api/voice-review/</code><code>TaskId</code><code>/cancel</code>
+                            with the header.</li>
+                        <li><strong>Otherwise</strong> (e.g. you said "skip")
+                            → do nothing; the loop moves to the next task.</li>
+                    </ul>
+                </li>
+            </ol>
+
+            <h3>Step 3 — Make it hands-free</h3>
+            <ul>
+                <li>
+                    In the Shortcut's settings, turn <strong>off</strong> any
+                    "Ask Before Running" / confirmation prompts so it runs
+                    start-to-finish by voice.
+                </li>
+                <li>
+                    Trigger it with <em>"Hey Siri, Review my tasks"</em>
+                    (matching the name you gave it). On CarPlay this works
+                    with the phone locked and in your pocket.
+                </li>
+                <li>
+                    Test it parked first — confirm Siri reads a task, hears
+                    your reply, and the task actually moves/completes in the
+                    app before you rely on it while driving.
+                </li>
+            </ul>
+
+            <h3>Revoking a token</h3>
+            <ul>
+                <li>
+                    Revoke just this one token with
+                    <code>flask revoke-voice-action-token &lt;jti&gt;</code>
+                    (the jti you copied when minting).
+                </li>
+                <li>
+                    Rotating <code>SECRET_KEY</code> on the server is the
+                    emergency lever — it instantly invalidates
+                    <em>every</em> token at once (this voice token
+                    <em>and</em> the deploy-validator cookie). Re-mint
+                    afterward.
+                </li>
+            </ul>
+        </section>
 
         {# =============================================================
            CAPTURING
