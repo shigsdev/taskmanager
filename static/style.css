@@ -2888,13 +2888,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .settings-ok { color: var(--success); }
 .settings-warn { color: var(--danger); }
 
-/* #48 — inline test-send button + result chip on the SendGrid row.
+/* #48 — inline test-send button + result chip on the email (SMTP) row.
    Result chip displays "✓ Sent" green or "✗ <real error>" red,
    surfacing the actual upstream cause via the #50 global handler. */
-.sendgrid-test-wrap { display: inline-flex; align-items: center; gap: 8px; }
-.sendgrid-test-result { font-size: 13px; }
-.sendgrid-test-result.settings-ok { font-weight: 600; }
-.sendgrid-test-result.settings-warn {
+.smtp-test-wrap { display: inline-flex; align-items: center; gap: 8px; }
+.smtp-test-result { font-size: 13px; }
+.smtp-test-result.settings-ok { font-weight: 600; }
+.smtp-test-result.settings-warn {
     font-size: 12px;
     max-width: 420px;
     word-break: break-word;

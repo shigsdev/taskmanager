@@ -23,6 +23,30 @@ from rate_limit import limiter as _limiter
 _limiter.enabled = False
 
 
+@pytest.fixture(autouse=True)
+def _reset_digest_heartbeat():
+    """Isolate the process-global digest heartbeat file.
+
+    ``health.HEARTBEAT_PATH`` lives in the system temp dir, and several
+    tests write a live-job heartbeat into it. Under ``pytest-randomly``'s
+    per-run ordering, a file leaked by one test makes ``check_digest``'s
+    heartbeat-fallback return a stale result for an unrelated later test
+    (the digest check flaked on different tests across runs). Remove it
+    before AND after every test so ordering can't cause contamination.
+    The ``suppress(OSError)`` tolerates the Windows/OneDrive temp-unlink
+    ``PermissionError`` documented in CLAUDE.md.
+    """
+    import contextlib
+
+    import health
+
+    with contextlib.suppress(OSError):
+        health.HEARTBEAT_PATH.unlink(missing_ok=True)
+    yield
+    with contextlib.suppress(OSError):
+        health.HEARTBEAT_PATH.unlink(missing_ok=True)
+
+
 @pytest.fixture
 def app(monkeypatch):
     # Dummy OAuth credentials so flask-dance registers cleanly; the real OAuth

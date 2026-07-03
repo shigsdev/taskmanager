@@ -50,7 +50,7 @@ work and personal life, with a regulated (air-gapped) work environment.
   `/recurring` page with multi-select bulk-edit (type / frequency / project /
   goal / pause-resume / delete)
 - **Print view** — printer-friendly Today + This Week + Overdue layout
-- **Email digest** — daily summary via SendGrid with goals, overdue alerts
+- **Email digest** — daily summary via authenticated SMTP (Gmail) with goals, overdue alerts
 - **Image scan** — Google Vision OCR + Claude AI parsing of photos; routes
   candidates to **Tasks, Goals, or Projects** via a target picker
 - **Voice memo** — record long-form audio, transcribed via Whisper, parsed into
@@ -115,12 +115,16 @@ All secrets live in the Railway dashboard — never committed to git.
 | `GOOGLE_CLIENT_SECRET` | From Google Cloud Console |
 | `AUTHORIZED_EMAIL` | The only Google account allowed to log in |
 | `DATABASE_URL` | Railway PostgreSQL connection string (auto-injected) |
-| `SENDGRID_API_KEY` | SendGrid API key for digest delivery |
+| `SMTP_HOST` | SMTP server for the digest (default `smtp.gmail.com`) |
+| `SMTP_PORT` | SMTP submission port (default `587`, STARTTLS) |
+| `SMTP_USERNAME` | SMTP login — for Gmail, your Gmail address |
+| `SMTP_PASSWORD` | SMTP password — for Gmail, a 16-char App Password (requires 2-Step Verification) |
 | `DIGEST_TO_EMAIL` | Recipient email for the daily digest |
-| `DIGEST_FROM_EMAIL` | Sender email (default: noreply@taskmanager.app) |
+| `DIGEST_FROM_EMAIL` | Sender email (defaults to `SMTP_USERNAME`; Gmail requires the authenticated account or a verified alias) |
 | `DIGEST_TIME` | Time of day digest is sent in 24-hour `HH:MM` format (default `07:00`). Malformed values (e.g. `7am`, `07:00:00`, empty) fall back to `07:00` with a WARNING log + `digest_scheduled_at.fell_back: true` on `/healthz` (#179). |
 | `DIGEST_TZ` | IANA timezone for the digest scheduler (default `America/New_York`) |
 | `APP_URL` | Public base URL of the deployed app, embedded as a clickable link in the digest email body. Optional — link is omitted if unset. |
+| `SENDGRID_API_KEY` | **Optional, GitHub-Actions secret** — used only by the recurring audit/backup workflow scripts (`backup_to_github.py`, `check_*.py`, `restore_drill.py`) to email failure/finding alerts. NOT used by the app's daily digest (which sends via SMTP — see ADR-035). Unset = those workflows still run, just no alert email. Migration to SMTP tracked in backlog #298. |
 | `GOOGLE_VISION_API_KEY` | Google Cloud Vision API key for OCR |
 | `ANTHROPIC_API_KEY` | Anthropic API key for Claude task parsing |
 | `OPENAI_API_KEY` | OpenAI API key for Whisper voice-memo transcription. **Optional** — voice memo feature returns a clear error if unset, rest of app works fine. |
@@ -194,7 +198,7 @@ See `ARCHITECTURE.md` for the living architecture diagram, component
 descriptions, data flows, and security boundaries.
 
 Brief summary: Flask app + PostgreSQL + gunicorn on Railway, Google OAuth
-for auth, Fernet for at-rest encryption, SendGrid for the daily email digest
+for auth, Fernet for at-rest encryption, SMTP (Gmail) for the daily email digest
 that bridges to the user's air-gapped work Outlook. Content Security Policy
 and rate limiting via Flask-Talisman and Flask-Limiter.
 

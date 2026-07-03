@@ -611,8 +611,9 @@ as gate 8d.
   boundaries, foreign key behavior
 - **Auth tests** — Google OAuth flow, unauthorized access rejection,
   single-user lockdown verification (email must match `AUTHORIZED_EMAIL`)
-- **Email digest tests** — mock SendGrid, verify digest content and format,
-  verify sensitive fields never leak into logs or output
+- **Email digest tests** — mock the SMTP sender (`_smtp_send`), verify
+  digest content and format, verify sensitive fields (incl. the SMTP
+  password) never leak into logs or output
 - **Encryption tests** — verify sensitive fields are encrypted at rest and
   never logged in plaintext
 - **Import parser tests** — OneNote text parsing, Excel goals parsing,
@@ -876,7 +877,11 @@ This app is a **single-user personal tool** with:
   <jti>` (one token). The scope-rejection matrix in
   `tests/test_voice_action_token.py` is the load-bearing guard.
 - External API keys for Google (Vision, OAuth), OpenAI (Whisper),
-  Anthropic (Claude), SendGrid
+  Anthropic (Claude); an SMTP password (Gmail App Password) for the
+  daily digest (ADR-035, replaced SendGrid 2026-07 after its free tier
+  was retired). The recurring GitHub-Actions audit/backup workflows
+  still send alert emails via `SENDGRID_API_KEY` (a separate GH secret,
+  migration to SMTP tracked in the backlog).
 
 **Realistic attack scenarios to defend against:**
 

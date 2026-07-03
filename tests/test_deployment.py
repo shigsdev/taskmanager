@@ -99,7 +99,8 @@ class TestDeploymentFiles:
             "GOOGLE_CLIENT_SECRET",
             "AUTHORIZED_EMAIL",
             "DATABASE_URL",
-            "SENDGRID_API_KEY",
+            "SMTP_USERNAME",
+            "SMTP_PASSWORD",
             "DIGEST_TO_EMAIL",
             "GOOGLE_VISION_API_KEY",
             "ANTHROPIC_API_KEY",
@@ -315,7 +316,8 @@ class TestAppBoot:
         """When DIGEST_TO_EMAIL is set but the scheduler isn't registered
         (as in tests), digest check should warn — not fail."""
         monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake")
+        monkeypatch.setenv("SMTP_USERNAME", "sender@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "fake")
         import health
 
         health._scheduler = None  # ensure clean state

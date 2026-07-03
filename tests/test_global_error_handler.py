@@ -135,64 +135,70 @@ class TestUncaughtExceptionHandler:
 # --- Digest service refactor (raises instead of swallows) ------------------
 
 
-class TestDigestSendgridErrorPropagation:
+class TestDigestSmtpErrorPropagation:
     """digest_service.send_digest() previously caught Exception → False,
-    killing all SendGrid error context (the user saw the hardcoded
+    killing all send-error context (the user saw the hardcoded
     "check SENDGRID_API_KEY" message regardless). Now it raises
-    EgressError with the actual SendGrid status + body, which the
-    global handler shapes into a 502 JSON response. ADR-031."""
+    EgressError from the SMTP sender, which the global handler shapes
+    into a 502 JSON response. ADR-031, ADR-035."""
 
-    def test_sendgrid_exception_raises_egress_error_with_status(self, monkeypatch):
-        """When the SendGrid SDK raises (e.g. ForbiddenError), the
-        service must wrap it in EgressError and include the HTTP status
-        code in the message."""
-        from digest_service import _sendgrid_send
+    def test_smtp_exception_raises_egress_error_without_password(self, monkeypatch):
+        """When smtplib raises (e.g. an auth failure), _smtp_send must
+        wrap it in EgressError with the SMTP status code — and NEVER leak
+        the password into the surfaced message."""
+        import smtplib
+        from unittest.mock import MagicMock
+
+        from digest_service import _smtp_send
         from egress import EgressError
 
-        class _FakeSendGridError(Exception):
-            status_code = 403
-            body = (
-                b'{"errors":[{"message":"'
-                b'The from address does not match a verified Sender Identity'
-                b'"}]}'
-            )
+        smtp_instance = MagicMock()
+        cm = MagicMock()
+        cm.__enter__.return_value = smtp_instance
 
-        def _raise_sg_error(*args, **kwargs):
-            raise _FakeSendGridError("forbidden")
+        class _AuthError(Exception):
+            smtp_code = 535
 
-        monkeypatch.setattr("sendgrid.SendGridAPIClient.send", _raise_sg_error)
+        smtp_instance.login.side_effect = _AuthError("bad creds hunter2secret")
+        monkeypatch.setattr(smtplib, "SMTP", lambda *a, **k: cm)
 
         try:
-            _sendgrid_send("fake-key", "from@x", "to@x", "Subject", "Body", "<p>Body</p>")
+            _smtp_send(
+                host="smtp.example.com",
+                port=587,
+                username="u@gmail.com",
+                password="hunter2secret",
+                from_email="u@gmail.com",
+                to_email="to@x",
+                subject="Subject",
+                body_text="Body",
+                body_html="<p>Body</p>",
+            )
         except EgressError as e:
             msg = str(e)
-            assert "SendGrid" in msg
-            assert "403" in msg
-            # Body should be in the error message — no more "check
-            # SENDGRID_API_KEY" hardcoded misdirection
-            assert "verified Sender Identity" in msg
+            assert "535" in msg
+            assert "hunter2secret" not in msg  # password never leaks
         else:
             raise AssertionError("expected EgressError to be raised")
 
     def test_send_digest_propagates_egress_error(self, app, monkeypatch):
-        """send_digest() should NOT catch the EgressError from
-        _sendgrid_send any more — it should propagate so the API layer's
-        global error handler can shape it. (Previously it caught
-        Exception → False, which is exactly the bug.)"""
+        """send_digest() should NOT catch the EgressError from _smtp_send —
+        it should propagate so the API layer's global error handler can
+        shape it. (Previously it caught Exception → False, the bug.)"""
         from digest_service import send_digest
         from egress import EgressError
 
-        def _raise(*args, **kwargs):
-            raise EgressError("SendGrid returned HTTP 403: bad sender")
+        def _raise(**kwargs):
+            raise EgressError("SMTP send failed: SMTPAuthenticationError (code 535)")
 
-        monkeypatch.setattr("digest_service._sendgrid_send", _raise)
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake-key")
+        monkeypatch.setattr("digest_service._smtp_send", _raise)
+        monkeypatch.setenv("SMTP_USERNAME", "u@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "fake-app-password")
 
         with app.app_context():
             try:
                 send_digest(to_email="user@example.com")
             except EgressError as e:
-                assert "SendGrid" in str(e)
-                assert "403" in str(e)
+                assert "535" in str(e)
             else:
                 raise AssertionError("EgressError should have propagated")

@@ -241,15 +241,17 @@ class TestCheckDigest:
         monkeypatch.delenv("DIGEST_TO_EMAIL", raising=False)
         assert health.check_digest().startswith("skipped")
 
-    def test_warn_without_sendgrid_key(self, monkeypatch):
+    def test_warn_without_smtp_credentials(self, monkeypatch):
         monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
-        monkeypatch.delenv("SENDGRID_API_KEY", raising=False)
+        monkeypatch.delenv("SMTP_USERNAME", raising=False)
+        monkeypatch.delenv("SMTP_PASSWORD", raising=False)
         result = health.check_digest()
         assert result.startswith("warn:")
 
     def test_warn_when_scheduler_not_registered(self, monkeypatch):
         monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake")
+        monkeypatch.setenv("SMTP_USERNAME", "sender@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "fake")
         health._scheduler = None
         result = health.check_digest()
         assert result.startswith("warn:")
@@ -257,7 +259,8 @@ class TestCheckDigest:
 
     def test_fail_when_scheduler_not_running(self, monkeypatch):
         monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake")
+        monkeypatch.setenv("SMTP_USERNAME", "sender@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "fake")
         fake_scheduler = MagicMock()
         fake_scheduler.running = False
         health.register_scheduler(fake_scheduler)
@@ -268,7 +271,8 @@ class TestCheckDigest:
 
     def test_fail_when_daily_digest_job_missing(self, monkeypatch):
         monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake")
+        monkeypatch.setenv("SMTP_USERNAME", "sender@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "fake")
         fake_scheduler = MagicMock()
         fake_scheduler.running = True
         fake_scheduler.get_job.return_value = None
@@ -284,7 +288,8 @@ class TestCheckDigest:
         import datetime as dt
 
         monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake")
+        monkeypatch.setenv("SMTP_USERNAME", "sender@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "fake")
         fake_job = MagicMock()
         fake_job.next_run_time = dt.datetime.now(dt.UTC) + dt.timedelta(hours=1)
         fake_scheduler = MagicMock()
@@ -377,7 +382,8 @@ class TestDigestHeartbeat:
     def test_check_digest_ok_from_fresh_heartbeat(self, monkeypatch):
         """Non-scheduler worker: _scheduler is None but heartbeat exists."""
         monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake")
+        monkeypatch.setenv("SMTP_USERNAME", "sender@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "fake")
         sched = self._make_live_scheduler()
         health.write_scheduler_heartbeat(sched)
         # This worker never called register_scheduler
@@ -390,7 +396,8 @@ class TestDigestHeartbeat:
         import json
 
         monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake")
+        monkeypatch.setenv("SMTP_USERNAME", "sender@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "fake")
         old = dt.datetime.now(dt.UTC) - dt.timedelta(seconds=health.HEARTBEAT_MAX_AGE_SEC + 60)
         health.HEARTBEAT_PATH.write_text(json.dumps({
             "written_at": old.isoformat(),
@@ -406,7 +413,8 @@ class TestDigestHeartbeat:
         import json
 
         monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake")
+        monkeypatch.setenv("SMTP_USERNAME", "sender@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "fake")
         health.HEARTBEAT_PATH.write_text(json.dumps({
             "written_at": dt.datetime.now(dt.UTC).isoformat(),
             "running": False,
@@ -422,7 +430,8 @@ class TestDigestHeartbeat:
         import json
 
         monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake")
+        monkeypatch.setenv("SMTP_USERNAME", "sender@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "fake")
         health.HEARTBEAT_PATH.write_text(json.dumps({
             "written_at": dt.datetime.now(dt.UTC).isoformat(),
             "running": True,
@@ -444,7 +453,8 @@ class TestDigestHeartbeat:
         """If _scheduler is set (we ARE the scheduler worker), ignore
         any stale heartbeat file and trust the live object."""
         monkeypatch.setenv("DIGEST_TO_EMAIL", "me@example.com")
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake")
+        monkeypatch.setenv("SMTP_USERNAME", "sender@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "fake")
         # Stale heartbeat that would trip a fail-branch if used
         import datetime as dt
         import json

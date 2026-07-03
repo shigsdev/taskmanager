@@ -6,13 +6,13 @@ count. These tests verify:
 
 1. **Digest content** — the correct tasks appear in the correct sections
 2. **Sanitization** — task titles are cleaned before inserting into email
-3. **SendGrid integration** — mocked so we never send real emails
+3. **SMTP integration** — mocked so we never send real emails
 4. **API endpoints** — preview and send-now work correctly
-5. **Edge cases** — empty task lists, no API key configured, etc.
+5. **Edge cases** — empty task lists, no credentials configured, etc.
 
 Key testing concepts used here:
-- **Mocking** — replacing the real SendGrid API with a fake one so tests
-  run without network access or API keys. We use ``monkeypatch`` to
+- **Mocking** — replacing the real SMTP sender with a fake one so tests
+  run without network access or credentials. We use ``monkeypatch`` to
   temporarily replace functions/environment variables during tests.
 - **Content verification** — checking that specific strings appear in
   the generated digest text.
@@ -20,7 +20,9 @@ Key testing concepts used here:
 from __future__ import annotations
 
 from datetime import date, timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from models import Goal, GoalCategory, GoalPriority, Task, TaskType, Tier, db
 
@@ -422,17 +424,18 @@ class TestDigestMultipart:
     def test_send_attaches_both_html_and_plain(self, app, monkeypatch):
         from digest_service import send_digest
 
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake-key")
+        monkeypatch.setenv("SMTP_USERNAME", "sender@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "fake-app-password")
         captured = {}
 
-        def _capture(api_key, from_email, to_email, subject, body_text, body_html):  # noqa: ARG001
+        def _capture(*, body_text, body_html, **kwargs):  # noqa: ARG001
             captured["body_text"] = body_text
             captured["body_html"] = body_html
             return True
 
         with (
             app.app_context(),
-            patch("digest_service._sendgrid_send", side_effect=_capture),
+            patch("digest_service._smtp_send", side_effect=_capture),
         ):
             send_digest(to_email="test@example.com")
 
@@ -489,33 +492,35 @@ class TestDigestSanitization:
         assert "[ ] Spaces" in body
 
 
-# --- SendGrid integration (mocked) -------------------------------------------
+# --- SMTP integration (mocked) -----------------------------------------------
 
 
 class TestSendDigest:
-    """Verify the send_digest function calls SendGrid correctly.
+    """Verify the send_digest function calls the SMTP sender correctly.
 
-    These tests use 'mocking' — replacing the real SendGrid client with
-    a fake one (MagicMock) so we can verify the function's behavior
-    without actually sending emails or needing a real API key.
+    These tests use 'mocking' — replacing the real ``_smtp_send`` with a
+    fake so we can verify the function's behavior without opening a real
+    SMTP connection or needing live credentials.
     """
 
     def test_send_returns_true_on_success(self, app, monkeypatch):
         from digest_service import send_digest
 
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake-key")
+        monkeypatch.setenv("SMTP_USERNAME", "sender@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "fake-app-password")
 
         with (
             app.app_context(),
-            patch("digest_service._sendgrid_send", return_value=True),
+            patch("digest_service._smtp_send", return_value=True),
         ):
             result = send_digest(to_email="test@example.com", body_text="Test")
         assert result is True
 
-    def test_send_returns_false_without_api_key(self, app, monkeypatch):
+    def test_send_returns_false_without_credentials(self, app, monkeypatch):
         from digest_service import send_digest
 
-        monkeypatch.delenv("SENDGRID_API_KEY", raising=False)
+        monkeypatch.delenv("SMTP_USERNAME", raising=False)
+        monkeypatch.delenv("SMTP_PASSWORD", raising=False)
 
         with app.app_context():
             result = send_digest(to_email="test@example.com", body_text="Test")
@@ -523,18 +528,19 @@ class TestSendDigest:
 
     def test_send_propagates_error_instead_of_returning_false(self, app, monkeypatch):
         """Behavior change in #50/ADR-031: send_digest used to swallow
-        any exception and return False, killing the SendGrid error
-        context (which is exactly what produced bug #47's misleading
-        error message). Now exceptions propagate so the global error
-        handler can shape them into useful JSON for the user."""
+        any exception and return False, killing the send error context
+        (which is exactly what produced bug #47's misleading error
+        message). Now exceptions propagate so the global error handler
+        can shape them into useful JSON for the user."""
         from digest_service import send_digest
 
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake-key")
+        monkeypatch.setenv("SMTP_USERNAME", "sender@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "fake-app-password")
 
         with (
             app.app_context(),
             patch(
-                "digest_service._sendgrid_send",
+                "digest_service._smtp_send",
                 side_effect=Exception("Network error"),
             ),
         ):
@@ -544,6 +550,64 @@ class TestSendDigest:
                 assert "Network error" in str(e)
             else:
                 raise AssertionError("send_digest should have raised, not returned False")
+
+
+class TestSmtpSend:
+    """Unit tests for the low-level SMTP sender (``_smtp_send``)."""
+
+    def _kwargs(self, **over):
+        base = {
+            "host": "smtp.example.com",
+            "port": 587,
+            "username": "sender@gmail.com",
+            "password": "super-secret-pw",
+            "from_email": "sender@gmail.com",
+            "to_email": "rcpt@example.com",
+            "subject": "S",
+            "body_text": "plain",
+            "body_html": "<p>html</p>",
+        }
+        base.update(over)
+        return base
+
+    def test_starttls_login_and_multipart_send(self):
+        from digest_service import _smtp_send
+
+        smtp_instance = MagicMock()
+        cm = MagicMock()
+        cm.__enter__.return_value = smtp_instance
+
+        with patch("smtplib.SMTP", return_value=cm) as smtp_cls:
+            result = _smtp_send(**self._kwargs())
+
+        assert result is True
+        smtp_cls.assert_called_once_with("smtp.example.com", 587, timeout=30)
+        smtp_instance.starttls.assert_called_once()
+        smtp_instance.login.assert_called_once_with(
+            "sender@gmail.com", "super-secret-pw"
+        )
+        smtp_instance.send_message.assert_called_once()
+        sent_msg = smtp_instance.send_message.call_args.args[0]
+        assert sent_msg["Subject"] == "S"
+        assert sent_msg["From"] == "sender@gmail.com"
+        assert sent_msg["To"] == "rcpt@example.com"
+        assert sent_msg.is_multipart()  # both text/plain + text/html parts
+
+    def test_failure_raises_egress_without_password(self):
+        from digest_service import _smtp_send
+        from egress import EgressError
+
+        smtp_instance = MagicMock()
+        cm = MagicMock()
+        cm.__enter__.return_value = smtp_instance
+        # Simulate an auth error whose message echoes the password — the
+        # surfaced EgressError must NOT include it (CLAUDE.md log-hygiene).
+        smtp_instance.login.side_effect = Exception("535 nope super-secret-pw")
+
+        with patch("smtplib.SMTP", return_value=cm), pytest.raises(EgressError) as exc:
+            _smtp_send(**self._kwargs())
+
+        assert "super-secret-pw" not in str(exc.value)
 
 
 # --- API endpoints ------------------------------------------------------------
@@ -577,24 +641,24 @@ class TestDigestSendAPI:
         assert resp.status_code == 422
         assert "DIGEST_TO_EMAIL" in resp.get_json()["error"]
 
-    def test_send_without_api_key_returns_422(self, authed_client, monkeypatch):
-        """If SENDGRID_API_KEY env var is unset, the API short-circuits
-        with a 422 + clear "env var is not set" message. Status changed
-        from 500 to 422 in #50/ADR-031: the user can act on this (set
-        the env var), so it's a config problem (Unprocessable), not a
-        server bug. Old behaviour returned 500 with the misleading
-        hardcoded "check SENDGRID_API_KEY" message."""
+    def test_send_without_credentials_returns_422(self, authed_client, monkeypatch):
+        """If the SMTP credentials are unset, the API short-circuits with a
+        422 + clear "not set" message. Status changed from 500 to 422 in
+        #50/ADR-031: the user can act on this (set the env vars), so it's a
+        config problem (Unprocessable), not a server bug."""
         monkeypatch.setenv("DIGEST_TO_EMAIL", "work@example.com")
-        monkeypatch.delenv("SENDGRID_API_KEY", raising=False)
+        monkeypatch.delenv("SMTP_USERNAME", raising=False)
+        monkeypatch.delenv("SMTP_PASSWORD", raising=False)
         resp = authed_client.post("/api/digest/send")
         assert resp.status_code == 422
-        assert "SENDGRID_API_KEY" in resp.get_json()["error"]
+        assert "SMTP_USERNAME" in resp.get_json()["error"]
 
     def test_send_success(self, authed_client, monkeypatch):
         monkeypatch.setenv("DIGEST_TO_EMAIL", "work@example.com")
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake-key")
+        monkeypatch.setenv("SMTP_USERNAME", "sender@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "fake-app-password")
 
-        with patch("digest_service._sendgrid_send", return_value=True):
+        with patch("digest_service._smtp_send", return_value=True):
             resp = authed_client.post("/api/digest/send")
         assert resp.status_code == 200
         assert resp.get_json()["status"] == "sent"
@@ -794,8 +858,9 @@ class TestDigestLastSendRecord:
         """A manual resend that succeeds clears the alert (records ok)."""
         from digest_service import get_last_send_result
         monkeypatch.setenv("DIGEST_TO_EMAIL", "work@example.com")
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake-key")
-        with patch("digest_service._sendgrid_send", return_value=True):
+        monkeypatch.setenv("SMTP_USERNAME", "sender@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "fake-app-password")
+        with patch("digest_service._smtp_send", return_value=True):
             resp = authed_client.post("/api/digest/send")
         assert resp.status_code == 200
         assert get_last_send_result()["status"] == "ok"

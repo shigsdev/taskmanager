@@ -379,8 +379,8 @@ def check_digest() -> str:
     except Exception:
         return "fail: apscheduler not installed"
 
-    if not os.environ.get("SENDGRID_API_KEY"):
-        return "warn: SENDGRID_API_KEY not set"
+    if not (os.environ.get("SMTP_USERNAME") and os.environ.get("SMTP_PASSWORD")):
+        return "warn: SMTP_USERNAME/SMTP_PASSWORD not set"
 
     # Preferred path: this worker IS the scheduler worker and has a
     # live reference to it. Introspect directly.

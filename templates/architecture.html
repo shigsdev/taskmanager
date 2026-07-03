@@ -97,7 +97,7 @@ flowchart LR
     You((You)) -->|browser| Web[Web app<br/>Flask + Python]
     Web <-->|reads/writes| DB[(Database<br/>Postgres)]
     Cron[/Scheduler<br/>4 nightly jobs/] -->|reads/writes| DB
-    Cron -->|sends| Mail[SendGrid<br/>email]
+    Cron -->|sends| Mail[SMTP relay<br/>Gmail email]
     Web -.->|on demand| Ext[External APIs<br/>Whisper, Claude, Vision]
     Web -.->|sign in| Google[Google OAuth]
 
@@ -142,7 +142,7 @@ flowchart LR
     end
 
     Scheduler --> Services
-    Digest -->|via egress| SendGrid[SendGrid]
+    Digest -->|via SMTP| SMTP[SMTP relay<br/>Gmail]
     Services -.->|when scanning| Vision[Google Vision<br/>image OCR]
     Services -.->|when voice memo| Whisper[OpenAI Whisper<br/>transcription]
     Services -.->|when scanning or voice| Claude[Anthropic Claude<br/>NLP / task extraction]
@@ -154,7 +154,7 @@ flowchart LR
     classDef external fill:#221f1c,stroke:#c678dd,color:#ece4d5
     class You,Browser user
     class Routes,Auth,Services,DB,Digest,TomorrowRoll,SpawnRecurring,Heartbeat internal
-    class SendGrid,Vision,Whisper,Claude,Google external
+    class SMTP,Vision,Whisper,Claude,Google external
                 </pre>
                 <div class="flow-diagram-caption">
                     Same shape, with the inside of the web app + the four
@@ -177,7 +177,7 @@ flowchart LR
                     </ul>
                 </li>
                 <li><strong>Authentication</strong> — Google sign-in. Only one email is allowed in (the one configured on Railway); everyone else gets a 403 page. There's also a long-lived signed "validator cookie" used by automated post-deploy checks.</li>
-                <li><strong>External services</strong> — OpenAI Whisper (transcribes voice memos), Anthropic Claude (extracts tasks from voice memos and image scans), Google Vision (OCRs images), SendGrid (delivers the digest email).</li>
+                <li><strong>External services</strong> — OpenAI Whisper (transcribes voice memos), Anthropic Claude (extracts tasks from voice memos and image scans), Google Vision (OCRs images), SMTP/Gmail (delivers the digest email).</li>
                 <li><strong>Hosting</strong> — Railway. HTTPS enforced. Health checks every few seconds via <code>/healthz</code>.</li>
             </ol>
 
@@ -1069,8 +1069,8 @@ flowchart TD
                     </tr>
                     <tr>
                         <td><strong>External API success is mocked</strong></td>
-                        <td>Tests don't actually call SendGrid / Whisper / Claude / Vision — would burn budget and be flaky. Mocked at the <code>egress.safe_call_api</code> seam.</td>
-                        <td>The Settings → SendGrid Test send button (#48) does a real round-trip when needed. Other services exercised when actually used.</td>
+                        <td>Tests don't actually call Whisper / Claude / Vision (mocked at the <code>egress.safe_call_api</code> seam) or open a real SMTP connection for the digest (mocked at <code>_smtp_send</code>) — would burn budget / be flaky.</td>
+                        <td>The Settings → email (SMTP) Test send button (#48) does a real round-trip when needed. Other services exercised when actually used.</td>
                     </tr>
                     <tr>
                         <td><strong>HTML routes still use Flask's default error page</strong></td>

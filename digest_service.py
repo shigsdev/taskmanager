@@ -1,7 +1,8 @@
 """Email digest generation and sending.
 
-Builds a daily digest and sends it via SendGrid as a multipart message
-with both an HTML body and a plain-text fallback. The digest includes:
+Builds a daily digest and sends it via authenticated SMTP (Gmail by
+default) as a multipart message with both an HTML body and a plain-text
+fallback. The digest includes:
 - Overdue tasks (past due date) — surfaced first
 - Today's tasks (from the Today tier)
 - Tasks due today from other tiers
@@ -16,8 +17,8 @@ get a usable digest.
 Security notes (per CLAUDE.md):
 - Task content is sanitized before inserting into the email body
 - HTML rendering uses Jinja autoescape — task titles cannot inject markup
-- Email addresses and API keys are never logged
-- The SendGrid call is server-side only
+- Email addresses and the SMTP password are never logged
+- The SMTP send is server-side only
 """
 from __future__ import annotations
 
@@ -357,7 +358,7 @@ def send_digest(
     body_html: str | None = None,
     target_date: date | None = None,
 ) -> bool:
-    """Send the digest email via SendGrid as multipart (HTML + text).
+    """Send the digest email via authenticated SMTP as multipart (HTML + text).
 
     Args:
         to_email: Recipient email address.
@@ -367,9 +368,10 @@ def send_digest(
         target_date: Date for digest content (defaults to today).
 
     Returns:
-        True if the email was sent successfully, False if SENDGRID_API_KEY
-        is missing. Raises EgressError on SendGrid HTTP failures (#50,
-        ADR-031) so the global error handler can surface a useful message.
+        True if the email was sent successfully, False if the SMTP
+        credentials (``SMTP_USERNAME`` / ``SMTP_PASSWORD``) are missing.
+        Raises EgressError on SMTP failures (#50, ADR-031, ADR-035) so the
+        global error handler can surface a useful message.
     """
     from utils import local_today_date
     today = target_date or local_today_date()
@@ -380,65 +382,84 @@ def send_digest(
     if body_html is None:
         body_html = build_digest_html(target_date=today)
 
-    api_key = os.environ.get("SENDGRID_API_KEY")
-    from_email = os.environ.get("DIGEST_FROM_EMAIL", "noreply@taskmanager.app")
+    host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+    port = int(os.environ.get("SMTP_PORT", "587"))
+    username = os.environ.get("SMTP_USERNAME")
+    password = os.environ.get("SMTP_PASSWORD")
+    # From defaults to the authenticated account — Gmail requires the
+    # From address to be the SMTP user (or a verified alias), so falling
+    # back to the username avoids a silent DMARC/relay rejection.
+    from_email = os.environ.get("DIGEST_FROM_EMAIL") or username
 
-    if not api_key:
-        logger.warning("SENDGRID_API_KEY not set — digest not sent")
+    if not username or not password:
+        logger.warning(
+            "SMTP_USERNAME / SMTP_PASSWORD not set — digest not sent"
+        )
         return False
 
-    return _sendgrid_send(api_key, from_email, to_email, subject, body_text, body_html)
+    return _smtp_send(
+        host=host,
+        port=port,
+        username=username,
+        password=password,
+        from_email=from_email,
+        to_email=to_email,
+        subject=subject,
+        body_text=body_text,
+        body_html=body_html,
+    )
 
 
-def _sendgrid_send(
-    api_key: str,
+def _smtp_send(
+    *,
+    host: str,
+    port: int,
+    username: str,
+    password: str,
     from_email: str,
     to_email: str,
     subject: str,
     body_text: str,
     body_html: str,
 ) -> bool:
-    """Send a multipart email via SendGrid. Separated for testability.
+    """Send a multipart email over SMTP+STARTTLS. Separated for testability.
 
-    Attaches BOTH text/plain and text/html parts. SendGrid sends them as
-    a multipart/alternative message; the receiving client picks whichever
-    it can render (HTML by default, plain text in clients that strip HTML).
+    Attaches BOTH text/plain and text/html parts as multipart/alternative;
+    the receiving client picks whichever it can render (HTML by default,
+    plain text in clients that strip HTML).
 
-    Raises ``EgressError`` (the same wrapper used by all other external
-    API calls — see ADR-023) so failures propagate with the actual
-    SendGrid status code + response body. ADR-031.
+    Uses stdlib ``smtplib`` rather than ``egress.safe_call_api`` (ADR-035):
+    the egress wrapper guards HTTP(S) calls (SSRF pin, header scrubbing),
+    but SMTP is a different protocol/port to a fixed, operator-configured
+    relay — not a user-controllable URL — so the egress protections don't
+    apply. Raises ``EgressError`` on any SMTP failure so it propagates the
+    same way as every other external send (ADR-031). The exception message
+    NEVER includes the password (CLAUDE.md log-hygiene).
     """
-    import sendgrid
-    from sendgrid.helpers.mail import Content, Mail, To
+    import smtplib
+    from email.message import EmailMessage
 
     from egress import EgressError
 
-    sg = sendgrid.SendGridAPIClient(api_key=api_key)
-    message = Mail(
-        from_email=from_email,
-        to_emails=To(to_email),
-        subject=subject,
-        plain_text_content=Content("text/plain", body_text),
-        html_content=Content("text/html", body_html),
-    )
-    try:
-        response = sg.send(message)
-    except Exception as e:
-        status_code = getattr(e, "status_code", None)
-        body_attr = getattr(e, "body", b"")
-        body_str = (
-            body_attr.decode("utf-8", errors="replace")
-            if isinstance(body_attr, bytes)
-            else str(body_attr)
-        )
-        detail = body_str.replace("\n", " ").strip()[:200]
-        if status_code:
-            raise EgressError(
-                f"SendGrid returned HTTP {status_code}"
-                + (f": {detail}" if detail else ""),
-            ) from e
-        raise EgressError(f"SendGrid call failed: {type(e).__name__}") from e
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = from_email
+    msg["To"] = to_email
+    msg.set_content(body_text)
+    msg.add_alternative(body_html, subtype="html")
 
-    if response.status_code in (200, 201, 202):
-        return True
-    raise EgressError(f"SendGrid returned HTTP {response.status_code}")
+    try:
+        with smtplib.SMTP(host, port, timeout=30) as smtp:
+            smtp.starttls()
+            smtp.login(username, password)
+            smtp.send_message(msg)
+    except Exception as e:
+        # Surface the SMTP status code (e.g. 535 auth failed) when present,
+        # but never the password or a raw repr that could echo credentials.
+        code = getattr(e, "smtp_code", None)
+        raise EgressError(
+            f"SMTP send failed: {type(e).__name__}"
+            + (f" (code {code})" if code else "")
+        ) from e
+
+    return True

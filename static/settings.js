@@ -23,7 +23,7 @@
         google_oauth: "Google OAuth",
         google_vision: "Google Vision (OCR)",
         anthropic: "Anthropic Claude (AI)",
-        sendgrid: "SendGrid (Email)",
+        smtp: "Email (SMTP)",
     };
 
     // PR67 #132: window.apiFetch (auto-retry + recovery)
@@ -41,7 +41,7 @@
                 // Bug #48 — was "Configured / Not configured" which
                 // misleadingly implied "service works." Reality: this
                 // only checks env-var presence. Honest label: "Env var
-                // set / Env var not set." Use 'Test send' (SendGrid
+                // set / Env var not set." Use 'Test send' (Email
                 // row) or actually use the feature to verify the
                 // service really works end-to-end.
                 tdStatus.textContent = present ? "Env var set" : "Env var not set";
@@ -49,14 +49,14 @@
                 tr.appendChild(tdName);
                 tr.appendChild(tdStatus);
 
-                // For SendGrid specifically — add an inline "Test send"
+                // For the email (SMTP) row specifically — add an inline "Test send"
                 // button. Other services (Whisper / Claude / Vision)
                 // need real audio / image input to test, so they don't
                 // get an inline test button; you exercise them by
                 // actually using the feature.
                 var tdAction = document.createElement("td");
-                if (key === "sendgrid" && present) {
-                    tdAction.appendChild(buildSendgridTestButton());
+                if (key === "smtp" && present) {
+                    tdAction.appendChild(buildSmtpTestButton());
                 }
                 tr.appendChild(tdAction);
 
@@ -72,15 +72,15 @@
         .catch(function (err) { console.error("settings/status failed:", err); });
 
     /**
-     * Build the inline "Test send" button + result chip for the SendGrid
-     * row. Hits POST /api/digest/send (same endpoint as "Send digest now"
+     * Build the inline "Test send" button + result chip for the email
+     * (SMTP) row. Hits POST /api/digest/send (same endpoint as "Send digest now"
      * below — it IS the test). Shows result inline next to the button:
      * green "✓ sent" or red "✗ <real error from #50 global handler>".
      * No alert popup; the row itself becomes the answer.
      */
-    function buildSendgridTestButton() {
+    function buildSmtpTestButton() {
         var wrap = document.createElement("span");
-        wrap.className = "sendgrid-test-wrap";
+        wrap.className = "smtp-test-wrap";
 
         var btn = document.createElement("button");
         btn.type = "button";
@@ -89,14 +89,14 @@
         btn.title = "Send the daily digest now to verify end-to-end delivery";
 
         var result = document.createElement("span");
-        result.className = "sendgrid-test-result";
+        result.className = "smtp-test-result";
 
         btn.addEventListener("click", async function () {
             if (!confirm("Send the daily digest now as a live test?")) return;
             btn.disabled = true;
             btn.textContent = "Sending…";
             result.textContent = "";
-            result.className = "sendgrid-test-result";
+            result.className = "smtp-test-result";
             try {
                 // PR67 #132: window.apiFetch (auto-retry + recovery)
                 await window.apiFetch("/api/digest/send", { method: "POST" });
@@ -104,7 +104,7 @@
                 result.classList.add("settings-ok");
             } catch (err) {
                 // #50 + apiFetch: error message is meaningful from
-                // the global handler (e.g. "SendGrid returned HTTP 403: ...")
+                // the global handler (e.g. "SMTP send failed: ...")
                 result.textContent = "✗ " + (err.message || "Network error");
                 result.classList.add("settings-warn");
             }

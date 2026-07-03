@@ -1775,9 +1775,10 @@ Skip this line (too short)</pre>
         <section id="digest" class="docs-section">
             <h2>Email digest</h2>
             <p>
-                A plain-text daily digest is emailed via SendGrid. The
-                schedule and contents are fixed; adjustments happen
-                through environment variables on the deploy.
+                A daily digest is emailed via authenticated SMTP (Gmail
+                by default). The schedule and contents are fixed;
+                adjustments happen through environment variables on the
+                deploy.
             </p>
 
             <h3>When it fires</h3>
@@ -1835,7 +1836,7 @@ Skip this line (too short)</pre>
             <ul>
                 <li><strong>Google Vision</strong> — powers OCR for image scan.</li>
                 <li><strong>Anthropic</strong> — powers Claude parsing for image scan and voice memo.</li>
-                <li><strong>SendGrid</strong> — powers email digest delivery.</li>
+                <li><strong>Email (SMTP)</strong> — powers email digest delivery (Gmail by default). The Test send button verifies end-to-end.</li>
             </ul>
 
             <h3>Daily Digest controls</h3>
@@ -1962,7 +1963,7 @@ Skip this line (too short)</pre>
                 <li><strong><code>BACKUP_REPO_DEPLOY_KEY</code></strong> — the PRIVATE SSH key. Paste the ENTIRE contents of the <code>backup-key</code> file (the one without <code>.pub</code>), starting with <code>-----BEGIN OPENSSH PRIVATE KEY-----</code> and ending with <code>-----END OPENSSH PRIVATE KEY-----</code>, including those lines and the trailing newline.</li>
                 <li><strong><code>BACKUP_FERNET_KEY</code></strong> — the Fernet key from Step 3. Paste the 44-character string only (no quotes, no spaces).</li>
                 <li><strong><code>DATABASE_URL</code></strong> — your Railway Postgres <em>public</em> URL. Find it on Railway: open your project → click the Postgres service → Variables tab → copy <strong><code>DATABASE_PUBLIC_URL</code></strong> (NOT the plain <code>DATABASE_URL</code>, which is the private <code>postgres.railway.internal</code> hostname — reachable only inside Railway's network, NOT from GitHub Actions). The public URL host ends in <code>.railway.app</code> and usually uses a non-standard port like <code>12345</code> (not 5432). If you don't see <code>DATABASE_PUBLIC_URL</code>, open the Postgres service's <strong>Networking</strong> sub-tab and toggle <strong>Public Networking / TCP Proxy</strong> to ON — Railway then generates one. Symptom of getting this wrong: workflow fails with <code>pg_dump: error: could not translate host name "postgres.railway.internal" to address</code>.</li>
-                <li><strong><code>SENDGRID_API_KEY</code></strong> — same key the app already uses for the daily digest. Find it on Railway: open your project → click the Flask service → Variables tab → copy <code>SENDGRID_API_KEY</code>. Starts with <code>SG.</code>.</li>
+                <li><strong><code>SENDGRID_API_KEY</code></strong> — used only for the backup-failure <em>alert</em> email sent by this GitHub Actions workflow (the app's own daily digest now sends via SMTP, not SendGrid). Optional: leave it unset and the backup still runs, you just won't get an email if a run fails. If you want the alert, paste a SendGrid API key (starts with <code>SG.</code>). Migrating these workflow alerts to SMTP too is tracked in the backlog.</li>
             </ol>
 
             <p>

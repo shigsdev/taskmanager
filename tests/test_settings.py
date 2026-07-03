@@ -41,7 +41,7 @@ class TestServiceStatus:
         assert "google_oauth" in body
         assert "google_vision" in body
         assert "anthropic" in body
-        assert "sendgrid" in body
+        assert "smtp" in body
 
     def test_google_oauth_shows_configured(self, authed_client, monkeypatch):
         """OAuth is set in conftest, so should show True."""
@@ -54,15 +54,16 @@ class TestServiceStatus:
         assert resp.get_json()["google_vision"] is False
 
     def test_configured_key_shows_true(self, authed_client, monkeypatch):
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake-key")
+        monkeypatch.setenv("SMTP_USERNAME", "sender@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "fake-app-password")
         resp = authed_client.get("/api/settings/status")
-        assert resp.get_json()["sendgrid"] is True
+        assert resp.get_json()["smtp"] is True
 
     def test_never_reveals_key_values(self, authed_client, monkeypatch):
-        monkeypatch.setenv("SENDGRID_API_KEY", "super-secret-key")
+        monkeypatch.setenv("SMTP_PASSWORD", "super-secret-app-password")
         resp = authed_client.get("/api/settings/status")
         body_str = resp.get_data(as_text=True)
-        assert "super-secret-key" not in body_str
+        assert "super-secret-app-password" not in body_str
 
     def test_digest_email_shown_as_boolean(self, authed_client, monkeypatch):
         """digest_email returns True when set — never exposes the actual address."""

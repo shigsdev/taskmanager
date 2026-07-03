@@ -860,19 +860,19 @@ def _start_digest_scheduler(app: Flask) -> None:
             to_email = os.environ.get("DIGEST_TO_EMAIL")
             if not to_email:
                 return
-            # send_digest now raises EgressError on SendGrid failure
-            # (#50, ADR-031). The cron shouldn't crash the scheduler
-            # thread — log + swallow. The error already lands in
+            # send_digest now raises EgressError on SMTP failure
+            # (#50, ADR-031, ADR-035). The cron shouldn't crash the
+            # scheduler thread — log + swallow. The error already lands in
             # app_logs via DBLogHandler so /api/debug/logs surfaces it
             # post-deploy. We ALSO persist the outcome (#286 alert) so a
-            # silent failure (e.g. SendGrid quota 401, the 2026-06-07
-            # incident) surfaces on /healthz as a warn — the ERROR log
-            # row is only scanned at deploy time, not daily.
+            # silent failure (e.g. the SendGrid quota 401 of the 2026-06-07
+            # incident that motivated the SMTP switch) surfaces on /healthz
+            # as a warn — the ERROR log row is only scanned at deploy time.
             try:
                 ok = send_digest(to_email=to_email)
                 record_send_result(
                     status="ok" if ok else "skip",
-                    error=None if ok else "SENDGRID_API_KEY not set",
+                    error=None if ok else "SMTP credentials not set",
                 )
             except Exception as e:  # noqa: BLE001
                 log.exception("Scheduled digest send failed: %s: %s",

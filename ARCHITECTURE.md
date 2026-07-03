@@ -60,7 +60,7 @@ component is added, a data flow changes, or a security boundary shifts.
         │   └───────────────┘  └─────┬──────┘  └──────┬───────┘   │
         └──────────────────────────┬─┴─────────────────┬──────────┘
                                    │                   │
-                           SendGrid│           Google  │  Anthropic
+                           SMTP    │           Google  │  Anthropic
                                    ▼           Vision  ▼  Claude API
                            ┌───────────────┐    ┌──────────────────┐
                            │ Work Outlook  │    │  OCR + task      │
@@ -140,7 +140,9 @@ component is added, a data flow changes, or a security boundary shifts.
   (work email, API keys if ever stored in DB).
 - **Google OAuth 2.0** — only login path. Validates the authenticated email
   against `AUTHORIZED_EMAIL` before any data is served.
-- **SendGrid** — outbound daily digest email to work Outlook.
+- **SMTP (Gmail)** — outbound daily digest email to work Outlook, sent via
+  authenticated SMTP+STARTTLS (ADR-035). Replaced SendGrid after its free
+  tier was retired (2025-07).
 - **Google Vision API** — OCR for the image scan feature. Server-side only.
 - **Anthropic Claude API** — parses OCR text into discrete task or goal
   candidates. Server-side only. Every Claude call goes through one
@@ -160,8 +162,9 @@ component is added, a data flow changes, or a security boundary shifts.
 - **User → App**: HTTPS request, Google OAuth session cookie (encrypted,
   30-day sliding inactivity expiry).
 - **App → DB**: SQLAlchemy ORM queries. No raw SQL.
-- **App → SendGrid**: once per day at `DIGEST_TIME`, plain-text email with
-  Today / Overdue / Goals summary / This Week count.
+- **App → SMTP relay**: once per day at `DIGEST_TIME`, a multipart (HTML +
+  plain-text) email with Today / Overdue / Goals summary / This Week count,
+  sent over authenticated SMTP+STARTTLS (Gmail by default; ADR-035).
 - **Image scan**: browser uploads image + a `parse_as` discriminator
   (`tasks` or `goals`) → Flask holds the image in memory → Google Vision
   (server-side) → Claude API (server-side) parses into either task or
@@ -752,7 +755,7 @@ skew before the day you actually need to restore.
 | `DATABASE_URL` | secret | Railway Postgres URL (for pg_dump source + drill comparison) |
 | `BACKUP_FERNET_KEY` | secret | 44-char Fernet key (also stored in 1Password for restore) |
 | `BACKUP_REPO_DEPLOY_KEY` | secret | SSH private key with write access to the backups repo |
-| `SENDGRID_API_KEY` | secret | reuse the app's existing key |
+| `SENDGRID_API_KEY` | secret | optional — only for this workflow's backup-failure alert email (the app's digest now uses SMTP, not SendGrid); unset = backup still runs, no failure email |
 | `BACKUP_REPO_URL` | variable | e.g. `git@github.com:user/taskmanager-backups.git` |
 | `DIGEST_FROM_EMAIL` | variable | reuse |
 | `DIGEST_TO_EMAIL` | variable | reuse — backup status emails go here |
