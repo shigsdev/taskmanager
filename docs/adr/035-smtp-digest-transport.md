@@ -1,9 +1,35 @@
-# ADR-035: Daily digest email over authenticated SMTP (replacing SendGrid)
+# ADR-035: Daily digest email transport (replacing SendGrid)
 
 Date: 2026-07-02
 
-Status: ACCEPTED (operator-approved 2026-07-02; transport = Gmail SMTP with
-an App Password)
+Status: ACCEPTED (operator-approved 2026-07-02). **Transport revised same day:
+Brevo transactional HTTP API (primary), authenticated SMTP (fallback).**
+
+## Update (2026-07-02) — SMTP is blocked on Railway; primary transport is the Brevo HTTP API
+
+The originally-accepted transport was authenticated **Gmail SMTP**. Two
+blockers surfaced during rollout:
+
+1. **Google App Passwords were unavailable** for the operator's account
+   ("the setting you are looking for is not available"), so Gmail SMTP
+   couldn't be configured at all.
+2. **Railway blocks outbound SMTP** (ports 25/465/587/2525) on Free/Trial/
+   Hobby plans — only Pro+ permits it. A live test send timed out on
+   connect (dropped SYN), the signature of a network-level port block, not
+   an auth failure. This means **no** SMTP relay (Gmail, Brevo, or any
+   other) can work from the current Railway plan.
+
+Resolution: keep the SMTP sender as a fallback, but make the **primary
+transport the Brevo transactional HTTP API** (`POST
+https://api.brevo.com/v3/smtp/email` via `egress.safe_call_api`, key in the
+`api-key` header — ADR-007/ADR-023). It's plain HTTPS, so Railway's SMTP
+block doesn't apply. The operator authenticated their own domain
+(`shigs.us`) in Brevo (DKIM + DMARC), which clears the 2024 sender-alignment
+rules, so `digest@shigs.us` sends compliantly. `send_digest` prefers Brevo
+when `BREVO_API_KEY` is set and otherwise falls back to SMTP. The rest of
+this ADR (why SMTP over an ESP, the egress rationale, log hygiene) still
+applies to the SMTP fallback; the new `BREVO_API_KEY` is scrubbed by the
+`scrub_sensitive` chain (`test_strips_brevo_key`).
 
 ## Context
 

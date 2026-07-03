@@ -37,6 +37,21 @@ def _make_task(**overrides) -> Task:
     return task
 
 
+@pytest.fixture(autouse=True)
+def _clean_email_transport_env(monkeypatch):
+    """Start each digest test with NO email transport configured, so a
+    machine-level ``BREVO_API_KEY`` / ``SMTP_*`` can't change send_digest's
+    Brevo-vs-SMTP routing. Tests set exactly what they need."""
+    for var in (
+        "BREVO_API_KEY",
+        "SMTP_USERNAME",
+        "SMTP_PASSWORD",
+        "SMTP_HOST",
+        "SMTP_PORT",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+
 def _make_goal(**overrides) -> Goal:
     """Helper to create a goal in the database."""
     fields = {
@@ -608,6 +623,105 @@ class TestSmtpSend:
             _smtp_send(**self._kwargs())
 
         assert "super-secret-pw" not in str(exc.value)
+
+
+class TestBrevoApiSend:
+    """Unit tests for the Brevo transactional-API sender (``_brevo_api_send``)."""
+
+    def test_posts_expected_payload(self, monkeypatch):
+        from digest_service import _brevo_api_send
+
+        captured = {}
+
+        def _fake(**kwargs):
+            captured.update(kwargs)
+            return {"messageId": "<abc@brevo>"}
+
+        monkeypatch.setattr("egress.safe_call_api", _fake)
+        result = _brevo_api_send(
+            api_key="xkeysib-secret",
+            from_email="digest@shigs.us",
+            to_email="me@x.com",
+            subject="S",
+            body_text="plain",
+            body_html="<p>html</p>",
+        )
+        assert result is True
+        assert captured["url"] == "https://api.brevo.com/v3/smtp/email"
+        assert captured["headers"]["api-key"] == "xkeysib-secret"  # key in header
+        assert captured["vendor"] == "Brevo"
+        body = captured["json"]
+        assert body["sender"]["email"] == "digest@shigs.us"
+        assert body["to"] == [{"email": "me@x.com"}]
+        assert body["subject"] == "S"
+        assert body["htmlContent"] == "<p>html</p>"
+        assert body["textContent"] == "plain"
+
+    def test_propagates_egress_error(self, monkeypatch):
+        from digest_service import _brevo_api_send
+        from egress import EgressError
+
+        def _raise(**kwargs):
+            raise EgressError("Brevo API returned HTTP 401")
+
+        monkeypatch.setattr("egress.safe_call_api", _raise)
+        with pytest.raises(EgressError):
+            _brevo_api_send(
+                api_key="k",
+                from_email="f@x",
+                to_email="t@x",
+                subject="s",
+                body_text="t",
+                body_html="h",
+            )
+
+
+class TestSendTransportRouting:
+    """send_digest picks Brevo (HTTP API) over SMTP when BREVO_API_KEY is set."""
+
+    def test_prefers_brevo_when_key_set(self, app, monkeypatch):
+        from digest_service import send_digest
+
+        monkeypatch.setenv("BREVO_API_KEY", "xkeysib-fake")
+        monkeypatch.setenv("DIGEST_FROM_EMAIL", "digest@shigs.us")
+        with (
+            app.app_context(),
+            patch("digest_service._brevo_api_send", return_value=True) as mock_brevo,
+            patch("digest_service._smtp_send") as mock_smtp,
+        ):
+            result = send_digest(to_email="to@example.com", body_text="Test")
+        assert result is True
+        mock_brevo.assert_called_once()
+        mock_smtp.assert_not_called()
+
+    def test_brevo_requires_from_email(self, app, monkeypatch):
+        from digest_service import send_digest
+
+        monkeypatch.setenv("BREVO_API_KEY", "xkeysib-fake")
+        monkeypatch.delenv("DIGEST_FROM_EMAIL", raising=False)
+        with (
+            app.app_context(),
+            patch("digest_service._brevo_api_send") as mock_brevo,
+        ):
+            result = send_digest(to_email="to@example.com", body_text="Test")
+        assert result is False
+        mock_brevo.assert_not_called()
+
+    def test_falls_back_to_smtp_without_brevo_key(self, app, monkeypatch):
+        from digest_service import send_digest
+
+        monkeypatch.delenv("BREVO_API_KEY", raising=False)
+        monkeypatch.setenv("SMTP_USERNAME", "sender@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "fake-app-password")
+        with (
+            app.app_context(),
+            patch("digest_service._smtp_send", return_value=True) as mock_smtp,
+            patch("digest_service._brevo_api_send") as mock_brevo,
+        ):
+            result = send_digest(to_email="to@example.com", body_text="Test")
+        assert result is True
+        mock_smtp.assert_called_once()
+        mock_brevo.assert_not_called()
 
 
 # --- API endpoints ------------------------------------------------------------

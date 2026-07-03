@@ -41,7 +41,7 @@ class TestServiceStatus:
         assert "google_oauth" in body
         assert "google_vision" in body
         assert "anthropic" in body
-        assert "smtp" in body
+        assert "email" in body
 
     def test_google_oauth_shows_configured(self, authed_client, monkeypatch):
         """OAuth is set in conftest, so should show True."""
@@ -57,13 +57,24 @@ class TestServiceStatus:
         monkeypatch.setenv("SMTP_USERNAME", "sender@gmail.com")
         monkeypatch.setenv("SMTP_PASSWORD", "fake-app-password")
         resp = authed_client.get("/api/settings/status")
-        assert resp.get_json()["smtp"] is True
+        assert resp.get_json()["email"] is True
+
+    def test_email_true_with_brevo_key_only(self, authed_client, monkeypatch):
+        """The Brevo HTTP API path counts as a configured transport even
+        with no SMTP creds (ADR-035)."""
+        monkeypatch.delenv("SMTP_USERNAME", raising=False)
+        monkeypatch.delenv("SMTP_PASSWORD", raising=False)
+        monkeypatch.setenv("BREVO_API_KEY", "xkeysib-fake")
+        resp = authed_client.get("/api/settings/status")
+        assert resp.get_json()["email"] is True
 
     def test_never_reveals_key_values(self, authed_client, monkeypatch):
         monkeypatch.setenv("SMTP_PASSWORD", "super-secret-app-password")
+        monkeypatch.setenv("BREVO_API_KEY", "xkeysib-super-secret-brevo-key")
         resp = authed_client.get("/api/settings/status")
         body_str = resp.get_data(as_text=True)
         assert "super-secret-app-password" not in body_str
+        assert "xkeysib-super-secret-brevo-key" not in body_str
 
     def test_digest_email_shown_as_boolean(self, authed_client, monkeypatch):
         """digest_email returns True when set — never exposes the actual address."""

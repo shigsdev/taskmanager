@@ -877,11 +877,14 @@ This app is a **single-user personal tool** with:
   <jti>` (one token). The scope-rejection matrix in
   `tests/test_voice_action_token.py` is the load-bearing guard.
 - External API keys for Google (Vision, OAuth), OpenAI (Whisper),
-  Anthropic (Claude); an SMTP password (Gmail App Password) for the
-  daily digest (ADR-035, replaced SendGrid 2026-07 after its free tier
-  was retired). The recurring GitHub-Actions audit/backup workflows
+  Anthropic (Claude); a `BREVO_API_KEY` (Brevo transactional email API)
+  for the daily digest, sent over HTTPS via `egress.safe_call_api`
+  because Railway blocks outbound SMTP on non-Pro plans (ADR-035,
+  replaced SendGrid 2026-07 after its free tier was retired). An
+  authenticated-SMTP fallback (`SMTP_*`) also exists but is unusable on
+  Railway's plan. The recurring GitHub-Actions audit/backup workflows
   still send alert emails via `SENDGRID_API_KEY` (a separate GH secret,
-  migration to SMTP tracked in the backlog).
+  migration tracked in backlog #298).
 
 **Realistic attack scenarios to defend against:**
 

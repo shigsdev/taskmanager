@@ -69,6 +69,14 @@ class TestScrubSensitive:
         assert key not in result
         assert "[REDACTED:API_KEY]" in result
 
+    def test_strips_brevo_key(self):
+        # Brevo API/SMTP keys: xkeysib-<hex>-<rand> / xsmtpsib-<hex>-<rand>
+        # (#289 / ADR-035 — the digest's Brevo HTTP API transport).
+        key = "xkeysib-" + "a" * 64 + "-" + "b" * 16
+        result = scrub_sensitive(f"Brevo API error with api-key: {key}")
+        assert key not in result
+        assert "[REDACTED:BREVO_API_KEY]" in result
+
     def test_strips_voice_action_token(self):
         # #297 / ADR-034: the scoped voice-action token travels in an
         # Authorization: Bearer header; the existing authz/bearer scrub

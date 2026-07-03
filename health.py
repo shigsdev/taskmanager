@@ -379,8 +379,12 @@ def check_digest() -> str:
     except Exception:
         return "fail: apscheduler not installed"
 
-    if not (os.environ.get("SMTP_USERNAME") and os.environ.get("SMTP_PASSWORD")):
-        return "warn: SMTP_USERNAME/SMTP_PASSWORD not set"
+    _has_brevo = bool(os.environ.get("BREVO_API_KEY"))
+    _has_smtp = bool(
+        os.environ.get("SMTP_USERNAME") and os.environ.get("SMTP_PASSWORD")
+    )
+    if not (_has_brevo or _has_smtp):
+        return "warn: no email transport set (BREVO_API_KEY or SMTP_USERNAME/SMTP_PASSWORD)"
 
     # Preferred path: this worker IS the scheduler worker and has a
     # live reference to it. Introspect directly.

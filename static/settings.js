@@ -23,7 +23,7 @@
         google_oauth: "Google OAuth",
         google_vision: "Google Vision (OCR)",
         anthropic: "Anthropic Claude (AI)",
-        smtp: "Email (SMTP)",
+        email: "Email (digest)",
     };
 
     // PR67 #132: window.apiFetch (auto-retry + recovery)
@@ -55,7 +55,7 @@
                 // get an inline test button; you exercise them by
                 // actually using the feature.
                 var tdAction = document.createElement("td");
-                if (key === "smtp" && present) {
+                if (key === "email" && present) {
                     tdAction.appendChild(buildSmtpTestButton());
                 }
                 tr.appendChild(tdAction);

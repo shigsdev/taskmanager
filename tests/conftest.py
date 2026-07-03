@@ -24,27 +24,27 @@ _limiter.enabled = False
 
 
 @pytest.fixture(autouse=True)
-def _reset_digest_heartbeat():
-    """Isolate the process-global digest heartbeat file.
+def _reset_digest_heartbeat(monkeypatch, tmp_path):
+    """Isolate the two process-global digest-check inputs per test.
 
-    ``health.HEARTBEAT_PATH`` lives in the system temp dir, and several
-    tests write a live-job heartbeat into it. Under ``pytest-randomly``'s
-    per-run ordering, a file leaked by one test makes ``check_digest``'s
-    heartbeat-fallback return a stale result for an unrelated later test
-    (the digest check flaked on different tests across runs). Remove it
-    before AND after every test so ordering can't cause contamination.
-    The ``suppress(OSError)`` tolerates the Windows/OneDrive temp-unlink
-    ``PermissionError`` documented in CLAUDE.md.
+    ``check_digest`` reads two module globals that several tests mutate:
+      * ``health.HEARTBEAT_PATH`` — by default a SINGLE file in the shared
+        system temp dir. Multiple tests writing/deleting it caused
+        cross-test pollution under ``pytest-randomly`` AND intermittent
+        Windows/OneDrive unlink/replace races. Point it at a UNIQUE
+        per-test ``tmp_path`` file so no two tests ever touch the same
+        heartbeat and there's no shared-file contention.
+      * ``health._scheduler`` — set to a mock by scheduler tests; the
+        heartbeat-fallback tests need it back at ``None``.
+    Both are reset before AND after every test so ordering can't
+    contaminate. (``monkeypatch.setattr`` auto-reverts HEARTBEAT_PATH.)
     """
-    import contextlib
-
     import health
 
-    with contextlib.suppress(OSError):
-        health.HEARTBEAT_PATH.unlink(missing_ok=True)
+    monkeypatch.setattr(health, "HEARTBEAT_PATH", tmp_path / "digest_heartbeat.json")
+    health._scheduler = None
     yield
-    with contextlib.suppress(OSError):
-        health.HEARTBEAT_PATH.unlink(missing_ok=True)
+    health._scheduler = None
 
 
 @pytest.fixture

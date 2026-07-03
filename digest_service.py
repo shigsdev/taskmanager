@@ -1,8 +1,10 @@
 """Email digest generation and sending.
 
-Builds a daily digest and sends it via authenticated SMTP (Gmail by
-default) as a multipart message with both an HTML body and a plain-text
-fallback. The digest includes:
+Builds a daily digest and sends it as a multipart message (HTML + a
+plain-text fallback). Transport is config-driven (ADR-035): the Brevo
+transactional HTTP API when ``BREVO_API_KEY`` is set (the Railway path —
+Railway blocks outbound SMTP on non-Pro plans), otherwise authenticated
+SMTP. The digest includes:
 - Overdue tasks (past due date) — surfaced first
 - Today's tasks (from the Today tier)
 - Tasks due today from other tiers
@@ -358,7 +360,13 @@ def send_digest(
     body_html: str | None = None,
     target_date: date | None = None,
 ) -> bool:
-    """Send the digest email via authenticated SMTP as multipart (HTML + text).
+    """Send the digest email as multipart (HTML + text).
+
+    Transport is chosen by config (ADR-035):
+      * ``BREVO_API_KEY`` set → Brevo transactional HTTP API (over HTTPS).
+        This is the path used on Railway, whose network blocks outbound
+        SMTP on non-Pro plans.
+      * else ``SMTP_USERNAME`` + ``SMTP_PASSWORD`` set → authenticated SMTP.
 
     Args:
         to_email: Recipient email address.
@@ -368,9 +376,9 @@ def send_digest(
         target_date: Date for digest content (defaults to today).
 
     Returns:
-        True if the email was sent successfully, False if the SMTP
-        credentials (``SMTP_USERNAME`` / ``SMTP_PASSWORD``) are missing.
-        Raises EgressError on SMTP failures (#50, ADR-031, ADR-035) so the
+        True if the email was sent successfully, False if no transport is
+        configured (neither ``BREVO_API_KEY`` nor SMTP credentials).
+        Raises EgressError on send failures (#50, ADR-031, ADR-035) so the
         global error handler can surface a useful message.
     """
     from utils import local_today_date
@@ -382,6 +390,27 @@ def send_digest(
     if body_html is None:
         body_html = build_digest_html(target_date=today)
 
+    # Preferred: Brevo transactional HTTP API (HTTPS — works on Railway,
+    # which blocks outbound SMTP on non-Pro plans).
+    brevo_key = os.environ.get("BREVO_API_KEY")
+    if brevo_key:
+        from_email = os.environ.get("DIGEST_FROM_EMAIL")
+        if not from_email:
+            logger.warning(
+                "DIGEST_FROM_EMAIL not set — required for the Brevo API send"
+            )
+            return False
+        return _brevo_api_send(
+            api_key=brevo_key,
+            from_email=from_email,
+            to_email=to_email,
+            subject=subject,
+            body_text=body_text,
+            body_html=body_html,
+        )
+
+    # Fallback: authenticated SMTP (Gmail default). Note Railway blocks
+    # outbound SMTP on non-Pro plans — prefer BREVO_API_KEY there.
     host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
     port = int(os.environ.get("SMTP_PORT", "587"))
     username = os.environ.get("SMTP_USERNAME")
@@ -393,7 +422,8 @@ def send_digest(
 
     if not username or not password:
         logger.warning(
-            "SMTP_USERNAME / SMTP_PASSWORD not set — digest not sent"
+            "No email transport configured (BREVO_API_KEY or "
+            "SMTP_USERNAME/SMTP_PASSWORD) — digest not sent"
         )
         return False
 
@@ -408,6 +438,42 @@ def send_digest(
         body_text=body_text,
         body_html=body_html,
     )
+
+
+def _brevo_api_send(
+    *,
+    api_key: str,
+    from_email: str,
+    to_email: str,
+    subject: str,
+    body_text: str,
+    body_html: str,
+) -> bool:
+    """Send a multipart email via the Brevo transactional HTTP API.
+
+    Uses ``egress.safe_call_api`` (ADR-023) — the key travels in the
+    ``api-key`` header, never a URL query string (ADR-007). This is the
+    Railway-friendly path: it's plain HTTPS, so it isn't affected by
+    Railway's outbound-SMTP block (ADR-035). ``safe_call_api`` raises
+    ``EgressError`` (with the Brevo HTTP status, never the key) on any
+    non-2xx or network error, which propagates per ADR-031.
+    """
+    from egress import safe_call_api
+
+    safe_call_api(
+        url="https://api.brevo.com/v3/smtp/email",
+        headers={"api-key": api_key, "accept": "application/json"},
+        json={
+            "sender": {"email": from_email, "name": "Task Digest"},
+            "to": [{"email": to_email}],
+            "subject": subject,
+            "htmlContent": body_html,
+            "textContent": body_text,
+        },
+        vendor="Brevo",
+        timeout_sec=30,
+    )
+    return True
 
 
 def _smtp_send(

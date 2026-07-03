@@ -1775,8 +1775,9 @@ Skip this line (too short)</pre>
         <section id="digest" class="docs-section">
             <h2>Email digest</h2>
             <p>
-                A daily digest is emailed via authenticated SMTP (Gmail
-                by default). The schedule and contents are fixed;
+                A daily digest is emailed via the Brevo transactional
+                email API (an HTTPS API, used because the host blocks
+                outbound SMTP). The schedule and contents are fixed;
                 adjustments happen through environment variables on the
                 deploy.
             </p>
@@ -1836,7 +1837,7 @@ Skip this line (too short)</pre>
             <ul>
                 <li><strong>Google Vision</strong> — powers OCR for image scan.</li>
                 <li><strong>Anthropic</strong> — powers Claude parsing for image scan and voice memo.</li>
-                <li><strong>Email (SMTP)</strong> — powers email digest delivery (Gmail by default). The Test send button verifies end-to-end.</li>
+                <li><strong>Email (digest)</strong> — powers email digest delivery (Brevo transactional API by default; SMTP fallback). The Test send button verifies end-to-end.</li>
             </ul>
 
             <h3>Daily Digest controls</h3>

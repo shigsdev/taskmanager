@@ -23,8 +23,11 @@ def get_service_status() -> dict:
         "google_oauth": bool(os.environ.get("GOOGLE_CLIENT_ID")),
         "google_vision": bool(os.environ.get("GOOGLE_VISION_API_KEY")),
         "anthropic": bool(os.environ.get("ANTHROPIC_API_KEY")),
-        "smtp": bool(
-            os.environ.get("SMTP_USERNAME") and os.environ.get("SMTP_PASSWORD")
+        # Digest email transport configured — Brevo HTTP API (Railway path)
+        # OR authenticated SMTP (ADR-035).
+        "email": bool(
+            os.environ.get("BREVO_API_KEY")
+            or (os.environ.get("SMTP_USERNAME") and os.environ.get("SMTP_PASSWORD"))
         ),
         "digest_email": bool(os.environ.get("DIGEST_TO_EMAIL")),
         "digest_from": bool(os.environ.get("DIGEST_FROM_EMAIL")),

@@ -84,6 +84,7 @@ _SCRUB_NAMED_REPLACEMENTS: dict[str, str] = {
     "google":     "[REDACTED:GOOGLE_API_KEY]",
     "anthropic":  "[REDACTED:ANTHROPIC_API_KEY]",
     "openai":     "[REDACTED:API_KEY]",
+    "brevo":      "[REDACTED:BREVO_API_KEY]",
     "bearer":     "Bearer [REDACTED]",
     "authz":      "authorization: [REDACTED]",
     "session":    "session=[REDACTED]",
@@ -96,6 +97,8 @@ _SCRUB_COMBINED_RE: re.Pattern[str] = re.compile(
     r"(?P<google>AIza[0-9A-Za-z_-]{35})"
     r"|(?P<anthropic>sk-ant-[A-Za-z0-9_-]{20,})"
     r"|(?P<openai>sk-[A-Za-z0-9_-]{20,})"
+    # Brevo API + SMTP keys: xkeysib-<hex>-<rand> / xsmtpsib-<hex>-<rand>
+    r"|(?P<brevo>x(?:keysib|smtpsib)-[A-Za-z0-9-]{30,})"
     r"|(?P<bearer>Bearer\s+[A-Za-z0-9._\-]+)"
     # authz: extended to optionally include `Bearer <token>` after the
     # colon. The OLD code ran 8 separate passes; bearer pass redacted

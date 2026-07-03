@@ -872,7 +872,7 @@ def _start_digest_scheduler(app: Flask) -> None:
                 ok = send_digest(to_email=to_email)
                 record_send_result(
                     status="ok" if ok else "skip",
-                    error=None if ok else "SMTP credentials not set",
+                    error=None if ok else "no email transport configured",
                 )
             except Exception as e:  # noqa: BLE001
                 log.exception("Scheduled digest send failed: %s: %s",

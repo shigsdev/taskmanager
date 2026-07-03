@@ -52,10 +52,11 @@ def send_now(email: str):  # noqa: ARG001
         return jsonify({"error": "DIGEST_TO_EMAIL not configured"}), 422
 
     # send_digest builds both HTML + plain-text bodies internally and
-    # sends them as multipart/alternative over SMTP. Raises EgressError on
-    # SMTP failure (#50, ADR-031, ADR-035) — the global error handler
-    # catches it and returns JSON 502 with the SMTP failure detail.
-    # Returns False only for the "no SMTP credentials set" early-out path.
+    # sends them via the configured transport (Brevo HTTP API or SMTP —
+    # ADR-035). Raises EgressError on send failure (#50, ADR-031) — the
+    # global error handler catches it and returns JSON 502 with the
+    # failure detail. Returns False only for the "no transport configured"
+    # early-out path.
     #
     # Record the outcome (#286 alert) so a manual resend that SUCCEEDS
     # clears the /healthz warn left by a failed scheduled send, and a
@@ -68,10 +69,11 @@ def send_now(email: str):  # noqa: ARG001
         raise
     record_send_result(
         status="ok" if ok else "skip",
-        error=None if ok else "SMTP credentials not set",
+        error=None if ok else "no email transport configured",
     )
     if ok:
         return jsonify({"status": "sent"})
     return jsonify({
-        "error": "SMTP_USERNAME / SMTP_PASSWORD are not set on this server",
+        "error": "No email transport configured on this server "
+                 "(set BREVO_API_KEY, or SMTP_USERNAME/SMTP_PASSWORD)",
     }), 422
