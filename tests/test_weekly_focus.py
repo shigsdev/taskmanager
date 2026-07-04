@@ -429,6 +429,61 @@ class TestPlanForAllFocus:
             assert len(result["changes"]) == 1
             assert result["changes"][0]["task_id"] == real_id
 
+    def test_next_week_uses_next_week_window(self, app, monkeypatch):
+        """week_offset=1 must plan NEXT week: the prompt carries next week's
+        Monday date + the 'NEXT week' steer + offers promote_next_week, and
+        the returned label says 'next week'. (Fix for Plan week not picking
+        up the tab you're on.)"""
+        from datetime import timedelta
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        today = date(2026, 7, 8)  # a Wednesday
+        captured = {}
+        with app.app_context():
+            upsert_slot(
+                slot_order=1, text="Prep next-week launch",
+                today=today, week_offset=1,
+            )
+            next_monday = monday_of(today) + timedelta(days=7)
+
+            def fake_post(api_key, prompt, max_tokens):
+                captured["prompt"] = prompt
+                return {"content": [{"text": json.dumps({"changes": []})}]}
+            monkeypatch.setattr(
+                weekly_focus_service, "_post_to_claude", fake_post
+            )
+            result = plan_for_all_focus(today=today, week_offset=1)
+
+        assert next_monday.isoformat() in captured["prompt"]
+        assert "NEXT week" in captured["prompt"]
+        assert "promote_next_week" in captured["prompt"]
+        assert result["focus"].endswith("next week")
+
+    def test_accepts_promote_next_week_change(self, app, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        with app.app_context():
+            t = Task(
+                title="Stage for next wk", type=TaskType.WORK,
+                tier=Tier.THIS_WEEK, status=TaskStatus.ACTIVE,
+            )
+            db.session.add(t)
+            db.session.commit()
+            real_id = str(t.id)
+            upsert_slot(slot_order=1, text="Prep launch")
+
+            def fake_post(api_key, prompt, max_tokens):
+                return {"content": [{"text": json.dumps({"changes": [
+                    {"action": "promote_next_week", "task_id": real_id,
+                     "reason": "stage ahead"},
+                ]})}]}
+            monkeypatch.setattr(
+                weekly_focus_service, "_post_to_claude", fake_post
+            )
+            result = plan_for_all_focus()
+            assert len(result["changes"]) == 1
+            assert result["changes"][0]["action"] == "promote_next_week"
+            assert result["changes"][0]["task_id"] == real_id
+
 
 class TestPlanAllRoute:
     def test_plan_all_422_without_focus(self, authed_client, monkeypatch):

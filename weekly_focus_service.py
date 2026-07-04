@@ -316,7 +316,7 @@ to make that focus realistic. Be opinionated but conservative — only suggest
 changes you can defend in one short sentence.
 
 Today's date is {today_iso} ({today_weekday}). The focus week is
-{week_start_iso} through {week_end_iso}.
+{week_start_iso} through {week_end_iso}.{week_note}
 
 THIS WEEK'S FOCUS STATEMENT:
 "{focus_text}"
@@ -336,6 +336,7 @@ Choose changes that move tasks toward the focus. For each, pick exactly one of:
 
   promote_today      — task should be done TODAY to make the focus
   promote_this_week  — task should land in THIS_WEEK
+  promote_next_week  — task should land in NEXT_WEEK (use when planning ahead)
   demote_backlog     — task is NOT relevant to the focus and should drop to
                        BACKLOG to clear the cognitive load (only use this for
                        tasks currently in TODAY/TOMORROW/THIS_WEEK that are
@@ -355,6 +356,7 @@ Respond with ONLY a JSON object — no markdown fences, no prose:
   "changes": [
     {{"action": "promote_today",     "task_id": "...", "reason": "..."}},
     {{"action": "promote_this_week", "task_id": "...", "reason": "..."}},
+    {{"action": "promote_next_week", "task_id": "...", "reason": "..."}},
     {{"action": "demote_backlog",    "task_id": "...", "reason": "..."}},
     {{"action": "create_new", "title": "...", "suggested_tier": "today",
       "type": "work", "due_date": null, "reason": "..."}}
@@ -376,7 +378,7 @@ their task list so the whole week's focus is realistic. Be opinionated but
 conservative — only suggest changes you can defend in one short sentence.
 
 Today's date is {today_iso} ({today_weekday}). The focus week is
-{week_start_iso} through {week_end_iso}.
+{week_start_iso} through {week_end_iso}.{week_note}
 
 THIS WEEK'S FOCUS STATEMENTS — consider ALL of them together as one picture:
 {focus_list_block}
@@ -397,6 +399,7 @@ one of:
 
   promote_today      — task should be done TODAY to serve a focus
   promote_this_week  — task should land in THIS_WEEK
+  promote_next_week  — task should land in NEXT_WEEK (use when planning ahead)
   demote_backlog     — task serves NONE of the focus statements and should drop
                        to BACKLOG to clear cognitive load (only for tasks
                        currently in TODAY/TOMORROW/THIS_WEEK that are off ALL
@@ -417,6 +420,7 @@ Respond with ONLY a JSON object — no markdown fences, no prose:
   "changes": [
     {{"action": "promote_today",     "task_id": "...", "reason": "..."}},
     {{"action": "promote_this_week", "task_id": "...", "reason": "..."}},
+    {{"action": "promote_next_week", "task_id": "...", "reason": "..."}},
     {{"action": "demote_backlog",    "task_id": "...", "reason": "..."}},
     {{"action": "create_new", "title": "...", "suggested_tier": "today",
       "type": "work", "due_date": null, "reason": "..."}}
@@ -484,13 +488,35 @@ def _load_plan_context() -> tuple[list[Task], list[dict], list[dict]]:
     return tasks, projects, goals
 
 
+def _plan_week_window(today: date, week_offset: int) -> tuple[date, date, str]:
+    """Return ``(week_start, week_end, week_note)`` for the planning window.
+
+    ``week_note`` is empty for the current week and, for next week
+    (``week_offset=1``), a sentence telling the planner it's planning ahead
+    so it steers away from ``promote_today`` toward next-week placement.
+    """
+    week_start = monday_of(today) + timedelta(days=7 * week_offset)
+    week_end = week_start + timedelta(days=6)
+    if week_offset == 1:
+        days_out = (week_start - today).days
+        note = (
+            "\nYou are planning NEXT week AHEAD of time — it begins "
+            f"{week_start.isoformat()} ({days_out} days from today). Do NOT use "
+            "promote_today; prefer promote_next_week / promote_this_week, or "
+            "create_new with a due_date inside that window."
+        )
+    else:
+        note = ""
+    return week_start, week_end, note
+
+
 def _build_plan_prompt(
     focus_text: str, linked_goal: Goal | None,
     tasks: list[Task], projects: list[dict], goals: list[dict],
+    week_offset: int = 0, today: date | None = None,
 ) -> str:
-    today = local_today_date()
-    week_start = monday_of(today)
-    week_end = week_start + timedelta(days=6)
+    today = today or local_today_date()
+    week_start, week_end, week_note = _plan_week_window(today, week_offset)
     linked = ""
     if linked_goal is not None:
         linked = (
@@ -504,6 +530,7 @@ def _build_plan_prompt(
         today_weekday=today.strftime("%A"),
         week_start_iso=week_start.isoformat(),
         week_end_iso=week_end.isoformat(),
+        week_note=week_note,
         focus_text=focus_text.replace('"', '\\"'),
         linked_goal_block=linked,
         projects_block=_format_projects_block(projects),
@@ -565,7 +592,9 @@ def _validate_change(
         reason = ""
     reason = reason.strip()[:120]
 
-    if action in ("promote_today", "promote_this_week", "demote_backlog"):
+    if action in (
+        "promote_today", "promote_this_week", "promote_next_week", "demote_backlog",
+    ):
         task_id = raw.get("task_id")
         if not isinstance(task_id, str) or task_id not in valid_task_ids:
             return None
@@ -666,7 +695,10 @@ def plan_for_focus(
     linked_goal = (
         db.session.get(Goal, row.goal_id) if row.goal_id else None
     )
-    prompt = _build_plan_prompt(row.text, linked_goal, tasks, projects, goals)
+    prompt = _build_plan_prompt(
+        row.text, linked_goal, tasks, projects, goals,
+        week_offset=week_offset, today=today,
+    )
 
     response = _post_to_claude(api_key, prompt, max_tokens=4000)
     raw_text = response.get("content", [{}])[0].get("text", "")
@@ -732,10 +764,10 @@ def _active_focus_rows(
 def _build_plan_all_prompt(
     focus_items: list[tuple[str, Goal | None]],
     tasks: list[Task], projects: list[dict], goals: list[dict],
+    week_offset: int = 0, today: date | None = None,
 ) -> str:
-    today = local_today_date()
-    week_start = monday_of(today)
-    week_end = week_start + timedelta(days=6)
+    today = today or local_today_date()
+    week_start, week_end, week_note = _plan_week_window(today, week_offset)
     lines = []
     for i, (text, lg) in enumerate(focus_items, 1):
         goal_part = f" (in service of goal: {lg.title})" if lg is not None else ""
@@ -745,6 +777,7 @@ def _build_plan_all_prompt(
         today_weekday=today.strftime("%A"),
         week_start_iso=week_start.isoformat(),
         week_end_iso=week_end.isoformat(),
+        week_note=week_note,
         focus_list_block="\n".join(lines),
         projects_block=_format_projects_block(projects),
         goals_block=_format_goals_block(goals),
@@ -786,7 +819,10 @@ def plan_for_all_focus(today: date | None = None, week_offset: int = 0) -> dict:
         (r.text, db.session.get(Goal, r.goal_id) if r.goal_id else None)
         for r in rows
     ]
-    prompt = _build_plan_all_prompt(focus_items, tasks, projects, goals)
+    prompt = _build_plan_all_prompt(
+        focus_items, tasks, projects, goals,
+        week_offset=week_offset, today=today,
+    )
 
     response = _post_to_claude(api_key, prompt, max_tokens=4000)
     raw_text = response.get("content", [{}])[0].get("text", "")
@@ -807,8 +843,9 @@ def plan_for_all_focus(today: date | None = None, week_offset: int = 0) -> dict:
         len(rows), len(cleaned),
     )
     plural = "" if len(rows) == 1 else "s"
+    when = "next week" if week_offset == 1 else "this week"
     return {
-        "focus": f"{len(rows)} focus statement{plural} this week",
+        "focus": f"{len(rows)} focus statement{plural} {when}",
         "focuses": [t for t, _ in focus_items],
         "changes": cleaned,
     }

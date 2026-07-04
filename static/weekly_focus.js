@@ -343,9 +343,10 @@
             .filter(function (r) { return r && r.text && r.text.trim(); })
             .map(function (r) { return r.text.trim(); });
         if (texts.length === 0) return;
+        var when = currentWeekOffset === 1 ? "next week" : "this week";
         var label = texts.length === 1
             ? texts[0]
-            : (texts.length + " focus statements this week");
+            : (texts.length + " focus statements " + when);
         _runPlan(
             "/api/weekly-focus/plan-all?week_offset=" + currentWeekOffset,
             label
@@ -393,6 +394,7 @@
     var _ACTION_GROUPS = [
         { key: "promote_today",     label: "Promote to Today" },
         { key: "promote_this_week", label: "Promote to This Week" },
+        { key: "promote_next_week", label: "Promote to Next Week" },
         { key: "create_new",        label: "New task suggestions" },
         { key: "demote_backlog",    label: "Demote to Backlog" },
     ];
@@ -465,6 +467,8 @@
                     await _patchTask(c.task_id, { tier: "today" });
                 } else if (c.action === "promote_this_week") {
                     await _patchTask(c.task_id, { tier: "this_week" });
+                } else if (c.action === "promote_next_week") {
+                    await _patchTask(c.task_id, { tier: "next_week" });
                 } else if (c.action === "demote_backlog") {
                     await _patchTask(c.task_id, { tier: "backlog" });
                 } else if (c.action === "create_new") {
