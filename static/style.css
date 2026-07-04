@@ -4634,6 +4634,16 @@ table.quality-gates code {
     font-size: 1rem;
     font-weight: 700;
 }
+/* Whole-week "Plan week" button — pushed to the right edge of the header. */
+.weekly-focus-plan-all {
+    margin-left: auto;
+    flex-shrink: 0;
+    align-self: center;
+}
+.weekly-focus-plan-all:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
 .weekly-focus-icon {
     margin-right: 4px;
 }

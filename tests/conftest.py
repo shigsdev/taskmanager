@@ -1,12 +1,21 @@
 """Shared pytest fixtures."""
 from __future__ import annotations
 
+import contextlib
+import os
+import tempfile
+from pathlib import Path
+
 import pytest
 
 import auth
 from app import create_app
 from models import db as _db
 from rate_limit import limiter as _limiter
+
+# Monotonic counter for per-test heartbeat file names (see
+# _reset_digest_heartbeat). A plain int is fine — tests run single-process.
+_HB_COUNTER = 0
 
 # PR 9 (2026-05-21): rate limiting is a prod concern, exercised in prod
 # — never in unit tests. The per-route `@limiter.limit` decorators are
@@ -24,7 +33,7 @@ _limiter.enabled = False
 
 
 @pytest.fixture(autouse=True)
-def _reset_digest_heartbeat(monkeypatch, tmp_path):
+def _reset_digest_heartbeat(monkeypatch):
     """Isolate the two process-global digest-check inputs per test.
 
     ``check_digest`` reads two module globals that several tests mutate:
@@ -32,19 +41,28 @@ def _reset_digest_heartbeat(monkeypatch, tmp_path):
         system temp dir. Multiple tests writing/deleting it caused
         cross-test pollution under ``pytest-randomly`` AND intermittent
         Windows/OneDrive unlink/replace races. Point it at a UNIQUE
-        per-test ``tmp_path`` file so no two tests ever touch the same
-        heartbeat and there's no shared-file contention.
+        per-test file (system temp, own name — NOT pytest's ``tmp_path``,
+        whose session-end cleanup crashes on OneDrive-locked dirs) so no
+        two tests ever share a heartbeat.
       * ``health._scheduler`` — set to a mock by scheduler tests; the
         heartbeat-fallback tests need it back at ``None``.
-    Both are reset before AND after every test so ordering can't
-    contaminate. (``monkeypatch.setattr`` auto-reverts HEARTBEAT_PATH.)
+    Both reset before AND after every test so ordering can't contaminate.
     """
+    global _HB_COUNTER
     import health
 
-    monkeypatch.setattr(health, "HEARTBEAT_PATH", tmp_path / "digest_heartbeat.json")
+    _HB_COUNTER += 1
+    hb_path = Path(tempfile.gettempdir()) / (
+        f"tm_test_heartbeat_{os.getpid()}_{_HB_COUNTER}.json"
+    )
+    monkeypatch.setattr(health, "HEARTBEAT_PATH", hb_path)
     health._scheduler = None
     yield
     health._scheduler = None
+    with contextlib.suppress(OSError):
+        hb_path.unlink(missing_ok=True)
+    with contextlib.suppress(OSError):
+        hb_path.with_suffix(".json.tmp").unlink(missing_ok=True)
 
 
 @pytest.fixture

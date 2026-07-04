@@ -73,6 +73,12 @@
         <span class="weekly-focus-fallback" id="weeklyFocusFallback" hidden>
             Carried forward — edit any slot to make it this week's
         </span>
+        {# Whole-week planner: considers ALL focus statements together, so a
+           task serving any focus isn't demoted by a slot that can't see it. #}
+        <button type="button" id="weeklyFocusPlanAll"
+                class="btn-sm weekly-focus-plan-all"
+                title="Use AI to plan across ALL your focus statements together"
+                disabled>✨ Plan week</button>
     </header>
     <div class="weekly-focus-slots" id="weeklyFocusSlots">
         {# Slots are rendered client-side via /api/weekly-focus.

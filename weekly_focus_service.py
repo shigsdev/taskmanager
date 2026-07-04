@@ -366,6 +366,68 @@ TASKS list above are valid.
 """
 
 
+# Whole-week variant: feeds EVERY focus statement into one prompt so the
+# planner reasons about the entire week's focus context at once. The key
+# difference from the single-slot prompt is the demote rule — a task is
+# off-focus only if it serves NONE of the statements.
+_PROMPT_ALL_TEMPLATE = """You are a personal productivity coach. The user has
+SEVERAL focus statements for this week and wants you to propose changes to
+their task list so the whole week's focus is realistic. Be opinionated but
+conservative — only suggest changes you can defend in one short sentence.
+
+Today's date is {today_iso} ({today_weekday}). The focus week is
+{week_start_iso} through {week_end_iso}.
+
+THIS WEEK'S FOCUS STATEMENTS — consider ALL of them together as one picture:
+{focus_list_block}
+
+CONTEXT — currently-tracked projects and goals:
+
+Projects:
+{projects_block}
+
+Goals:
+{goals_block}
+
+ACTIVE TASKS (id, title, current_tier, type, project, goal):
+{tasks_block}
+
+Choose changes that move tasks toward the week's focus. For each, pick exactly
+one of:
+
+  promote_today      — task should be done TODAY to serve a focus
+  promote_this_week  — task should land in THIS_WEEK
+  demote_backlog     — task serves NONE of the focus statements and should drop
+                       to BACKLOG to clear cognitive load (only for tasks
+                       currently in TODAY/TOMORROW/THIS_WEEK that are off ALL
+                       focuses — be conservative; a task relevant to ANY focus
+                       is on-focus and must NOT be demoted)
+  create_new         — propose a NEW task that needs to exist for a focus to be
+                       realistic. Provide title (≤ 80 chars), suggested_tier
+                       (today/tomorrow/this_week), type (work/personal), and an
+                       optional ISO due_date.
+
+Keep the total list to AT MOST 12 changes across all focuses — prefer
+high-signal moves over exhaustive coverage. If the focus is already
+well-supported by the existing tier placement, return fewer (or zero) changes.
+
+Respond with ONLY a JSON object — no markdown fences, no prose:
+
+{{
+  "changes": [
+    {{"action": "promote_today",     "task_id": "...", "reason": "..."}},
+    {{"action": "promote_this_week", "task_id": "...", "reason": "..."}},
+    {{"action": "demote_backlog",    "task_id": "...", "reason": "..."}},
+    {{"action": "create_new", "title": "...", "suggested_tier": "today",
+      "type": "work", "due_date": null, "reason": "..."}}
+  ]
+}}
+
+reason ≤ 80 chars per row. NEVER invent task IDs — only IDs from the ACTIVE
+TASKS list above are valid.
+"""
+
+
 def _format_projects_block(projects: list[dict]) -> str:
     if not projects:
         return "(none)"
@@ -629,5 +691,124 @@ def plan_for_focus(
     return {
         "focus": row.text,
         "linked_goal": linked_goal.title if linked_goal else None,
+        "changes": cleaned,
+    }
+
+
+def _active_focus_rows(
+    target_week: date, *, allow_fallback: bool,
+) -> list[WeeklyFocus]:
+    """Active focus rows for ``target_week`` (all slots), ordered by slot.
+
+    Mirrors the carry-forward fallback of ``get_displayed_focus`` /
+    ``plan_for_focus``: when the target week has no rows and
+    ``allow_fallback`` is set (offset 0 only), fall back to the most
+    recent past week's rows.
+    """
+    rows = list(db.session.scalars(
+        select(WeeklyFocus)
+        .where(WeeklyFocus.week_start_date == target_week)
+        .where(WeeklyFocus.is_active.is_(True))
+        .order_by(WeeklyFocus.slot_order)
+    ))
+    if not rows and allow_fallback:
+        most_recent = db.session.scalar(
+            select(WeeklyFocus.week_start_date)
+            .where(WeeklyFocus.week_start_date < target_week)
+            .where(WeeklyFocus.is_active.is_(True))
+            .order_by(WeeklyFocus.week_start_date.desc())
+            .limit(1)
+        )
+        if most_recent:
+            rows = list(db.session.scalars(
+                select(WeeklyFocus)
+                .where(WeeklyFocus.week_start_date == most_recent)
+                .where(WeeklyFocus.is_active.is_(True))
+                .order_by(WeeklyFocus.slot_order)
+            ))
+    return rows
+
+
+def _build_plan_all_prompt(
+    focus_items: list[tuple[str, Goal | None]],
+    tasks: list[Task], projects: list[dict], goals: list[dict],
+) -> str:
+    today = local_today_date()
+    week_start = monday_of(today)
+    week_end = week_start + timedelta(days=6)
+    lines = []
+    for i, (text, lg) in enumerate(focus_items, 1):
+        goal_part = f" (in service of goal: {lg.title})" if lg is not None else ""
+        lines.append(f'  {i}. "{text.replace(chr(34), chr(92) + chr(34))}"{goal_part}')
+    return _PROMPT_ALL_TEMPLATE.format(
+        today_iso=today.isoformat(),
+        today_weekday=today.strftime("%A"),
+        week_start_iso=week_start.isoformat(),
+        week_end_iso=week_end.isoformat(),
+        focus_list_block="\n".join(lines),
+        projects_block=_format_projects_block(projects),
+        goals_block=_format_goals_block(goals),
+        tasks_block=_format_tasks_block(tasks),
+    )
+
+
+def plan_for_all_focus(today: date | None = None, week_offset: int = 0) -> dict:
+    """Run ONE AI plan across every active focus statement for the week.
+
+    Unlike ``plan_for_focus`` (single slot), this feeds ALL of the week's
+    focus statements into one prompt so a task relevant to any focus isn't
+    demoted as off-focus by a slot that can't see it.
+
+    Returns ``{"focus": str, "focuses": [str], "changes": [...]}``. Never
+    mutates the DB — the client review modal applies via the task API.
+    Raises ValueError when there are no active focus statements, RuntimeError
+    when the API key is missing.
+    """
+    today = today or local_today_date()
+    if not isinstance(week_offset, int) or week_offset not in (0, 1):
+        raise ValueError(
+            f"week_offset must be 0 (this week) or 1 (next week); got {week_offset}"
+        )
+    target_week = monday_of(today) + timedelta(days=7 * week_offset)
+    rows = [
+        r for r in _active_focus_rows(target_week, allow_fallback=(week_offset == 0))
+        if r.text and r.text.strip()
+    ]
+    if not rows:
+        raise ValueError("no active focus statements to plan")
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY not configured")
+
+    tasks, projects, goals = _load_plan_context()
+    focus_items: list[tuple[str, Goal | None]] = [
+        (r.text, db.session.get(Goal, r.goal_id) if r.goal_id else None)
+        for r in rows
+    ]
+    prompt = _build_plan_all_prompt(focus_items, tasks, projects, goals)
+
+    response = _post_to_claude(api_key, prompt, max_tokens=4000)
+    raw_text = response.get("content", [{}])[0].get("text", "")
+    raw_changes = _parse_claude_response(raw_text)
+
+    title_lookup = {str(t.id): t.title for t in tasks}
+    valid_task_ids = set(title_lookup.keys())
+    cleaned: list[dict] = []
+    for raw in raw_changes:
+        c = _validate_change(
+            raw, valid_task_ids=valid_task_ids, title_lookup=title_lookup,
+        )
+        if c is not None:
+            cleaned.append(c)
+
+    log.info(
+        "weekly_focus.plan_for_all_focus: %d focuses, %d changes proposed",
+        len(rows), len(cleaned),
+    )
+    plural = "" if len(rows) == 1 else "s"
+    return {
+        "focus": f"{len(rows)} focus statement{plural} this week",
+        "focuses": [t for t, _ in focus_items],
         "changes": cleaned,
     }

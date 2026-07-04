@@ -565,6 +565,7 @@ the code.
 /api/weekly-focus                                # GET — display payload (slots + slot_count)
 /api/weekly-focus/<int:slot_order>               # PATCH/DELETE — upsert/clear a slot
 /api/weekly-focus/<int:slot_order>/plan          # POST — Claude proposes task changes for the slot's focus
+/api/weekly-focus/plan-all                       # POST — Claude proposes task changes across ALL focus statements at once
 /api/weekly-focus/settings/slot-count            # PATCH — configurable slot count (1-7, default 3)
 
 # planner_api.py — weekly planner (post-#12 follow-up; user choice 2026-05-02)

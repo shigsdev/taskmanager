@@ -27,6 +27,7 @@ from weekly_focus_service import (
     get_displayed_focus,
     get_slot_count,
     monday_of,
+    plan_for_all_focus,
     plan_for_focus,
     set_slot_count,
     upsert_slot,
@@ -346,6 +347,110 @@ class TestPlanForFocus:
             assert normalized["suggested_tier"] == "this_week"
             assert normalized["type"] == "work"
             assert normalized["due_date"] is None
+
+
+# --- AI plan_for_all_focus (whole-week) --------------------------------------
+
+
+class TestPlanForAllFocus:
+    def test_no_focus_raises(self, app):
+        with app.app_context(), pytest.raises(
+            ValueError, match="no active focus statements"
+        ):
+            plan_for_all_focus()
+
+    def test_no_api_key_raises(self, app, monkeypatch):
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        with app.app_context():
+            upsert_slot(slot_order=1, text="Ship auth")
+            with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
+                plan_for_all_focus()
+
+    def test_prompt_includes_all_focus_statements(self, app, monkeypatch):
+        """The whole-week prompt must carry EVERY focus statement so the
+        planner reasons about them together (the core of this feature)."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        captured = {}
+        with app.app_context():
+            t = Task(
+                title="Real task", type=TaskType.WORK,
+                tier=Tier.THIS_WEEK, status=TaskStatus.ACTIVE,
+            )
+            db.session.add(t)
+            db.session.commit()
+            real_id = str(t.id)
+            upsert_slot(slot_order=1, text="Ship auth refresh")
+            upsert_slot(slot_order=2, text="Cut onboarding drop-off")
+
+            def fake_post(api_key, prompt, max_tokens):
+                captured["prompt"] = prompt
+                return {"content": [{"text": json.dumps({"changes": [
+                    {"action": "promote_today", "task_id": real_id,
+                     "reason": "aligned"},
+                ]})}]}
+            monkeypatch.setattr(
+                weekly_focus_service, "_post_to_claude", fake_post
+            )
+            result = plan_for_all_focus()
+
+        assert "Ship auth refresh" in captured["prompt"]
+        assert "Cut onboarding drop-off" in captured["prompt"]
+        assert result["focuses"] == [
+            "Ship auth refresh", "Cut onboarding drop-off",
+        ]
+        assert result["focus"] == "2 focus statements this week"
+        assert len(result["changes"]) == 1
+        assert result["changes"][0]["task_id"] == real_id
+
+    def test_drops_invalid_task_ids(self, app, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        with app.app_context():
+            t = Task(
+                title="Real", type=TaskType.WORK,
+                tier=Tier.THIS_WEEK, status=TaskStatus.ACTIVE,
+            )
+            db.session.add(t)
+            db.session.commit()
+            real_id = str(t.id)
+            ghost = str(uuid.uuid4())
+            upsert_slot(slot_order=1, text="Focus A")
+
+            def fake_post(api_key, prompt, max_tokens):
+                return {"content": [{"text": json.dumps({"changes": [
+                    {"action": "promote_today", "task_id": real_id,
+                     "reason": "ok"},
+                    {"action": "promote_today", "task_id": ghost,
+                     "reason": "phantom"},
+                ]})}]}
+            monkeypatch.setattr(
+                weekly_focus_service, "_post_to_claude", fake_post
+            )
+            result = plan_for_all_focus()
+            assert len(result["changes"]) == 1
+            assert result["changes"][0]["task_id"] == real_id
+
+
+class TestPlanAllRoute:
+    def test_plan_all_422_without_focus(self, authed_client, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        resp = authed_client.post("/api/weekly-focus/plan-all")
+        assert resp.status_code == 422
+        assert "no active focus" in resp.get_json()["error"]
+
+    def test_plan_all_200_with_focus(self, authed_client, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        authed_client.patch("/api/weekly-focus/1", json={"text": "Ship it"})
+
+        def fake_post(api_key, prompt, max_tokens):
+            return {"content": [{"text": json.dumps({"changes": []})}]}
+        monkeypatch.setattr(
+            weekly_focus_service, "_post_to_claude", fake_post
+        )
+        resp = authed_client.post("/api/weekly-focus/plan-all")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["focus"].endswith("this week")
+        assert body["changes"] == []
 
 
 # --- #157 next-week tab toggle -----------------------------------------------

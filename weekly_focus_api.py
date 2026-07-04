@@ -39,6 +39,7 @@ from rate_limit import LLM_HEAVY, limiter
 from weekly_focus_service import (
     clear_slot,
     get_displayed_focus,
+    plan_for_all_focus,
     plan_for_focus,
     set_slot_count,
     upsert_slot,
@@ -132,6 +133,27 @@ def plan(slot_order: int, email: str):  # noqa: ARG001
         result = plan_for_focus(slot_order, week_offset=week_offset)
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 502
+    return jsonify(result)
+
+
+@bp.post("/plan-all")
+@login_required
+@limiter.limit(LLM_HEAVY)
+def plan_all(email: str):  # noqa: ARG001
+    """Run the AI planner across ALL focus statements for the week at once.
+
+    Returns ``{focus, focuses: [...], changes: [...]}``. Mutations are NOT
+    applied here — the client review modal commits via existing
+    PATCH /api/tasks/<id> + POST /api/tasks endpoints. 422 when the week
+    has no focus statements to plan from.
+    """
+    week_offset = _parse_week_offset()
+    try:
+        result = plan_for_all_focus(week_offset=week_offset)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 422
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 502
     return jsonify(result)

@@ -17,7 +17,7 @@
     "use strict";
 
     // ---- DOM refs (resolved on DOMContentLoaded) ----
-    var panel, slotsContainer, weekLabel, fallbackLabel;
+    var panel, slotsContainer, weekLabel, fallbackLabel, planAllBtn;
     var modal, modalFocus, modalLoading, modalError, modalEmpty;
     var modalChanges, modalApply, modalCancel, modalClose;
 
@@ -48,6 +48,12 @@
         slotsContainer = document.getElementById("weeklyFocusSlots");
         weekLabel = document.getElementById("weeklyFocusWeek");
         fallbackLabel = document.getElementById("weeklyFocusFallback");
+
+        // Whole-week planner button (considers ALL focus statements).
+        planAllBtn = document.getElementById("weeklyFocusPlanAll");
+        if (planAllBtn) {
+            planAllBtn.addEventListener("click", openPlanAllModal);
+        }
 
         // #157 — tab pill click handlers (added to the template).
         var thisWeekTab = document.getElementById("weeklyFocusTabThis");
@@ -150,6 +156,14 @@
         slotsContainer.innerHTML = "";
         for (var s = 1; s <= state.slot_count; s++) {
             slotsContainer.appendChild(renderSlot(s, bySlot[s] || null));
+        }
+
+        // "Plan week" is only actionable when at least one slot has text.
+        if (planAllBtn) {
+            var hasAnyFocus = (state.slots || []).some(function (row) {
+                return row && row.text && row.text.trim();
+            });
+            planAllBtn.disabled = !hasAnyFocus;
         }
     }
 
@@ -315,20 +329,43 @@
 
     // ---- ✨ Plan modal ----
 
-    async function openPlanModal(slotOrder, focusText) {
+    function openPlanModal(slotOrder, focusText) {
+        _runPlan(
+            "/api/weekly-focus/" + slotOrder + "/plan"
+            + "?week_offset=" + currentWeekOffset,
+            focusText
+        );
+    }
+
+    // Whole-week planner — considers ALL focus statements in one pass.
+    function openPlanAllModal() {
+        var texts = (state.slots || [])
+            .filter(function (r) { return r && r.text && r.text.trim(); })
+            .map(function (r) { return r.text.trim(); });
+        if (texts.length === 0) return;
+        var label = texts.length === 1
+            ? texts[0]
+            : (texts.length + " focus statements this week");
+        _runPlan(
+            "/api/weekly-focus/plan-all?week_offset=" + currentWeekOffset,
+            label
+        );
+    }
+
+    // Shared runner for the per-slot and whole-week planners: opens the
+    // modal, POSTs to `url`, renders the returned changes for review.
+    async function _runPlan(url, focusLabel) {
         modal.style.display = "";
-        modalFocus.textContent = focusText;
+        modalFocus.textContent = focusLabel;
         modalLoading.style.display = "";
         modalError.style.display = "none";
         modalEmpty.style.display = "none";
-        modalChanges.innerHTML = "";
+        modalChanges.replaceChildren();
         modalApply.style.display = "none";
         pendingChanges = [];
         try {
             var result = await window.apiFetch(
-                "/api/weekly-focus/" + slotOrder + "/plan"
-                + "?week_offset=" + currentWeekOffset,
-                { method: "POST", body: JSON.stringify({}) }
+                url, { method: "POST", body: JSON.stringify({}) }
             );
             modalLoading.style.display = "none";
             pendingChanges = result.changes || [];

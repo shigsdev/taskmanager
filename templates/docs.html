@@ -53,6 +53,7 @@
         <h3 class="docs-toc-group">Workflows</h3>
         <ul>
             <li><a href="#auto-categorize">Auto-categorize inbox</a></li>
+            <li><a href="#weekly-focus">Weekly Focus &amp; planning</a></li>
             <li><a href="#weekly-planner">Plan my week (AI)</a></li>
             <li><a href="#weekly-reflection">Weekly reflection (AI)</a></li>
             <li><a href="#bulk-ops">Bulk operations</a></li>
@@ -1323,6 +1324,54 @@ Skip this line (too short)</pre>
                 <li>Project + goal IDs are <strong>validated server-side</strong> before they reach the modal — if Claude hallucinates an ID, it's quietly dropped to null rather than letting a bad foreign-key reach the PATCH.</li>
                 <li>If <code>ANTHROPIC_API_KEY</code> isn't set, the endpoint returns 502 with a clear error and no DB writes happen.</li>
             </ul>
+        </section>
+
+        <section id="weekly-focus" class="docs-section">
+            <h2>Weekly Focus &amp; planning</h2>
+            <p>
+                The <strong>🎯 Focus</strong> panel at the top of the home
+                page holds a few short focus statements for the week — what
+                you most want to move forward. You get
+                <strong>3 slots by default</strong> (configurable 1–7 in
+                Settings), each with an optional link to a Goal, and a
+                <strong>This Week / Next Week</strong> toggle so you can line
+                up next week before Monday.
+            </p>
+
+            <h3>Planning against your focus (AI)</h3>
+            <p>
+                Two AI planners turn a focus statement into concrete task
+                moves. Both <strong>only propose</strong> changes — nothing is
+                applied until you review them in the pop-up and click
+                <strong>Apply</strong> (which commits through the normal task
+                actions, so the usual tier rules still fire).
+            </p>
+            <ul>
+                <li><strong>✨ Plan</strong> (on each slot) — plans against
+                    <em>that one</em> focus statement.</li>
+                <li><strong>✨ Plan week</strong> (top-right of the panel) —
+                    considers <strong>all</strong> your focus statements
+                    together in a single pass. Because it sees the whole
+                    picture, a task that serves any one focus won't be
+                    demoted as "off-focus" by another. Use this when your
+                    focuses overlap or you want one coherent plan for the
+                    week. It's enabled once at least one slot has text.</li>
+            </ul>
+            <p>Each proposed change is one of:</p>
+            <ul>
+                <li><strong>Promote to Today</strong> / <strong>Promote to
+                    This Week</strong> — pull a task forward to serve a focus.</li>
+                <li><strong>Demote to Backlog</strong> — drop a task that
+                    serves none of your focuses, to clear the noise
+                    (conservative by design).</li>
+                <li><strong>New task suggestion</strong> — a task that needs
+                    to exist for a focus to be realistic.</li>
+            </ul>
+            <p>
+                Each row has a checkbox — uncheck any you don't want before
+                Apply. (This is separate from <a href="#weekly-planner">Plan
+                my week</a>, which lays out a full Mon–Sun schedule.)
+            </p>
         </section>
 
         <section id="weekly-planner" class="docs-section">
