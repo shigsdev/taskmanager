@@ -168,6 +168,37 @@ def session_detail(session_id) -> dict | None:
     return data
 
 
+def last_resistance_by_exercise() -> dict[str, dict]:
+    """Most-recently-logged resistance per exercise (progression reference).
+
+    Returns ``{exercise_id: {"resistance": str, "reps": int|None,
+    "date": iso}}`` for every exercise that has any non-empty resistance
+    logged — the "last time you used X" reference surfaced on the print
+    sheet and prefilled into the log form (#299-followup). Single-user,
+    small data: a date-ordered scan keeping the first-seen row per
+    exercise is simplest and correct.
+    """
+    rows = (
+        db.session.query(WorkoutSet, WorkoutSession.session_date)
+        .join(WorkoutSession, WorkoutSet.workout_session_id == WorkoutSession.id)
+        .filter(WorkoutSet.resistance.isnot(None))
+        .order_by(
+            WorkoutSession.session_date.desc(), WorkoutSet.created_at.desc()
+        )
+        .all()
+    )
+    out: dict[str, dict] = {}
+    for ws, session_date in rows:
+        if not ws.resistance or ws.exercise_id in out:
+            continue  # keep only the most recent per exercise
+        out[ws.exercise_id] = {
+            "resistance": ws.resistance,
+            "reps": ws.reps,
+            "date": session_date.isoformat() if session_date else None,
+        }
+    return out
+
+
 # --- Flare-up tracking (Phase B.2) ------------------------------------
 # The clinical 3-phase protocol, in order. Phase content lives in
 # static/strength_forge_data.js (flarePhases); these ids/labels mirror it.

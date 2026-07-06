@@ -75,9 +75,45 @@ function buildSetsPayload(exercises) {
     return out;
 }
 
+/**
+ * formatLastResist — the "last used" resistance reference string for an
+ * exercise, from a `{resistance, reps, date}` record (or null/undefined).
+ *
+ *   {resistance:"Medium", reps:12, date:"2026-07-05"} -> "last: Medium · 12r · Jul 5"
+ *   {resistance:"Heavy",  reps:null, date:"2026-06-30"} -> "last: Heavy · Jun 30"
+ *   {resistance:"Light",  reps:8,   date:null}          -> "last: Light · 8r"
+ *   null / {resistance:""}                              -> ""   (no reference)
+ *
+ * Deterministic (fixed month abbreviations — no locale/timezone), so it's
+ * unit-testable and renders identically on the print sheet and log form.
+ */
+var _SF_MON = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+function _sfShortDate(iso) {
+    if (typeof iso !== "string") return "";
+    var m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return "";
+    var mon = _SF_MON[parseInt(m[2], 10) - 1];
+    if (!mon) return "";
+    return mon + " " + parseInt(m[3], 10);
+}
+
+function formatLastResist(rec) {
+    if (!rec || !rec.resistance) return "";
+    var bits = [String(rec.resistance)];
+    if (rec.reps != null && rec.reps !== "") bits.push(rec.reps + "r");
+    var d = _sfShortDate(rec.date);
+    if (d) bits.push(d);
+    return "last: " + bits.join(" · ");
+}
+
 var strengthForgeHelpers = {
     defaultSetCount: defaultSetCount,
     buildSetsPayload: buildSetsPayload,
+    formatLastResist: formatLastResist,
 };
 
 // Browser global

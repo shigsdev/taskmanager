@@ -316,6 +316,45 @@ class TestWorkoutSetService:
             assert WorkoutSet.query.count() == 0  # children cascade-deleted
 
 
+class TestLastResistance:
+    def test_empty_when_no_logs(self, app):
+        with app.app_context():
+            assert svc.last_resistance_by_exercise() == {}
+
+    def test_returns_resistance_reps_date_per_exercise(self, app):
+        with app.app_context():
+            svc.log_detailed_session("band-a", _sets(
+                ("band-squat", 12, "Medium"), ("band-row", 10, "Light"),
+            ))
+            out = svc.last_resistance_by_exercise()
+            assert out["band-squat"] == {
+                "resistance": "Medium", "reps": 12,
+                "date": svc.local_today_date().isoformat(),
+            }
+            assert out["band-row"]["resistance"] == "Light"
+
+    def test_most_recent_wins(self, app):
+        from datetime import timedelta
+        with app.app_context():
+            old = svc.log_detailed_session(
+                "band-a", _sets(("band-squat", 8, "Light")))
+            old.session_date = svc.local_today_date() - timedelta(days=7)
+            db.session.commit()
+            svc.log_detailed_session(
+                "band-a", _sets(("band-squat", 10, "Heavy")))
+            out = svc.last_resistance_by_exercise()
+            assert out["band-squat"]["resistance"] == "Heavy"
+            assert out["band-squat"]["reps"] == 10
+
+    def test_reps_only_set_has_no_resistance_reference(self, app):
+        with app.app_context():
+            svc.log_detailed_session("mil-1", [
+                {"exercise_id": "dead-bug", "name": "Dead Bug",
+                 "set_number": 1, "reps": 8, "resistance": ""},
+            ])
+            assert "dead-bug" not in svc.last_resistance_by_exercise()
+
+
 class TestWorkoutSetAPI:
     def test_post_with_sets_returns_201_and_count(self, authed_client):
         resp = authed_client.post("/api/strength-forge/sessions", json={
@@ -356,3 +395,14 @@ class TestWorkoutSetAPI:
         })
         body = authed_client.get("/api/strength-forge/sessions").get_json()
         assert any(s["set_count"] == 1 for s in body["sessions"])
+
+    def test_last_resistance_route(self, authed_client):
+        empty = authed_client.get("/api/strength-forge/last-resistance")
+        assert empty.status_code == 200
+        assert empty.get_json() == {}
+        authed_client.post("/api/strength-forge/sessions", json={
+            "plan_type": "band-a", "sets": _sets(("band-squat", 12, "Medium")),
+        })
+        body = authed_client.get("/api/strength-forge/last-resistance").get_json()
+        assert body["band-squat"]["resistance"] == "Medium"
+        assert body["band-squat"]["reps"] == 12

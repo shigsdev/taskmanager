@@ -58,6 +58,15 @@ def get_session(email: str, session_id: uuid.UUID):  # noqa: ARG001
     return jsonify(detail)
 
 
+@bp.get("/last-resistance")
+@login_required
+def last_resistance(email: str):  # noqa: ARG001
+    """Most-recent resistance per exercise — the reference surfaced on the
+    print sheet + prefilled into the log form. ``{exercise_id: {resistance,
+    reps, date}}``."""
+    return jsonify(svc.last_resistance_by_exercise())
+
+
 @bp.delete("/sessions/<uuid:session_id>")
 @login_required
 def remove_session(email: str, session_id: uuid.UUID):  # noqa: ARG001

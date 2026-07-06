@@ -643,6 +643,7 @@ the code.
 # strength_forge_api.py — #282 Strength Forge workout tracking (Phase B) + #287 per-set logging
 /api/strength-forge/sessions                      # GET: recent + this-week/all-time counts · POST: log a workout {plan_type, sets?} (sets present → per-set detail #287)
 /api/strength-forge/sessions/<uuid:session_id>    # GET: one session + its logged sets (#287) · DELETE: undo a logged workout
+/api/strength-forge/last-resistance               # GET: most-recent resistance per exercise — the "last used" reference on the print sheet + log form
 /api/strength-forge/flare                         # GET: current flare phase/day · POST: start a flare · PATCH: set phase {phase} · DELETE: mark resolved
 
 # debug_api.py — used by scripts/validate_deploy.py --check-logs

@@ -5,7 +5,11 @@
  * string-match against the source (CLAUDE.md anti-pattern #3). The same
  * file runs in the browser (window.strengthForgeHelpers) and Node (require).
  */
-const { defaultSetCount, buildSetsPayload } = require("../../../static/strength_forge_helpers");
+const {
+    defaultSetCount,
+    buildSetsPayload,
+    formatLastResist,
+} = require("../../../static/strength_forge_helpers");
 
 describe("defaultSetCount", () => {
     test("leading count before × marker", () => {
@@ -115,5 +119,43 @@ describe("buildSetsPayload", () => {
     test("non-array input returns empty array", () => {
         expect(buildSetsPayload(null)).toEqual([]);
         expect(buildSetsPayload(undefined)).toEqual([]);
+    });
+});
+
+describe("formatLastResist", () => {
+    test("resistance + reps + date", () => {
+        expect(formatLastResist({ resistance: "Medium", reps: 12, date: "2026-07-05" }))
+            .toBe("last: Medium · 12r · Jul 5");
+    });
+
+    test("null reps omits the reps part", () => {
+        expect(formatLastResist({ resistance: "Heavy", reps: null, date: "2026-06-30" }))
+            .toBe("last: Heavy · Jun 30");
+    });
+
+    test("missing date omits the date part", () => {
+        expect(formatLastResist({ resistance: "Light", reps: 8, date: null }))
+            .toBe("last: Light · 8r");
+        expect(formatLastResist({ resistance: "Light", reps: 8 }))
+            .toBe("last: Light · 8r");
+    });
+
+    test("no record or blank resistance returns empty string", () => {
+        expect(formatLastResist(null)).toBe("");
+        expect(formatLastResist(undefined)).toBe("");
+        expect(formatLastResist({ resistance: "" })).toBe("");
+        expect(formatLastResist({})).toBe("");
+    });
+
+    test("malformed date is dropped, not crashed", () => {
+        expect(formatLastResist({ resistance: "Red band", reps: 10, date: "not-a-date" }))
+            .toBe("last: Red band · 10r");
+    });
+
+    test("month boundaries map correctly", () => {
+        expect(formatLastResist({ resistance: "X", reps: null, date: "2026-01-01" }))
+            .toBe("last: X · Jan 1");
+        expect(formatLastResist({ resistance: "X", reps: null, date: "2026-12-31" }))
+            .toBe("last: X · Dec 31");
     });
 });

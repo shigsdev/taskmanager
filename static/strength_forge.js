@@ -516,6 +516,7 @@
       method: "POST", body: JSON.stringify({ plan_type: planType }),
     }).then(function () {
       loadTracking();
+      loadLastResistance();
       if (btn) { btn.disabled = false; flashBtn(btn); }
     }).catch(function () { if (btn) btn.disabled = false; });
   }
@@ -533,6 +534,115 @@
     setTimeout(function () { btn.textContent = orig; btn.classList.remove("logged"); }, 1400);
   }
 
+  // ============================================================
+  // LAST-USED RESISTANCE (progression reference) + PRINT SHEET
+  // ============================================================
+  var lastResistance = {};
+
+  function loadLastResistance() {
+    if (!window.apiFetch) return;
+    window.apiFetch("/api/strength-forge/last-resistance")
+      .then(function (d) { lastResistance = d || {}; })
+      .catch(function () { /* non-fatal — the reference just won't show */ });
+  }
+
+  // "last: Medium · 12r · Jul 5" for an exercise, or "" if never logged.
+  // Formatting lives in the dual-export helper (unit-tested; anti-pattern #3).
+  function lastResistLabel(id) {
+    return window.strengthForgeHelpers
+      ? window.strengthForgeHelpers.formatLastResist(lastResistance[id])
+      : "";
+  }
+
+  function planSections(planType) {
+    var map = {
+      "band-a": SF.bandPlanA, "band-b": SF.bandPlanB,
+      "mil-1": SF.milS1, "mil-2": SF.milS2, "mil-3": SF.milS3,
+    };
+    return map[planType] || [];
+  }
+
+  var printOverlay = null;
+
+  function closePrintSheet() {
+    if (printOverlay && printOverlay.parentNode) {
+      printOverlay.parentNode.removeChild(printOverlay);
+    }
+    printOverlay = null;
+    document.body.classList.remove("sf-print-active");
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && printOverlay) closePrintSheet();
+  });
+
+  // A printable / save-as-PDF workout sheet: each exercise with its
+  // prescribed sets, your last-used resistance as a reference, and blank
+  // write-in rows — so you can do the workout off-phone and jot what you
+  // did, then log it after.
+  function openPrintSheet(planType) {
+    var setCount = window.strengthForgeHelpers
+      ? window.strengthForgeHelpers.defaultSetCount : function () { return 1; };
+    var todayLabel = new Date().toLocaleDateString(
+      undefined, { weekday: "short", month: "short", day: "numeric" });
+
+    var sheet = el("div", { cls: "sf-print-sheet" }, [
+      el("div", { cls: "sf-print-title" }, [
+        el("span", { cls: "sf-print-plan", text: PLAN_LABELS_JS[planType] || planType }),
+        el("span", { cls: "sf-print-date", text: todayLabel }),
+      ]),
+    ]);
+
+    planSections(planType).forEach(function (sec) {
+      sheet.appendChild(el("div", { cls: "sf-print-sec" }, [
+        sec.num ? el("span", { cls: "sf-print-sec-num", text: sec.num }) : null,
+        el("span", { cls: "sf-print-sec-title", text: sec.section }),
+        sec.badge ? el("span", { cls: "sf-print-sec-badge", text: sec.badge }) : null,
+      ]));
+      (sec.items || []).forEach(function (item) {
+        var head = el("div", { cls: "sf-print-ex-head" }, [
+          el("span", { cls: "sf-print-ex-name", text: item.name }),
+          el("span", { cls: "sf-print-ex-sets", text: item.sets || "" }),
+        ]);
+        var last = lastResistLabel(item.id);
+        if (last) head.appendChild(el("span", { cls: "sf-print-ex-last", text: last }));
+        var ex = el("div", { cls: "sf-print-ex" }, [head]);
+        if (item.rest) {
+          ex.appendChild(el("div", { cls: "sf-print-ex-rest", text: "rest " + item.rest }));
+        }
+        var blanks = el("div", { cls: "sf-print-blanks" });
+        var n = setCount(item.sets);
+        for (var i = 1; i <= n; i++) {
+          blanks.appendChild(el("div", { cls: "sf-print-blank" }, [
+            el("span", { cls: "sf-print-blank-n", text: "S" + i }),
+            el("span", { cls: "sf-print-blank-lbl", text: "reps" }),
+            el("span", { cls: "sf-print-blank-line" }),
+            el("span", { cls: "sf-print-blank-lbl", text: "resistance" }),
+            el("span", { cls: "sf-print-blank-line wide" }),
+          ]));
+        }
+        ex.appendChild(blanks);
+        sheet.appendChild(ex);
+      });
+    });
+
+    var bar = el("div", { cls: "sf-print-bar" }, [
+      el("button", {
+        cls: "sf-print-do", text: "🖨 Print / Save as PDF",
+        attrs: { type: "button" }, on: { click: function () { window.print(); } },
+      }),
+      el("button", {
+        cls: "sf-print-close", text: "✕ Close",
+        attrs: { type: "button" }, on: { click: closePrintSheet },
+      }),
+    ]);
+    printOverlay = el("div", {
+      cls: "sf-print-overlay",
+      on: { click: function (e) { if (e.target === printOverlay) closePrintSheet(); } },
+    }, [bar, sheet]);
+    document.body.appendChild(printOverlay);
+    document.body.classList.add("sf-print-active");
+  }
+
   function logButton(role, planTypeFn) {
     var btn = el("button", {
       cls: "sf-log-btn sf-role-" + role, text: "✓ Log this workout",
@@ -546,7 +656,13 @@
       attrs: { type: "button" },
       on: { click: function () { openLogForm(planTypeFn()); } },
     });
-    return el("div", { cls: "sf-log-row" }, [btn, detailBtn]);
+    // Printable sheet (do the workout off-phone) with last-used resistance.
+    var printBtn = el("button", {
+      cls: "sf-print-btn sf-role-" + role, text: "🖨 Print",
+      attrs: { type: "button", title: "Printable sheet with your last-used resistance" },
+      on: { click: function () { openPrintSheet(planTypeFn()); } },
+    });
+    return el("div", { cls: "sf-log-row" }, [btn, detailBtn, printBtn]);
   }
 
   // ============================================================
@@ -621,14 +737,19 @@
     });
   }
 
-  function addSet(container) {
+  function addSet(container, hintResist) {
     var reps = el("input", {
       cls: "sf-logform-reps",
       attrs: { type: "number", inputmode: "numeric", min: "0", placeholder: "reps", "aria-label": "reps" },
     });
+    // Placeholder shows last-used resistance as a reference without
+    // recording it — the row stays blank until the user actually types.
     var resist = el("input", {
       cls: "sf-logform-resist",
-      attrs: { type: "text", list: "sf-resistance-options", placeholder: "resistance", "aria-label": "resistance" },
+      attrs: {
+        type: "text", list: "sf-resistance-options",
+        placeholder: hintResist ? hintResist : "resistance", "aria-label": "resistance",
+      },
     });
     var row = el("div", { cls: "sf-logform-set" }, [
       el("span", { cls: "sf-logform-setn", text: "Set" }),
@@ -645,14 +766,21 @@
 
   function exerciseBlock(item) {
     var container = el("div", { cls: "sf-logform-sets" });
+    var last = lastResistance[item.id];
+    var hint = last && last.resistance ? last.resistance : "";
+    var head = el("div", { cls: "sf-logform-ex-head" }, [
+      el("div", { cls: "sf-logform-ex-name", text: item.name }),
+      el("div", { cls: "sf-logform-ex-hint", text: item.sets || "" }),
+    ]);
+    var lastLbl = lastResistLabel(item.id);
+    if (lastLbl) {
+      head.appendChild(el("div", { cls: "sf-logform-ex-last", text: lastLbl }));
+    }
     var block = el("div", {
       cls: "sf-logform-ex",
       attrs: { "data-exercise-id": item.id, "data-name": item.name },
     }, [
-      el("div", { cls: "sf-logform-ex-head" }, [
-        el("div", { cls: "sf-logform-ex-name", text: item.name }),
-        el("div", { cls: "sf-logform-ex-hint", text: item.sets || "" }),
-      ]),
+      head,
       container,
       el("button", {
         cls: "sf-logform-addset", text: "+ add set",
@@ -661,7 +789,7 @@
     ]);
     var count = window.strengthForgeHelpers
       ? window.strengthForgeHelpers.defaultSetCount(item.sets) : 1;
-    for (var i = 0; i < count; i++) addSet(container);
+    for (var i = 0; i < count; i++) addSet(container, hint);
     return block;
   }
 
@@ -705,6 +833,7 @@
       logformSaveBtn.disabled = false;
       closeLogForm();
       loadTracking();
+      loadLastResistance();
     }).catch(function () { logformSaveBtn.disabled = false; });
   }
 
@@ -852,6 +981,7 @@
     root.appendChild(panels.flare);
 
     loadTracking();
+    loadLastResistance();
     loadFlare();
   }
 
