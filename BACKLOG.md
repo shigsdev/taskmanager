@@ -10,29 +10,29 @@ file is the index pointer.
 
 ## In Progress
 
-- [ ] **#301 Strength Forge — mid-workout progress autosave + resistance-only fields** —
-  User-reported 2026-07-12 ("when trying to do the workouts I am not able to save
-  the progress … exercises that have no resistance shouldn't have a field to enter
-  them"). Two fixes to the #287 per-set **✎ Log details** form: (1) **on-device draft
-  autosave** — what you type is debounced to `localStorage` (`sf-logdraft:v1:<plan>`)
-  as you go, so a phone lock / app switch / accidental close never loses a
-  half-finished workout; reopening restores it with a "↩ Picked up your in-progress
-  workout" banner + **Start fresh** discard; the final button is now **✓ Finish & save
-  workout** which POSTs to the server and clears the draft (works offline — nothing
-  hits the server until finish; drafts >24h are ignored via `isDraftFresh`). (2)
-  **Resistance field only on band moves** — bodyweight / stretch / breathing exercises
-  no longer render a resistance input (log form) or resistance write-in cell (print
-  sheet). Source of truth = a `resist` flag on the exercise catalog with a per-plan-item
-  override (Band Glute Bridge in Bands A takes a band; the catalog default is
-  bodyweight). Client-only (server already accepts reps-only sets). New dual-export
-  helpers `usesResistance` + `isDraftFresh` (Jest-tested, anti-pattern #3); sw.js
-  v222→v223; docs.html Strength section updated. Chose **auto-save + hide-resistance-only**
-  per operator (AskUserQuestion 2026-07-12). Gates GREEN; Phase 6 desktop+mobile clean
-  (draft save/restore/finish/start-fresh all verified end-to-end, categorization correct
-  incl. the Band Glute Bridge override, Military plan shows zero resistance fields, no
-  overflow, 44px inputs). 🔄 IN PROGRESS — awaiting deploy validation + prod smoke.
+_(nothing in flight)_
 
 ## Completed
+
+- [x] **Strength Forge — mid-workout progress autosave + resistance-only fields (#301)** —
+  User-reported friction on the #287 per-set **✎ Log details** form ("I am not able to
+  save the progress … exercises that have no resistance shouldn't have a field").
+  (1) **On-device draft autosave** — form state debounced to `localStorage`
+  (`sf-logdraft:v1:<plan>`) as you type; reopening restores it with a "↩ Picked up your
+  in-progress workout" banner + **Start fresh** discard; final button is now **✓ Finish
+  & save workout** (POST + clear draft). Works offline; drafts >24h ignored via
+  `isDraftFresh`. (2) **Resistance field only on band moves** — bodyweight/stretch/
+  breathing exercises render no resistance input (log form) or write-in cell (print
+  sheet), driven by a `resist` catalog flag + per-plan-item override (Band Glute Bridge
+  in Bands A takes a band). Client-only (server already accepts reps-only sets). New
+  dual-export helpers `usesResistance` + `isDraftFresh` (Jest-tested); sw.js v222→v223;
+  docs.html Strength section updated. Chose auto-save + hide-resistance-only per operator
+  (AskUserQuestion 2026-07-12). Completed 2026-07-12 — merged to main (6630de1), gates
+  GREEN, Phase 6 desktop+mobile clean (draft save/restore/finish/start-fresh verified
+  end-to-end; end-to-end save persisted reps-only cat-cow `resist=null` + band-squat
+  `resist=Medium`; Band Glute Bridge override + Military all-bodyweight verified; no
+  overflow; 44px inputs), DEPLOY GREEN at 6630de14 + 5-min monitor clean + 47/47 prod
+  smoke.
 
 - [x] **Weekly Reflection (#165)** — record (voice, Whisper) or type a
   weekly reflection; Claude reads it against the active
