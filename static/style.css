@@ -5509,6 +5509,8 @@ table.quality-gates code {
 .sf-logform-ex-hint { font-family: var(--font-mono); font-size: 0.62rem; color: var(--cream-faint); white-space: nowrap; }
 .sf-logform-sets { display: flex; flex-direction: column; gap: 6px; }
 .sf-logform-set { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.4fr) auto; align-items: center; gap: 8px; }
+/* No-resistance moves (bodyweight / stretch / breathing): reps only. */
+.sf-logform-set--noresist { grid-template-columns: auto minmax(0, 1fr) auto; }
 .sf-logform-setn { font-family: var(--font-mono); font-size: 0.6rem; color: var(--cream-faint); white-space: nowrap; }
 .sf-logform-reps, .sf-logform-resist { min-width: 0; min-height: 44px; padding: 8px 10px; border-radius: var(--radius-s); border: 1px solid var(--rule); background: var(--slate-100); color: var(--cream); font-size: 0.82rem; }
 .sf-logform-reps:focus, .sf-logform-resist:focus { outline: none; border-color: color-mix(in srgb, var(--copper) 55%, transparent); }
@@ -5516,7 +5518,19 @@ table.quality-gates code {
 .sf-logform-rm:hover { color: var(--rust); background: rgba(198,74,42,0.1); }
 .sf-logform-addset { margin-top: 8px; background: none; border: 1px dashed var(--rule); color: var(--cream-dim); cursor: pointer; font-size: 0.72rem; padding: 6px 12px; border-radius: var(--radius-s); }
 .sf-logform-addset:hover { border-color: color-mix(in srgb, var(--copper) 50%, transparent); color: var(--copper); }
-.sf-logform-foot { display: flex; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--rule-soft); }
+.sf-logform-foot { display: flex; flex-direction: column; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--rule-soft); }
+.sf-logform-foot-btns { display: flex; gap: 10px; }
+/* Draft autosave: reassures the user their progress is banked on-device. */
+.sf-logform-draftnote { font-family: var(--font-mono); font-size: 0.62rem; color: var(--cream-faint); text-align: center; transition: color 0.2s; }
+.sf-logform-draftnote.saved { color: var(--sage); }
+.sf-logform-draftbanner { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    margin: 4px 0 10px; padding: 8px 12px; border-radius: var(--radius-s);
+    border: 1px solid color-mix(in srgb, var(--sage) 40%, transparent);
+    background: color-mix(in srgb, var(--sage) 12%, transparent); }
+.sf-logform-draftbanner-text { font-size: 0.72rem; color: var(--cream-dim); line-height: 1.4; }
+.sf-logform-startfresh { flex: 0 0 auto; background: none; border: 1px solid var(--rule); color: var(--cream-dim);
+    cursor: pointer; font-size: 0.68rem; font-weight: 700; padding: 6px 10px; border-radius: var(--radius-s); white-space: nowrap; }
+.sf-logform-startfresh:hover { color: var(--rust); border-color: color-mix(in srgb, var(--rust) 50%, transparent); }
 .sf-logform-cancel { flex: 0 0 auto; min-height: 44px; padding: 11px 18px; border-radius: var(--radius-s); border: 1px solid var(--rule); background: var(--slate-100); color: var(--cream-dim); font-weight: 700; font-size: 0.8rem; cursor: pointer; }
 .sf-logform-cancel:hover { color: var(--cream); }
 .sf-logform-save { flex: 1; min-width: 0; min-height: 44px; padding: 11px; border-radius: var(--radius-s); border: 1px solid var(--copper); background: color-mix(in srgb, var(--copper) 16%, transparent); color: var(--copper); font-weight: 700; font-size: 0.82rem; cursor: pointer; transition: all 0.15s; }

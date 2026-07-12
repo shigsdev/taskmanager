@@ -110,10 +110,49 @@ function formatLastResist(rec) {
     return "last: " + bits.join(" · ");
 }
 
+/**
+ * usesResistance — does this plan item take a resistance value?
+ *
+ * Bodyweight, stretch, and breathing moves have no resistance, so the log
+ * form and print sheet should not show a resistance field for them. The
+ * source of truth is the exercise catalog's `resist` flag, but an
+ * individual plan item can override it (e.g. glute-bridge is bodyweight in
+ * the catalog but "Band Glute Bridge" in Bands Workout A sets item.resist).
+ *
+ *   item.resist === true|false      -> that boolean (explicit override)
+ *   else catalog[item.id].resist    -> the catalog default
+ *   unknown id / null item          -> false
+ */
+function usesResistance(item, catalog) {
+    if (!item) return false;
+    if (typeof item.resist === "boolean") return item.resist;
+    var info = (catalog && catalog[item.id]) || {};
+    return info.resist === true;
+}
+
+/**
+ * isDraftFresh — should a saved log-form draft be restored, or is it a
+ * stale leftover from an already-finished / abandoned session?
+ *
+ * A workout is a single sitting; a draft older than `maxHours` (default 24)
+ * almost certainly belongs to a session the user already logged or walked
+ * away from, so we discard it rather than silently resurrecting it on top
+ * of a fresh workout. Non-finite / missing timestamps are treated as stale.
+ */
+function isDraftFresh(savedAtMs, nowMs, maxHours) {
+    var maxH = typeof maxHours === "number" && maxHours > 0 ? maxHours : 24;
+    if (!Number.isFinite(savedAtMs) || !Number.isFinite(nowMs)) return false;
+    var ageMs = nowMs - savedAtMs;
+    if (ageMs < 0) return true; // clock skew — keep rather than lose work
+    return ageMs <= maxH * 3600 * 1000;
+}
+
 var strengthForgeHelpers = {
     defaultSetCount: defaultSetCount,
     buildSetsPayload: buildSetsPayload,
     formatLastResist: formatLastResist,
+    usesResistance: usesResistance,
+    isDraftFresh: isDraftFresh,
 };
 
 // Browser global

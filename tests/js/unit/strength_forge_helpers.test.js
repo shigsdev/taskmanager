@@ -9,6 +9,8 @@ const {
     defaultSetCount,
     buildSetsPayload,
     formatLastResist,
+    usesResistance,
+    isDraftFresh,
 } = require("../../../static/strength_forge_helpers");
 
 describe("defaultSetCount", () => {
@@ -157,5 +159,65 @@ describe("formatLastResist", () => {
             .toBe("last: X · Jan 1");
         expect(formatLastResist({ resistance: "X", reps: null, date: "2026-12-31" }))
             .toBe("last: X · Dec 31");
+    });
+});
+
+describe("usesResistance", () => {
+    const catalog = {
+        "band-squat": { resist: true },
+        "plank": { safe: "back-safe" },        // no resist key
+        "glute-bridge": { resist: false },      // bodyweight default
+        "dead-bug": {},
+    };
+
+    test("catalog resist:true → true", () => {
+        expect(usesResistance({ id: "band-squat" }, catalog)).toBe(true);
+    });
+
+    test("catalog without resist / resist:false → false", () => {
+        expect(usesResistance({ id: "plank" }, catalog)).toBe(false);
+        expect(usesResistance({ id: "glute-bridge" }, catalog)).toBe(false);
+        expect(usesResistance({ id: "dead-bug" }, catalog)).toBe(false);
+    });
+
+    test("item.resist override wins over the catalog", () => {
+        // Band Glute Bridge: catalog says bodyweight, plan item adds a band.
+        expect(usesResistance({ id: "glute-bridge", resist: true }, catalog)).toBe(true);
+        // …and the reverse override also wins.
+        expect(usesResistance({ id: "band-squat", resist: false }, catalog)).toBe(false);
+    });
+
+    test("unknown id, null item, or missing catalog → false", () => {
+        expect(usesResistance({ id: "nope" }, catalog)).toBe(false);
+        expect(usesResistance(null, catalog)).toBe(false);
+        expect(usesResistance({ id: "band-squat" }, undefined)).toBe(false);
+    });
+});
+
+describe("isDraftFresh", () => {
+    const now = 1_000_000_000_000;
+
+    test("within the default 24h window → fresh", () => {
+        expect(isDraftFresh(now - 60 * 1000, now)).toBe(true);          // 1 min ago
+        expect(isDraftFresh(now - 23 * 3600 * 1000, now)).toBe(true);   // 23h ago
+    });
+
+    test("older than 24h → stale", () => {
+        expect(isDraftFresh(now - 25 * 3600 * 1000, now)).toBe(false);
+    });
+
+    test("custom maxHours honored", () => {
+        expect(isDraftFresh(now - 5 * 3600 * 1000, now, 2)).toBe(false);
+        expect(isDraftFresh(now - 1 * 3600 * 1000, now, 2)).toBe(true);
+    });
+
+    test("negative age (clock skew) → keep rather than lose work", () => {
+        expect(isDraftFresh(now + 5000, now)).toBe(true);
+    });
+
+    test("non-finite / missing timestamps → stale", () => {
+        expect(isDraftFresh(undefined, now)).toBe(false);
+        expect(isDraftFresh(now, undefined)).toBe(false);
+        expect(isDraftFresh(NaN, now)).toBe(false);
     });
 });

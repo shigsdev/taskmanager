@@ -10,7 +10,27 @@ file is the index pointer.
 
 ## In Progress
 
-_(nothing in flight)_
+- [ ] **#301 Strength Forge — mid-workout progress autosave + resistance-only fields** —
+  User-reported 2026-07-12 ("when trying to do the workouts I am not able to save
+  the progress … exercises that have no resistance shouldn't have a field to enter
+  them"). Two fixes to the #287 per-set **✎ Log details** form: (1) **on-device draft
+  autosave** — what you type is debounced to `localStorage` (`sf-logdraft:v1:<plan>`)
+  as you go, so a phone lock / app switch / accidental close never loses a
+  half-finished workout; reopening restores it with a "↩ Picked up your in-progress
+  workout" banner + **Start fresh** discard; the final button is now **✓ Finish & save
+  workout** which POSTs to the server and clears the draft (works offline — nothing
+  hits the server until finish; drafts >24h are ignored via `isDraftFresh`). (2)
+  **Resistance field only on band moves** — bodyweight / stretch / breathing exercises
+  no longer render a resistance input (log form) or resistance write-in cell (print
+  sheet). Source of truth = a `resist` flag on the exercise catalog with a per-plan-item
+  override (Band Glute Bridge in Bands A takes a band; the catalog default is
+  bodyweight). Client-only (server already accepts reps-only sets). New dual-export
+  helpers `usesResistance` + `isDraftFresh` (Jest-tested, anti-pattern #3); sw.js
+  v222→v223; docs.html Strength section updated. Chose **auto-save + hide-resistance-only**
+  per operator (AskUserQuestion 2026-07-12). Gates GREEN; Phase 6 desktop+mobile clean
+  (draft save/restore/finish/start-fresh all verified end-to-end, categorization correct
+  incl. the Band Glute Bridge override, Military plan shows zero resistance fields, no
+  overflow, 44px inputs). 🔄 IN PROGRESS — awaiting deploy validation + prod smoke.
 
 ## Completed
 
@@ -186,13 +206,13 @@ The script preserves operator-added prose across re-renders. -->
 | Audit row | Finding | First seen | Last seen | Notes / Status |
 |---|---|---|---|---|
 <!-- audit-row: bug-pattern/bare-1fr-grids/static-style.css -->
-| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 5544: bare `1fr` track on grid-template-columns — wrap in `minmax(0, 1fr)` to let the track shrink past max-content (#138 D-B1) | 2026-05-27 | 2026-07-12 |  |
+| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 5558: bare `1fr` track on grid-template-columns — wrap in `minmax(0, 1fr)` to let the track shrink past max-content (#138 D-B1) | 2026-05-27 | 2026-07-12 |  |
 <!-- audit-row: coverage/overall-coverage-drift/ -->
-| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-07-10 | 🟢 auto-detected resolved 2026-07-10 |
+| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-07-12 |  |
 <!-- audit-row: coverage/per-file-coverage-drift/app.py -->
-| `coverage/per-file-coverage-drift/app.py` | **app.py** — coverage dropped 9.9pp (90.2% → 80.3%; tolerance 5.0pp) | 2026-06-26 | 2026-07-10 |  |
+| `coverage/per-file-coverage-drift/app.py` | **app.py** — coverage dropped 9.9pp (90.2% → 80.3%; tolerance 5.0pp) | 2026-06-26 | 2026-07-10 | 🟢 auto-detected resolved 2026-07-12 |
 <!-- audit-row: coverage/per-file-coverage-drift/digest_api.py -->
-| `coverage/per-file-coverage-drift/digest_api.py` | **digest_api.py** — coverage dropped 10.3pp (100.0% → 89.7%; tolerance 5.0pp) | 2026-06-10 | 2026-07-10 |  |
+| `coverage/per-file-coverage-drift/digest_api.py` | **digest_api.py** — coverage dropped 10.3pp (100.0% → 89.7%; tolerance 5.0pp) | 2026-06-10 | 2026-07-10 | 🟢 auto-detected resolved 2026-07-12 |
 <!-- audit-row: tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.11-1-major-version-s-behind -->
 | `tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.11-1-major-version-s-behind` | npm dep 'jscpd' stuck at 4.2.4 — latest is 5.0.11 (1 major version(s) behind) | 2026-06-20 | 2026-07-04 | 🟢 auto-detected resolved 2026-07-11 |
 <!-- audit-row: tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.12-1-major-version-s-behind -->

@@ -599,12 +599,15 @@
         sec.badge ? el("span", { cls: "sf-print-sec-badge", text: sec.badge }) : null,
       ]));
       (sec.items || []).forEach(function (item) {
+        var showResist = usesResist(item);
         var head = el("div", { cls: "sf-print-ex-head" }, [
           el("span", { cls: "sf-print-ex-name", text: item.name }),
           el("span", { cls: "sf-print-ex-sets", text: item.sets || "" }),
         ]);
-        var last = lastResistLabel(item.id);
-        if (last) head.appendChild(el("span", { cls: "sf-print-ex-last", text: last }));
+        if (showResist) {
+          var last = lastResistLabel(item.id);
+          if (last) head.appendChild(el("span", { cls: "sf-print-ex-last", text: last }));
+        }
         var ex = el("div", { cls: "sf-print-ex" }, [head]);
         if (item.rest) {
           ex.appendChild(el("div", { cls: "sf-print-ex-rest", text: "rest " + item.rest }));
@@ -612,13 +615,16 @@
         var blanks = el("div", { cls: "sf-print-blanks" });
         var n = setCount(item.sets);
         for (var i = 1; i <= n; i++) {
-          blanks.appendChild(el("div", { cls: "sf-print-blank" }, [
+          var blankKids = [
             el("span", { cls: "sf-print-blank-n", text: "S" + i }),
             el("span", { cls: "sf-print-blank-lbl", text: "reps" }),
-            el("span", { cls: "sf-print-blank-line" }),
-            el("span", { cls: "sf-print-blank-lbl", text: "resistance" }),
-            el("span", { cls: "sf-print-blank-line wide" }),
-          ]));
+            el("span", { cls: "sf-print-blank-line" + (showResist ? "" : " wide") }),
+          ];
+          if (showResist) {
+            blankKids.push(el("span", { cls: "sf-print-blank-lbl", text: "resistance" }));
+            blankKids.push(el("span", { cls: "sf-print-blank-line wide" }));
+          }
+          blanks.appendChild(el("div", { cls: "sf-print-blank" }, blankKids));
         }
         ex.appendChild(blanks);
         sheet.appendChild(ex);
@@ -688,7 +694,7 @@
     return items;
   }
 
-  var logformOverlay, logformBody, logformTitle, logformSaveBtn, logformPlanType;
+  var logformOverlay, logformBody, logformTitle, logformSaveBtn, logformPlanType, logformDraftNote;
 
   function buildLogForm() {
     logformTitle = el("div", { cls: "sf-logform-title" });
@@ -697,16 +703,24 @@
       attrs: { type: "button", "aria-label": "Close" }, on: { click: closeLogForm },
     });
     logformBody = el("div", { cls: "sf-logform-body" });
+    // Auto-save progress to localStorage as the user types (debounced).
+    logformBody.addEventListener("input", scheduleDraftSave);
     logformSaveBtn = el("button", {
-      cls: "sf-logform-save", text: "Save workout log",
+      cls: "sf-logform-save", text: "✓ Finish & save workout",
       attrs: { type: "button" }, on: { click: saveLogForm },
     });
+    logformDraftNote = el("div", {
+      cls: "sf-logform-draftnote", text: "Auto-saves your progress as you go",
+    });
     var foot = el("div", { cls: "sf-logform-foot" }, [
-      el("button", {
-        cls: "sf-logform-cancel", text: "Cancel",
-        attrs: { type: "button" }, on: { click: closeLogForm },
-      }),
-      logformSaveBtn,
+      logformDraftNote,
+      el("div", { cls: "sf-logform-foot-btns" }, [
+        el("button", {
+          cls: "sf-logform-cancel", text: "Close",
+          attrs: { type: "button" }, on: { click: closeLogForm },
+        }),
+        logformSaveBtn,
+      ]),
     ]);
     // Shared resistance quick-picks (band levels; free text still allowed).
     var datalist = el("datalist", { attrs: { id: "sf-resistance-options" } }, [
@@ -737,44 +751,62 @@
     });
   }
 
-  function addSet(container, hintResist) {
+  // Does this plan item take a resistance value? (bodyweight / stretch /
+  // breathing moves don't — no resistance field is shown for them.) Logic
+  // lives in the dual-export helper (unit-tested; anti-pattern #3).
+  function usesResist(item) {
+    return window.strengthForgeHelpers
+      ? window.strengthForgeHelpers.usesResistance(item, SF.exercises)
+      : false;
+  }
+
+  // saved (optional): { reps, resistance } to prefill from a restored draft.
+  function addSet(container, hintResist, showResist, saved) {
+    var row = el("div", {
+      cls: "sf-logform-set" + (showResist ? "" : " sf-logform-set--noresist"),
+    });
     var reps = el("input", {
       cls: "sf-logform-reps",
       attrs: { type: "number", inputmode: "numeric", min: "0", placeholder: "reps", "aria-label": "reps" },
     });
-    // Placeholder shows last-used resistance as a reference without
-    // recording it — the row stays blank until the user actually types.
-    var resist = el("input", {
-      cls: "sf-logform-resist",
-      attrs: {
-        type: "text", list: "sf-resistance-options",
-        placeholder: hintResist ? hintResist : "resistance", "aria-label": "resistance",
-      },
-    });
-    var row = el("div", { cls: "sf-logform-set" }, [
-      el("span", { cls: "sf-logform-setn", text: "Set" }),
-      reps, resist,
-      el("button", {
-        cls: "sf-logform-rm", text: "✕",
-        attrs: { type: "button", title: "Remove set", "aria-label": "Remove set" },
-        on: { click: function () { container.removeChild(row); renumberSets(container); } },
-      }),
-    ]);
+    if (saved && saved.reps != null && saved.reps !== "") reps.value = saved.reps;
+    row.appendChild(el("span", { cls: "sf-logform-setn", text: "Set" }));
+    row.appendChild(reps);
+    if (showResist) {
+      // Placeholder shows last-used resistance as a reference without
+      // recording it — the row stays blank until the user actually types.
+      var resist = el("input", {
+        cls: "sf-logform-resist",
+        attrs: {
+          type: "text", list: "sf-resistance-options",
+          placeholder: hintResist ? hintResist : "resistance", "aria-label": "resistance",
+        },
+      });
+      if (saved && saved.resistance) resist.value = saved.resistance;
+      row.appendChild(resist);
+    }
+    row.appendChild(el("button", {
+      cls: "sf-logform-rm", text: "✕",
+      attrs: { type: "button", title: "Remove set", "aria-label": "Remove set" },
+      on: { click: function () { container.removeChild(row); renumberSets(container); scheduleDraftSave(); } },
+    }));
     container.appendChild(row);
     renumberSets(container);
   }
 
-  function exerciseBlock(item) {
+  // savedRows (optional): draft set rows to restore instead of blank rows.
+  function exerciseBlock(item, savedRows) {
     var container = el("div", { cls: "sf-logform-sets" });
+    var showResist = usesResist(item);
     var last = lastResistance[item.id];
-    var hint = last && last.resistance ? last.resistance : "";
+    var hint = showResist && last && last.resistance ? last.resistance : "";
     var head = el("div", { cls: "sf-logform-ex-head" }, [
       el("div", { cls: "sf-logform-ex-name", text: item.name }),
       el("div", { cls: "sf-logform-ex-hint", text: item.sets || "" }),
     ]);
-    var lastLbl = lastResistLabel(item.id);
-    if (lastLbl) {
-      head.appendChild(el("div", { cls: "sf-logform-ex-last", text: lastLbl }));
+    if (showResist) {
+      var lastLbl = lastResistLabel(item.id);
+      if (lastLbl) head.appendChild(el("div", { cls: "sf-logform-ex-last", text: lastLbl }));
     }
     var block = el("div", {
       cls: "sf-logform-ex",
@@ -784,12 +816,17 @@
       container,
       el("button", {
         cls: "sf-logform-addset", text: "+ add set",
-        attrs: { type: "button" }, on: { click: function () { addSet(container); } },
+        attrs: { type: "button" },
+        on: { click: function () { addSet(container, hint, showResist); scheduleDraftSave(); } },
       }),
     ]);
-    var count = window.strengthForgeHelpers
-      ? window.strengthForgeHelpers.defaultSetCount(item.sets) : 1;
-    for (var i = 0; i < count; i++) addSet(container, hint);
+    if (savedRows && savedRows.length) {
+      savedRows.forEach(function (r) { addSet(container, hint, showResist, r); });
+    } else {
+      var count = window.strengthForgeHelpers
+        ? window.strengthForgeHelpers.defaultSetCount(item.sets) : 1;
+      for (var i = 0; i < count; i++) addSet(container, hint, showResist);
+    }
     return block;
   }
 
@@ -798,23 +835,35 @@
     logformPlanType = planType;
     logformTitle.textContent = "Log details — " + (PLAN_LABELS_JS[planType] || planType);
     while (logformBody.firstChild) logformBody.removeChild(logformBody.firstChild);
+
+    // Restore an in-progress draft (auto-saved on-device) if one exists.
+    var draft = loadDraft(planType);
+    var savedByEx = {};
+    if (draft && draft.exercises) {
+      draft.exercises.forEach(function (ex) { savedByEx[ex.exercise_id] = ex.sets || []; });
+    }
     planExercises(planType).forEach(function (item) {
-      logformBody.appendChild(exerciseBlock(item));
+      logformBody.appendChild(exerciseBlock(item, savedByEx[item.id]));
     });
+    setDraftBanner(draft);
     logformOverlay.removeAttribute("hidden");
   }
 
-  function saveLogForm() {
-    if (!window.apiFetch || !window.strengthForgeHelpers) return;
-    var blocks = logformBody.querySelectorAll(".sf-logform-ex");
+  // Collect the form's per-exercise/per-set state (null-safe: rows for
+  // no-resistance exercises have no resistance input). Shared by the draft
+  // autosave and the final save.
+  function collectExercises() {
     var exercises = [];
+    var blocks = logformBody.querySelectorAll(".sf-logform-ex");
     Array.prototype.forEach.call(blocks, function (b) {
-      var rows = b.querySelectorAll(".sf-logform-set");
       var sets = [];
+      var rows = b.querySelectorAll(".sf-logform-set");
       Array.prototype.forEach.call(rows, function (r) {
+        var repsEl = r.querySelector(".sf-logform-reps");
+        var resistEl = r.querySelector(".sf-logform-resist");
         sets.push({
-          reps: r.querySelector(".sf-logform-reps").value,
-          resistance: r.querySelector(".sf-logform-resist").value,
+          reps: repsEl ? repsEl.value : "",
+          resistance: resistEl ? resistEl.value : "",
         });
       });
       exercises.push({
@@ -823,18 +872,129 @@
         sets: sets,
       });
     });
-    var payload = window.strengthForgeHelpers.buildSetsPayload(exercises);
-    if (!payload.length) { closeLogForm(); return; }  // nothing entered
+    return exercises;
+  }
+
+  function saveLogForm() {
+    if (!window.apiFetch || !window.strengthForgeHelpers) return;
+    var planType = logformPlanType;
+    var payload = window.strengthForgeHelpers.buildSetsPayload(collectExercises());
+    if (!payload.length) {  // nothing entered — drop any empty draft, close
+      clearDraft(planType);
+      closeLogForm();
+      return;
+    }
     logformSaveBtn.disabled = true;
     window.apiFetch("/api/strength-forge/sessions", {
       method: "POST",
-      body: JSON.stringify({ plan_type: logformPlanType, sets: payload }),
+      body: JSON.stringify({ plan_type: planType, sets: payload }),
     }).then(function () {
       logformSaveBtn.disabled = false;
+      clearDraft(planType);  // committed to the server — draft no longer needed
       closeLogForm();
       loadTracking();
       loadLastResistance();
     }).catch(function () { logformSaveBtn.disabled = false; });
+  }
+
+  // ============================================================
+  // DRAFT AUTOSAVE — progress persists on-device mid-workout
+  // ------------------------------------------------------------
+  // The log form auto-saves what you've typed to localStorage as you go,
+  // so a phone lock / app switch / accidental close never loses a
+  // half-finished workout. Keyed per plan_type; cleared when you tap
+  // "Finish & save workout" (the real server write). A draft older than a
+  // day is treated as an abandoned session and ignored (isDraftFresh).
+  // ============================================================
+  var DRAFT_PREFIX = "sf-logdraft:v1:";
+  var draftSaveTimer = null;
+
+  function draftKey(planType) { return DRAFT_PREFIX + planType; }
+
+  function safeLocal() {
+    try { return window.localStorage; } catch (e) { return null; }
+  }
+
+  function loadDraft(planType) {
+    var ls = safeLocal();
+    if (!ls || !planType) return null;
+    var raw;
+    try { raw = ls.getItem(draftKey(planType)); } catch (e) { return null; }
+    if (!raw) return null;
+    var d = null;
+    try { d = JSON.parse(raw); } catch (e) { d = null; }
+    if (!d || !Array.isArray(d.exercises)) { clearDraft(planType); return null; }
+    var fresh = window.strengthForgeHelpers
+      ? window.strengthForgeHelpers.isDraftFresh(d.saved_at, Date.now())
+      : true;
+    if (!fresh) { clearDraft(planType); return null; }
+    return d;
+  }
+
+  function clearDraft(planType) {
+    var ls = safeLocal();
+    if (!ls || !planType) return;
+    try { ls.removeItem(draftKey(planType)); } catch (e) { /* ignore */ }
+  }
+
+  function draftHasContent(exercises) {
+    return exercises.some(function (ex) {
+      return ex.sets.some(function (s) {
+        return (s.reps != null && String(s.reps).trim() !== "")
+          || (s.resistance != null && String(s.resistance).trim() !== "");
+      });
+    });
+  }
+
+  function saveDraftNow() {
+    if (!logformPlanType) return;
+    var ls = safeLocal();
+    if (!ls) return;
+    var exercises = collectExercises();
+    if (!draftHasContent(exercises)) { clearDraft(logformPlanType); markDraftSaved(false); return; }
+    var payload = { plan_type: logformPlanType, saved_at: Date.now(), exercises: exercises };
+    try { ls.setItem(draftKey(logformPlanType), JSON.stringify(payload)); } catch (e) { return; }
+    markDraftSaved(true);
+  }
+
+  function scheduleDraftSave() {
+    if (draftSaveTimer) clearTimeout(draftSaveTimer);
+    draftSaveTimer = setTimeout(saveDraftNow, 400);
+  }
+
+  function markDraftSaved(saved) {
+    if (!logformDraftNote) return;
+    logformDraftNote.textContent = saved
+      ? "✓ Progress saved on this device"
+      : "Auto-saves your progress as you go";
+    logformDraftNote.classList.toggle("saved", !!saved);
+  }
+
+  function setDraftBanner(draft) {
+    if (!draft) { markDraftSaved(false); return; }
+    var when = "";
+    try {
+      when = new Date(draft.saved_at).toLocaleTimeString(
+        undefined, { hour: "numeric", minute: "2-digit" });
+    } catch (e) { when = ""; }
+    var banner = el("div", { cls: "sf-logform-draftbanner" }, [
+      el("span", {
+        cls: "sf-logform-draftbanner-text",
+        text: "↩ Picked up your in-progress workout" + (when ? " · saved " + when : ""),
+      }),
+      el("button", {
+        cls: "sf-logform-startfresh", text: "Start fresh",
+        attrs: { type: "button" }, on: { click: discardAndRestart },
+      }),
+    ]);
+    logformBody.insertBefore(banner, logformBody.firstChild);
+    markDraftSaved(true);
+  }
+
+  function discardAndRestart() {
+    var pt = logformPlanType;
+    clearDraft(pt);
+    openLogForm(pt);  // rebuild fresh — the draft is now gone
   }
 
   // ============================================================
