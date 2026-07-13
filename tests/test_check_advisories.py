@@ -127,19 +127,19 @@ class TestRunNpmAudit:
 
 class TestSendAdvisoryEmail:
     def _env(self, monkeypatch):
-        """Wire up the three SendGrid env vars the script needs."""
-        monkeypatch.setenv("SENDGRID_API_KEY", "SG.test")
+        """Wire up the three Brevo env vars the script needs."""
+        monkeypatch.setenv("BREVO_API_KEY", "xkeysib-test")
         monkeypatch.setenv("DIGEST_FROM_EMAIL", "from@taskmanager")
         monkeypatch.setenv("DIGEST_TO_EMAIL", "to@taskmanager")
 
-    def test_skips_when_sendgrid_not_configured(self, mod, monkeypatch, capsys):
-        monkeypatch.delenv("SENDGRID_API_KEY", raising=False)
+    def test_skips_when_brevo_not_configured(self, mod, monkeypatch, capsys):
+        monkeypatch.delenv("BREVO_API_KEY", raising=False)
         # urllib.request.urlopen must NOT be called when env is missing.
         with patch("urllib.request.urlopen") as urlopen:
             mod.send_advisory_email([{"name": "x"}], [])
         assert urlopen.call_count == 0
         captured = capsys.readouterr()
-        assert "SendGrid not configured" in captured.err
+        assert "Brevo not configured" in captured.err
 
     def test_sends_email_with_findings_in_body(self, mod, monkeypatch):
         self._env(monkeypatch)
@@ -158,19 +158,21 @@ class TestSendAdvisoryEmail:
 
         def fake_urlopen(req, timeout):
             captured_body["data"] = req.data.decode("utf-8")
-            captured_body["auth"] = req.headers["Authorization"]
+            # Brevo authenticates via the `api-key` header (ADR-007 — key
+            # never in the URL); urllib title-cases the header key.
+            captured_body["auth"] = req.get_header("Api-key")
             return _FakeResp()
 
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
             mod.send_advisory_email(pip_findings, npm_findings)
 
         payload = json.loads(captured_body["data"])
-        assert captured_body["auth"] == "Bearer SG.test"
-        assert payload["from"]["email"] == "from@taskmanager"
-        assert payload["personalizations"][0]["to"][0]["email"] == "to@taskmanager"
+        assert captured_body["auth"] == "xkeysib-test"
+        assert payload["sender"]["email"] == "from@taskmanager"
+        assert payload["to"][0]["email"] == "to@taskmanager"
         # Subject reflects the total count.
         assert "2 new CVE(s)" in payload["subject"]
-        body_text = payload["content"][0]["value"]
+        body_text = payload["textContent"]
         assert "pytest 8.3.2" in body_text
         assert "GHSA-6w46-j5rx-g56g" in body_text
         assert "fix: 9.0.3" in body_text

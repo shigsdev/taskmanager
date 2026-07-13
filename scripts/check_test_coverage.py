@@ -341,12 +341,12 @@ def send_audit_email(
     overall: float,
 ) -> None:
     """Always-email (clean or not) — mirrors #226c / #227 / #228."""
-    sg_key = os.environ.get("SENDGRID_API_KEY")
+    api_key = os.environ.get("BREVO_API_KEY")
     from_addr = os.environ.get("DIGEST_FROM_EMAIL")
     to_addr = os.environ.get("DIGEST_TO_EMAIL")
-    if not (sg_key and from_addr and to_addr):
+    if not (api_key and from_addr and to_addr):
         sys.stderr.write(
-            "[coverage-audit] SendGrid not configured; skipping email\n"
+            "[coverage-audit] Brevo not configured; skipping email\n"
         )
         return
 
@@ -393,25 +393,26 @@ def send_audit_email(
         ]
 
     payload = {
-        "personalizations": [{"to": [{"email": to_addr}]}],
-        "from": {"email": from_addr},
+        "sender": {"email": from_addr, "name": "Taskmanager CI"},
+        "to": [{"email": to_addr}],
         "subject": subject,
-        "content": [{"type": "text/plain", "value": "\n".join(body_lines)}],
+        "textContent": "\n".join(body_lines),
     }
     import urllib.error
     import urllib.request
 
     req = urllib.request.Request(
-        "https://api.sendgrid.com/v3/mail/send",
+        "https://api.brevo.com/v3/smtp/email",
         data=json.dumps(payload).encode("utf-8"),
         headers={
-            "Authorization": f"Bearer {sg_key}",
+            "api-key": api_key,
+            "accept": "application/json",
             "Content-Type": "application/json",
         },
         method="POST",
     )
     try:
-        # URL is the constant SendGrid endpoint, not user input.
+        # URL is the constant Brevo endpoint, not user input.
         with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310  # nosec B310  # nosemgrep
             sys.stdout.write(
                 f"[coverage-audit] email sent: HTTP {resp.status}\n"
@@ -438,7 +439,7 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help=(
             "#229b (2026-05-27): write the audit result as JSON to "
-            "OUTPUT_PATH and skip sending the SendGrid confirmation "
+            "OUTPUT_PATH and skip sending the Brevo confirmation "
             "email. Used by the /utilities inline-scan card — the UI "
             "POST spawns the script with this flag and polls for the "
             "result file. Same exit code semantics (0/1/2) so the UI "

@@ -87,7 +87,7 @@ jobs:
           SCRATCH_DATABASE_URL:   postgresql://drill:drill@localhost:5432/drill
           BACKUP_FERNET_KEY:      ${{ secrets.BACKUP_FERNET_KEY }}
           BACKUP_REPO_URL:        ${{ vars.BACKUP_REPO_URL }}
-          SENDGRID_API_KEY:       ${{ secrets.SENDGRID_API_KEY }}
+          BREVO_API_KEY:       ${{ secrets.BREVO_API_KEY }}
           DIGEST_FROM_EMAIL:      ${{ vars.DIGEST_FROM_EMAIL }}
           DIGEST_TO_EMAIL:        ${{ vars.DIGEST_TO_EMAIL }}
           # Absolute path — bypasses $PATH-ordering surprises.

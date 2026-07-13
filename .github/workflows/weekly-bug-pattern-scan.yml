@@ -11,7 +11,8 @@
 # instances drifting along in code that hasn't been touched since the
 # pattern was added to the cascade.
 #
-# Setup: no new secrets. Reuses SENDGRID_API_KEY (secret) +
+# Setup: add the BREVO_API_KEY Actions secret (#298 — replaces the
+# retired SendGrid key). Plus BREVO_API_KEY (secret) +
 # DIGEST_FROM_EMAIL + DIGEST_TO_EMAIL (vars) — same set the
 # daily-backup and weekly-advisory-check workflows already use.
 #
@@ -50,7 +51,7 @@ jobs:
 
       - name: Run bug-pattern scan
         env:
-          SENDGRID_API_KEY:  ${{ secrets.SENDGRID_API_KEY }}
+          BREVO_API_KEY:  ${{ secrets.BREVO_API_KEY }}
           DIGEST_FROM_EMAIL: ${{ vars.DIGEST_FROM_EMAIL }}
           DIGEST_TO_EMAIL:   ${{ vars.DIGEST_TO_EMAIL }}
         # The audit's exit code is meaningful (1 on findings, 2 on

@@ -464,8 +464,8 @@ class TestMainExitCodes:
 
 
 class TestSendAuditEmail:
-    def _patch_sendgrid(self, monkeypatch):
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake-key")
+    def _patch_brevo(self, monkeypatch):
+        monkeypatch.setenv("BREVO_API_KEY", "fake-key")
         monkeypatch.setenv("DIGEST_FROM_EMAIL", "from@example.com")
         monkeypatch.setenv("DIGEST_TO_EMAIL", "to@example.com")
 
@@ -487,7 +487,7 @@ class TestSendAuditEmail:
         return captured
 
     def test_clean_run_subject_says_CLEAN(self, monkeypatch):
-        cap = self._patch_sendgrid(monkeypatch)
+        cap = self._patch_brevo(monkeypatch)
         sp_mod.send_audit_email(
             findings=[],
             per_check_counts=[
@@ -498,12 +498,12 @@ class TestSendAuditEmail:
             ],
         )
         assert "CLEAN" in cap["body"]["subject"]
-        body_text = cap["body"]["content"][0]["value"]
+        body_text = cap["body"]["textContent"]
         assert "ALL CHECKS CLEAN" in body_text
         assert "pat-inventory: 0 finding(s)" in body_text
 
     def test_findings_run_subject_has_count(self, monkeypatch):
-        cap = self._patch_sendgrid(monkeypatch)
+        cap = self._patch_brevo(monkeypatch)
         f = sp_mod.Finding(check_id="pat-inventory", detail="leaky token")
         sp_mod.send_audit_email(
             findings=[f],
@@ -515,14 +515,14 @@ class TestSendAuditEmail:
             ],
         )
         assert "1 finding(s)" in cap["body"]["subject"]
-        body_text = cap["body"]["content"][0]["value"]
+        body_text = cap["body"]["textContent"]
         assert "== pat-inventory (1 finding(s)) ==" in body_text
         assert "leaky token" in body_text
 
-    def test_no_email_sent_when_sendgrid_unconfigured(
+    def test_no_email_sent_when_brevo_unconfigured(
         self, monkeypatch, capsys,
     ):
-        monkeypatch.delenv("SENDGRID_API_KEY", raising=False)
+        monkeypatch.delenv("BREVO_API_KEY", raising=False)
         monkeypatch.delenv("DIGEST_FROM_EMAIL", raising=False)
         monkeypatch.delenv("DIGEST_TO_EMAIL", raising=False)
         sp_mod.send_audit_email(
@@ -530,7 +530,7 @@ class TestSendAuditEmail:
             per_check_counts=[("pat-inventory", 0)],
         )
         err = capsys.readouterr().err
-        assert "SendGrid not configured" in err
+        assert "Brevo not configured" in err
 
     def test_module_loads_cleanly(self):
         # Defensive — if a circular import sneaks in, this fails.

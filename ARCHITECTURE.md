@@ -666,7 +666,6 @@ the code.
 - psycopg (v3, binary) — SQLAlchemy URL scheme `postgresql+psycopg://`
 - cryptography (Fernet)
 - apscheduler
-- sendgrid
 - google-cloud-vision
 - anthropic
 - gunicorn
@@ -721,7 +720,7 @@ git clone + drop *.dump.fernet + prune >7d + git push
         ↓
 private GitHub repo: $BACKUP_REPO_URL (e.g. user/taskmanager-backups)
         ↓
-SendGrid status email to $DIGEST_TO_EMAIL (subject ✓ or ✗)
+Brevo status email to $DIGEST_TO_EMAIL (subject ✓ or ✗)
 ```
 
 ### Monthly restore drill
@@ -761,7 +760,7 @@ skew before the day you actually need to restore.
 | `DATABASE_URL` | secret | Railway Postgres URL (for pg_dump source + drill comparison) |
 | `BACKUP_FERNET_KEY` | secret | 44-char Fernet key (also stored in 1Password for restore) |
 | `BACKUP_REPO_DEPLOY_KEY` | secret | SSH private key with write access to the backups repo |
-| `SENDGRID_API_KEY` | secret | optional — only for this workflow's backup-failure alert email (the app's digest now uses the Brevo API, not SendGrid); unset = backup still runs, no failure email |
+| `BREVO_API_KEY` | secret | optional — this workflow's backup-failure alert email, sent via the Brevo transactional API (#298 — replaces the retired SendGrid key; the app's digest uses Brevo too); unset = backup still runs, no failure email |
 | `BACKUP_REPO_URL` | variable | e.g. `git@github.com:user/taskmanager-backups.git` |
 | `DIGEST_FROM_EMAIL` | variable | reuse |
 | `DIGEST_TO_EMAIL` | variable | reuse — backup status emails go here |

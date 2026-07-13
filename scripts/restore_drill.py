@@ -21,7 +21,7 @@ Required env vars (GitHub Actions secrets + workflow-set):
     BACKUP_FERNET_KEY        decryption key
     DATABASE_URL             LIVE Postgres — for the row-count comparison
     SCRATCH_DATABASE_URL     scratch Postgres in the runner (`localhost`)
-    SENDGRID_API_KEY / DIGEST_FROM_EMAIL / DIGEST_TO_EMAIL  email report
+    BREVO_API_KEY / DIGEST_FROM_EMAIL / DIGEST_TO_EMAIL  email report
 
 Pass criteria:
     * pg_restore exited 0 (or with only acceptable warnings)
@@ -158,11 +158,11 @@ def restore(dump_path: Path, scratch_url: str) -> dict:
 
 
 def send_drill_email(*, success: bool, live: dict, scratch: dict, error: str | None = None) -> None:
-    sg_key = os.environ.get("SENDGRID_API_KEY")
+    api_key = os.environ.get("BREVO_API_KEY")
     from_addr = os.environ.get("DIGEST_FROM_EMAIL")
     to_addr = os.environ.get("DIGEST_TO_EMAIL")
-    if not (sg_key and from_addr and to_addr):
-        sys.stderr.write("[drill] SendGrid not configured; skipping email\n")
+    if not (api_key and from_addr and to_addr):
+        sys.stderr.write("[drill] Brevo not configured; skipping email\n")
         return
     today = datetime.date.today().isoformat()
     if success:
@@ -196,22 +196,23 @@ def send_drill_email(*, success: bool, live: dict, scratch: dict, error: str | N
     import urllib.request
 
     payload = {
-        "personalizations": [{"to": [{"email": to_addr}]}],
-        "from": {"email": from_addr},
+        "sender": {"email": from_addr, "name": "Taskmanager CI"},
+        "to": [{"email": to_addr}],
         "subject": subject,
-        "content": [{"type": "text/plain", "value": body}],
+        "textContent": body,
     }
     req = urllib.request.Request(
-        "https://api.sendgrid.com/v3/mail/send",
+        "https://api.brevo.com/v3/smtp/email",
         data=json.dumps(payload).encode("utf-8"),
         headers={
-            "Authorization": f"Bearer {sg_key}",
+            "api-key": api_key,
+            "accept": "application/json",
             "Content-Type": "application/json",
         },
         method="POST",
     )
     try:
-        # URL is the constant SendGrid endpoint, not user input.
+        # URL is the constant Brevo endpoint, not user input.
         with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310  # nosec B310  # nosemgrep
             sys.stdout.write(f"[drill] email sent: HTTP {resp.status}\n")
     except urllib.error.URLError as e:

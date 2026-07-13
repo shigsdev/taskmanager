@@ -11,13 +11,13 @@ Pipeline::
     pip-audit -r requirements-dev.txt --format json  →  findings
     npm audit --audit-level=high --json              →  findings
                                 ↓
-        any findings? → send SendGrid email (reusing the daily-backup
+        any findings? → send Brevo email (reusing the daily-backup
                         / digest pattern) + exit 1
         clean?        → exit 0 silently (no email)
 
 Exit codes (so the GitHub Actions UI shows red on findings):
     0 — both audits clean.
-    1 — one or both reported a vulnerability. Email sent if SendGrid
+    1 — one or both reported a vulnerability. Email sent if Brevo
         is configured.
     2 — internal error (e.g. couldn't run pip-audit at all).
 
@@ -104,13 +104,13 @@ def run_npm_audit() -> tuple[bool, list[dict], str]:
 
 
 def send_advisory_email(pip_findings: list[dict], npm_findings: list[dict]) -> None:
-    """Send a plain-text summary email via SendGrid. Best-effort —
+    """Send a plain-text summary email via Brevo. Best-effort —
     failures here are LOGGED but DO NOT change the script's exit code."""
-    sg_key = os.environ.get("SENDGRID_API_KEY")
+    api_key = os.environ.get("BREVO_API_KEY")
     from_addr = os.environ.get("DIGEST_FROM_EMAIL")
     to_addr = os.environ.get("DIGEST_TO_EMAIL")
-    if not (sg_key and from_addr and to_addr):
-        sys.stderr.write("[advisory-check] SendGrid not configured; skipping email\n")
+    if not (api_key and from_addr and to_addr):
+        sys.stderr.write("[advisory-check] Brevo not configured; skipping email\n")
         return
 
     today = datetime.date.today().isoformat()
@@ -139,25 +139,26 @@ def send_advisory_email(pip_findings: list[dict], npm_findings: list[dict]) -> N
     ]
 
     payload = {
-        "personalizations": [{"to": [{"email": to_addr}]}],
-        "from": {"email": from_addr},
+        "sender": {"email": from_addr, "name": "Taskmanager CI"},
+        "to": [{"email": to_addr}],
         "subject": f"[Taskmanager advisory] {n_total} new CVE(s) — {today}",
-        "content": [{"type": "text/plain", "value": "\n".join(body_lines)}],
+        "textContent": "\n".join(body_lines),
     }
     import urllib.error
     import urllib.request
 
     req = urllib.request.Request(
-        "https://api.sendgrid.com/v3/mail/send",
+        "https://api.brevo.com/v3/smtp/email",
         data=json.dumps(payload).encode("utf-8"),
         headers={
-            "Authorization": f"Bearer {sg_key}",
+            "api-key": api_key,
+            "accept": "application/json",
             "Content-Type": "application/json",
         },
         method="POST",
     )
     try:
-        # URL is the constant SendGrid endpoint, not user input.
+        # URL is the constant Brevo endpoint, not user input.
         with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310  # nosec B310  # nosemgrep
             sys.stdout.write(f"[advisory-check] email sent: HTTP {resp.status}\n")
     except urllib.error.URLError as e:

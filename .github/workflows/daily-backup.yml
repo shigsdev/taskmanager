@@ -12,7 +12,7 @@
 # 5. Generate a Fernet key once: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
 # 6. Save that key in 1Password (you'll need it for restores) AND as a secret
 #    in this repo: BACKUP_FERNET_KEY
-# 7. Add other secrets: DATABASE_URL (Railway Postgres URL), SENDGRID_API_KEY,
+# 7. Add other secrets: DATABASE_URL (Railway Postgres URL), BREVO_API_KEY,
 #    DIGEST_FROM_EMAIL, DIGEST_TO_EMAIL
 # 8. Set repo variable BACKUP_REPO_URL = git@github.com:<user>/taskmanager-backups.git
 #
@@ -77,7 +77,7 @@ jobs:
           DATABASE_URL:        ${{ secrets.DATABASE_URL }}
           BACKUP_FERNET_KEY:   ${{ secrets.BACKUP_FERNET_KEY }}
           BACKUP_REPO_URL:     ${{ vars.BACKUP_REPO_URL }}
-          SENDGRID_API_KEY:    ${{ secrets.SENDGRID_API_KEY }}
+          BREVO_API_KEY:    ${{ secrets.BREVO_API_KEY }}
           DIGEST_FROM_EMAIL:   ${{ vars.DIGEST_FROM_EMAIL }}
           DIGEST_TO_EMAIL:     ${{ vars.DIGEST_TO_EMAIL }}
           # Absolute path to the v18 binary the previous step

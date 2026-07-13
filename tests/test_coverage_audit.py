@@ -325,8 +325,8 @@ class TestExtract:
 
 
 class TestSendAuditEmail:
-    def _patch_sendgrid(self, monkeypatch):
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake")
+    def _patch_brevo(self, monkeypatch):
+        monkeypatch.setenv("BREVO_API_KEY", "fake")
         monkeypatch.setenv("DIGEST_FROM_EMAIL", "from@x")
         monkeypatch.setenv("DIGEST_TO_EMAIL", "to@x")
         captured = {}
@@ -346,7 +346,7 @@ class TestSendAuditEmail:
         return captured
 
     def test_clean_subject_includes_overall_pct(self, monkeypatch):
-        cap = self._patch_sendgrid(monkeypatch)
+        cap = self._patch_brevo(monkeypatch)
         cov_mod.send_audit_email(
             findings=[],
             per_check_counts=[
@@ -360,7 +360,7 @@ class TestSendAuditEmail:
         assert "84.1%" in cap["body"]["subject"]
 
     def test_findings_subject_includes_count_and_pct(self, monkeypatch):
-        cap = self._patch_sendgrid(monkeypatch)
+        cap = self._patch_brevo(monkeypatch)
         f = cov_mod.Finding(
             check_id="overall-coverage-drift",
             detail="dropped 5pp",
@@ -378,8 +378,8 @@ class TestSendAuditEmail:
         assert "79.0%" in cap["body"]["subject"]
 
     def test_no_email_when_unconfigured(self, monkeypatch, capsys):
-        monkeypatch.delenv("SENDGRID_API_KEY", raising=False)
+        monkeypatch.delenv("BREVO_API_KEY", raising=False)
         cov_mod.send_audit_email(
             findings=[], per_check_counts=[("x", 0)], overall=84.0,
         )
-        assert "SendGrid not configured" in capsys.readouterr().err
+        assert "Brevo not configured" in capsys.readouterr().err

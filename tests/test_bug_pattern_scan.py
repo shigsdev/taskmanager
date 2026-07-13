@@ -603,7 +603,7 @@ class TestMainExitCodes:
             ".bad { grid-template-columns: 1fr; }\n",
             encoding="utf-8",
         )
-        # Stub the SendGrid call so the test never hits the network.
+        # Stub the Brevo call so the test never hits the network.
         sent = []
         monkeypatch.setattr(bp_mod, "send_scan_email",
                             lambda findings, *, per_check_counts: sent.append(
@@ -632,10 +632,10 @@ class TestSendScanEmail:
     clean or not, so the absence of an email proves the cron failed.
     Subject/body shape differs between clean and findings runs."""
 
-    def _patch_sendgrid(self, monkeypatch):
+    def _patch_brevo(self, monkeypatch):
         """Set the three env vars the function checks + capture the
-        outgoing HTTP request payload instead of hitting SendGrid."""
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake-key")
+        outgoing HTTP request payload instead of hitting Brevo."""
+        monkeypatch.setenv("BREVO_API_KEY", "fake-key")
         monkeypatch.setenv("DIGEST_FROM_EMAIL", "from@example.com")
         monkeypatch.setenv("DIGEST_TO_EMAIL", "to@example.com")
 
@@ -657,13 +657,13 @@ class TestSendScanEmail:
         return captured
 
     def test_clean_run_subject_says_CLEAN(self, monkeypatch):
-        cap = self._patch_sendgrid(monkeypatch)
+        cap = self._patch_brevo(monkeypatch)
         bp_mod.send_scan_email(
             findings=[],
             per_check_counts=[("bare-1fr-grids", 0), ("embedded-url-credentials", 0)],
         )
         assert "CLEAN" in cap["body"]["subject"]
-        body_text = cap["body"]["content"][0]["value"]
+        body_text = cap["body"]["textContent"]
         # Plain-English statement of clean.
         assert "ALL CHECKS CLEAN" in body_text
         # Per-check breakdown lists every check with its 0 count.
@@ -673,7 +673,7 @@ class TestSendScanEmail:
         assert "confirmation email fires on every weekly run" in body_text
 
     def test_findings_run_subject_has_count(self, monkeypatch):
-        cap = self._patch_sendgrid(monkeypatch)
+        cap = self._patch_brevo(monkeypatch)
         finding = bp_mod.Finding(
             check_id="bare-1fr-grids",
             path="static/style.css",
@@ -686,16 +686,16 @@ class TestSendScanEmail:
             per_check_counts=[("bare-1fr-grids", 1), ("embedded-url-credentials", 0)],
         )
         assert "1 finding(s)" in cap["body"]["subject"]
-        body_text = cap["body"]["content"][0]["value"]
+        body_text = cap["body"]["textContent"]
         # Body has the per-check group header + the file:line offender.
         assert "== bare-1fr-grids (1 finding(s)) ==" in body_text
         assert "static/style.css:42" in body_text
 
-    def test_no_email_sent_when_sendgrid_unconfigured(self, monkeypatch, capsys):
+    def test_no_email_sent_when_brevo_unconfigured(self, monkeypatch, capsys):
         # Defensive — same behavior as scripts/check_advisories.py: if
-        # the SENDGRID env is missing, log to stderr and return without
+        # the BREVO env is missing, log to stderr and return without
         # raising. Confirms the change keeps the cron resilient.
-        monkeypatch.delenv("SENDGRID_API_KEY", raising=False)
+        monkeypatch.delenv("BREVO_API_KEY", raising=False)
         monkeypatch.delenv("DIGEST_FROM_EMAIL", raising=False)
         monkeypatch.delenv("DIGEST_TO_EMAIL", raising=False)
         bp_mod.send_scan_email(
@@ -703,7 +703,7 @@ class TestSendScanEmail:
             per_check_counts=[("bare-1fr-grids", 0)],
         )
         err = capsys.readouterr().err
-        assert "SendGrid not configured" in err
+        assert "Brevo not configured" in err
 
     def test_back_compat_alias_send_findings_email(self, monkeypatch):
         # send_findings_email used to be the public name; keep it as an
@@ -711,7 +711,7 @@ class TestSendScanEmail:
         # works. The alias forwards to send_scan_email with no per-check
         # counts, so the body just confirms it landed in the same path
         # (clean → CLEAN subject; the per-check breakdown is empty).
-        cap = self._patch_sendgrid(monkeypatch)
+        cap = self._patch_brevo(monkeypatch)
         bp_mod.send_findings_email([])
         assert "CLEAN" in cap["body"]["subject"]
 

@@ -444,12 +444,12 @@ def send_audit_email(
     per_check_counts: list[tuple[str, int]],
 ) -> None:
     """Always-email (clean or not) — mirrors #226c / #227."""
-    sg_key = os.environ.get("SENDGRID_API_KEY")
+    api_key = os.environ.get("BREVO_API_KEY")
     from_addr = os.environ.get("DIGEST_FROM_EMAIL")
     to_addr = os.environ.get("DIGEST_TO_EMAIL")
-    if not (sg_key and from_addr and to_addr):
+    if not (api_key and from_addr and to_addr):
         sys.stderr.write(
-            "[tech-debt] SendGrid not configured; skipping email\n"
+            "[tech-debt] Brevo not configured; skipping email\n"
         )
         return
 
@@ -498,25 +498,26 @@ def send_audit_email(
         ]
 
     payload = {
-        "personalizations": [{"to": [{"email": to_addr}]}],
-        "from": {"email": from_addr},
+        "sender": {"email": from_addr, "name": "Taskmanager CI"},
+        "to": [{"email": to_addr}],
         "subject": subject,
-        "content": [{"type": "text/plain", "value": "\n".join(body_lines)}],
+        "textContent": "\n".join(body_lines),
     }
     import urllib.error
     import urllib.request
 
     req = urllib.request.Request(
-        "https://api.sendgrid.com/v3/mail/send",
+        "https://api.brevo.com/v3/smtp/email",
         data=json.dumps(payload).encode("utf-8"),
         headers={
-            "Authorization": f"Bearer {sg_key}",
+            "api-key": api_key,
+            "accept": "application/json",
             "Content-Type": "application/json",
         },
         method="POST",
     )
     try:
-        # URL is the constant SendGrid endpoint, not user input.
+        # URL is the constant Brevo endpoint, not user input.
         with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310  # nosec B310  # nosemgrep
             sys.stdout.write(
                 f"[tech-debt] email sent: HTTP {resp.status}\n"

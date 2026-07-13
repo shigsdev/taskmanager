@@ -17,7 +17,7 @@ Required env vars (set as GitHub Actions secrets):
     BACKUP_FERNET_KEY     base64 Fernet key (44 chars, ends with '=')
     BACKUP_REPO_DEPLOY_KEY  SSH deploy key with write access to backup repo
     BACKUP_REPO_URL       git@github.com:<user>/taskmanager-backups.git
-    SENDGRID_API_KEY      reuse the app's existing key
+    BREVO_API_KEY      reuse the app's existing key
     DIGEST_FROM_EMAIL     reuse
     DIGEST_TO_EMAIL       reuse — backup status email goes here
 
@@ -254,14 +254,14 @@ def send_status_email(
     sha: str,
     error: str | None = None,
 ) -> None:
-    """Send a status email via SendGrid. Reuses the app's existing
+    """Send a status email via Brevo. Reuses the app's existing
     DIGEST_* env vars. Failures here are LOGGED but do NOT change the
     overall exit code (the backup itself was the main job)."""
-    sg_key = os.environ.get("SENDGRID_API_KEY")
+    api_key = os.environ.get("BREVO_API_KEY")
     from_addr = os.environ.get("DIGEST_FROM_EMAIL")
     to_addr = os.environ.get("DIGEST_TO_EMAIL")
-    if not (sg_key and from_addr and to_addr):
-        sys.stderr.write("[backup] SendGrid not configured; skipping email\n")
+    if not (api_key and from_addr and to_addr):
+        sys.stderr.write("[backup] Brevo not configured; skipping email\n")
         return
 
     today = datetime.date.today().isoformat()
@@ -291,28 +291,29 @@ def send_status_email(
         ]
     body = "\n".join(body_lines)
 
-    # Use the SendGrid v3 mail-send endpoint directly (no SDK). Same
+    # Use the Brevo v3 mail-send endpoint directly (no SDK). Same
     # pattern as digest_service.
     import urllib.error
     import urllib.request
 
     payload = {
-        "personalizations": [{"to": [{"email": to_addr}]}],
-        "from": {"email": from_addr},
+        "sender": {"email": from_addr, "name": "Taskmanager CI"},
+        "to": [{"email": to_addr}],
         "subject": subject,
-        "content": [{"type": "text/plain", "value": body}],
+        "textContent": body,
     }
     req = urllib.request.Request(
-        "https://api.sendgrid.com/v3/mail/send",
+        "https://api.brevo.com/v3/smtp/email",
         data=json.dumps(payload).encode("utf-8"),
         headers={
-            "Authorization": f"Bearer {sg_key}",
+            "api-key": api_key,
+            "accept": "application/json",
             "Content-Type": "application/json",
         },
         method="POST",
     )
     try:
-        # URL is the constant SendGrid endpoint, not user input.
+        # URL is the constant Brevo endpoint, not user input.
         with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310  # nosec B310  # nosemgrep
             sys.stdout.write(f"[backup] email sent: HTTP {resp.status}\n")
     except urllib.error.URLError as e:

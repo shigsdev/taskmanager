@@ -18,7 +18,8 @@
 # the 2026-05-24 PAT-leak incident motivated.
 #
 # Always sends an email (clean or not) so the absence of one proves
-# the cron failed. No new secrets — reuses SENDGRID_API_KEY +
+# the cron failed. Needs the BREVO_API_KEY Actions secret (#298 —
+# replaces the retired SendGrid key) + reuses
 # DIGEST_FROM_EMAIL + DIGEST_TO_EMAIL.
 name: Monthly security-posture audit
 
@@ -51,7 +52,7 @@ jobs:
 
       - name: Run security-posture audit
         env:
-          SENDGRID_API_KEY:  ${{ secrets.SENDGRID_API_KEY }}
+          BREVO_API_KEY:  ${{ secrets.BREVO_API_KEY }}
           DIGEST_FROM_EMAIL: ${{ vars.DIGEST_FROM_EMAIL }}
           DIGEST_TO_EMAIL:   ${{ vars.DIGEST_TO_EMAIL }}
         # See weekly-bug-pattern-scan.yml for the AUDIT_RC pattern.

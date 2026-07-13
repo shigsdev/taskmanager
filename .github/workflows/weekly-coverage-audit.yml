@@ -15,7 +15,8 @@
 # voice_service.py 70%.)
 #
 # Always emails (clean or not) so the absence proves the cron failed.
-# Reuses SENDGRID_API_KEY + DIGEST_*_EMAIL (no new secrets).
+# Needs the BREVO_API_KEY Actions secret (#298 — replaces the retired
+# SendGrid key) + DIGEST_*_EMAIL vars.
 name: Weekly test-coverage audit
 
 on:
@@ -47,7 +48,7 @@ jobs:
 
       - name: Run coverage audit
         env:
-          SENDGRID_API_KEY:  ${{ secrets.SENDGRID_API_KEY }}
+          BREVO_API_KEY:  ${{ secrets.BREVO_API_KEY }}
           DIGEST_FROM_EMAIL: ${{ vars.DIGEST_FROM_EMAIL }}
           DIGEST_TO_EMAIL:   ${{ vars.DIGEST_TO_EMAIL }}
         # See weekly-bug-pattern-scan.yml for the AUDIT_RC pattern.

@@ -16,7 +16,8 @@
 #                               duplication of 30+ lines)
 #
 # Always sends an email (clean or not) so the absence of one proves
-# the cron failed. Reuses SENDGRID_API_KEY + DIGEST_*_EMAIL (no new
+# the cron failed. Needs the BREVO_API_KEY Actions secret (#298 —
+# replaces the retired SendGrid key) + DIGEST_*_EMAIL (no new
 # secrets).
 name: Weekly tech-debt audit
 
@@ -65,7 +66,7 @@ jobs:
 
       - name: Run tech-debt audit
         env:
-          SENDGRID_API_KEY:  ${{ secrets.SENDGRID_API_KEY }}
+          BREVO_API_KEY:  ${{ secrets.BREVO_API_KEY }}
           DIGEST_FROM_EMAIL: ${{ vars.DIGEST_FROM_EMAIL }}
           DIGEST_TO_EMAIL:   ${{ vars.DIGEST_TO_EMAIL }}
         # See weekly-bug-pattern-scan.yml for the AUDIT_RC pattern;

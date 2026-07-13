@@ -568,8 +568,8 @@ class TestMainExitCodes:
 
 
 class TestSendAuditEmail:
-    def _patch_sendgrid(self, monkeypatch):
-        monkeypatch.setenv("SENDGRID_API_KEY", "fake")
+    def _patch_brevo(self, monkeypatch):
+        monkeypatch.setenv("BREVO_API_KEY", "fake")
         monkeypatch.setenv("DIGEST_FROM_EMAIL", "from@x")
         monkeypatch.setenv("DIGEST_TO_EMAIL", "to@x")
         captured = {}
@@ -589,7 +589,7 @@ class TestSendAuditEmail:
         return captured
 
     def test_clean_subject(self, monkeypatch):
-        cap = self._patch_sendgrid(monkeypatch)
+        cap = self._patch_brevo(monkeypatch)
         td_mod.send_audit_email(
             findings=[],
             per_check_counts=[("todo-fixme-accumulation", 0),
@@ -597,12 +597,12 @@ class TestSendAuditEmail:
                               ("stale-tests", 0)],
         )
         assert "CLEAN" in cap["body"]["subject"]
-        body = cap["body"]["content"][0]["value"]
+        body = cap["body"]["textContent"]
         assert "ALL CHECKS CLEAN" in body
         assert "dependency-drift: 0 finding(s)" in body
 
     def test_findings_subject(self, monkeypatch):
-        cap = self._patch_sendgrid(monkeypatch)
+        cap = self._patch_brevo(monkeypatch)
         f = td_mod.Finding(check_id="dependency-drift",
                            detail="pkg X stuck at 1 — latest 4 (3 major)")
         td_mod.send_audit_email(
@@ -612,13 +612,13 @@ class TestSendAuditEmail:
                               ("stale-tests", 0)],
         )
         assert "1 finding(s)" in cap["body"]["subject"]
-        body = cap["body"]["content"][0]["value"]
+        body = cap["body"]["textContent"]
         assert "pkg X stuck at 1" in body
 
     def test_no_email_when_unconfigured(self, monkeypatch, capsys):
-        monkeypatch.delenv("SENDGRID_API_KEY", raising=False)
+        monkeypatch.delenv("BREVO_API_KEY", raising=False)
         td_mod.send_audit_email(
             findings=[],
             per_check_counts=[("todo-fixme-accumulation", 0)],
         )
-        assert "SendGrid not configured" in capsys.readouterr().err
+        assert "Brevo not configured" in capsys.readouterr().err

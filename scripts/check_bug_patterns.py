@@ -51,11 +51,11 @@ Pipeline::
         findings += check_fn()
         ↓
     no findings? → exit 0 silently (no email)
-    any finding? → SendGrid email with file:line list + exit 1
+    any finding? → Brevo email with file:line list + exit 1
 
 Exit codes (so the GitHub Actions UI shows red on findings):
     0 — all checks clean.
-    1 — one or more checks reported a finding. Email sent if SendGrid
+    1 — one or more checks reported a finding. Email sent if Brevo
         is configured.
     2 — internal error (e.g. couldn't read style.css at all).
 
@@ -558,21 +558,21 @@ CHECKS = [
 
 
 def send_scan_email(findings: list[Finding], *, per_check_counts: list[tuple[str, int]]) -> None:
-    """Best-effort SendGrid email — sent on EVERY weekly run, clean or
+    """Best-effort Brevo email — sent on EVERY weekly run, clean or
     not. User-requested 2026-05-26: "an email should go out every week
     with the run regardless if it is clean so I know it is happening."
 
     On clean runs the subject is ``[Taskmanager bug-pattern] CLEAN``
     and the body lists each check + 0 findings. On findings runs the
     subject reports the count and the body lists each offender. Same
-    SendGrid pattern as `scripts/check_advisories.py`; failures here
+    Brevo pattern as `scripts/check_advisories.py`; failures here
     LOG but do NOT change the exit code.
     """
-    sg_key = os.environ.get("SENDGRID_API_KEY")
+    api_key = os.environ.get("BREVO_API_KEY")
     from_addr = os.environ.get("DIGEST_FROM_EMAIL")
     to_addr = os.environ.get("DIGEST_TO_EMAIL")
-    if not (sg_key and from_addr and to_addr):
-        sys.stderr.write("[bug-pattern-scan] SendGrid not configured; skipping email\n")
+    if not (api_key and from_addr and to_addr):
+        sys.stderr.write("[bug-pattern-scan] Brevo not configured; skipping email\n")
         return
 
     today = datetime.date.today().isoformat()
@@ -621,25 +621,26 @@ def send_scan_email(findings: list[Finding], *, per_check_counts: list[tuple[str
         ]
 
     payload = {
-        "personalizations": [{"to": [{"email": to_addr}]}],
-        "from": {"email": from_addr},
+        "sender": {"email": from_addr, "name": "Taskmanager CI"},
+        "to": [{"email": to_addr}],
         "subject": subject,
-        "content": [{"type": "text/plain", "value": "\n".join(body_lines)}],
+        "textContent": "\n".join(body_lines),
     }
     import urllib.error
     import urllib.request
 
     req = urllib.request.Request(
-        "https://api.sendgrid.com/v3/mail/send",
+        "https://api.brevo.com/v3/smtp/email",
         data=json.dumps(payload).encode("utf-8"),
         headers={
-            "Authorization": f"Bearer {sg_key}",
+            "api-key": api_key,
+            "accept": "application/json",
             "Content-Type": "application/json",
         },
         method="POST",
     )
     try:
-        # URL is the constant SendGrid endpoint, not user input.
+        # URL is the constant Brevo endpoint, not user input.
         with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310  # nosec B310  # nosemgrep
             sys.stdout.write(f"[bug-pattern-scan] email sent: HTTP {resp.status}\n")
     except urllib.error.URLError as e:
