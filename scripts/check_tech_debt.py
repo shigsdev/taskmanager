@@ -437,6 +437,19 @@ CHECKS = [
     ("code-duplication", check_code_duplication),
 ]
 
+# Plain-English "what this check looks for" — surfaced in the alert email
+# (#302) so a finding is self-explanatory without opening the source.
+CHECK_DESCRIPTIONS = {
+    "todo-fixme-accumulation":
+        "TODO/FIXME/XXX/HACK markers piling up — too many in total, or too many in one file.",
+    "dependency-drift":
+        "A dependency stuck a major version behind the latest release.",
+    "stale-tests":
+        "A test file untouched for 180+ days while its module may have moved on.",
+    "code-duplication":
+        "A 30+ line copy-pasted block (via jscpd) worth extracting to a shared helper.",
+}
+
 
 def send_audit_email(
     findings: list[Finding],
@@ -454,54 +467,38 @@ def send_audit_email(
         return
 
     today = datetime.date.today().isoformat()
-    total = len(findings)
-    by_check: dict[str, list[Finding]] = {}
+    findings_by_check: dict[str, list[tuple[str, list[str]]]] = {}
     for f in findings:
-        by_check.setdefault(f.check_id, []).append(f)
+        loc = (f.path + (f":{f.line_num}" if f.line_num else "")) if f.path else ""
+        findings_by_check.setdefault(f.check_id, []).append((loc, [f.detail]))
 
-    if total == 0:
-        subject = f"[Taskmanager tech-debt] CLEAN — {today}"
-        body_lines = [
-            f"Weekly tech-debt audit {today}: ALL CHECKS CLEAN "
-            f"({len(per_check_counts)} checks, 0 findings).",
-            "",
-            "This confirmation email fires on every weekly run so the "
-            "absence of an email = the cron failed.",
-            "",
-            "Per-check breakdown:",
-        ]
-        for label, count in per_check_counts:
-            body_lines.append(f"  ✓ {label}: {count} finding(s)")
-    else:
-        subject = f"[Taskmanager tech-debt] {total} finding(s) — {today}"
-        body_lines = [
-            f"Weekly tech-debt audit {today} found {total} finding(s) "
-            f"across {len(by_check)} check(s).",
-            "",
-        ]
-        for label, _ in CHECKS:
-            hits = by_check.get(label, [])
-            body_lines.append(f"== {label} ({len(hits)} finding(s)) ==")
-            for f in hits:
-                where = ""
-                if f.path:
-                    where = f"  {f.path}"
-                    if f.line_num:
-                        where += f":{f.line_num}"
-                    where += "\n"
-                body_lines.append(f"{where}      → {f.detail}")
-            body_lines.append("")
-        body_lines += [
-            "Action: review each finding, fix the underlying issue, "
-            "and re-run `python scripts/check_tech_debt.py` to confirm "
-            "clean. See the GitHub Actions run for the full raw output.",
-        ]
+    sys.path.insert(0, str(PROJECT_ROOT))
+    from scripts import audit_email  # noqa: PLC0415
+    subject, body = audit_email.render(
+        today=today,
+        tag="tech-debt",
+        title="Weekly tech-debt audit",
+        unit_word="audit",
+        cadence_adj="weekly",
+        scope_blurb=(
+            "code-quality signals that drift over time (TODO buildup, "
+            "dependency lag, stale tests, duplication)"
+        ),
+        per_check_counts=per_check_counts,
+        findings_by_check=findings_by_check,
+        descriptions=CHECK_DESCRIPTIONS,
+        todo_steps=[
+            "Address each finding above (or, if it's expected — e.g. a dep "
+            "you're intentionally holding back — note why).",
+            "Re-run `python scripts/check_tech_debt.py` to confirm it goes clean.",
+        ],
+    )
 
     payload = {
         "sender": {"email": from_addr, "name": "Taskmanager CI"},
         "to": [{"email": to_addr}],
         "subject": subject,
-        "textContent": "\n".join(body_lines),
+        "textContent": body,
     }
     import urllib.error
     import urllib.request

@@ -356,8 +356,10 @@ class TestSendAuditEmail:
             ],
             overall=84.1,
         )
-        assert "CLEAN" in cap["body"]["subject"]
+        assert "all clear" in cap["body"]["subject"]
         assert "84.1%" in cap["body"]["subject"]
+        # #302: overall % also shown in the body header.
+        assert "Overall coverage: 84.1%" in cap["body"]["textContent"]
 
     def test_findings_subject_includes_count_and_pct(self, monkeypatch):
         cap = self._patch_brevo(monkeypatch)
@@ -374,8 +376,11 @@ class TestSendAuditEmail:
             ],
             overall=79.0,
         )
-        assert "1 finding(s)" in cap["body"]["subject"]
+        assert "1 issue to review" in cap["body"]["subject"]
         assert "79.0%" in cap["body"]["subject"]
+        body = cap["body"]["textContent"]
+        assert "dropped 5pp" in body
+        assert "overall-coverage-drift — 1 finding" in body
 
     def test_no_email_when_unconfigured(self, monkeypatch, capsys):
         monkeypatch.delenv("BREVO_API_KEY", raising=False)

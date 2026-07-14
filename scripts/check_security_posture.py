@@ -378,6 +378,19 @@ CHECKS = [
     ("threat-model-freshness", check_threat_model_freshness),
 ]
 
+# Plain-English "what this check looks for" — surfaced in the alert email
+# (#302) so a finding is self-explanatory without opening the source.
+CHECK_DESCRIPTIONS = {
+    "pat-inventory":
+        "A GitHub token in the inventory that's expiring, overdue for rotation, or unused.",
+    "oauth-scope-drift":
+        "The app's Google OAuth scopes drifted from the reviewed allowlist.",
+    "unencrypted-sensitive-columns":
+        "A models.py column named like a secret (token/key/password) that isn't encrypted at rest.",
+    "threat-model-freshness":
+        "CLAUDE.md's threat model hasn't been touched in 180+ days — time for a posture review.",
+}
+
 
 def send_audit_email(
     findings: list[Finding],
@@ -398,59 +411,39 @@ def send_audit_email(
         return
 
     today = datetime.date.today().isoformat()
-    total = len(findings)
-    by_check: dict[str, list[Finding]] = {}
+    findings_by_check: dict[str, list[tuple[str, list[str]]]] = {}
     for f in findings:
-        by_check.setdefault(f.check_id, []).append(f)
+        loc = (f.path + (f":{f.line_num}" if f.line_num else "")) if f.path else ""
+        findings_by_check.setdefault(f.check_id, []).append((loc, [f.detail]))
 
-    clean = total == 0
-    if clean:
-        subject = f"[Taskmanager security-posture] CLEAN — {today}"
-        body_lines = [
-            f"Monthly security-posture audit {today}: ALL CHECKS CLEAN "
-            f"({len(per_check_counts)} checks, 0 findings).",
-            "",
-            "This confirmation email fires on every monthly run so the "
-            "absence of an email = the cron failed (or the workflow "
-            "config drifted).",
-            "",
-            "Per-check breakdown:",
-        ]
-        for label, count in per_check_counts:
-            body_lines.append(f"  ✓ {label}: {count} finding(s)")
-    else:
-        subject = (
-            f"[Taskmanager security-posture] {total} finding(s) — {today}"
-        )
-        body_lines = [
-            f"Monthly security-posture audit {today} found {total} "
-            f"finding(s) across {len(by_check)} check(s).",
-            "",
-        ]
-        for label, _ in CHECKS:
-            hits = by_check.get(label, [])
-            body_lines.append(f"== {label} ({len(hits)} finding(s)) ==")
-            for f in hits:
-                where = ""
-                if f.path:
-                    where = f"  {f.path}"
-                    if f.line_num:
-                        where += f":{f.line_num}"
-                    where += "\n"
-                body_lines.append(f"{where}      → {f.detail}")
-            body_lines.append("")
-        body_lines += [
-            "Action: review each finding, fix the underlying issue, "
-            "and re-run `python scripts/check_security_posture.py` "
-            "to confirm clean. See the GitHub Actions run for the "
-            "full raw output.",
-        ]
+    sys.path.insert(0, str(PROJECT_ROOT))
+    from scripts import audit_email  # noqa: PLC0415
+    subject, body = audit_email.render(
+        today=today,
+        tag="security-posture",
+        title="Monthly security-posture audit",
+        unit_word="audit",
+        cadence_adj="monthly",
+        scope_blurb=(
+            "slow-drift security signals the per-commit gates miss (token "
+            "hygiene, OAuth-scope drift, unencrypted columns, threat-model age)"
+        ),
+        per_check_counts=per_check_counts,
+        findings_by_check=findings_by_check,
+        descriptions=CHECK_DESCRIPTIONS,
+        todo_steps=[
+            "Address each finding above (or, if the drift is intentional — "
+            "e.g. a scope you meant to add — update the tracked JSON to match).",
+            "Re-run `python scripts/check_security_posture.py` to confirm "
+            "it goes clean.",
+        ],
+    )
 
     payload = {
         "sender": {"email": from_addr, "name": "Taskmanager CI"},
         "to": [{"email": to_addr}],
         "subject": subject,
-        "textContent": "\n".join(body_lines),
+        "textContent": body,
     }
     import urllib.error
     import urllib.request

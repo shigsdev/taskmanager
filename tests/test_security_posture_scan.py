@@ -497,10 +497,12 @@ class TestSendAuditEmail:
                 ("threat-model-freshness", 0),
             ],
         )
-        assert "CLEAN" in cap["body"]["subject"]
+        assert "all clear" in cap["body"]["subject"]
         body_text = cap["body"]["textContent"]
-        assert "ALL CHECKS CLEAN" in body_text
-        assert "pat-inventory: 0 finding(s)" in body_text
+        assert "0 findings across 4 checks" in body_text
+        # #302: shared clearer format — monthly cadence + per-check description.
+        assert "no email means the audit itself stopped running" in body_text
+        assert "✓ pat-inventory — A GitHub token in the inventory" in body_text
 
     def test_findings_run_subject_has_count(self, monkeypatch):
         cap = self._patch_brevo(monkeypatch)
@@ -514,10 +516,11 @@ class TestSendAuditEmail:
                 ("threat-model-freshness", 0),
             ],
         )
-        assert "1 finding(s)" in cap["body"]["subject"]
+        assert "1 issue to review" in cap["body"]["subject"]
         body_text = cap["body"]["textContent"]
-        assert "== pat-inventory (1 finding(s)) ==" in body_text
+        assert "pat-inventory — 1 finding" in body_text
         assert "leaky token" in body_text
+        assert "WHAT TO DO:" in body_text
 
     def test_no_email_sent_when_brevo_unconfigured(
         self, monkeypatch, capsys,
