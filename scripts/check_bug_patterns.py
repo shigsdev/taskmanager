@@ -116,36 +116,30 @@ _GRID_TEMPLATE_DECL_RE = re.compile(
     re.IGNORECASE,
 )
 _BARE_1FR_TOKEN_RE = re.compile(r"\b1fr\b")
-_MINMAX_ZERO_RE = re.compile(r"minmax\(\s*0\s*,", re.IGNORECASE)
+# A `minmax(...)` chunk, tolerant of ONE level of nested parens in the min
+# slot (e.g. `minmax(min(300px, 100%), 1fr)`). CSS grid track functions
+# don't nest deeper than this in practice.
+_MINMAX_RE = re.compile(r"minmax\((?:[^()]|\([^()]*\))*\)", re.IGNORECASE)
 
 
 def _track_uses_bare_1fr(rhs: str) -> bool:
-    """Return True iff ``rhs`` mentions a ``1fr`` track that is NOT inside
-    a ``minmax(0, ...)`` wrapper.
+    """Return True iff ``rhs`` has a ``1fr`` track OUTSIDE a ``minmax(...)``.
 
-    The simple "contains 1fr AND not contains minmax(0," misses mixed
-    declarations like ``grid-template-columns: 1fr minmax(0, 1fr)`` —
-    the first track is bare-1fr (bad), the second is wrapped (fine).
-    To handle this, we strip out every ``minmax(0, ...)`` chunk first
-    (with a non-greedy match), then look for any remaining ``1fr`` token.
+    A ``1fr`` inside ``minmax(<min>, 1fr)`` is the harmless MAX slot — the
+    min slot bounds how far the track shrinks, so ``minmax(0, 1fr)``,
+    ``minmax(200px, 1fr)`` and ``minmax(min(300px, 100%), 1fr)`` are all
+    safe. Only a bare ``1fr`` track (``1fr``, ``repeat(3, 1fr)``) has an
+    implicit ``auto`` (= max-content) min that can blow the grid past its
+    container (#138 D-B1). So strip every ``minmax(...)`` chunk — mixed
+    declarations like ``1fr minmax(0, 1fr)`` keep the bare first track — then
+    look for any surviving ``1fr`` token.
+
+    #302: the strip must tolerate a nested function in the min slot. The old
+    ``minmax([^)]+)`` strip stopped at the inner ``)`` of ``min(300px, 100%)``,
+    left the outer ``1fr`` exposed, and false-flagged the safe responsive card
+    grids (``repeat(auto-fill, minmax(min(300px, 100%), 1fr))``).
     """
-    # Strip out every minmax(0, ...) chunk so its inner 1fr doesn't
-    # count against us. Non-greedy on the body so nested parens (rare in
-    # CSS but possible) don't over-match.
-    stripped = re.sub(
-        r"minmax\(\s*0\s*,[^)]*\)",
-        "",
-        rhs,
-        flags=re.IGNORECASE,
-    )
-    # Also strip out ``minmax(<nonzero>, 1fr)`` — those are fine because
-    # the min track has a real lower bound.
-    stripped = re.sub(
-        r"minmax\([^)]+\)",
-        "",
-        stripped,
-        flags=re.IGNORECASE,
-    )
+    stripped = _MINMAX_RE.sub("", rhs)
     return bool(_BARE_1FR_TOKEN_RE.search(stripped))
 
 
@@ -556,6 +550,28 @@ CHECKS = [
     ("unbalanced-type-work", check_unbalanced_type_work),
 ]
 
+# Plain-English, one-line "what this check looks for" — surfaced in the
+# alert email so a finding is self-explanatory without opening the source
+# (#302: the email used to print only the terse check id).
+CHECK_DESCRIPTIONS = {
+    "bare-1fr-grids":
+        "CSS grid columns that can overflow sideways on narrow screens (#138).",
+    "embedded-url-credentials":
+        "A username or token baked into a URL in committed source (secret-leak risk).",
+    "string-match-only-prod-tests":
+        "Prod-smoke tests that only string-match source instead of exercising behavior.",
+    "state-mutating-get-routes":
+        "A route that accepts GET for a state change — a CSRF surface (#190).",
+    "raw-tier-string-compare":
+        'Tier compared as a raw string instead of the Tier enum (bug #57 class).',
+    "unbalanced-type-work":
+        'JS `.type === "work"` with no "personal" branch nearby (bug #57 class).',
+}
+
+
+def _describe(label: str) -> str:
+    return CHECK_DESCRIPTIONS.get(label, "")
+
 
 def send_scan_email(findings: list[Finding], *, per_check_counts: list[tuple[str, int]]) -> None:
     """Best-effort Brevo email — sent on EVERY weekly run, clean or
@@ -581,43 +597,85 @@ def send_scan_email(findings: list[Finding], *, per_check_counts: list[tuple[str
     for f in findings:
         by_check.setdefault(f.check_id, []).append(f)
 
+    n_checks = len(per_check_counts)
+    rule = "─" * 56
+    # Shared "what this email is" preamble — makes it self-explanatory
+    # (#302: readers shouldn't have to guess whether a finding means
+    # production is broken).
+    what_this_is = (
+        "WHAT THIS IS — an automated weekly scan of the repo for code "
+        "patterns that have caused bugs before. Findings are ADVISORIES "
+        "to review, not build failures: nothing here means production is "
+        "broken. It emails EVERY week even when clean, so a week with no "
+        "email means the scan itself stopped running — that silence is the "
+        "real thing to act on."
+    )
+
     clean = total == 0
     if clean:
-        subject = f"[Taskmanager bug-pattern] CLEAN — {today}"
+        subject = f"[Taskmanager bug-pattern] ✓ all clear ({n_checks} checks) — {today}"
         body_lines = [
-            f"Weekly bug-pattern scan {today}: ALL CHECKS CLEAN "
-            f"({len(per_check_counts)} checks, 0 findings).",
+            f"Weekly bug-pattern scan — {today}",
             "",
-            "This confirmation email fires on every weekly run so the "
-            "absence of an email = the cron failed (or the workflow "
-            "config drifted). Saved you a trip to the Actions tab.",
+            f"RESULT: ✓ all clear — 0 findings across {n_checks} checks. "
+            "Nothing to do.",
             "",
-            "Per-check breakdown:",
+            what_this_is,
+            "",
+            "Checks run (all clean):",
         ]
-        for label, count in per_check_counts:
-            body_lines.append(f"  ✓ {label}: {count} finding(s)")
+        for label, _count in per_check_counts:
+            body_lines.append(f"  ✓ {label} — {_describe(label)}")
+        body_lines += [
+            "",
+            "Full log: the GitHub Actions run that sent this email.",
+        ]
     else:
-        subject = f"[Taskmanager bug-pattern] {total} finding(s) — {today}"
+        n_checks_hit = len(by_check)
+        noun = "issue" if total == 1 else "issues"
+        subject = f"[Taskmanager bug-pattern] {total} {noun} to review — {today}"
         body_lines = [
-            f"Weekly bug-pattern scan {today} found {total} finding(s) "
-            f"across {len(by_check)} check(s) (of {len(per_check_counts)} "
-            f"checks total).",
+            f"Weekly bug-pattern scan — {today}",
+            "",
+            f"RESULT: {total} {noun} to review, in {n_checks_hit} of "
+            f"{n_checks} checks.",
+            "",
+            what_this_is,
             "",
         ]
+        # Only the checks that actually fired get a detail block — no empty
+        # "0 finding(s)" noise (#302).
         for label, _ in CHECKS:
             hits = by_check.get(label, [])
-            body_lines.append(f"== {label} ({len(hits)} finding(s)) ==")
-            for f in hits:
-                if f.line_num:
-                    body_lines.append(f"  {f.path}:{f.line_num}  {f.line}")
-                else:
-                    body_lines.append(f"  {f.path}  {f.line}")
-                body_lines.append(f"      → {f.message}")
+            if not hits:
+                continue
+            body_lines.append(rule)
+            n = len(hits)
+            body_lines.append(f"{label} — {n} finding{'s' if n != 1 else ''}")
+            desc = _describe(label)
+            if desc:
+                body_lines.append(desc)
             body_lines.append("")
+            for f in hits:
+                loc = f"{f.path}:{f.line_num}" if f.line_num else f.path
+                body_lines.append(f"  {loc}")
+                body_lines.append(f"      {f.line.strip()}")
+                body_lines.append(f"      FIX: {f.message}")
+                body_lines.append("")
+        body_lines.append(rule)
+        # Compact list of the checks that came back clean this run.
+        clean_labels = [lbl for lbl, c in per_check_counts if c == 0]
+        if clean_labels:
+            body_lines += ["", "Clean this run: " + ", ".join(clean_labels)]
         body_lines += [
-            "Action: review each finding, fix the offender, re-run "
-            "`python scripts/check_bug_patterns.py` to confirm clean. "
-            "See the GitHub Actions run for the full raw output.",
+            "",
+            "WHAT TO DO:",
+            "  1. Open each file:line above and apply its FIX (or, if it's a "
+            "false positive, tune the check in scripts/check_bug_patterns.py).",
+            "  2. Re-run `python scripts/check_bug_patterns.py` locally to "
+            "confirm it goes clean.",
+            "",
+            "Full log + raw output: the GitHub Actions run that sent this email.",
         ]
 
     payload = {

@@ -111,6 +111,21 @@ class TestBare1frGridsCheck:
         )
         assert bp_mod.check_bare_1fr_grids() == []
 
+    def test_nested_minmax_card_grid_is_clean(self, with_project_root: Path):
+        # #302 regression: `minmax(min(300px, 100%), 1fr)` is the safe
+        # responsive-card idiom — the `1fr` is the harmless MAX slot and
+        # `min(…, 100%)` already caps the shrink. An earlier `minmax([^)]+)`
+        # strip stopped at the inner `)` and false-flagged this.
+        css_dir = with_project_root / "static"
+        css_dir.mkdir()
+        (css_dir / "style.css").write_text(
+            ".cards {\n"
+            "  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        assert bp_mod.check_bare_1fr_grids() == []
+
     def test_fixed_pixel_track_is_clean(self, with_project_root: Path):
         css_dir = with_project_root / "static"
         css_dir.mkdir()
@@ -656,40 +671,49 @@ class TestSendScanEmail:
         monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen)
         return captured
 
-    def test_clean_run_subject_says_CLEAN(self, monkeypatch):
+    def test_clean_run_subject_and_body(self, monkeypatch):
         cap = self._patch_brevo(monkeypatch)
         bp_mod.send_scan_email(
             findings=[],
             per_check_counts=[("bare-1fr-grids", 0), ("embedded-url-credentials", 0)],
         )
-        assert "CLEAN" in cap["body"]["subject"]
+        assert "all clear" in cap["body"]["subject"]
         body_text = cap["body"]["textContent"]
-        # Plain-English statement of clean.
-        assert "ALL CHECKS CLEAN" in body_text
-        # Per-check breakdown lists every check with its 0 count.
-        assert "bare-1fr-grids: 0 finding(s)" in body_text
-        assert "embedded-url-credentials: 0 finding(s)" in body_text
-        # Explainer line so the user knows why they got the email.
-        assert "confirmation email fires on every weekly run" in body_text
+        # Plain-English "nothing to do" result.
+        assert "0 findings across 2 checks" in body_text
+        assert "Nothing to do" in body_text
+        # Each check listed with its plain-English description (#302).
+        assert "✓ bare-1fr-grids — CSS grid columns" in body_text
+        assert "✓ embedded-url-credentials —" in body_text
+        # Preamble makes clear a MISSING email is the real signal.
+        assert "no email means the scan itself stopped running" in body_text
 
-    def test_findings_run_subject_has_count(self, monkeypatch):
+    def test_findings_run_subject_and_body(self, monkeypatch):
         cap = self._patch_brevo(monkeypatch)
         finding = bp_mod.Finding(
             check_id="bare-1fr-grids",
             path="static/style.css",
             line_num=42,
             line=".x { grid-template-columns: 1fr; }",
-            message="bare 1fr",
+            message="bare 1fr — wrap in minmax(0, 1fr)",
         )
         bp_mod.send_scan_email(
             findings=[finding],
             per_check_counts=[("bare-1fr-grids", 1), ("embedded-url-credentials", 0)],
         )
-        assert "1 finding(s)" in cap["body"]["subject"]
+        assert "1 issue to review" in cap["body"]["subject"]
         body_text = cap["body"]["textContent"]
-        # Body has the per-check group header + the file:line offender.
-        assert "== bare-1fr-grids (1 finding(s)) ==" in body_text
+        assert "1 issue to review, in 1 of 2 checks" in body_text
+        # Detail block: header + description + file:line + FIX line (#302).
+        assert "bare-1fr-grids — 1 finding" in body_text
+        assert "CSS grid columns that can overflow" in body_text
         assert "static/style.css:42" in body_text
+        assert "FIX: bare 1fr — wrap in minmax(0, 1fr)" in body_text
+        # The clean check gets NO empty detail block — just a compact list.
+        assert "embedded-url-credentials — 0" not in body_text
+        assert "Clean this run: embedded-url-credentials" in body_text
+        # Actionable next steps present.
+        assert "WHAT TO DO:" in body_text
 
     def test_no_email_sent_when_brevo_unconfigured(self, monkeypatch, capsys):
         # Defensive — same behavior as scripts/check_advisories.py: if
@@ -713,7 +737,7 @@ class TestSendScanEmail:
         # (clean → CLEAN subject; the per-check breakdown is empty).
         cap = self._patch_brevo(monkeypatch)
         bp_mod.send_findings_email([])
-        assert "CLEAN" in cap["body"]["subject"]
+        assert "all clear" in cap["body"]["subject"]
 
 
 # ---------------------------------------------------------------------------
@@ -740,6 +764,16 @@ class TestTrackUsesBare1fr:
 
     def test_minmax_nonzero(self):
         assert not bp_mod._track_uses_bare_1fr("minmax(120px, 1fr)")
+
+    def test_nested_minmax_min_is_clean(self):
+        # #302: nested function in the min slot must not expose the max 1fr.
+        assert not bp_mod._track_uses_bare_1fr(
+            "repeat(auto-fill, minmax(min(300px, 100%), 1fr))")
+        assert not bp_mod._track_uses_bare_1fr("minmax(min(360px, 100%), 1fr)")
+
+    def test_repeat_bare_1fr_still_flagged(self):
+        # The genuine bare-track case must still trip (the .sf-sched shape).
+        assert bp_mod._track_uses_bare_1fr("repeat(3, 1fr)")
 
     def test_fixed_only(self):
         assert not bp_mod._track_uses_bare_1fr("220px 240px")

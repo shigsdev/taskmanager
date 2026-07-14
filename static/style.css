@@ -5555,7 +5555,7 @@ table.quality-gates code {
 .sf-intro-title { font-weight: 700; font-size: 1.02rem; color: var(--sf-accent); margin-bottom: 5px; }
 .sf-intro-body { font-size: 0.8rem; color: var(--cream-dim); line-height: 1.65; }
 
-.sf-sched { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }
+.sf-sched { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 20px; }
 .sf-sched-day { background: var(--slate-100); border: 1px solid var(--rule-soft); border-radius: var(--radius-s); padding: 11px 8px; text-align: center; }
 .sf-sched-day.on { background: var(--slate-200); border-color: var(--sf-accent); }
 .sf-sched-num { font-family: var(--font-mono); font-size: 0.55rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--cream-faint); margin-bottom: 3px; }
