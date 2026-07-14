@@ -10,31 +10,30 @@ file is the index pointer.
 
 ## In Progress
 
-- [ ] **#303 Clearer audit emails (all 4) via shared renderer + dependency bumps (crypto 49, jscpd 5)** —
-  User flagged the weekly tech-debt email still used the old terse format
-  (#302 only reached bug-pattern) and OK'd two dependency-drift findings.
-  (1) **Shared renderer** `scripts/audit_email.py` — one `render()` producing
-  the self-explanatory format (WHAT-THIS-IS preamble, per-check descriptions,
-  per-finding blocks, compact "clean this run" list, numbered WHAT-TO-DO;
-  weekly/monthly cadence + optional subject/header extras). Retrofitted all 4
-  audit scripts (bug-pattern, tech-debt, coverage, security-posture) to call it
-  — bug-pattern output is byte-identical (its tests unchanged), the other 3 get
-  the clearer format for the first time. Each script keeps a `CHECK_DESCRIPTIONS`
-  map + maps its own Finding shape to the renderer's `(loc, [lines])` tuples.
-  Extracting to one renderer (vs inlining ×4) also avoids a self-inflicted
-  `code-duplication` finding. Imported via the existing `sys.path.insert(0,
-  PROJECT_ROOT); from scripts import audit_email` pattern (verified in the
-  standalone `python scripts/…` run path). +`tests/test_audit_email.py` +
-  updated the 3 audits' email-body test assertions. (2) **Deps** —
-  `cryptography 48.0.1→49.0.0` (runtime Fernet lib; encryption tests +
-  full suite green) and `jscpd 4.2.4→5.0.12` (dev duplication tool; report
-  schema still parses). CI-only + deps; no UI change. Gates GREEN. NOTE: jscpd 5
-  detects better and now surfaces a real pre-existing 37-line `calendar.js`
-  duplication (162-198 ↔ 383-4xx) that jscpd 4 missed — the next tech-debt audit
-  will list it; separate low-priority cleanup. 🔄 IN PROGRESS — awaiting deploy
-  validation (cryptography 49 in prod) + prod smoke.
+_(nothing in flight)_
 
 ## Completed
+
+- [x] **Clearer audit emails (all 4) via shared renderer + dependency bumps (cryptography 49, jscpd 5) (#303)** —
+  User flagged the weekly tech-debt email still used the old terse format (#302
+  only reached bug-pattern) and OK'd the two dependency-drift findings.
+  (1) New shared renderer `scripts/audit_email.py` — one `render()` builds the
+  self-explanatory format (WHAT-THIS-IS preamble, per-check descriptions,
+  per-finding blocks, compact "clean this run" list, numbered WHAT-TO-DO;
+  weekly/monthly cadence + optional subject/header extras). Retrofitted all 4
+  audits (bug-pattern, tech-debt, coverage, security-posture) to call it —
+  bug-pattern output byte-identical (tests unchanged); the other 3 get the
+  clearer format for the first time. One renderer (vs inlining ×4) also avoids a
+  self-inflicted code-duplication finding; imported via the existing `from
+  scripts import audit_email` pattern (verified in the standalone run path).
+  +`tests/test_audit_email.py` + updated the 3 audits' body assertions.
+  (2) Deps: `cryptography 48.0.1→49.0.0` (runtime Fernet lib) + `jscpd
+  4.2.4→5.0.12` (dev tool). Completed 2026-07-14 — merged to main (0b06f77),
+  gates GREEN, DEPLOY GREEN at 0b06f77 (`encryption ok` confirms cryptography 49
+  live) + 5-min monitor clean + 47/47 prod smoke; post-ship `workflow_dispatch`
+  confirmed the new clearer tech-debt email + dependency-drift now 0. NOTE:
+  jscpd 5 detects better and now surfaces a real pre-existing 37-line
+  `calendar.js` duplication (162-198 ↔ 383-4xx) — separate low-priority cleanup.
 
 - [x] **Bug-pattern scan: nested-minmax false positives + clearer alert email + `.sf-sched` wrap (#302)** —
   Triggered by a weekly bug-pattern alert flagging 4 `bare-1fr-grids` findings
