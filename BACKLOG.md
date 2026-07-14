@@ -227,9 +227,9 @@ The script preserves operator-added prose across re-renders. -->
 | Audit row | Finding | First seen | Last seen | Notes / Status |
 |---|---|---|---|---|
 <!-- audit-row: bug-pattern/bare-1fr-grids/static-style.css -->
-| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 42: bare 1fr | 2026-05-27 | 2026-07-13 | 🟢 auto-detected resolved 2026-07-13 |
+| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 42: bare 1fr | 2026-05-27 | 2026-07-14 | 🟢 auto-detected resolved 2026-07-14 |
 <!-- audit-row: coverage/overall-coverage-drift/ -->
-| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-07-13 | 🟢 auto-detected resolved 2026-07-13 |
+| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-07-14 | 🟢 auto-detected resolved 2026-07-14 |
 <!-- audit-row: coverage/per-file-coverage-drift/app.py -->
 | `coverage/per-file-coverage-drift/app.py` | **app.py** — coverage dropped 9.9pp (90.2% → 80.3%; tolerance 5.0pp) | 2026-06-26 | 2026-07-10 | 🟢 auto-detected resolved 2026-07-12 |
 <!-- audit-row: coverage/per-file-coverage-drift/digest_api.py -->
