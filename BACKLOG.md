@@ -10,29 +10,30 @@ file is the index pointer.
 
 ## In Progress
 
-- [ ] **#302 Bug-pattern scan: fix nested-minmax false positives + clearer alert email + wrap `.sf-sched`** —
-  User-reported 2026-07-13 after a bug-pattern alert flagged 4 `bare-1fr-grids`
-  findings ("is this a bug in the email?"). Diagnosis: 3 of 4 were **scanner
-  false positives** — `_track_uses_bare_1fr`'s `minmax([^)]+)` strip stopped at
-  the inner `)` of a nested `min(300px, 100%)`, leaving the harmless max-slot
-  `1fr` exposed and flagging the safe responsive-card idiom
-  `repeat(auto-fill, minmax(min(Npx, 100%), 1fr))` (lines 1935/3834/3912). The
-  4th (`.sf-sched` `repeat(3, 1fr)`, line 5558) was a legit-but-low-risk bare
-  track. Fixes: (1) **scanner** — nesting-aware `_MINMAX_RE`
-  (`minmax\((?:[^()]|\([^()]*\))*\)`) strips one level of nested parens, so
-  the card grids pass while bare `1fr`/`repeat(N,1fr)` still trip; removed dead
-  `_MINMAX_ZERO_RE`; +regression tests. (2) **`.sf-sched`** → `repeat(3,
-  minmax(0, 1fr))` (visually identical, overflow-safe; sw.js v223→v224). (3)
-  **clearer alert email** — rewrote `send_scan_email`: self-explanatory "WHAT
-  THIS IS" preamble (advisories, not build failures; a *missing* weekly email
-  is the real signal), plain-English per-check descriptions
-  (`CHECK_DESCRIPTIONS`), per-finding `file:line` + code + `FIX:` line, only
-  fired checks get detail blocks (clean ones listed compactly), numbered "WHAT
-  TO DO". Scanner+email are CI-only; `.sf-sched` is the one UI change. Gates
-  GREEN; Phase 6 desktop+mobile clean (3 equal columns, no overflow, no clipped
-  labels). 🔄 IN PROGRESS — awaiting deploy validation + prod smoke.
+_(nothing in flight)_
 
 ## Completed
+
+- [x] **Bug-pattern scan: nested-minmax false positives + clearer alert email + `.sf-sched` wrap (#302)** —
+  Triggered by a weekly bug-pattern alert flagging 4 `bare-1fr-grids` findings
+  ("is this a bug in the email?"). 3 of 4 were **scanner false positives** —
+  `_track_uses_bare_1fr`'s `minmax([^)]+)` strip stopped at the inner `)` of a
+  nested `min(300px, 100%)`, exposing the harmless max-slot `1fr` and flagging
+  the safe responsive-card idiom `repeat(auto-fill, minmax(min(Npx,100%),1fr))`.
+  Fixes: (1) scanner — nesting-aware `_MINMAX_RE` strips one level of nested
+  parens (card grids pass; bare `1fr`/`repeat(N,1fr)` still trip); dead
+  `_MINMAX_ZERO_RE` removed; +regression tests. (2) `.sf-sched` `repeat(3,1fr)`
+  → `repeat(3, minmax(0,1fr))` (the one legit low-risk finding; visually
+  identical, overflow-safe; sw.js v223→v224). (3) rewrote `send_scan_email` for
+  clarity — "WHAT THIS IS" preamble (advisories not failures; a *missing*
+  weekly email is the real signal), plain-English `CHECK_DESCRIPTIONS`,
+  per-finding `file:line`+code+`FIX:`, only-fired-checks detail blocks, numbered
+  "WHAT TO DO". Scanner+email CI-only; `.sf-sched` the sole UI change. Completed
+  2026-07-14 — merged to main (3971065), gates GREEN, Phase 6 desktop+mobile
+  clean (3 equal cols, no overflow, no clipped labels), DEPLOY GREEN at 3971065e
+  + 5-min monitor clean + 47/47 prod smoke; real style.css now reports 0
+  bare-1fr findings; a post-ship `workflow_dispatch` confirmed the new clean-run
+  email format live.
 
 - [x] **Strength Forge — mid-workout progress autosave + resistance-only fields (#301)** —
   User-reported friction on the #287 per-set **✎ Log details** form ("I am not able to
