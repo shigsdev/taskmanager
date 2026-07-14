@@ -206,7 +206,7 @@ The script preserves operator-added prose across re-renders. -->
 | Audit row | Finding | First seen | Last seen | Notes / Status |
 |---|---|---|---|---|
 <!-- audit-row: bug-pattern/bare-1fr-grids/static-style.css -->
-| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 5558: bare `1fr` track on grid-template-columns — wrap in `minmax(0, 1fr)` to let the track shrink past max-content (#138 D-B1) | 2026-05-27 | 2026-07-13 |  |
+| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 5558: bare `1fr` track on grid-template-columns — wrap in `minmax(0, 1fr)` to let the track shrink past max-content (#138 D-B1) | 2026-05-27 | 2026-07-14 |  |
 <!-- audit-row: coverage/overall-coverage-drift/ -->
 | `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-07-13 |  |
 <!-- audit-row: coverage/per-file-coverage-drift/app.py -->
