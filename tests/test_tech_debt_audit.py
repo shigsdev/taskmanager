@@ -596,10 +596,11 @@ class TestSendAuditEmail:
                               ("dependency-drift", 0),
                               ("stale-tests", 0)],
         )
-        assert "CLEAN" in cap["body"]["subject"]
+        assert "all clear" in cap["body"]["subject"]
         body = cap["body"]["textContent"]
-        assert "ALL CHECKS CLEAN" in body
-        assert "dependency-drift: 0 finding(s)" in body
+        assert "0 findings across 3 checks" in body
+        # #302: shared clearer format — per-check plain-English description.
+        assert "✓ dependency-drift — A dependency stuck a major version behind" in body
 
     def test_findings_subject(self, monkeypatch):
         cap = self._patch_brevo(monkeypatch)
@@ -611,9 +612,12 @@ class TestSendAuditEmail:
                               ("dependency-drift", 1),
                               ("stale-tests", 0)],
         )
-        assert "1 finding(s)" in cap["body"]["subject"]
+        assert "1 issue to review" in cap["body"]["subject"]
         body = cap["body"]["textContent"]
         assert "pkg X stuck at 1" in body
+        # #302: detail block header + compact clean list + next steps.
+        assert "dependency-drift — 1 finding" in body
+        assert "WHAT TO DO:" in body
 
     def test_no_email_when_unconfigured(self, monkeypatch, capsys):
         monkeypatch.delenv("BREVO_API_KEY", raising=False)

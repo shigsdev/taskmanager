@@ -334,6 +334,18 @@ def _audit(per_file: dict[str, float], overall: float) -> tuple[
     )
 
 
+# Plain-English "what this check looks for" — surfaced in the alert email
+# (#302) so a finding is self-explanatory without opening the source.
+CHECK_DESCRIPTIONS = {
+    "overall-coverage-drift":
+        "Overall test coverage dropped more than 1pp below the committed baseline.",
+    "per-file-coverage-drift":
+        "A single file's coverage fell 5+pp below its baseline.",
+    "critical-path-floor":
+        "A critical-path file dropped below its minimum coverage floor.",
+}
+
+
 def send_audit_email(
     findings: list[Finding],
     *,
@@ -351,52 +363,38 @@ def send_audit_email(
         return
 
     today = datetime.date.today().isoformat()
-    total = len(findings)
+    findings_by_check: dict[str, list[tuple[str, list[str]]]] = {}
+    for f in findings:
+        findings_by_check.setdefault(f.check_id, []).append(
+            (f.path or "", [f.detail]))
 
-    if total == 0:
-        subject = (
-            f"[Taskmanager coverage] CLEAN ({overall:.1f}%) — {today}"
-        )
-        body_lines = [
-            f"Weekly test-coverage audit {today}: CLEAN.",
-            f"Overall coverage: {overall:.1f}%",
-            "",
-            "Per-check breakdown:",
-        ]
-        for label, count in per_check_counts:
-            body_lines.append(f"  ✓ {label}: {count} finding(s)")
-    else:
-        subject = (
-            f"[Taskmanager coverage] {total} finding(s) "
-            f"({overall:.1f}% overall) — {today}"
-        )
-        by_check: dict[str, list[Finding]] = {}
-        for f in findings:
-            by_check.setdefault(f.check_id, []).append(f)
-        body_lines = [
-            f"Weekly test-coverage audit {today} found {total} "
-            f"finding(s). Overall: {overall:.1f}%.",
-            "",
-        ]
-        for label, count in per_check_counts:
-            body_lines.append(f"== {label} ({count} finding(s)) ==")
-            for f in by_check.get(label, []):
-                where = f"  {f.path}\n" if f.path else ""
-                body_lines.append(f"{where}      → {f.detail}")
-            body_lines.append("")
-        body_lines += [
-            "Action: review each finding, fix the underlying gap, "
-            "and re-run `python scripts/check_test_coverage.py` to "
-            "confirm clean. If the regression is intentional (e.g. "
-            "you deleted a feature), regenerate the baseline via "
-            "--write-baseline.",
-        ]
+    sys.path.insert(0, str(PROJECT_ROOT))
+    from scripts import audit_email  # noqa: PLC0415
+    subject, body = audit_email.render(
+        today=today,
+        tag="coverage",
+        title="Weekly test-coverage audit",
+        unit_word="audit",
+        cadence_adj="weekly",
+        scope_blurb="test-coverage drift against the committed baseline",
+        per_check_counts=per_check_counts,
+        findings_by_check=findings_by_check,
+        descriptions=CHECK_DESCRIPTIONS,
+        subject_extra=f" ({overall:.1f}%)",
+        header_extra=[f"Overall coverage: {overall:.1f}%"],
+        todo_steps=[
+            "Close each coverage gap above (add tests for the uncovered lines).",
+            "If a drop is intentional (you removed a feature), regenerate the "
+            "baseline: `python scripts/check_test_coverage.py --write-baseline`.",
+            "Re-run `python scripts/check_test_coverage.py` to confirm it goes clean.",
+        ],
+    )
 
     payload = {
         "sender": {"email": from_addr, "name": "Taskmanager CI"},
         "to": [{"email": to_addr}],
         "subject": subject,
-        "textContent": "\n".join(body_lines),
+        "textContent": body,
     }
     import urllib.error
     import urllib.request

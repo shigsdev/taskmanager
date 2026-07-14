@@ -569,10 +569,6 @@ CHECK_DESCRIPTIONS = {
 }
 
 
-def _describe(label: str) -> str:
-    return CHECK_DESCRIPTIONS.get(label, "")
-
-
 def send_scan_email(findings: list[Finding], *, per_check_counts: list[tuple[str, int]]) -> None:
     """Best-effort Brevo email — sent on EVERY weekly run, clean or
     not. User-requested 2026-05-26: "an email should go out every week
@@ -592,97 +588,38 @@ def send_scan_email(findings: list[Finding], *, per_check_counts: list[tuple[str
         return
 
     today = datetime.date.today().isoformat()
-    total = len(findings)
-    by_check: dict[str, list[Finding]] = {}
+    # Group findings for the shared renderer: (loc, [code, FIX]) per check.
+    findings_by_check: dict[str, list[tuple[str, list[str]]]] = {}
     for f in findings:
-        by_check.setdefault(f.check_id, []).append(f)
+        loc = f"{f.path}:{f.line_num}" if f.line_num else f.path
+        findings_by_check.setdefault(f.check_id, []).append(
+            (loc, [f.line.strip(), f"FIX: {f.message}"]))
 
-    n_checks = len(per_check_counts)
-    rule = "─" * 56
-    # Shared "what this email is" preamble — makes it self-explanatory
-    # (#302: readers shouldn't have to guess whether a finding means
-    # production is broken).
-    what_this_is = (
-        "WHAT THIS IS — an automated weekly scan of the repo for code "
-        "patterns that have caused bugs before. Findings are ADVISORIES "
-        "to review, not build failures: nothing here means production is "
-        "broken. It emails EVERY week even when clean, so a week with no "
-        "email means the scan itself stopped running — that silence is the "
-        "real thing to act on."
-    )
-
-    clean = total == 0
-    if clean:
-        subject = f"[Taskmanager bug-pattern] ✓ all clear ({n_checks} checks) — {today}"
-        body_lines = [
-            f"Weekly bug-pattern scan — {today}",
-            "",
-            f"RESULT: ✓ all clear — 0 findings across {n_checks} checks. "
-            "Nothing to do.",
-            "",
-            what_this_is,
-            "",
-            "Checks run (all clean):",
-        ]
-        for label, _count in per_check_counts:
-            body_lines.append(f"  ✓ {label} — {_describe(label)}")
-        body_lines += [
-            "",
-            "Full log: the GitHub Actions run that sent this email.",
-        ]
-    else:
-        n_checks_hit = len(by_check)
-        noun = "issue" if total == 1 else "issues"
-        subject = f"[Taskmanager bug-pattern] {total} {noun} to review — {today}"
-        body_lines = [
-            f"Weekly bug-pattern scan — {today}",
-            "",
-            f"RESULT: {total} {noun} to review, in {n_checks_hit} of "
-            f"{n_checks} checks.",
-            "",
-            what_this_is,
-            "",
-        ]
-        # Only the checks that actually fired get a detail block — no empty
-        # "0 finding(s)" noise (#302).
-        for label, _ in CHECKS:
-            hits = by_check.get(label, [])
-            if not hits:
-                continue
-            body_lines.append(rule)
-            n = len(hits)
-            body_lines.append(f"{label} — {n} finding{'s' if n != 1 else ''}")
-            desc = _describe(label)
-            if desc:
-                body_lines.append(desc)
-            body_lines.append("")
-            for f in hits:
-                loc = f"{f.path}:{f.line_num}" if f.line_num else f.path
-                body_lines.append(f"  {loc}")
-                body_lines.append(f"      {f.line.strip()}")
-                body_lines.append(f"      FIX: {f.message}")
-                body_lines.append("")
-        body_lines.append(rule)
-        # Compact list of the checks that came back clean this run.
-        clean_labels = [lbl for lbl, c in per_check_counts if c == 0]
-        if clean_labels:
-            body_lines += ["", "Clean this run: " + ", ".join(clean_labels)]
-        body_lines += [
-            "",
-            "WHAT TO DO:",
-            "  1. Open each file:line above and apply its FIX (or, if it's a "
+    sys.path.insert(0, str(PROJECT_ROOT))
+    from scripts import audit_email  # noqa: PLC0415
+    subject, body = audit_email.render(
+        today=today,
+        tag="bug-pattern",
+        title="Weekly bug-pattern scan",
+        unit_word="scan",
+        cadence_adj="weekly",
+        scope_blurb="code patterns that have caused bugs before",
+        per_check_counts=per_check_counts,
+        findings_by_check=findings_by_check,
+        descriptions=CHECK_DESCRIPTIONS,
+        todo_steps=[
+            "Open each file:line above and apply its FIX (or, if it's a "
             "false positive, tune the check in scripts/check_bug_patterns.py).",
-            "  2. Re-run `python scripts/check_bug_patterns.py` locally to "
-            "confirm it goes clean.",
-            "",
-            "Full log + raw output: the GitHub Actions run that sent this email.",
-        ]
+            "Re-run `python scripts/check_bug_patterns.py` locally to confirm "
+            "it goes clean.",
+        ],
+    )
 
     payload = {
         "sender": {"email": from_addr, "name": "Taskmanager CI"},
         "to": [{"email": to_addr}],
         "subject": subject,
-        "textContent": "\n".join(body_lines),
+        "textContent": body,
     }
     import urllib.error
     import urllib.request
