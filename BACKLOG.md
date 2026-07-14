@@ -237,7 +237,7 @@ The script preserves operator-added prose across re-renders. -->
 <!-- audit-row: tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.11-1-major-version-s-behind -->
 | `tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.11-1-major-version-s-behind` | npm dep 'jscpd' stuck at 4.2.4 — latest is 5.0.11 (1 major version(s) behind) | 2026-06-20 | 2026-07-04 | 🟢 auto-detected resolved 2026-07-11 |
 <!-- audit-row: tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.12-1-major-version-s-behind -->
-| `tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.12-1-major-version-s-behind` | npm dep 'jscpd' stuck at 4.2.4 — latest is 5.0.12 (1 major version(s) behind) | 2026-07-11 | 2026-07-11 |  |
+| `tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.12-1-major-version-s-behind` | npm dep 'jscpd' stuck at 4.2.4 — latest is 5.0.12 (1 major version(s) behind) | 2026-07-11 | 2026-07-14 |  |
 <!-- audit-row: tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.5-1-major-version-s-behind -->
 | `tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.5-1-major-version-s-behind` | npm dep 'jscpd' stuck at 4.2.4 — latest is 5.0.5 (1 major version(s) behind) | 2026-06-10 | 2026-06-10 | 🟢 auto-detected resolved 2026-06-13 |
 <!-- audit-row: tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.9-1-major-version-s-behind -->
@@ -247,7 +247,7 @@ The script preserves operator-added prose across re-renders. -->
 <!-- audit-row: tech-debt/dependency-drift/pip-dep-cryptography-stuck-at-48.0.0-latest-is-49.0.0-1-major-version-s-behind -->
 | `tech-debt/dependency-drift/pip-dep-cryptography-stuck-at-48.0.0-latest-is-49.0.0-1-major-version-s-behind` | pip dep 'cryptography' stuck at 48.0.0 — latest is 49.0.0 (1 major version(s) behind) | 2026-06-13 | 2026-06-20 | 🟢 auto-detected resolved 2026-06-27 |
 <!-- audit-row: tech-debt/dependency-drift/pip-dep-cryptography-stuck-at-48.0.1-latest-is-49.0.0-1-major-version-s-behind -->
-| `tech-debt/dependency-drift/pip-dep-cryptography-stuck-at-48.0.1-latest-is-49.0.0-1-major-version-s-behind` | pip dep 'cryptography' stuck at 48.0.1 — latest is 49.0.0 (1 major version(s) behind) | 2026-06-27 | 2026-07-11 |  |
+| `tech-debt/dependency-drift/pip-dep-cryptography-stuck-at-48.0.1-latest-is-49.0.0-1-major-version-s-behind` | pip dep 'cryptography' stuck at 48.0.1 — latest is 49.0.0 (1 major version(s) behind) | 2026-06-27 | 2026-07-14 |  |
 <!-- audit-row: tech-debt/dependency-drift/pip-dep-gunicorn-stuck-at-22.0.0-latest-is-26.0.0-4-major-version-s-behind -->
 | `tech-debt/dependency-drift/pip-dep-gunicorn-stuck-at-22.0.0-latest-is-26.0.0-4-major-version-s-behind` | pip dep 'gunicorn' stuck at 22.0.0 — latest is 26.0.0 (4 major version(s) behind) | 2026-05-28 | 2026-05-28 | 🟢 auto-detected resolved 2026-05-30 |
 <!-- autofile-section-end -->
