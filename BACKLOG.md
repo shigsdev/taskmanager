@@ -10,19 +10,24 @@ file is the index pointer.
 
 ## In Progress
 
-- [ ] **#305 Dedup calendar.js task-<li> builder (jscpd #228b finding)** —
-  jscpd 5 (bumped in #303) flagged a real 37-line duplicate block in
-  `static/calendar.js` (day-cell task loop 162-198 ↔ `_makeUnscheduledLi`
-  383-405) — byte-identical except one line (`_dragSourceDate = iso` vs
-  `= null`). Extracted a shared `_makeTaskLi(t, sourceDate)` builder (li +
-  click-opens-detail + drag handlers); the day cell calls `_makeTaskLi(t, iso)`
-  and `_makeUnscheduledLi` becomes a thin `_makeTaskLi(t, null)` wrapper. sw.js
-  v224→v225. jscpd now reports 0 duplication. Phase 6 (/calendar desktop+mobile):
-  both day-cell + unscheduled tasks render, click opens detail, drag toggles the
-  dragging class, no overflow, 0 console errors. 🔄 IN PROGRESS — awaiting deploy
-  validation + prod smoke.
+_(nothing in flight)_
 
 ## Completed
+
+- [x] **Dedup calendar.js task-<li> builder into _makeTaskLi (jscpd #228b finding) (#305)** —
+  jscpd 5 (bumped in #303) flagged a real 37-line duplicate in `static/calendar.js`
+  (day-cell task loop ↔ `_makeUnscheduledLi`) — byte-identical except one line
+  (`_dragSourceDate = iso` vs `= null`, which drives move-between-days vs
+  reschedule). Extracted a shared `_makeTaskLi(t, sourceDate)` builder; the day
+  cell calls `_makeTaskLi(t, iso)` and `_makeUnscheduledLi` becomes a thin
+  `_makeTaskLi(t, null)` wrapper. sw.js v224→v225; jscpd now 0 duplication.
+  Completed 2026-07-17 — merged to main (b039bcb), gates GREEN, Phase 6
+  desktop+mobile clean (both task types render, click opens detail, drag toggles
+  .dragging, no overflow, 0 console errors), DEPLOY GREEN at b039bcbe (healthz
+  all-ok) + 47/47 prod smoke + 0 server ERROR rows. (Validator cookie had expired
+  the day before — minted a fresh one via `railway run mint_validator_cookie.py`
+  to run the prod smoke; unrelated to the change. Surfaced a validate_deploy.py
+  Windows cp1252 crash when printing the cookie-refresh banner — separate fix.)
 
 - [x] **Close the per-file coverage drift on app.py + digest_api.py (add tests, don't rebaseline) (#304)** —
   Weekly coverage audit (2026-07-17) flagged `app.py` (90.2→80.3%) and
