@@ -248,13 +248,13 @@ The script preserves operator-added prose across re-renders. -->
 | Audit row | Finding | First seen | Last seen | Notes / Status |
 |---|---|---|---|---|
 <!-- audit-row: bug-pattern/bare-1fr-grids/static-style.css -->
-| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 42: bare 1fr | 2026-05-27 | 2026-07-14 | 🟢 auto-detected resolved 2026-07-14 |
+| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 42: bare 1fr | 2026-05-27 | 2026-07-17 | 🟢 auto-detected resolved 2026-07-17 |
 <!-- audit-row: coverage/overall-coverage-drift/ -->
-| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-07-14 | 🟢 auto-detected resolved 2026-07-14 |
+| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-07-17 | 🟢 auto-detected resolved 2026-07-17 |
 <!-- audit-row: coverage/per-file-coverage-drift/app.py -->
-| `coverage/per-file-coverage-drift/app.py` | **app.py** — coverage dropped 9.9pp (90.2% → 80.3%; tolerance 5.0pp) | 2026-06-26 | 2026-07-10 | 🟢 auto-detected resolved 2026-07-12 |
+| `coverage/per-file-coverage-drift/app.py` | **app.py** — coverage dropped 9.9pp (90.2% → 80.3%; tolerance 5.0pp) | 2026-06-26 | 2026-07-17 |  |
 <!-- audit-row: coverage/per-file-coverage-drift/digest_api.py -->
-| `coverage/per-file-coverage-drift/digest_api.py` | **digest_api.py** — coverage dropped 10.3pp (100.0% → 89.7%; tolerance 5.0pp) | 2026-06-10 | 2026-07-10 | 🟢 auto-detected resolved 2026-07-12 |
+| `coverage/per-file-coverage-drift/digest_api.py` | **digest_api.py** — coverage dropped 10.3pp (100.0% → 89.7%; tolerance 5.0pp) | 2026-06-10 | 2026-07-17 |  |
 <!-- audit-row: tech-debt/code-duplication/static-calendar.js -->
 | `tech-debt/code-duplication/static-calendar.js` | **static/calendar.js** — 37-line duplicate block: static/calendar.js:162-198 <-> static/calendar.js:383-405 — extract to a shared helper or rationalise the divergence. | 2026-07-14 | 2026-07-14 |  |
 <!-- audit-row: tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.11-1-major-version-s-behind -->
