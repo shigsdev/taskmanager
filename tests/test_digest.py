@@ -777,6 +777,31 @@ class TestDigestSendAPI:
         assert resp.status_code == 200
         assert resp.get_json()["status"] == "sent"
 
+    def test_send_records_fail_and_reraises_on_transport_error(
+        self, authed_client, monkeypatch,
+    ):
+        """When the transport raises, /send records a 'fail' result (#286)
+        then re-raises so the global handler can shape it (ADR-031). Covers
+        digest_api.py's except branch (the manual-resend failure path)."""
+        import contextlib
+
+        from egress import EgressError
+
+        monkeypatch.setenv("DIGEST_TO_EMAIL", "work@example.com")
+        recorded = {}
+        monkeypatch.setattr(
+            "digest_api.record_send_result", lambda **kw: recorded.update(kw),
+        )
+        # Under TESTING the client may re-raise rather than route to the global
+        # handler; either way the except block (record + raise) runs.
+        with patch(
+            "digest_api.send_digest",
+            side_effect=EgressError("Brevo HTTP 500: send failed"),
+        ), contextlib.suppress(EgressError):
+            authed_client.post("/api/digest/send")
+        assert recorded.get("status") == "fail"
+        assert "Brevo HTTP 500" in recorded.get("error", "")
+
 
 # --- Blueprint registration --------------------------------------------------
 

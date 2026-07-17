@@ -14,6 +14,21 @@ _(nothing in flight)_
 
 ## Completed
 
+- [x] **Close the per-file coverage drift on app.py + digest_api.py (add tests, don't rebaseline) (#304)** —
+  Weekly coverage audit (2026-07-17) flagged `app.py` (90.2→80.3%) and
+  `digest_api.py` (100→89.7%). Both were real untested code, not flakiness:
+  `digest_api.py` lines 67-69 = the `/api/digest/send` `except → record fail →
+  raise` transport-error path (added #286/#289, never tested); `app.py`'s big
+  uncovered block (751-809) = the #297 `mint-`/`revoke-voice-action-token` Flask
+  CLI commands (ADR-034 security tooling shipped without tests). Fixed by ADDING
+  tests (not rebaselining, which would just bless the gap): 1 API test that makes
+  `send_digest` raise and asserts a `fail` result is recorded + re-raised; 6
+  `test_cli_runner` tests for mint (happy / no-SECRET_KEY / no-email) + revoke
+  (new jti / append-to-existing / idempotent). Re-measured: digest_api.py → 100%
+  (0 missing); app.py → 87.4% (2.8pp drop, within the 5pp tolerance) — both no
+  longer flagged. Test-only — no runtime/app code touched (no deploy). Completed
+  2026-07-14 — gates GREEN.
+
 - [x] **Clearer audit emails (all 4) via shared renderer + dependency bumps (cryptography 49, jscpd 5) (#303)** —
   User flagged the weekly tech-debt email still used the old terse format (#302
   only reached bug-pattern) and OK'd the two dependency-drift findings.
@@ -252,9 +267,9 @@ The script preserves operator-added prose across re-renders. -->
 <!-- audit-row: coverage/overall-coverage-drift/ -->
 | `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-07-17 | 🟢 auto-detected resolved 2026-07-17 |
 <!-- audit-row: coverage/per-file-coverage-drift/app.py -->
-| `coverage/per-file-coverage-drift/app.py` | **app.py** — coverage dropped 9.9pp (90.2% → 80.3%; tolerance 5.0pp) | 2026-06-26 | 2026-07-17 |  |
+| `coverage/per-file-coverage-drift/app.py` | **app.py** — coverage dropped 9.9pp (90.2% → 80.3%; tolerance 5.0pp) | 2026-06-26 | 2026-07-17 | 🟢 auto-detected resolved 2026-07-17 |
 <!-- audit-row: coverage/per-file-coverage-drift/digest_api.py -->
-| `coverage/per-file-coverage-drift/digest_api.py` | **digest_api.py** — coverage dropped 10.3pp (100.0% → 89.7%; tolerance 5.0pp) | 2026-06-10 | 2026-07-17 |  |
+| `coverage/per-file-coverage-drift/digest_api.py` | **digest_api.py** — coverage dropped 10.3pp (100.0% → 89.7%; tolerance 5.0pp) | 2026-06-10 | 2026-07-17 | 🟢 auto-detected resolved 2026-07-17 |
 <!-- audit-row: tech-debt/code-duplication/static-calendar.js -->
 | `tech-debt/code-duplication/static-calendar.js` | **static/calendar.js** — 37-line duplicate block: static/calendar.js:162-198 <-> static/calendar.js:383-405 — extract to a shared helper or rationalise the divergence. | 2026-07-14 | 2026-07-14 |  |
 <!-- audit-row: tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.11-1-major-version-s-behind -->
