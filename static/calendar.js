@@ -160,51 +160,9 @@
                 list.className = "calendar-cell-tasks";
                 const items = byDate[iso] || [];
                 for (const t of items) {
-                    const li = document.createElement("li");
-                    li.textContent = t.title;
-                    li.title = t.title;
-                    // #94 (PR26): make in-cell tasks draggable so you can
-                    // move them between days. Without this the only thing
-                    // the user can drag is... nothing — the page has no
-                    // tier panels to drag from.
-                    li.draggable = true;
-                    li.dataset.taskId = t.id;
-                    // #153 (2026-05-09): click on a task line opens the
-                    // task detail panel. Without this, long titles
-                    // truncated with ellipsis had no full-text affordance
-                    // and the user couldn't edit a task from /calendar
-                    // without leaving the page. Click and drag are
-                    // distinguished by the browser natively — a
-                    // mousedown→mousemove→mouseup sequence fires
-                    // dragstart/dragend, while a fast mousedown→mouseup
-                    // (no movement) fires click. Both wired here.
-                    li.classList.add("calendar-task-link");
-                    li.addEventListener("click", function () {
-                        // #270 (2026-05-31): open the detail panel IN PLACE on
-                        // /calendar (the panel is embedded here now) instead of
-                        // navigating to /?task=<id>. Stays on the calendar so the
-                        // user keeps their place; saving refreshes the cell via
-                        // the window.taskDetailAfterSave hook (set in init).
-                        // The list payload is the same shape the board passes to
-                        // taskDetailOpen, so `t` is sufficient — no extra fetch.
-                        if (typeof taskDetailOpen === "function") {
-                            taskDetailOpen(t);
-                        } else {
-                            window.location.href = "/?task=" + encodeURIComponent(t.id);
-                        }
-                    });
-                    li.addEventListener("dragstart", function (e) {
-                        li.classList.add("dragging");
-                        _dragSourceDate = iso;  // #267: this drag began in this day cell
-                        if (e.dataTransfer) {
-                            e.dataTransfer.effectAllowed = "move";
-                            e.dataTransfer.setData("text/plain", t.id);
-                        }
-                    });
-                    li.addEventListener("dragend", function () {
-                        li.classList.remove("dragging");
-                    });
-                    list.appendChild(li);
+                    // #304: shared builder — the day cell passes its ISO
+                    // date as the drag source (#267); Unscheduled passes null.
+                    list.appendChild(_makeTaskLi(t, iso));
                 }
                 cell.appendChild(list);
                 // #99 (PR34): recurring-template previews for this cell —
@@ -377,23 +335,23 @@
         }
     }
 
-    // #292: build one Unscheduled-aside <li> (click opens the detail
-    // panel; drag reschedules). Extracted from _renderUnscheduled so the
-    // grouped sub-sections can reuse it.
-    function _makeUnscheduledLi(t) {
+    // #304: shared builder for a calendar task <li>. Click opens the
+    // detail panel in place (#153/#270); drag reschedules. `sourceDate` is
+    // the ISO date the drag began in — the day cell passes its own date
+    // (#267), the Unscheduled aside passes null (always a reschedule).
+    // Extracted from the day-cell loop + _makeUnscheduledLi, which were
+    // byte-identical except for that one value (jscpd #228b flagged the dup).
+    function _makeTaskLi(t, sourceDate) {
         const li = document.createElement("li");
         li.textContent = t.title;
         li.title = t.title;
         li.draggable = true;
         li.dataset.taskId = t.id;
-        // #231 (2026-05-25): click an unscheduled item to open the task
-        // detail panel — mirrors the day-cell item handler (#153). Click
-        // vs drag are distinguished by the browser natively (a fast
+        // Click vs drag are distinguished by the browser natively: a fast
         // mousedown→mouseup with no movement fires click; movement fires
-        // dragstart/dragend instead).
+        // dragstart/dragend instead.
         li.classList.add("calendar-task-link");
         li.addEventListener("click", function () {
-            // #270: open in place (see the day-cell handler above).
             if (typeof taskDetailOpen === "function") {
                 taskDetailOpen(t);
             } else {
@@ -402,7 +360,7 @@
         });
         li.addEventListener("dragstart", function (e) {
             li.classList.add("dragging");
-            _dragSourceDate = null;  // #267: from Unscheduled → always a reschedule
+            _dragSourceDate = sourceDate;
             if (e.dataTransfer) {
                 e.dataTransfer.effectAllowed = "move";
                 e.dataTransfer.setData("text/plain", t.id);
@@ -412,6 +370,14 @@
             li.classList.remove("dragging");
         });
         return li;
+    }
+
+    // #292: build one Unscheduled-aside <li> (click opens the detail
+    // panel; drag reschedules). Thin wrapper over _makeTaskLi with a null
+    // source date. Extracted from _renderUnscheduled so the grouped
+    // sub-sections can reuse it.
+    function _makeUnscheduledLi(t) {
+        return _makeTaskLi(t, null);
     }
 
     // #94 (PR26): render the unscheduled-tasks side panel. Tasks here

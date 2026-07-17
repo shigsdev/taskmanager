@@ -10,7 +10,17 @@ file is the index pointer.
 
 ## In Progress
 
-_(nothing in flight)_
+- [ ] **#305 Dedup calendar.js task-<li> builder (jscpd #228b finding)** —
+  jscpd 5 (bumped in #303) flagged a real 37-line duplicate block in
+  `static/calendar.js` (day-cell task loop 162-198 ↔ `_makeUnscheduledLi`
+  383-405) — byte-identical except one line (`_dragSourceDate = iso` vs
+  `= null`). Extracted a shared `_makeTaskLi(t, sourceDate)` builder (li +
+  click-opens-detail + drag handlers); the day cell calls `_makeTaskLi(t, iso)`
+  and `_makeUnscheduledLi` becomes a thin `_makeTaskLi(t, null)` wrapper. sw.js
+  v224→v225. jscpd now reports 0 duplication. Phase 6 (/calendar desktop+mobile):
+  both day-cell + unscheduled tasks render, click opens detail, drag toggles the
+  dragging class, no overflow, 0 console errors. 🔄 IN PROGRESS — awaiting deploy
+  validation + prod smoke.
 
 ## Completed
 
