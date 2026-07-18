@@ -286,7 +286,7 @@ The script preserves operator-added prose across re-renders. -->
 <!-- audit-row: coverage/per-file-coverage-drift/digest_api.py -->
 | `coverage/per-file-coverage-drift/digest_api.py` | **digest_api.py** — coverage dropped 10.3pp (100.0% → 89.7%; tolerance 5.0pp) | 2026-06-10 | 2026-07-17 | 🟢 auto-detected resolved 2026-07-17 |
 <!-- audit-row: tech-debt/code-duplication/static-calendar.js -->
-| `tech-debt/code-duplication/static-calendar.js` | **static/calendar.js** — 37-line duplicate block: static/calendar.js:162-198 <-> static/calendar.js:383-405 — extract to a shared helper or rationalise the divergence. | 2026-07-14 | 2026-07-14 |  |
+| `tech-debt/code-duplication/static-calendar.js` | **static/calendar.js** — 37-line duplicate block: static/calendar.js:162-198 <-> static/calendar.js:383-405 — extract to a shared helper or rationalise the divergence. | 2026-07-14 | 2026-07-14 | 🟢 auto-detected resolved 2026-07-18 |
 <!-- audit-row: tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.11-1-major-version-s-behind -->
 | `tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.11-1-major-version-s-behind` | npm dep 'jscpd' stuck at 4.2.4 — latest is 5.0.11 (1 major version(s) behind) | 2026-06-20 | 2026-07-04 | 🟢 auto-detected resolved 2026-07-11 |
 <!-- audit-row: tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.12-1-major-version-s-behind -->
