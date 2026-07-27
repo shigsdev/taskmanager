@@ -10,26 +10,27 @@ file is the index pointer.
 
 ## In Progress
 
-- [ ] **#306 Fix weekly-advisory-check RED (high-sev js-yaml/brace-expansion) + validate_deploy Windows crash** —
-  User-reported 2026-07-27: the Weekly advisory check workflow went RED (all
-  jobs failed) and emailed an alert. Root cause: `npm audit --audit-level=high`
-  found **2 high-severity DoS advisories** — `js-yaml <=3.14.2` (quadratic
-  merge-key DoS) and `brace-expansion <=5.0.7` (exponential-expansion + OOM
-  DoS) — both DEV-only transitive deps of the jest toolchain (js-yaml via
-  babel-plugin-istanbul→load-nyc-config; brace-expansion via minimatch/
-  test-exclude), never shipped (the app runtime is Python). Fixed with pinned
-  `overrides` in package.json: js-yaml→3.15.0 (patched, stays in 3.x line),
-  brace-expansion→5.0.8 (the version that fixes BOTH advisories incl. the OOM
-  one; API is just `expand()`, jest 401 still green). `npm audit --audit-level=
-  high` now exits 0. ALSO fixed `scripts/validate_deploy.py`: on a rejected
-  cookie (401) it printed a box-drawing refresh banner that crashed with a
-  Windows cp1252 UnicodeEncodeError (exit 1) instead of exiting 2 with the
-  instructions — now forces UTF-8 stdout/stderr at the top of `main()`
-  (verified: banner prints on a simulated cp1252 stream). CI/tooling only — no
-  app runtime change (no deploy). Gates GREEN. 🔄 IN PROGRESS — confirming the
-  advisory workflow goes green.
+_(nothing in flight)_
 
 ## Completed
+
+- [x] **Fix weekly-advisory-check RED (high-sev js-yaml/brace-expansion) + validate_deploy Windows crash (#306)** —
+  User-reported 2026-07-27: the Weekly advisory check workflow went RED and
+  emailed an alert. Root cause: `npm audit --audit-level=high` found 2
+  high-severity DoS advisories — `js-yaml <=3.14.2` (quadratic merge-key DoS) +
+  `brace-expansion <=5.0.7` (exponential-expansion + OOM DoS) — both DEV-only
+  transitive deps of the jest toolchain, never shipped (app runtime is Python).
+  Fixed with pinned package.json `overrides`: js-yaml→3.15.0 (patched, stays in
+  3.x), brace-expansion→5.0.8 (fixes BOTH advisories incl. the OOM one; API is
+  just `expand()`). jest 401 still green; `npm audit --audit-level=high` exits 0.
+  ALSO fixed `scripts/validate_deploy.py`: a rejected cookie (401) printed a
+  box-drawing refresh banner that crashed with a Windows cp1252
+  UnicodeEncodeError (exit 1) instead of exiting 2 with the instructions — now
+  forces UTF-8 stdout/stderr at the top of `main()` (verified on a simulated
+  cp1252 stream). CI/tooling only — no app runtime change (no deploy). Completed
+  2026-07-27 — merged to main (f85a3df), gates GREEN, and a `workflow_dispatch`
+  of weekly-advisory-check now runs **success** (`pip-audit 0, npm audit 0
+  high/critical, CLEAN — no email`). Red → green confirmed.
 
 - [x] **Dedup calendar.js task-<li> builder into _makeTaskLi (jscpd #228b finding) (#305)** —
   jscpd 5 (bumped in #303) flagged a real 37-line duplicate in `static/calendar.js`
