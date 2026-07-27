@@ -33,6 +33,7 @@ Exit codes:
 """
 
 import argparse
+import contextlib
 import json
 import subprocess
 import sys
@@ -481,6 +482,16 @@ def do_log_check(
 
 
 def main() -> int:
+    # Windows consoles default to cp1252, which can't encode the box-drawing
+    # chars in COOKIE_REFRESH_INSTRUCTIONS. Force UTF-8 so the 401 cookie-expiry
+    # path prints its refresh banner + exits 2 cleanly, instead of dying with a
+    # UnicodeEncodeError (exit 1) that hides the actual "refresh your cookie"
+    # message (#306).
+    for _stream in (sys.stdout, sys.stderr):
+        # suppress on a non-reconfigurable stream (e.g. already-wrapped)
+        with contextlib.suppress(AttributeError, ValueError):
+            _stream.reconfigure(encoding="utf-8")
+
     parser = argparse.ArgumentParser(description="Validate a Railway deploy.")
     parser.add_argument(
         "--sha",

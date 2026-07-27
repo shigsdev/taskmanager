@@ -10,7 +10,24 @@ file is the index pointer.
 
 ## In Progress
 
-_(nothing in flight)_
+- [ ] **#306 Fix weekly-advisory-check RED (high-sev js-yaml/brace-expansion) + validate_deploy Windows crash** —
+  User-reported 2026-07-27: the Weekly advisory check workflow went RED (all
+  jobs failed) and emailed an alert. Root cause: `npm audit --audit-level=high`
+  found **2 high-severity DoS advisories** — `js-yaml <=3.14.2` (quadratic
+  merge-key DoS) and `brace-expansion <=5.0.7` (exponential-expansion + OOM
+  DoS) — both DEV-only transitive deps of the jest toolchain (js-yaml via
+  babel-plugin-istanbul→load-nyc-config; brace-expansion via minimatch/
+  test-exclude), never shipped (the app runtime is Python). Fixed with pinned
+  `overrides` in package.json: js-yaml→3.15.0 (patched, stays in 3.x line),
+  brace-expansion→5.0.8 (the version that fixes BOTH advisories incl. the OOM
+  one; API is just `expand()`, jest 401 still green). `npm audit --audit-level=
+  high` now exits 0. ALSO fixed `scripts/validate_deploy.py`: on a rejected
+  cookie (401) it printed a box-drawing refresh banner that crashed with a
+  Windows cp1252 UnicodeEncodeError (exit 1) instead of exiting 2 with the
+  instructions — now forces UTF-8 stdout/stderr at the top of `main()`
+  (verified: banner prints on a simulated cp1252 stream). CI/tooling only — no
+  app runtime change (no deploy). Gates GREEN. 🔄 IN PROGRESS — confirming the
+  advisory workflow goes green.
 
 ## Completed
 
@@ -278,13 +295,15 @@ The script preserves operator-added prose across re-renders. -->
 | Audit row | Finding | First seen | Last seen | Notes / Status |
 |---|---|---|---|---|
 <!-- audit-row: bug-pattern/bare-1fr-grids/static-style.css -->
-| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 42: bare 1fr | 2026-05-27 | 2026-07-24 | 🟢 auto-detected resolved 2026-07-24 |
+| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 42: bare 1fr | 2026-05-27 | 2026-07-27 | 🟢 auto-detected resolved 2026-07-27 |
 <!-- audit-row: coverage/overall-coverage-drift/ -->
-| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-07-24 | 🟢 auto-detected resolved 2026-07-24 |
+| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-07-27 | 🟢 auto-detected resolved 2026-07-27 |
 <!-- audit-row: coverage/per-file-coverage-drift/app.py -->
 | `coverage/per-file-coverage-drift/app.py` | **app.py** — coverage dropped 9.9pp (90.2% → 80.3%; tolerance 5.0pp) | 2026-06-26 | 2026-07-17 | 🟢 auto-detected resolved 2026-07-17 |
 <!-- audit-row: coverage/per-file-coverage-drift/digest_api.py -->
 | `coverage/per-file-coverage-drift/digest_api.py` | **digest_api.py** — coverage dropped 10.3pp (100.0% → 89.7%; tolerance 5.0pp) | 2026-06-10 | 2026-07-17 | 🟢 auto-detected resolved 2026-07-17 |
+<!-- audit-row: security/pat-inventory/pat-placeholder-populate-when-you-next-rotate-a-pat-last_used_at-2026-05-26-is-62-days-ago-cap-at-60-days-consider-revoking-if-abandoned -->
+| `security/pat-inventory/pat-placeholder-populate-when-you-next-rotate-a-pat-last_used_at-2026-05-26-is-62-days-ago-cap-at-60-days-consider-revoking-if-abandoned` | PAT '(placeholder) — populate when you next rotate a PAT': last_used_at 2026-05-26 is 62 days ago (cap at 60 days — consider revoking if abandoned) | 2026-07-27 | 2026-07-27 |  |
 <!-- audit-row: tech-debt/code-duplication/static-calendar.js -->
 | `tech-debt/code-duplication/static-calendar.js` | **static/calendar.js** — 37-line duplicate block: static/calendar.js:162-198 <-> static/calendar.js:383-405 — extract to a shared helper or rationalise the divergence. | 2026-07-14 | 2026-07-14 | 🟢 auto-detected resolved 2026-07-18 |
 <!-- audit-row: tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.11-1-major-version-s-behind -->
