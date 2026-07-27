@@ -19,5 +19,12 @@
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
     "jscpd": "^5.0.12"
+  },
+  "comments": {
+    "overrides": "Force patched versions of two DEV-only transitive deps flagged high-severity (DoS) by the weekly advisory check (#306). js-yaml (via babel-plugin-istanbul→load-nyc-config) 3.14.2→3.15.0 stays in the 3.x line; brace-expansion (via minimatch/test-exclude) →2.1.2 is API-compatible. Not shipped to prod — the app runtime is Python."
+  },
+  "overrides": {
+    "js-yaml": "3.15.0",
+    "brace-expansion": "5.0.8"
   }
 }
