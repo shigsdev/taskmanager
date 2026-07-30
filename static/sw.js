@@ -5,7 +5,7 @@
  * Bump CACHE_VERSION when deploying new static files.
  */
 
-var CACHE_VERSION = "v225";
+var CACHE_VERSION = "v226";
 var CACHE_NAME = "taskmanager-" + CACHE_VERSION;
 
 // HTML is intentionally NOT pre-cached (see fetch handler below — Bug #56).
@@ -179,28 +179,38 @@ self.addEventListener("fetch", function (event) {
         return;  // bare return = browser handles natively
     }
 
-    // Static assets: cache-first with network fallback. Wrapped in
-    // .catch so an unreachable origin returns a 503 Response instead of
-    // throwing an unhandled TypeError that surfaces as "Failed to fetch"
-    // in console with no actionable message.
+    // Static assets: NETWORK-FIRST, cache as offline fallback (#307).
+    //
+    // Was cache-first, which meant a stale/out-of-date service worker kept
+    // serving OLD app.js/style.css from its cache even while the device was
+    // online — stranding installed PWAs on old code that mismatched the
+    // (always-fresh, never-cached) HTML and rendered a blank board. iOS
+    // standalone PWAs won't reliably refresh the SW on their own, so a user
+    // could get stuck with no in-app way out.
+    //
+    // Network-first fixes that class outright: online, the page always gets
+    // the current code (assets are served no-cache + ETag, so unchanged ones
+    // come back as cheap 304s); the cache is still kept fresh on every OK
+    // response and is used ONLY when the network is unreachable, preserving
+    // offline access. Install-time APP_SHELL pre-cache is unchanged.
     event.respondWith(
-        caches.match(event.request).then(function (cached) {
-            if (cached) return cached;
-            return fetch(event.request).then(function (response) {
-                // Audit fix #205 (2026-05-21): skip cache re-population
-                // while a CLEAR_CACHE is in flight — otherwise a
-                // background asset fetch races the delete and the cache
-                // re-appears before the test (or logout flow) sees it
-                // empty. Resets on next `activate`.
-                if (response.ok && !_clearCacheInFlight) {
-                    var clone = response.clone();
-                    caches.open(CACHE_NAME).then(function (cache) {
-                        cache.put(event.request, clone);
-                    });
-                }
-                return response;
-            }).catch(function () {
-                return new Response("", {
+        fetch(event.request).then(function (response) {
+            // Keep the cache warm for offline. Audit fix #205: skip
+            // re-population while a CLEAR_CACHE is in flight so the cache
+            // stays empty until the next `activate`.
+            if (response.ok && !_clearCacheInFlight) {
+                var clone = response.clone();
+                caches.open(CACHE_NAME).then(function (cache) {
+                    cache.put(event.request, clone);
+                });
+            }
+            return response;
+        }).catch(function () {
+            // Offline / network error → serve the cached copy if we have it,
+            // else a 503 (instead of an unhandled TypeError → "Failed to
+            // fetch" with no actionable message).
+            return caches.match(event.request).then(function (cached) {
+                return cached || new Response("", {
                     status: 503, statusText: "Service Unavailable",
                 });
             });

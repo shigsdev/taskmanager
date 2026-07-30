@@ -10,7 +10,29 @@ file is the index pointer.
 
 ## In Progress
 
-_(nothing in flight)_
+- [ ] **#307 SW network-first for app JS/CSS — fix installed-PWA stranded on stale code (blank board)** —
+  User-reported 2026-07-27: on the iOS home-screen (standalone) PWA the tasks
+  board rendered blank; a regular mobile browser was fine, and swiping the PWA
+  away repeatedly didn't fix it. Diagnosis: the SW used a **cache-first**
+  strategy for static assets, so a stale/out-of-date worker kept serving OLD
+  `app.js`/`style.css` from its cache even while online — mismatched against the
+  always-fresh (never-cached) HTML → blank board. iOS standalone PWAs won't
+  reliably self-refresh the SW and there's no in-app `?nosw=1` escape, so the
+  user was stuck. Ruled out: a code bug (board renders fine locally + at mobile;
+  my session's CSS was all `.sf-*`-scoped), a standalone-display-mode CSS rule
+  (none exist), and `/sw.js` HTTP over-caching (served `no-cache`, fresh v-stamp).
+  Fix: switch the SW fetch handler to **network-first for same-origin static
+  assets** (`static/sw.js`) — online always gets current code (assets are
+  `no-cache`+ETag, so unchanged ones are cheap 304s); the cache is kept warm on
+  every OK response and used ONLY when the network is unreachable, preserving
+  offline. Install-time APP_SHELL pre-cache, cross-origin skip (#235), HTML/API
+  passthrough (#56), and CLEAR_CACHE (#205) all unchanged. sw.js v225→v226.
+  Gates GREEN incl. all SW e2e tests; Phase 6 with the SW **active** (not nosw):
+  board renders at desktop+mobile, worker controlling on v226 cache, 50/50 task
+  titles non-blank, no overflow, 0 console errors. NOTE: a device already stuck
+  needs one manual refresh (clear site data / re-add PWA) to pick up v226; from
+  then on network-first prevents recurrence. 🔄 IN PROGRESS — awaiting deploy
+  validation + prod smoke.
 
 ## Completed
 
@@ -296,15 +318,17 @@ The script preserves operator-added prose across re-renders. -->
 | Audit row | Finding | First seen | Last seen | Notes / Status |
 |---|---|---|---|---|
 <!-- audit-row: bug-pattern/bare-1fr-grids/static-style.css -->
-| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 42: bare 1fr | 2026-05-27 | 2026-07-27 | 🟢 auto-detected resolved 2026-07-27 |
+| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 42: bare 1fr | 2026-05-27 | 2026-07-29 | 🟢 auto-detected resolved 2026-07-29 |
 <!-- audit-row: coverage/overall-coverage-drift/ -->
-| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-07-27 | 🟢 auto-detected resolved 2026-07-27 |
+| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-07-29 | 🟢 auto-detected resolved 2026-07-29 |
 <!-- audit-row: coverage/per-file-coverage-drift/app.py -->
 | `coverage/per-file-coverage-drift/app.py` | **app.py** — coverage dropped 9.9pp (90.2% → 80.3%; tolerance 5.0pp) | 2026-06-26 | 2026-07-17 | 🟢 auto-detected resolved 2026-07-17 |
 <!-- audit-row: coverage/per-file-coverage-drift/digest_api.py -->
 | `coverage/per-file-coverage-drift/digest_api.py` | **digest_api.py** — coverage dropped 10.3pp (100.0% → 89.7%; tolerance 5.0pp) | 2026-06-10 | 2026-07-17 | 🟢 auto-detected resolved 2026-07-17 |
 <!-- audit-row: security/pat-inventory/pat-placeholder-populate-when-you-next-rotate-a-pat-last_used_at-2026-05-26-is-62-days-ago-cap-at-60-days-consider-revoking-if-abandoned -->
-| `security/pat-inventory/pat-placeholder-populate-when-you-next-rotate-a-pat-last_used_at-2026-05-26-is-62-days-ago-cap-at-60-days-consider-revoking-if-abandoned` | PAT '(placeholder) — populate when you next rotate a PAT': last_used_at 2026-05-26 is 62 days ago (cap at 60 days — consider revoking if abandoned) | 2026-07-27 | 2026-07-27 |  |
+| `security/pat-inventory/pat-placeholder-populate-when-you-next-rotate-a-pat-last_used_at-2026-05-26-is-62-days-ago-cap-at-60-days-consider-revoking-if-abandoned` | PAT '(placeholder) — populate when you next rotate a PAT': last_used_at 2026-05-26 is 62 days ago (cap at 60 days — consider revoking if abandoned) | 2026-07-27 | 2026-07-27 | 🟢 auto-detected resolved 2026-07-29 |
+<!-- audit-row: security/pat-inventory/pat-placeholder-populate-when-you-next-rotate-a-pat-last_used_at-2026-05-26-is-64-days-ago-cap-at-60-days-consider-revoking-if-abandoned -->
+| `security/pat-inventory/pat-placeholder-populate-when-you-next-rotate-a-pat-last_used_at-2026-05-26-is-64-days-ago-cap-at-60-days-consider-revoking-if-abandoned` | PAT '(placeholder) — populate when you next rotate a PAT': last_used_at 2026-05-26 is 64 days ago (cap at 60 days — consider revoking if abandoned) | 2026-07-29 | 2026-07-29 |  |
 <!-- audit-row: tech-debt/code-duplication/static-calendar.js -->
 | `tech-debt/code-duplication/static-calendar.js` | **static/calendar.js** — 37-line duplicate block: static/calendar.js:162-198 <-> static/calendar.js:383-405 — extract to a shared helper or rationalise the divergence. | 2026-07-14 | 2026-07-14 | 🟢 auto-detected resolved 2026-07-18 |
 <!-- audit-row: tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.11-1-major-version-s-behind -->
