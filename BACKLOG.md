@@ -10,31 +10,28 @@ file is the index pointer.
 
 ## In Progress
 
-- [ ] **#307 SW network-first for app JS/CSS — fix installed-PWA stranded on stale code (blank board)** —
-  User-reported 2026-07-27: on the iOS home-screen (standalone) PWA the tasks
-  board rendered blank; a regular mobile browser was fine, and swiping the PWA
-  away repeatedly didn't fix it. Diagnosis: the SW used a **cache-first**
-  strategy for static assets, so a stale/out-of-date worker kept serving OLD
-  `app.js`/`style.css` from its cache even while online — mismatched against the
-  always-fresh (never-cached) HTML → blank board. iOS standalone PWAs won't
-  reliably self-refresh the SW and there's no in-app `?nosw=1` escape, so the
-  user was stuck. Ruled out: a code bug (board renders fine locally + at mobile;
-  my session's CSS was all `.sf-*`-scoped), a standalone-display-mode CSS rule
-  (none exist), and `/sw.js` HTTP over-caching (served `no-cache`, fresh v-stamp).
-  Fix: switch the SW fetch handler to **network-first for same-origin static
-  assets** (`static/sw.js`) — online always gets current code (assets are
-  `no-cache`+ETag, so unchanged ones are cheap 304s); the cache is kept warm on
-  every OK response and used ONLY when the network is unreachable, preserving
-  offline. Install-time APP_SHELL pre-cache, cross-origin skip (#235), HTML/API
-  passthrough (#56), and CLEAR_CACHE (#205) all unchanged. sw.js v225→v226.
-  Gates GREEN incl. all SW e2e tests; Phase 6 with the SW **active** (not nosw):
-  board renders at desktop+mobile, worker controlling on v226 cache, 50/50 task
-  titles non-blank, no overflow, 0 console errors. NOTE: a device already stuck
-  needs one manual refresh (clear site data / re-add PWA) to pick up v226; from
-  then on network-first prevents recurrence. 🔄 IN PROGRESS — awaiting deploy
-  validation + prod smoke.
+_(nothing in flight)_
 
 ## Completed
+
+- [x] **SW network-first for app JS/CSS — fix installed-PWA stranded on stale code / blank board (#307)** —
+  User-reported 2026-07-27: the iOS home-screen (standalone) PWA rendered a
+  blank tasks board while a regular mobile browser was fine, and swiping the PWA
+  away didn't fix it. Root cause: the SW served static assets **cache-first**, so
+  a stale worker kept serving OLD app.js/style.css even online — mismatched
+  against the always-fresh (never-cached) HTML → blank board; iOS standalone
+  PWAs won't self-refresh the SW and there's no in-app `?nosw=1` escape. Ruled
+  out a code bug (renders fine locally + mobile; session CSS all `.sf-*`), a
+  standalone display-mode rule (none), and `/sw.js` HTTP over-caching (`no-cache`).
+  Fix: `static/sw.js` fetch handler → **network-first for same-origin static
+  assets** (online always gets current code via no-cache+ETag 304s; cache kept
+  warm, used only offline). Pre-cache / cross-origin skip (#235) / HTML+API
+  passthrough (#56) / CLEAR_CACHE (#205) unchanged. sw.js v225→v226. Completed
+  2026-07-27 — merged to main (9d544ab), gates GREEN incl. all SW e2e tests,
+  Phase 6 with the SW **active** (worker controlling on v226; 50/50 titles
+  non-blank desktop+mobile; 0 console errors), DEPLOY GREEN at 9d544ab + 5-min
+  monitor clean + 47/47 prod smoke. A device already stuck needs one manual
+  refresh to pick up v226; network-first prevents recurrence thereafter.
 
 - [x] **Fix weekly-advisory-check RED (high-sev js-yaml/brace-expansion) + validate_deploy Windows crash (#306)** —
   User-reported 2026-07-27: the Weekly advisory check workflow went RED and
