@@ -346,6 +346,8 @@ The script preserves operator-added prose across re-renders. -->
 | `tech-debt/dependency-drift/pip-dep-cryptography-stuck-at-48.0.0-latest-is-49.0.0-1-major-version-s-behind` | pip dep 'cryptography' stuck at 48.0.0 — latest is 49.0.0 (1 major version(s) behind) | 2026-06-13 | 2026-06-20 | 🟢 auto-detected resolved 2026-06-27 |
 <!-- audit-row: tech-debt/dependency-drift/pip-dep-cryptography-stuck-at-48.0.1-latest-is-49.0.0-1-major-version-s-behind -->
 | `tech-debt/dependency-drift/pip-dep-cryptography-stuck-at-48.0.1-latest-is-49.0.0-1-major-version-s-behind` | pip dep 'cryptography' stuck at 48.0.1 — latest is 49.0.0 (1 major version(s) behind) | 2026-06-27 | 2026-07-14 | 🟢 auto-detected resolved 2026-07-14 |
+<!-- audit-row: tech-debt/dependency-drift/pip-dep-cryptography-stuck-at-49.0.0-latest-is-50.0.0-1-major-version-s-behind -->
+| `tech-debt/dependency-drift/pip-dep-cryptography-stuck-at-49.0.0-latest-is-50.0.0-1-major-version-s-behind` | pip dep 'cryptography' stuck at 49.0.0 — latest is 50.0.0 (1 major version(s) behind) | 2026-08-01 | 2026-08-01 |  |
 <!-- audit-row: tech-debt/dependency-drift/pip-dep-gunicorn-stuck-at-22.0.0-latest-is-26.0.0-4-major-version-s-behind -->
 | `tech-debt/dependency-drift/pip-dep-gunicorn-stuck-at-22.0.0-latest-is-26.0.0-4-major-version-s-behind` | pip dep 'gunicorn' stuck at 22.0.0 — latest is 26.0.0 (4 major version(s) behind) | 2026-05-28 | 2026-05-28 | 🟢 auto-detected resolved 2026-05-30 |
 <!-- autofile-section-end -->
