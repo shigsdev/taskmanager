@@ -14,6 +14,25 @@ _(nothing in flight)_
 
 ## Completed
 
+- [x] **Bump `cryptography` 49.0.0 → 50.0.0 (weekly tech-debt dep-drift advisory) (#308)** —
+  Weekly tech-debt audit 2026-08-01 flagged `cryptography` 1 major behind
+  (49.0.0 → 50.0.0, published to PyPI 2026-07-31). Reviewed the 50.0.0
+  changelog: the three backwards-incompatible changes (ChaCha20 nonce
+  block-counter semantics, X.509 NULL-param `ValueError`, removed
+  `PUBLIC_KEY_TYPES`/`PRIVATE_KEY_TYPES` aliases) touch nothing this repo
+  uses — the app uses only `Fernet` (crypto.py) for at-rest encryption of
+  sensitive config, which is unchanged; Python floor stays `>=3.9`. Verified
+  the Fernet encrypt/decrypt round-trip locally on 50.0.0. `requirements.txt`
+  one-line bump; no code, no UI (Phase 6 N/A). Pre-deploy ALL 11 GATES GREEN
+  (pytest 84.60% coverage, jest 401, local Playwright 107, pip-audit clean on
+  50.0.0) — needed `COVERAGE_CORE=ctrace` to sidestep a Python-3.14
+  coverage-`sysmon` `MemoryError` on this box (environmental, unrelated to the
+  bump: all affected tests pass in isolation + under the ctrace core).
+  Post-deploy DEPLOY GREEN + MONITOR GREEN at 14a2f26c (`encryption ok`
+  confirms the prod Fernet path intact on 50.0.0) + 47/47 prod Playwright
+  smoke. The auto-filed dep-drift row will self-resolve on the next weekly
+  audit run. — RESOLVED 2026-08-01 (14a2f26c).
+
 - [x] **SW network-first for app JS/CSS — fix installed-PWA stranded on stale code / blank board (#307)** —
   User-reported 2026-07-27: the iOS home-screen (standalone) PWA rendered a
   blank tasks board while a regular mobile browser was fine, and swiping the PWA
@@ -315,9 +334,9 @@ The script preserves operator-added prose across re-renders. -->
 | Audit row | Finding | First seen | Last seen | Notes / Status |
 |---|---|---|---|---|
 <!-- audit-row: bug-pattern/bare-1fr-grids/static-style.css -->
-| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 42: bare 1fr | 2026-05-27 | 2026-07-31 | 🟢 auto-detected resolved 2026-07-31 |
+| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 42: bare 1fr | 2026-05-27 | 2026-08-01 | 🟢 auto-detected resolved 2026-08-01 |
 <!-- audit-row: coverage/overall-coverage-drift/ -->
-| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-07-31 | 🟢 auto-detected resolved 2026-07-31 |
+| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-08-01 | 🟢 auto-detected resolved 2026-08-01 |
 <!-- audit-row: coverage/per-file-coverage-drift/app.py -->
 | `coverage/per-file-coverage-drift/app.py` | **app.py** — coverage dropped 9.9pp (90.2% → 80.3%; tolerance 5.0pp) | 2026-06-26 | 2026-07-17 | 🟢 auto-detected resolved 2026-07-17 |
 <!-- audit-row: coverage/per-file-coverage-drift/digest_api.py -->
