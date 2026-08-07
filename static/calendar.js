@@ -380,77 +380,97 @@
         return _makeTaskLi(t, null);
     }
 
-    // #94 (PR26): render the unscheduled-tasks side panel. Tasks here
-    // are draggable onto any calendar day; dropping a calendar task on
-    // this panel clears its due_date.
+    // #309 (2026-08-01): build ONE tier drop-zone in the Unscheduled aside.
+    // A zone is both a list of that tier's dateless tasks AND a drop target:
+    // dropping any task on it moves the task to `group.dropTier` and clears
+    // its specific day (the user chose "clear the specific day" — the task
+    // lands in that tier's "no day yet" bucket). This is what lets the user
+    // drag a task from a day cell (or another tier group) INTO This Week /
+    // Next Week / Backlog — the thing the old single-panel "clear due date"
+    // drop couldn't do (it only nulled the date, never changed the tier, so
+    // "move to next week" silently did nothing — user-reported).
+    //
+    // Each zone is re-created on every render (the panel is cleared with
+    // replaceChildren()), so listeners live on these fresh child elements,
+    // NOT on the persistent panel — which sidesteps the PR28
+    // listener-accumulation bug (N drops → N+1 parallel PATCHes) that the old
+    // one-shot `dropAttached` guard existed to prevent.
+    function _makeUnscheduledZone(group) {
+        const zone = document.createElement("div");
+        zone.className = "calendar-unscheduled-zone";
+        zone.dataset.dropTier = group.dropTier;
+
+        const label = document.createElement("div");
+        label.className = "calendar-unscheduled-group";
+        label.textContent = `${group.label} (${group.tasks.length})`;
+        zone.appendChild(label);
+
+        const list = document.createElement("ul");
+        list.className = "calendar-unscheduled-list";
+        if (group.tasks.length === 0) {
+            // Empty tier still renders so it's a droppable target (#309).
+            const empty = document.createElement("li");
+            empty.className = "calendar-cell-empty";
+            empty.textContent = "Drop here";
+            list.appendChild(empty);
+        } else {
+            for (const t of group.tasks) {
+                list.appendChild(_makeUnscheduledLi(t));
+            }
+        }
+        zone.appendChild(list);
+
+        zone.addEventListener("dragover", function (e) {
+            e.preventDefault();
+            zone.classList.add("calendar-unscheduled-hover");
+        });
+        zone.addEventListener("dragleave", function () {
+            zone.classList.remove("calendar-unscheduled-hover");
+        });
+        zone.addEventListener("drop", async function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            zone.classList.remove("calendar-unscheduled-hover");
+            const taskId = e.dataTransfer && e.dataTransfer.getData("text/plain");
+            if (!_isValidUuid(taskId)) return;  // PR28 audit fix #6
+            try {
+                // Set the tier AND clear the specific day. Passing `tier`
+                // explicitly also suppresses the server's due_date→tier
+                // auto-routing (#74), so the tier we send is the tier that
+                // sticks. PR67 #132: window.apiFetch (auto-retry + recovery).
+                await window.apiFetch(`/api/tasks/${taskId}`, {
+                    method: "PATCH",
+                    body: JSON.stringify({ tier: group.dropTier, due_date: null }),
+                });
+                await renderCalendar();
+            } catch (err) {
+                alert("Failed to move task: " + err.message);
+            }
+        });
+        return zone;
+    }
+
+    // #94 (PR26): render the unscheduled-tasks side panel. #309: every tier
+    // group is now an always-present drop target (see _makeUnscheduledZone),
+    // so the four groups render even when empty — you can drag a task INTO
+    // This Week / Next Week / Backlog, not just clear its date.
     function _renderUnscheduled(tasks) {
         const panel = document.getElementById("calendarUnscheduled");
         if (!panel) return;
-        panel.innerHTML = "";
+        panel.replaceChildren();
         const h = document.createElement("h3");
         h.textContent = `Unscheduled (${tasks.length})`;
         panel.appendChild(h);
 
-        if (tasks.length === 0) {
-            const list = document.createElement("ul");
-            list.className = "calendar-unscheduled-list";
-            const empty = document.createElement("li");
-            empty.className = "calendar-cell-empty";
-            empty.textContent = "Drop a task here to clear its due date";
-            list.appendChild(empty);
-            panel.appendChild(list);
-        } else {
-            // #292: group the dateless tasks so This Week / Next Week
-            // "no day yet" items read as distinct from the Backlog /
-            // Freezer dump they used to be merged into. Each non-empty
-            // group gets a labeled sub-header + its own list.
-            const groups = window.calendarBucketHelpers.groupUnscheduledByTier(tasks);
-            for (const g of groups) {
-                const label = document.createElement("div");
-                label.className = "calendar-unscheduled-group";
-                label.textContent = `${g.label} (${g.tasks.length})`;
-                panel.appendChild(label);
-                const list = document.createElement("ul");
-                list.className = "calendar-unscheduled-list";
-                for (const t of g.tasks) {
-                    list.appendChild(_makeUnscheduledLi(t));
-                }
-                panel.appendChild(list);
-            }
-        }
-
-        // PR28 audit fix (high-confidence #1): the panel is a persistent
-        // DOM element — _renderUnscheduled used to attach dragover/
-        // dragleave/drop listeners on EVERY render, doubling the listener
-        // count after every drop. After N drops, a single drop fired
-        // N+1 PATCH requests in parallel. Guard with a one-shot flag
-        // so we attach exactly once. innerHTML clears can't drop the
-        // listeners since they're on the panel itself, not its children.
-        if (!panel.dataset.dropAttached) {
-            panel.dataset.dropAttached = "1";
-            panel.addEventListener("dragover", function (e) {
-                e.preventDefault();
-                panel.classList.add("calendar-unscheduled-hover");
-            });
-            panel.addEventListener("dragleave", function () {
-                panel.classList.remove("calendar-unscheduled-hover");
-            });
-            panel.addEventListener("drop", async function (e) {
-                e.preventDefault();
-                panel.classList.remove("calendar-unscheduled-hover");
-                const taskId = e.dataTransfer && e.dataTransfer.getData("text/plain");
-                if (!_isValidUuid(taskId)) return;  // PR28 audit fix #6
-                try {
-                    // PR67 #132: window.apiFetch (auto-retry + recovery)
-                    await window.apiFetch(`/api/tasks/${taskId}`, {
-                        method: "PATCH",
-                        body: JSON.stringify({ due_date: null }),
-                    });
-                    await renderCalendar();
-                } catch (err) {
-                    alert("Failed to clear due date: " + err.message);
-                }
-            });
+        // #292: split the dateless tasks so This Week / Next Week "no day yet"
+        // items read as distinct from the Backlog / Freezer dump. #309: pass
+        // includeEmpty=true so ALL FOUR groups render as drop targets even
+        // when a tier is currently empty.
+        const groups = window.calendarBucketHelpers.groupUnscheduledByTier(
+            tasks, true,
+        );
+        for (const g of groups) {
+            panel.appendChild(_makeUnscheduledZone(g));
         }
     }
 

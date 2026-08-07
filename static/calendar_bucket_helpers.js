@@ -85,17 +85,27 @@ function bucketTasks(tasks, todayIso, tomorrowIso) {
  * THIS-WEEK / NEXT-WEEK "no specific day yet" tasks apart from the
  * long-horizon Backlog / Freezer dump they were merged into.
  *
- * Returns ONLY non-empty groups, in display order (mirrors the board's
- * tier order — intake first, long-horizon last):
+ * By default returns ONLY non-empty groups, in display order (mirrors the
+ * board's tier order — intake first, long-horizon last):
  *   Inbox → This Week (no day) → Next Week (no day) → Backlog & Freezer
  * #296: Inbox is its own group so untriaged tasks don't hide in the
  * Backlog pile. Anything else (freezer, unknown tiers) joins the last
  * group — in practice it's overwhelmingly backlog/freezer.
  *
+ * #309 (2026-08-01): pass `includeEmpty = true` to get ALL FOUR groups back
+ * regardless of count. The calendar renders them as always-present drop
+ * TARGETS (drop a task on a group to move it to that tier), so an empty
+ * "Next Week" group must still appear on screen — otherwise you can't drop
+ * onto a tier that currently holds nothing. Each group also carries a
+ * `dropTier`: the Tier enum value the drop handler PATCHes. The merged
+ * "Backlog & Freezer" group drops to `backlog` (Freezer is a deliberate
+ * niche better set from the detail panel), everything else maps 1:1.
+ *
  * @param {Array} unscheduled — the `bucketTasks().unscheduled` list.
- * @returns {Array<{key:string,label:string,tasks:Array}>}
+ * @param {boolean} [includeEmpty=false] — keep zero-task groups (drop targets).
+ * @returns {Array<{key:string,label:string,dropTier:string,tasks:Array}>}
  */
-function groupUnscheduledByTier(unscheduled) {
+function groupUnscheduledByTier(unscheduled, includeEmpty = false) {
     const list = Array.isArray(unscheduled) ? unscheduled : [];
     const inbox = [];
     const thisWeek = [];
@@ -107,12 +117,13 @@ function groupUnscheduledByTier(unscheduled) {
         else if (t.tier === "next_week") nextWeek.push(t);
         else other.push(t);
     }
-    return [
-        { key: "inbox", label: "Inbox", tasks: inbox },
-        { key: "this_week", label: "This Week · no day", tasks: thisWeek },
-        { key: "next_week", label: "Next Week · no day", tasks: nextWeek },
-        { key: "other", label: "Backlog & Freezer", tasks: other },
-    ].filter((g) => g.tasks.length > 0);
+    const groups = [
+        { key: "inbox", label: "Inbox", dropTier: "inbox", tasks: inbox },
+        { key: "this_week", label: "This Week · no day", dropTier: "this_week", tasks: thisWeek },
+        { key: "next_week", label: "Next Week · no day", dropTier: "next_week", tasks: nextWeek },
+        { key: "other", label: "Backlog & Freezer", dropTier: "backlog", tasks: other },
+    ];
+    return includeEmpty ? groups : groups.filter((g) => g.tasks.length > 0);
 }
 
 /**

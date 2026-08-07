@@ -353,4 +353,57 @@ describe("groupUnscheduledByTier (#292)", () => {
         expect(groupUnscheduledByTier(null)).toEqual([]);
         expect(groupUnscheduledByTier(undefined)).toEqual([]);
     });
+
+    describe("#309: includeEmpty=true → always all four drop-target groups", () => {
+        test("empty input still yields all four groups, in order", () => {
+            const groups = groupUnscheduledByTier([], true);
+            expect(groups.map((g) => g.key)).toEqual([
+                "inbox", "this_week", "next_week", "other",
+            ]);
+            expect(groups.every((g) => g.tasks.length === 0)).toBe(true);
+        });
+
+        test("null / undefined input still yields all four groups", () => {
+            expect(groupUnscheduledByTier(null, true).map((g) => g.key)).toEqual([
+                "inbox", "this_week", "next_week", "other",
+            ]);
+            expect(groupUnscheduledByTier(undefined, true)).toHaveLength(4);
+        });
+
+        test("populated tiers keep their tasks; empty ones stay present", () => {
+            const groups = groupUnscheduledByTier([mk("nw1", "next_week")], true);
+            const byKey = Object.fromEntries(groups.map((g) => [g.key, g]));
+            expect(groups).toHaveLength(4);
+            expect(byKey.next_week.tasks.map((t) => t.id)).toEqual(["nw1"]);
+            expect(byKey.this_week.tasks).toEqual([]);
+            expect(byKey.inbox.tasks).toEqual([]);
+            expect(byKey.other.tasks).toEqual([]);
+        });
+
+        test("each group carries the tier its drop handler PATCHes", () => {
+            const groups = groupUnscheduledByTier([], true);
+            const dropTierByKey = Object.fromEntries(
+                groups.map((g) => [g.key, g.dropTier]),
+            );
+            expect(dropTierByKey).toEqual({
+                inbox: "inbox",
+                this_week: "this_week",
+                next_week: "next_week",
+                // merged Backlog & Freezer group drops to backlog (#309)
+                other: "backlog",
+            });
+        });
+
+        test("default (includeEmpty omitted) still filters empty groups", () => {
+            // Regression guard: the new param must not change the old default.
+            const groups = groupUnscheduledByTier([mk("tw1", "this_week")]);
+            expect(groups.map((g) => g.key)).toEqual(["this_week"]);
+        });
+
+        test("dropTier is present even on the filtered default path", () => {
+            const [g] = groupUnscheduledByTier([mk("b1", "backlog")]);
+            expect(g.key).toBe("other");
+            expect(g.dropTier).toBe("backlog");
+        });
+    });
 });
