@@ -21,10 +21,10 @@
     "jscpd": "^5.0.12"
   },
   "comments": {
-    "overrides": "Force patched versions of two DEV-only transitive deps flagged high-severity (DoS) by the weekly advisory check (#306). js-yaml (via babel-plugin-istanbul→load-nyc-config) 3.14.2→3.15.0 stays in the 3.x line; brace-expansion (via minimatch/test-exclude) →2.1.2 is API-compatible. Not shipped to prod — the app runtime is Python."
+    "overrides": "Force patched versions of two DEV-only transitive deps flagged high-severity (DoS) by the weekly advisory check. Not shipped to prod — the app runtime is Python, and `npm audit --omit=dev` is already clean. #306: first pinned js-yaml 3.15.0 + brace-expansion 5.0.8. #310 (2026-08-01): NEW advisories landed against those exact pins — GHSA-rgw5-rvv9-x895 (brace-expansion ≤5.0.8, CVE-2026-14257 mitigation bypass) and CVE-2026-59870 (js-yaml !!omap quadratic CPU, 3.x fix NOT backported). Bumped brace-expansion→5.0.9 and js-yaml→5.2.3 (had to leave the 3.x line — no 3.x fix exists). js-yaml 5.x drops the legacy safeLoad API, so verified the dev tree (jest coverage via babel-plugin-istanbul→load-nyc-config, jscpd) still runs green after the bump."
   },
   "overrides": {
-    "js-yaml": "3.15.0",
-    "brace-expansion": "5.0.8"
+    "js-yaml": "5.2.3",
+    "brace-expansion": "5.0.9"
   }
 }
