@@ -14,6 +14,43 @@ _(nothing in flight)_
 
 ## Completed
 
+- [x] **Calendar Unscheduled tier drop-zones — drag tasks to This Week / Next Week / Backlog (#309)** —
+  User-reported 2026-08-01: on `/calendar` you couldn't drag a task from a
+  day (or from this-week / next-week) into next week or backlog. Root cause:
+  the Unscheduled aside's tier sections (Inbox / This Week · no day / Next
+  Week · no day / Backlog & Freezer) were **display-only labels** inside one
+  drop panel whose sole handler cleared `due_date` — it never changed the
+  `tier`, so "move to next week" silently did nothing; empty sections weren't
+  even rendered, so a tier holding no tasks had no drop target at all. Fix:
+  each tier section is now its own **always-present drop target** — dropping a
+  task PATCHes `{tier, due_date: null}` (sets the tier, clears the specific
+  day per the user's choice), landing it in that tier's "no day yet" bucket.
+  Empty sections render a "Drop here" box. Backlog & Freezer drops to Backlog.
+  `groupUnscheduledByTier` gained `includeEmpty` + a per-group `dropTier`;
+  `_makeUnscheduledZone` builds each target (listeners on per-render zone
+  elements, so the PR28 accumulation guard is gone); `replaceChildren()` not
+  innerHTML. Docs (`/docs` calendar section) + calendar hint updated
+  (fact-checked). CACHE_VERSION v226→v227. +6 helper tests. Pre-deploy ALL 11
+  GATES GREEN (jest 407, coverage 84.60%, local Playwright 107). Phase 6
+  desktop 1280×800 + mobile 375×812: all three reported cases fixed
+  end-to-end (tier flips server-side + due_date cleared), empty Next Week zone
+  droppable, unscheduled→day reschedule still works, 0 console errors,
+  viewport parity both sizes. Post-deploy DEPLOY GREEN + MONITOR GREEN at
+  27bfafe + 47/47 prod smoke. — RESOLVED 2026-08-01 (27bfafe).
+
+- [x] **Bump js-yaml→5.2.3 + brace-expansion→5.0.9 overrides — new high-sev advisories (#310)** —
+  The npm-audit / weekly-advisory gate went RED on two NEW advisories against
+  the exact DEV-only transitive pins from #306: brace-expansion ≤5.0.8
+  (GHSA-rgw5-rvv9-x895, CVE-2026-14257-mitigation bypass) and js-yaml
+  3.0.0–3.15.0 (CVE-2026-59870 !!omap quadratic CPU, 3.x fix NOT backported).
+  Bumped brace-expansion→5.0.9 and js-yaml→5.2.3 (had to leave the 3.x line).
+  Dev-tree only — `npm audit --omit=dev` (prod) was already clean and the app
+  runtime is Python. js-yaml 5.x drops the legacy `safeLoad` API, so verified
+  the dev tooling still runs green: `npm audit` 0 vulnerabilities, jest 407
+  passed (coverage via babel-plugin-istanbul→load-nyc-config intact), jscpd
+  clean. Shipped alongside #309 (same branch — the gate must pass for either).
+  — RESOLVED 2026-08-01 (da42bc9, merged in 27bfafe).
+
 - [x] **Bump `cryptography` 49.0.0 → 50.0.0 (weekly tech-debt dep-drift advisory) (#308)** —
   Weekly tech-debt audit 2026-08-01 flagged `cryptography` 1 major behind
   (49.0.0 → 50.0.0, published to PyPI 2026-07-31). Reviewed the 50.0.0
