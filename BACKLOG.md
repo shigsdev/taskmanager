@@ -371,9 +371,9 @@ The script preserves operator-added prose across re-renders. -->
 | Audit row | Finding | First seen | Last seen | Notes / Status |
 |---|---|---|---|---|
 <!-- audit-row: bug-pattern/bare-1fr-grids/static-style.css -->
-| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 42: bare 1fr | 2026-05-27 | 2026-08-01 | 🟢 auto-detected resolved 2026-08-01 |
+| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 42: bare 1fr | 2026-05-27 | 2026-08-07 | 🟢 auto-detected resolved 2026-08-07 |
 <!-- audit-row: coverage/overall-coverage-drift/ -->
-| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-08-01 | 🟢 auto-detected resolved 2026-08-01 |
+| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-08-07 | 🟢 auto-detected resolved 2026-08-07 |
 <!-- audit-row: coverage/per-file-coverage-drift/app.py -->
 | `coverage/per-file-coverage-drift/app.py` | **app.py** — coverage dropped 9.9pp (90.2% → 80.3%; tolerance 5.0pp) | 2026-06-26 | 2026-07-17 | 🟢 auto-detected resolved 2026-07-17 |
 <!-- audit-row: coverage/per-file-coverage-drift/digest_api.py -->
@@ -385,7 +385,9 @@ The script preserves operator-added prose across re-renders. -->
 <!-- audit-row: security/pat-inventory/pat-placeholder-populate-when-you-next-rotate-a-pat-last_used_at-2026-05-26-is-66-days-ago-cap-at-60-days-consider-revoking-if-abandoned -->
 | `security/pat-inventory/pat-placeholder-populate-when-you-next-rotate-a-pat-last_used_at-2026-05-26-is-66-days-ago-cap-at-60-days-consider-revoking-if-abandoned` | PAT '(placeholder) — populate when you next rotate a PAT': last_used_at 2026-05-26 is 66 days ago (cap at 60 days — consider revoking if abandoned) | 2026-07-31 | 2026-07-31 | 🟢 auto-detected resolved 2026-08-01 |
 <!-- audit-row: security/pat-inventory/pat-placeholder-populate-when-you-next-rotate-a-pat-last_used_at-2026-05-26-is-67-days-ago-cap-at-60-days-consider-revoking-if-abandoned -->
-| `security/pat-inventory/pat-placeholder-populate-when-you-next-rotate-a-pat-last_used_at-2026-05-26-is-67-days-ago-cap-at-60-days-consider-revoking-if-abandoned` | PAT '(placeholder) — populate when you next rotate a PAT': last_used_at 2026-05-26 is 67 days ago (cap at 60 days — consider revoking if abandoned) | 2026-08-01 | 2026-08-01 |  |
+| `security/pat-inventory/pat-placeholder-populate-when-you-next-rotate-a-pat-last_used_at-2026-05-26-is-67-days-ago-cap-at-60-days-consider-revoking-if-abandoned` | PAT '(placeholder) — populate when you next rotate a PAT': last_used_at 2026-05-26 is 67 days ago (cap at 60 days — consider revoking if abandoned) | 2026-08-01 | 2026-08-01 | 🟢 auto-detected resolved 2026-08-07 |
+<!-- audit-row: security/pat-inventory/pat-placeholder-populate-when-you-next-rotate-a-pat-last_used_at-2026-05-26-is-73-days-ago-cap-at-60-days-consider-revoking-if-abandoned -->
+| `security/pat-inventory/pat-placeholder-populate-when-you-next-rotate-a-pat-last_used_at-2026-05-26-is-73-days-ago-cap-at-60-days-consider-revoking-if-abandoned` | PAT '(placeholder) — populate when you next rotate a PAT': last_used_at 2026-05-26 is 73 days ago (cap at 60 days — consider revoking if abandoned) | 2026-08-07 | 2026-08-07 |  |
 <!-- audit-row: tech-debt/code-duplication/static-calendar.js -->
 | `tech-debt/code-duplication/static-calendar.js` | **static/calendar.js** — 37-line duplicate block: static/calendar.js:162-198 <-> static/calendar.js:383-405 — extract to a shared helper or rationalise the divergence. | 2026-07-14 | 2026-07-14 | 🟢 auto-detected resolved 2026-07-18 |
 <!-- audit-row: tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.11-1-major-version-s-behind -->
