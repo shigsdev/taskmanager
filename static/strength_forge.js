@@ -380,6 +380,20 @@
     panel.appendChild(contentMount);
     renderPhase();
 
+    // #314: print the FULL flare protocol (all phases), not just the one
+    // selected above — so you can keep the recovery plan on paper / as a PDF
+    // during a flare. Standalone (the flare panel has no log buttons).
+    panel.appendChild(el("div", { cls: "sf-log-row" }, [
+      el("button", {
+        cls: "sf-print-btn sf-role-flare", text: "🖨 Print full protocol",
+        attrs: {
+          type: "button",
+          title: "Printable sheet of all three flare-up phases (Acute → Recovery → Return)",
+        },
+        on: { click: openFlarePrintSheet },
+      }),
+    ]));
+
     // Avoid list
     var avoid = el("div", { cls: "sf-avoid" }, [sectionLabel("🚫 Avoid During Any Flare")]);
     SF.avoidList.forEach(function (a) {
@@ -665,6 +679,13 @@
       });
     });
 
+    mountPrintSheet(sheet);
+  }
+
+  // Wrap a built .sf-print-sheet in the print/close bar + overlay and show
+  // it. Shared by the plan print (openPrintSheet) and the flare-protocol
+  // print (openFlarePrintSheet) so the overlay chrome lives in one place.
+  function mountPrintSheet(sheet) {
     var bar = el("div", { cls: "sf-print-bar" }, [
       el("button", {
         cls: "sf-print-do", text: "🖨 Print / Save as PDF",
@@ -681,6 +702,54 @@
     }, [bar, sheet]);
     document.body.appendChild(printOverlay);
     document.body.classList.add("sf-print-active");
+  }
+
+  // #314: printable Back Flare-Up protocol — all three phases (Acute →
+  // Recovery → Return), each on its own page under its phase header, with
+  // every exercise's duration, rest, how-to and safety tip. The flare data
+  // (SF.flarePhases) has a different shape than the band/mil plans — phases
+  // with duration-based exercises, no sets/resistance to log — so it renders
+  // as a clean reference sheet (no write-in reps rows) rather than reusing
+  // the plan print's set/resistance grid.
+  function openFlarePrintSheet() {
+    var todayLabel = new Date().toLocaleDateString(
+      undefined, { weekday: "short", month: "short", day: "numeric" });
+    var sheet = el("div", { cls: "sf-print-sheet" }, [
+      el("div", { cls: "sf-print-title" }, [
+        el("span", { cls: "sf-print-plan", text: "Back Flare-Up Protocol" }),
+        el("span", { cls: "sf-print-date", text: todayLabel }),
+      ]),
+    ]);
+
+    (SF.flarePhases || []).forEach(function (phase, idx) {
+      var headText = phase.icon + " " + phase.title + " · " + phase.subtitle
+        + " (" + phase.label + ")";
+      sheet.appendChild(el("div", {
+        cls: "sf-print-plan-head" + (idx > 0 ? " sf-print-page-break" : ""),
+      }, [el("span", { cls: "sf-print-plan-head-label", text: headText })]));
+      if (phase.desc) {
+        sheet.appendChild(el("div", { cls: "sf-print-phase-desc", text: phase.desc }));
+      }
+      (phase.exercises || []).forEach(function (fx) {
+        var head = el("div", { cls: "sf-print-ex-head" }, [
+          el("span", { cls: "sf-print-ex-name", text: fx.name }),
+          el("span", { cls: "sf-print-ex-sets", text: fx.duration || "" }),
+        ]);
+        var ex = el("div", { cls: "sf-print-ex" }, [head]);
+        if (fx.rest) {
+          ex.appendChild(el("div", { cls: "sf-print-ex-rest", text: "rest " + fx.rest }));
+        }
+        if (fx.how) {
+          ex.appendChild(el("div", { cls: "sf-print-ex-how-txt", text: fx.how }));
+        }
+        if (fx.tip) {
+          ex.appendChild(el("div", { cls: "sf-print-ex-tip", text: "Tip: " + fx.tip }));
+        }
+        sheet.appendChild(ex);
+      });
+    });
+
+    mountPrintSheet(sheet);
   }
 
   function logButton(role, planTypeFn) {

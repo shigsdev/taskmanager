@@ -5765,6 +5765,12 @@ table.quality-gates code {
 .sf-print-ex-sets { font-family: var(--font-mono); font-size: 0.78rem; color: #6b453a; }
 .sf-print-ex-last { margin-left: auto; font-family: var(--font-mono); font-size: 0.72rem; color: #2f6b46; }
 .sf-print-ex-rest { font-family: var(--font-mono); font-size: 0.68rem; color: #8a827a; margin: 2px 0 4px; }
+/* #314: flare-protocol print — phase intro + per-exercise how-to / tip.
+   The flare sheet is a reference (no write-in rows), so these carry the
+   instructions you need while doing the protocol off-phone. */
+.sf-print-phase-desc { font-size: 0.8rem; color: #3a352f; margin: 2px 0 10px; font-style: italic; }
+.sf-print-ex-how-txt { font-size: 0.78rem; color: #2f2b26; margin: 3px 0 0; line-height: 1.35; }
+.sf-print-ex-tip { font-size: 0.72rem; color: #55504a; margin: 2px 0 0; }
 .sf-print-blanks { display: flex; flex-direction: column; gap: 5px; margin-top: 5px; }
 .sf-print-blank { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; }
 .sf-print-blank-n { font-family: var(--font-mono); font-size: 0.66rem; color: #8a827a; width: 22px; flex-shrink: 0; }
