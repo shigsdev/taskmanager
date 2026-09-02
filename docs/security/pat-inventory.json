@@ -22,16 +22,16 @@
     "  - expires_at == null               → flagged (rotate to a finite",
     "                                        expiry)",
     "  - expires_at > 90 days from today  → flagged (cap at 90)",
-    "  - last_used_at > 60 days ago       → flagged (consider revoking)"
+    "  - last_used_at > 60 days ago       → flagged (consider revoking)",
+    "",
+    "Zero PATs is a valid state: keep \"tokens\" as an empty list [] and the",
+    "audit reports 0 tokens (no finding). This repo currently uses NO GitHub",
+    "PATs — local push + the backup/restore repo push both use SSH (the",
+    "backup uses the BACKUP_REPO_DEPLOY_KEY *deploy key*, not a PAT), autofile",
+    "bot commits use the workflow GITHUB_TOKEN, and email uses BREVO_API_KEY.",
+    "Deploy keys are a different, repo-scoped credential class this PAT audit",
+    "does not (and should not) track. When you next mint a real PAT, add it",
+    "here with the schema above so the cron can watch its freshness."
   ],
-  "tokens": [
-    {
-      "name": "(placeholder) — populate when you next rotate a PAT",
-      "created_at": "2026-05-26",
-      "expires_at": "2026-08-24",
-      "last_used_at": "2026-05-26",
-      "scopes": ["repo"],
-      "where_used": "Placeholder so the cron has a non-empty list to validate against. Replace with the real PAT(s) when you next rotate. If you have zero PATs in use, delete this entry and the audit will report 0 tokens."
-    }
-  ]
+  "tokens": []
 }
