@@ -14,6 +14,27 @@ _(nothing in flight)_
 
 ## Completed
 
+- [x] **Printable Back Flare-Up protocol — Print button on the Flare-Up tab (#314)** —
+  User asked (2026-09-02) to be able to print the back flare-up workout.
+  Follow-on to #313 (full-plan print for Bands/Military) — the 🔴 Flare-Up tab
+  had no print button. Added 🖨 "Print full protocol" that emits the whole
+  back-flare plan: all three phases (Acute → Recovery → Return), each on its
+  own page under its phase header, with every exercise's duration, rest,
+  how-to instructions and safety tip. The flare data (`SF.flarePhases`) has a
+  different shape than the band/mil plans (duration-based exercises, nothing to
+  log), so it gets its own `openFlarePrintSheet()` renderer — a reference sheet
+  with no write-in reps rows — while the shared overlay + print/close bar was
+  extracted into `mountPrintSheet()` so both printers reuse the same chrome
+  (code-duplication gate stays clean). New `.sf-print-phase-desc` /
+  `-ex-how-txt` / `-ex-tip` CSS. docs.html /strength-forge print section
+  documents it (fact-checked). CACHE_VERSION v228→v229. Pre-deploy ALL 11 GATES
+  GREEN (jest 411, coverage 84.64%, local Playwright 107). Phase 6 desktop
+  1280×800 + mobile 375×812: title "Back Flare-Up Protocol", 3 phase headers, 2
+  page breaks, 13 exercises (exactly the data total across all phases), each
+  with duration + how-to + tip; button 44px tappable; no horizontal overflow
+  either viewport; 0 console errors. Post-deploy DEPLOY GREEN + MONITOR GREEN at
+  fb18645 + 47/47 prod smoke. — RESOLVED 2026-09-02 (fb18645).
+
 - [x] **Workout print sheet emits the FULL plan — all workouts, not just the toggled day (#313)** —
   User asked (2026-09-02) for the workout print to output all the exercises
   (the full plan). The 🖨 Print button on the Strength page previously printed
