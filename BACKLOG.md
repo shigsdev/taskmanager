@@ -14,6 +14,27 @@ _(nothing in flight)_
 
 ## Completed
 
+- [x] **Workout print sheet emits the FULL plan — all workouts, not just the toggled day (#313)** —
+  User asked (2026-09-02) for the workout print to output all the exercises
+  (the full plan). The 🖨 Print button on the Strength page previously printed
+  only the day toggled on screen (Bands → Workout A *or* B; Military → one of
+  Sessions 1–3). Now it prints every workout of the program on one sheet —
+  Bands = Workout A + B (20 exercises), Military = Sessions 1+2+3 (22) — each
+  under its own day header beneath a program-level title, each day after the
+  first on its own page (`@media print break-before`). Exercises keep their
+  prescribed sets, last-used resistance, and blank reps/resistance write-in
+  rows. New pure `planTypesForRole(role)` helper (single source of truth for
+  role→days, dual-exported + Jest-tested, +4 tests incl. a no-drift guard);
+  `openPrintSheet` now takes a list (bare string still works);
+  `appendPrintExercise` extracted; `ROLE_LABELS` + `roleForPlanType` added.
+  docs.html /strength-forge print section updated (fact-checked). CACHE_VERSION
+  v227→v228. Pre-deploy ALL 11 GATES GREEN (jest 411, coverage 84.64%, local
+  Playwright 107). Phase 6 desktop 1280×800 + mobile 375×812: Bands=20 (A+B, 2
+  headers, 1 break), Military=22 (S1–3, 3 headers, 2 breaks), no horizontal
+  overflow either viewport, print bar tappable on mobile, 0 console errors.
+  Post-deploy DEPLOY GREEN + MONITOR GREEN at 83b729d + 47/47 prod smoke. —
+  RESOLVED 2026-09-02 (83b729d).
+
 - [x] **Drop stale placeholder from PAT inventory — monthly security-posture nag (#312)** —
   User asked (2026-09-01) which PAT the monthly security-posture audit was
   flagging as expiring/stale (`(placeholder) — populate when you next rotate
