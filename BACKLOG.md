@@ -14,6 +14,33 @@ _(nothing in flight)_
 
 ## Completed
 
+- [x] **Drop stale placeholder from PAT inventory — monthly security-posture nag (#312)** —
+  User asked (2026-09-01) which PAT the monthly security-posture audit was
+  flagging as expiring/stale (`(placeholder) — populate when you next rotate
+  a PAT`, last_used_at 2026-05-26, 98 days > the 60-day cap). Investigation:
+  it was never a real credential — a dummy seeded on 2026-05-26 (#227) so the
+  cron had a non-empty list. Verified this repo uses **zero** GitHub PATs —
+  local push is SSH; backup + restore-drill push use the
+  `BACKUP_REPO_DEPLOY_KEY` *deploy key* (repo-scoped SSH key, not a PAT);
+  autofile bot commits use `GITHUB_TOKEN`; email uses `BREVO_API_KEY`. Emptied
+  `docs/security/pat-inventory.json` `tokens` → `[]` (kept + expanded the
+  schema `_doc`); `check_pat_inventory()` returns 0 findings on an empty list
+  (verified), so the audit reports 0 tokens tracked and stops nagging. The
+  recurring auto-filed `pat-placeholder-…` rows will self-resolve on the next
+  monthly run. Config-only (file read only by the monthly GH Actions cron,
+  never by the app). ALL 11 GATES GREEN; DEPLOY GREEN at 5b2fcf6 (redeploy
+  healthy — non-app change). — RESOLVED 2026-09-01 (922db20).
+
+- [x] **Pin browserslist→4.28.8 override — new high-sev dev-tree advisory (#311)** —
+  npm-audit gate went RED on a new advisory against browserslist ≤4.28.6
+  (GHSA-c83g-rgw3-j3cx unbounded-memory OOM + GHSA-73wf-gq98-2v4g prototype
+  write via untrusted stats). Dev-tree only — via
+  jest→@babel/core→@babel/helper-compilation-targets (was 4.28.2); `npm audit
+  --omit=dev` (prod) already clean, app runtime is Python. Pinned →4.28.8
+  (patch bump, no API risk). npm audit 0 vulns, jest 407 passed. Shipped
+  alongside #312 (same branch — the gate must pass for either). — RESOLVED
+  2026-09-01 (5b2fcf6).
+
 - [x] **Calendar Unscheduled tier drop-zones — drag tasks to This Week / Next Week / Backlog (#309)** —
   User-reported 2026-08-01: on `/calendar` you couldn't drag a task from a
   day (or from this-week / next-week) into next week or backlog. Root cause:
