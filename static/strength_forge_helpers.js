@@ -147,12 +147,32 @@ function isDraftFresh(savedAtMs, nowMs, maxHours) {
     return ageMs <= maxH * 3600 * 1000;
 }
 
+/**
+ * planTypesForRole — the ordered list of plan-type keys that make up a
+ * training role's FULL program. The print sheet uses this to render EVERY
+ * workout day of a plan at once (#313 — "print the full one"), instead of
+ * only the day currently toggled on screen.
+ *
+ *   "band" -> ["band-a", "band-b"]           (Workouts A + B)
+ *   "mil"  -> ["mil-1", "mil-2", "mil-3"]     (Sessions 1–3)
+ *   unknown / missing -> []
+ *
+ * Single source of truth for the role→days mapping; kept here (pure) so the
+ * mapping is unit-testable and can't silently drift from the print button.
+ */
+function planTypesForRole(role) {
+    if (role === "band") return ["band-a", "band-b"];
+    if (role === "mil") return ["mil-1", "mil-2", "mil-3"];
+    return [];
+}
+
 var strengthForgeHelpers = {
     defaultSetCount: defaultSetCount,
     buildSetsPayload: buildSetsPayload,
     formatLastResist: formatLastResist,
     usesResistance: usesResistance,
     isDraftFresh: isDraftFresh,
+    planTypesForRole: planTypesForRole,
 };
 
 // Browser global

@@ -11,6 +11,7 @@ const {
     formatLastResist,
     usesResistance,
     isDraftFresh,
+    planTypesForRole,
 } = require("../../../static/strength_forge_helpers");
 
 describe("defaultSetCount", () => {
@@ -219,5 +220,35 @@ describe("isDraftFresh", () => {
         expect(isDraftFresh(undefined, now)).toBe(false);
         expect(isDraftFresh(now, undefined)).toBe(false);
         expect(isDraftFresh(NaN, now)).toBe(false);
+    });
+});
+
+describe("planTypesForRole (#313 — full-plan print)", () => {
+    test("band → both workouts, in order", () => {
+        expect(planTypesForRole("band")).toEqual(["band-a", "band-b"]);
+    });
+
+    test("mil → all three sessions, in order", () => {
+        expect(planTypesForRole("mil")).toEqual(["mil-1", "mil-2", "mil-3"]);
+    });
+
+    test("unknown / missing role → empty list (button falls back to current day)", () => {
+        expect(planTypesForRole("flare")).toEqual([]);
+        expect(planTypesForRole("")).toEqual([]);
+        expect(planTypesForRole(undefined)).toEqual([]);
+        expect(planTypesForRole(null)).toEqual([]);
+    });
+
+    test("every returned key is a real plan label (no drift vs PLAN_LABELS_JS keys)", () => {
+        // The print sheet looks each key up in PLAN_LABELS_JS; guard the two
+        // lists can't drift. These are the labeled plan types the app ships.
+        const known = new Set([
+            "band-a", "band-b", "mil-1", "mil-2", "mil-3",
+        ]);
+        for (const role of ["band", "mil"]) {
+            for (const key of planTypesForRole(role)) {
+                expect(known.has(key)).toBe(true);
+            }
+        }
     });
 });

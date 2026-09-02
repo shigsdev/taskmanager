@@ -5746,6 +5746,13 @@ table.quality-gates code {
     border-bottom: 2px solid #16130f; padding-bottom: 8px; margin-bottom: 16px; }
 .sf-print-plan { font-family: var(--font-display); font-size: 1.3rem; font-weight: 800; }
 .sf-print-date { font-family: var(--font-mono); font-size: 0.8rem; color: #55504a; white-space: nowrap; }
+/* #313: per-day header when the print sheet spans a full plan (all
+   workouts). Heavier rule than a section header; each day after the first
+   starts on a fresh page. */
+.sf-print-plan-head { margin: 24px 0 6px; padding-bottom: 6px;
+    border-bottom: 2px solid #16130f; }
+.sf-print-plan-head-label { font-family: var(--font-display);
+    font-size: 1.08rem; font-weight: 800; }
 .sf-print-sec { display: flex; align-items: baseline; gap: 8px; margin: 18px 0 8px;
     border-bottom: 1px solid #cfc8bf; padding-bottom: 4px; }
 .sf-print-sec-num { font-family: var(--font-mono); font-size: 0.7rem; color: #8a827a; }
@@ -5771,6 +5778,8 @@ table.quality-gates code {
     body.sf-print-active .sf-print-overlay { position: static; overflow: visible; background: none; padding: 0; display: block; }
     body.sf-print-active .sf-print-bar { display: none !important; }
     body.sf-print-active .sf-print-sheet { max-width: none; margin: 0; padding: 0; box-shadow: none; border-radius: 0; }
+    /* #313: each subsequent workout day starts on its own page. */
+    body.sf-print-active .sf-print-page-break { break-before: page; page-break-before: always; }
 }
 
 @media (max-width: 600px) {

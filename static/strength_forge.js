@@ -575,59 +575,93 @@
     if (e.key === "Escape" && printOverlay) closePrintSheet();
   });
 
+  // Render one exercise block (head + rest + blank write-in rows) onto the
+  // print sheet. Shared by every day when printing a full plan (#313).
+  function appendPrintExercise(sheet, item, setCount) {
+    var showResist = usesResist(item);
+    var head = el("div", { cls: "sf-print-ex-head" }, [
+      el("span", { cls: "sf-print-ex-name", text: item.name }),
+      el("span", { cls: "sf-print-ex-sets", text: item.sets || "" }),
+    ]);
+    if (showResist) {
+      var last = lastResistLabel(item.id);
+      if (last) head.appendChild(el("span", { cls: "sf-print-ex-last", text: last }));
+    }
+    var ex = el("div", { cls: "sf-print-ex" }, [head]);
+    if (item.rest) {
+      ex.appendChild(el("div", { cls: "sf-print-ex-rest", text: "rest " + item.rest }));
+    }
+    var blanks = el("div", { cls: "sf-print-blanks" });
+    var n = setCount(item.sets);
+    for (var i = 1; i <= n; i++) {
+      var blankKids = [
+        el("span", { cls: "sf-print-blank-n", text: "S" + i }),
+        el("span", { cls: "sf-print-blank-lbl", text: "reps" }),
+        el("span", { cls: "sf-print-blank-line" + (showResist ? "" : " wide") }),
+      ];
+      if (showResist) {
+        blankKids.push(el("span", { cls: "sf-print-blank-lbl", text: "resistance" }));
+        blankKids.push(el("span", { cls: "sf-print-blank-line wide" }));
+      }
+      blanks.appendChild(el("div", { cls: "sf-print-blank" }, blankKids));
+    }
+    ex.appendChild(blanks);
+    sheet.appendChild(ex);
+  }
+
   // A printable / save-as-PDF workout sheet: each exercise with its
   // prescribed sets, your last-used resistance as a reference, and blank
   // write-in rows — so you can do the workout off-phone and jot what you
   // did, then log it after.
-  function openPrintSheet(planType) {
+  //
+  // #313: accepts a LIST of plan types so the Print button emits the FULL
+  // plan — every workout day for that program (Bands A + B; Military S1–S3),
+  // each under its own day header, one day per page — instead of only the
+  // day toggled on screen. A bare string still works (single-day print).
+  function openPrintSheet(planTypes) {
+    if (typeof planTypes === "string") planTypes = [planTypes];
+    if (!planTypes || !planTypes.length) return;
     var setCount = window.strengthForgeHelpers
       ? window.strengthForgeHelpers.defaultSetCount : function () { return 1; };
     var todayLabel = new Date().toLocaleDateString(
       undefined, { weekday: "short", month: "short", day: "numeric" });
 
+    var multi = planTypes.length > 1;
+    // Multi-day print → program-level title (e.g. "Resistance Band
+    // Training"); single-day → that day's label.
+    var titleText = multi
+      ? (ROLE_LABELS[roleForPlanType(planTypes[0])] || "Workout Plan")
+      : (PLAN_LABELS_JS[planTypes[0]] || planTypes[0]);
+
     var sheet = el("div", { cls: "sf-print-sheet" }, [
       el("div", { cls: "sf-print-title" }, [
-        el("span", { cls: "sf-print-plan", text: PLAN_LABELS_JS[planType] || planType }),
+        el("span", { cls: "sf-print-plan", text: titleText }),
         el("span", { cls: "sf-print-date", text: todayLabel }),
       ]),
     ]);
 
-    planSections(planType).forEach(function (sec) {
-      sheet.appendChild(el("div", { cls: "sf-print-sec" }, [
-        sec.num ? el("span", { cls: "sf-print-sec-num", text: sec.num }) : null,
-        el("span", { cls: "sf-print-sec-title", text: sec.section }),
-        sec.badge ? el("span", { cls: "sf-print-sec-badge", text: sec.badge }) : null,
-      ]));
-      (sec.items || []).forEach(function (item) {
-        var showResist = usesResist(item);
-        var head = el("div", { cls: "sf-print-ex-head" }, [
-          el("span", { cls: "sf-print-ex-name", text: item.name }),
-          el("span", { cls: "sf-print-ex-sets", text: item.sets || "" }),
-        ]);
-        if (showResist) {
-          var last = lastResistLabel(item.id);
-          if (last) head.appendChild(el("span", { cls: "sf-print-ex-last", text: last }));
-        }
-        var ex = el("div", { cls: "sf-print-ex" }, [head]);
-        if (item.rest) {
-          ex.appendChild(el("div", { cls: "sf-print-ex-rest", text: "rest " + item.rest }));
-        }
-        var blanks = el("div", { cls: "sf-print-blanks" });
-        var n = setCount(item.sets);
-        for (var i = 1; i <= n; i++) {
-          var blankKids = [
-            el("span", { cls: "sf-print-blank-n", text: "S" + i }),
-            el("span", { cls: "sf-print-blank-lbl", text: "reps" }),
-            el("span", { cls: "sf-print-blank-line" + (showResist ? "" : " wide") }),
-          ];
-          if (showResist) {
-            blankKids.push(el("span", { cls: "sf-print-blank-lbl", text: "resistance" }));
-            blankKids.push(el("span", { cls: "sf-print-blank-line wide" }));
-          }
-          blanks.appendChild(el("div", { cls: "sf-print-blank" }, blankKids));
-        }
-        ex.appendChild(blanks);
-        sheet.appendChild(ex);
+    planTypes.forEach(function (planType, planIdx) {
+      // #313: when printing more than one day, each gets its own header and
+      // starts on a fresh page (after the first) so days don't run together.
+      if (multi) {
+        sheet.appendChild(el("div", {
+          cls: "sf-print-plan-head" + (planIdx > 0 ? " sf-print-page-break" : ""),
+        }, [
+          el("span", {
+            cls: "sf-print-plan-head-label",
+            text: PLAN_LABELS_JS[planType] || planType,
+          }),
+        ]));
+      }
+      planSections(planType).forEach(function (sec) {
+        sheet.appendChild(el("div", { cls: "sf-print-sec" }, [
+          sec.num ? el("span", { cls: "sf-print-sec-num", text: sec.num }) : null,
+          el("span", { cls: "sf-print-sec-title", text: sec.section }),
+          sec.badge ? el("span", { cls: "sf-print-sec-badge", text: sec.badge }) : null,
+        ]));
+        (sec.items || []).forEach(function (item) {
+          appendPrintExercise(sheet, item, setCount);
+        });
       });
     });
 
@@ -663,10 +697,20 @@
       on: { click: function () { openLogForm(planTypeFn()); } },
     });
     // Printable sheet (do the workout off-phone) with last-used resistance.
+    // #313: print the FULL plan — every day of this program — not just the
+    // day toggled on screen. Falls back to the current day if the role→days
+    // helper is unavailable (defensive).
     var printBtn = el("button", {
       cls: "sf-print-btn sf-role-" + role, text: "🖨 Print",
-      attrs: { type: "button", title: "Printable sheet with your last-used resistance" },
-      on: { click: function () { openPrintSheet(planTypeFn()); } },
+      attrs: {
+        type: "button",
+        title: "Printable full-plan sheet (all workouts) with your last-used resistance",
+      },
+      on: { click: function () {
+        var types = window.strengthForgeHelpers
+          ? window.strengthForgeHelpers.planTypesForRole(role) : [];
+        openPrintSheet(types.length ? types : [planTypeFn()]);
+      } },
     });
     return el("div", { cls: "sf-log-row" }, [btn, detailBtn, printBtn]);
   }
@@ -681,6 +725,17 @@
     "mil-2": "Military · Pull + Legs",
     "mil-3": "Military · Full-Body Circuit",
   };
+
+  // #313: program-level titles for the full-plan print sheet (the day-level
+  // labels above become per-day sub-headers under one of these).
+  var ROLE_LABELS = {
+    band: "Resistance Band Training",
+    mil: "Military Calisthenics",
+  };
+
+  function roleForPlanType(planType) {
+    return String(planType || "").indexOf("mil") === 0 ? "mil" : "band";
+  }
 
   function planExercises(planType) {
     var map = {
