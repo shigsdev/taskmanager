@@ -653,6 +653,8 @@ function renderBoard() {
     // With 500 tasks that was 3500 string comparisons per render. Compute
     // ONCE here, bucket by tier, look up O(1) inside the loop.
     const filtered = filteredTasks();
+    // #316: tell the user when filters are hiding tasks (see renderFilterBanner).
+    renderFilterBanner(filtered.length, (allTasks || []).length);
     const byTier = new Map();
     // #161 (2026-05-09, narrowed 2026-05-14): the Today panel surfaces
     // ONE drift case — tier=tomorrow with due_date=today. That's the
@@ -1720,6 +1722,87 @@ function renderSearchMeta() {
     ).length;
     const total = (allTasks || []).length;
     meta.textContent = `${matched} of ${total} match`;
+}
+
+// #316: "filters are hiding tasks" banner.
+//
+// Root cause (user-reported 2026-09-06 as "tasks missing from the inbox"):
+// all four filter dimensions persist in localStorage across sessions, so a
+// view left on Work/Personal — or a forgotten search term — silently shortens
+// EVERY tier with nothing on screen saying so. The user had 7 inbox tasks on
+// the server and saw only the 3 personal ones, and reasonably read that as
+// data loss. Nothing was lost; the board just never admitted it was filtering.
+//
+// The board now states how many tasks are hidden, names the active filters,
+// and offers a one-tap reset. Null-guarded: subpages (/tier/<name>, /completed)
+// load app.js too and have no #filterBanner mount.
+function renderFilterBanner(shownCount, totalCount) {
+    const mount = document.getElementById("filterBanner");
+    if (!mount) return;
+    mount.replaceChildren();
+
+    const projLabels = {};
+    for (const p of allProjects || []) projLabels[p.id] = p.name || p.title || "project";
+    const goalLabels = {};
+    for (const g of allGoals || []) goalLabels[g.id] = g.title || g.name || "objective";
+
+    const desc = window.filterHelpers.describeActiveFilters(
+        {
+            view: currentView, projectIds: projectFilter,
+            goalIds: goalFilter, search: searchQuery,
+        },
+        { projects: projLabels, goals: goalLabels },
+    );
+    if (!desc.active) {
+        mount.hidden = true;
+        return;
+    }
+    mount.hidden = false;
+
+    const hidden = Math.max(0, (totalCount || 0) - (shownCount || 0));
+    const icon = document.createElement("span");
+    icon.className = "filter-banner-icon";
+    icon.textContent = "⚠";
+    const text = document.createElement("span");
+    text.className = "filter-banner-text";
+    text.textContent = hidden === 0
+        ? "Filters are on (nothing hidden right now) — "
+        : hidden === 1
+            ? "1 task is hidden by a filter — "
+            : `${hidden} tasks are hidden by filters — `;
+    const chips = document.createElement("span");
+    chips.className = "filter-banner-chips";
+    chips.textContent = desc.parts.map((p) => p.label).join(" · ");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "filter-banner-clear";
+    btn.textContent = "Clear filters";
+    btn.addEventListener("click", clearAllFilters);
+
+    mount.appendChild(icon);
+    mount.appendChild(text);
+    mount.appendChild(chips);
+    mount.appendChild(btn);
+}
+
+// #316: reset every filter dimension and re-sync the controls that show them.
+function clearAllFilters() {
+    currentView = "all";
+    projectFilter.clear();
+    goalFilter.clear();
+    searchQuery = "";
+    _saveFilterPrefs();
+    document.querySelectorAll(".view-filter-btn").forEach((b) => {
+        b.classList.toggle("active", b.dataset.view === "all");
+    });
+    const input = document.getElementById("taskSearchInput");
+    if (input) input.value = "";
+    renderProjectFilter();
+    renderGoalFilter();
+    renderBoard();
+    renderCompletedList();
+    renderCancelledList();
+    renderSearchMeta();
 }
 
 // --- Bulk triage -------------------------------------------------------------

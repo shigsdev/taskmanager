@@ -1755,6 +1755,55 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     white-space: nowrap;
 }
 
+/* #316: "filters are hiding tasks" banner. Deliberately high-contrast (copper
+   rule + tinted ground) — its whole job is to be impossible to miss, because
+   the bug it fixes was the board hiding tasks with NO visual cue at all. Only
+   rendered when a filter is actually active. */
+.filter-banner {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    max-width: 1200px;
+    margin: 0 auto 6px;
+    padding: 9px 14px;
+    border: 1px solid var(--copper);
+    border-left: 4px solid var(--copper);
+    border-radius: 5px;
+    background: rgba(184, 115, 51, 0.13);
+    font-size: 0.85rem;
+    color: var(--cream, #eee);
+}
+.filter-banner-icon { color: var(--copper); font-size: 0.95rem; }
+.filter-banner-text { font-weight: 700; }
+.filter-banner-chips {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--cream-dim, #bbb);
+    overflow-wrap: anywhere;
+    min-width: 0;
+}
+.filter-banner-clear {
+    margin-left: auto;
+    min-height: 32px;
+    padding: 5px 12px;
+    border: 1px solid var(--copper);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--copper);
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.filter-banner-clear:hover { background: var(--copper); color: var(--slate-100, #1a1a1a); }
+@media (max-width: 700px) {
+    /* Keep the reset button reachable without a horizontal scroll, and at a
+       real 44px tap target (Phase 6 mobile standard). */
+    .filter-banner { padding: 8px 11px; }
+    .filter-banner-clear { margin-left: 0; width: 100%; min-height: 44px; }
+}
+
 /* #92 (PR25): goal/objective filter bar — always visible, sits below the
    project filter bar. Chip-style buttons matching the project-filter-btn
    pattern so all three filter dimensions look consistent. */

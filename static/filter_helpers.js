@@ -138,6 +138,58 @@ function taskMatchesSearch(task, normalisedTerm) {
 }
 
 /**
+ * #316: describe which board filters are currently active, so the board can
+ * SAY it is hiding tasks instead of silently showing a short list.
+ *
+ * Root cause this exists for (2026-09-06): all four filter dimensions persist
+ * in localStorage across sessions and devices. A view filter left on
+ * Work/Personal (or a forgotten search term) silently hides matching tasks
+ * with zero on-screen indication — which reads as "my tasks are missing".
+ * The user hit exactly this: 7 inbox tasks on the server, only the 3
+ * personal ones visible.
+ *
+ * Pure: takes the filter state + id→label maps, returns a description. The
+ * caller does the DOM.
+ *
+ * @param {{view?: string, projectIds?: Set<string>, goalIds?: Set<string>,
+ *          search?: string}} state — current filter state.
+ * @param {{projects?: Object<string,string>, goals?: Object<string,string>}}
+ *          [labels] — id → display-name maps for nicer text.
+ * @returns {{active: boolean, parts: Array<{kind: string, label: string}>}}
+ */
+function describeActiveFilters(state, labels) {
+    const parts = [];
+    const s = state || {};
+    const maps = labels || {};
+
+    if (s.view === "work") parts.push({ kind: "view", label: "Work only" });
+    else if (s.view === "personal") parts.push({ kind: "view", label: "Personal only" });
+
+    const named = (ids, map) => Array.from(ids)
+        .map((id) => (map && map[id]) || "unknown")
+        .join(", ");
+
+    if (s.projectIds && s.projectIds.size) {
+        parts.push({
+            kind: "project",
+            label: (s.projectIds.size === 1 ? "Project: " : "Projects: ")
+                + named(s.projectIds, maps.projects),
+        });
+    }
+    if (s.goalIds && s.goalIds.size) {
+        parts.push({
+            kind: "goal",
+            label: (s.goalIds.size === 1 ? "Objective: " : "Objectives: ")
+                + named(s.goalIds, maps.goals),
+        });
+    }
+    if (searchTerm(s.search)) {
+        parts.push({ kind: "search", label: 'Search: "' + String(s.search).trim() + '"' });
+    }
+    return { active: parts.length > 0, parts: parts };
+}
+
+/**
  * #117 (PR53/PR56): given a project id, return the goal id that the
  * UI should auto-select. Mirrors the server-side cascade in
  * task_service.update_task — when assigning a project that has a
@@ -178,6 +230,7 @@ if (typeof module !== "undefined" && module.exports) {
         searchTerm,
         taskMatchesSearch,
         projectCascadeGoalId,
+        describeActiveFilters,
     };
 } else if (typeof window !== "undefined") {
     window.filterHelpers = {
@@ -191,5 +244,6 @@ if (typeof module !== "undefined" && module.exports) {
         searchTerm,
         taskMatchesSearch,
         projectCascadeGoalId,
+        describeActiveFilters,
     };
 }

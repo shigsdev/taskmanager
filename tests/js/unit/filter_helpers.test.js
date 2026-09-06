@@ -301,3 +301,79 @@ describe("applyFilters with searchQuery (#107)", () => {
         expect(applyFilters(tasks, "all", new Set(), new Set(), null).length).toBe(3);
     });
 });
+
+describe("describeActiveFilters (#316 — 'filters are hiding tasks' banner)", () => {
+    const { describeActiveFilters } = require("../../../static/filter_helpers");
+    const P = "11111111-1111-1111-1111-111111111111";
+    const G = "22222222-2222-2222-2222-222222222222";
+    const labels = { projects: { [P]: "Roof" }, goals: { [G]: "Ship v2" } };
+
+    test("no filters → inactive, no parts", () => {
+        const d = describeActiveFilters(
+            { view: "all", projectIds: new Set(), goalIds: new Set(), search: "" },
+        );
+        expect(d.active).toBe(false);
+        expect(d.parts).toEqual([]);
+    });
+
+    test("missing / empty state is treated as no filters", () => {
+        expect(describeActiveFilters().active).toBe(false);
+        expect(describeActiveFilters({}).active).toBe(false);
+        expect(describeActiveFilters(null, null).active).toBe(false);
+    });
+
+    test("view=work is reported (the exact bug the user hit)", () => {
+        const d = describeActiveFilters({ view: "work" });
+        expect(d.active).toBe(true);
+        expect(d.parts).toEqual([{ kind: "view", label: "Work only" }]);
+    });
+
+    test("view=personal is reported", () => {
+        expect(describeActiveFilters({ view: "personal" }).parts[0].label)
+            .toBe("Personal only");
+    });
+
+    test("whitespace-only search does NOT count as a filter", () => {
+        expect(describeActiveFilters({ view: "all", search: "   " }).active).toBe(false);
+    });
+
+    test("search term is reported verbatim (trimmed)", () => {
+        const d = describeActiveFilters({ view: "all", search: "  roof  " });
+        expect(d.parts).toEqual([{ kind: "search", label: 'Search: "roof"' }]);
+    });
+
+    test("project + goal resolve to display names", () => {
+        const d = describeActiveFilters(
+            { view: "all", projectIds: new Set([P]), goalIds: new Set([G]) }, labels,
+        );
+        expect(d.parts.map((p) => p.label)).toEqual([
+            "Project: Roof", "Objective: Ship v2",
+        ]);
+    });
+
+    test("unknown ids degrade gracefully rather than throwing", () => {
+        const d = describeActiveFilters({ projectIds: new Set(["nope"]) }, {});
+        expect(d.parts[0].label).toBe("Project: unknown");
+    });
+
+    test("plural labels when more than one id selected", () => {
+        const d = describeActiveFilters(
+            { projectIds: new Set([P, "other"]) }, labels,
+        );
+        expect(d.parts[0].label.startsWith("Projects: ")).toBe(true);
+    });
+
+    test("all dimensions at once are all reported, in order", () => {
+        const d = describeActiveFilters(
+            {
+                view: "work", projectIds: new Set([P]),
+                goalIds: new Set([G]), search: "roof",
+            },
+            labels,
+        );
+        expect(d.active).toBe(true);
+        expect(d.parts.map((p) => p.kind)).toEqual(
+            ["view", "project", "goal", "search"],
+        );
+    });
+});

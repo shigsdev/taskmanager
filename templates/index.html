@@ -53,6 +53,12 @@
     <button type="button" id="taskSearchClear" class="btn-sm" title="Clear search">Clear</button>
     <span class="task-search-meta" id="taskSearchMeta"></span>
 </div>
+{# #316: the board silently hid tasks whenever a persisted filter was on
+   (view / project / objective / search all survive in localStorage), which
+   reads as "my tasks are missing". This banner appears ONLY when a filter is
+   active, says how many tasks are hidden, names the filters, and offers a
+   one-tap reset. Populated by app.js renderFilterBanner(). #}
+<div class="filter-banner" id="filterBanner" role="status" hidden></div>
 {# Feature 1 (2026-05-09): "This Week's Focus" — N free-form focus
    statements per ISO week (configurable, default 3). Each slot can
    optionally link to a Goal. ✨ Plan kicks off Claude to propose
