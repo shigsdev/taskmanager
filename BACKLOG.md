@@ -14,6 +14,30 @@ _(nothing in flight)_
 
 ## Completed
 
+- [x] **"One Muscle at a Time" band isolation plan — new Strength Forge tab (#315)** —
+  User asked (2026-09-02) for another Strength Forge workout plan focused on
+  doing one muscle at a time with resistance bands (clarified over the
+  Push/Pull/Legs option — they want single-muscle focus, not grouped days).
+  Added a 💪 Isolation tab alongside ⚡ Bands / 🎖 Military / 🔴 Flare-Up. Each
+  session isolates ONE muscle group, band-only, from a toggle: Chest / Back /
+  Shoulders / Biceps / Triceps / Legs. Every move is back-safe (upright /
+  seated / supported, neutral spine). Full parity with the other plans: ℹ️
+  how-to modals, per-set logging (quick + details), and the 🖨 Print button
+  emits the full isolation plan (all six sessions, one per page). Added 14 new
+  band-isolation catalog exercises + 6 session plans; buildIsoPanel() + tab
+  wiring; planSections / planExercises / PLAN_LABELS_JS / ROLE_LABELS /
+  roleForPlanType + planTypesForRole("iso"); **backend cascade** —
+  strength_forge_service.py VALID_PLAN_TYPES + PLAN_LABELS gained the 6 iso
+  types (logging 422s otherwise), guarded by a new "all valid types log & are
+  labeled" test. .sf-role-iso violet accent. docs.html updated (fact-checked).
+  CACHE_VERSION v229→v230. Pre-deploy ALL 11 GATES GREEN (jest 412, coverage
+  84.64%, local Playwright 107). Phase 6 desktop 1280×800 + mobile 375×812: tab
+  + all 6 toggles render (8/7/8/6/6/9 exercises); new-exercise ℹ️ modals show
+  title+desc+photo link; quick-log POST iso-shoulders → 201; details form shows
+  resistance inputs; Print = 6 day headers, 5 breaks, 44 exercises (= sum); no
+  overflow either viewport; 0 console errors. Post-deploy DEPLOY GREEN + MONITOR
+  GREEN at 7cc1dd2 + 47/47 prod smoke. — RESOLVED 2026-09-02 (7cc1dd2).
+
 - [x] **Printable Back Flare-Up protocol — Print button on the Flare-Up tab (#314)** —
   User asked (2026-09-02) to be able to print the back flare-up workout.
   Follow-on to #313 (full-plan print for Bands/Military) — the 🔴 Flare-Up tab
