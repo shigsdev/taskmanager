@@ -306,6 +306,66 @@
     return panel;
   }
 
+  // #315: "One Muscle at a Time" — band-only isolation. Each session targets a
+  // single muscle group (Chest / Back / Shoulders / Biceps / Triceps / Legs),
+  // picked from the toggle. Same session-selector pattern as the Military
+  // panel; logs + prints per the shared plumbing (planTypesForRole("iso")).
+  var ISO_SESSIONS = [
+    { key: "chest", label: "Chest" },
+    { key: "back", label: "Back" },
+    { key: "shoulders", label: "Shoulders" },
+    { key: "biceps", label: "Biceps" },
+    { key: "triceps", label: "Triceps" },
+    { key: "legs", label: "Legs" },
+  ];
+
+  function isoPlan(key) {
+    var map = {
+      chest: SF.isoChest, back: SF.isoBack, shoulders: SF.isoShoulders,
+      biceps: SF.isoBiceps, triceps: SF.isoTriceps, legs: SF.isoLegs,
+    };
+    return map[key] || [];
+  }
+
+  function buildIsoPanel() {
+    var panel = el("div", { cls: "sf-panel", attrs: { "data-tab": "iso", hidden: "hidden" } });
+    panel.appendChild(intro("iso", "One Muscle at a Time",
+      "Band-only isolation sessions — each day targets a SINGLE muscle group instead of the full body. Every move is back-safe (upright / seated / supported, neutral spine — no spinal loading). Do any 2–3 of these per week and rotate through them. Tap ℹ️ for a real photo link and full instructions."));
+    panel.appendChild(sched(
+      ["Chest", "Back", "Shoulders", "Biceps", "Triceps", "Legs"], "iso"));
+
+    var isoK = "chest";
+    var planMount = el("div", { cls: "sf-plan-mount" });
+    function renderPlan() {
+      while (planMount.firstChild) planMount.removeChild(planMount.firstChild);
+      isoPlan(isoK).forEach(function (sec) { planMount.appendChild(workSec(sec, "iso")); });
+    }
+    var toggle = el("div", { cls: "sf-toggle-row" }, ISO_SESSIONS.map(function (s) {
+      return el("button", {
+        cls: "sf-toggle-btn sf-role-iso" + (s.key === isoK ? " active" : ""),
+        text: s.label, attrs: { type: "button" },
+        on: { click: function () {
+          isoK = s.key; renderPlan();
+          toggle.querySelectorAll(".sf-toggle-btn").forEach(function (b, i) {
+            b.classList.toggle("active", ISO_SESSIONS[i].key === isoK);
+          });
+        } },
+      });
+    }));
+    panel.appendChild(toggle);
+    panel.appendChild(planMount);
+    renderPlan();
+    panel.appendChild(logButton("iso", function () { return "iso-" + isoK; }));
+    panel.appendChild(notesBox([
+      "Isolation days supplement your full-body Band and Military plans — they don't replace them. Keep at least one compound / full-body day each week.",
+      "Use a lighter band and higher reps (12–15) here — the goal is controlled tension on one muscle, not heavy load.",
+      "Every move is back-safe: stay tall, brace your core, and never arch your lower back to move more resistance.",
+      "Slow tempo beats heavy resistance for isolation — about 2 seconds up, 3 seconds down.",
+      "If your lower back flares during any exercise, stop and switch to the Flare-Up tab.",
+    ], "iso"));
+    return panel;
+  }
+
   function buildFlarePanel() {
     var panel = el("div", { cls: "sf-panel", attrs: { "data-tab": "flare", hidden: "hidden" } });
     panel.appendChild(el("div", { cls: "sf-flare-alert" }, [
@@ -572,6 +632,9 @@
     var map = {
       "band-a": SF.bandPlanA, "band-b": SF.bandPlanB,
       "mil-1": SF.milS1, "mil-2": SF.milS2, "mil-3": SF.milS3,
+      "iso-chest": SF.isoChest, "iso-back": SF.isoBack,
+      "iso-shoulders": SF.isoShoulders, "iso-biceps": SF.isoBiceps,
+      "iso-triceps": SF.isoTriceps, "iso-legs": SF.isoLegs,
     };
     return map[planType] || [];
   }
@@ -793,6 +856,12 @@
     "mil-1": "Military · Push + Core",
     "mil-2": "Military · Pull + Legs",
     "mil-3": "Military · Full-Body Circuit",
+    "iso-chest": "Isolation · Chest",
+    "iso-back": "Isolation · Back",
+    "iso-shoulders": "Isolation · Shoulders",
+    "iso-biceps": "Isolation · Biceps",
+    "iso-triceps": "Isolation · Triceps",
+    "iso-legs": "Isolation · Legs",
   };
 
   // #313: program-level titles for the full-plan print sheet (the day-level
@@ -800,16 +869,23 @@
   var ROLE_LABELS = {
     band: "Resistance Band Training",
     mil: "Military Calisthenics",
+    iso: "One Muscle at a Time (Band Isolation)",
   };
 
   function roleForPlanType(planType) {
-    return String(planType || "").indexOf("mil") === 0 ? "mil" : "band";
+    var s = String(planType || "");
+    if (s.indexOf("mil") === 0) return "mil";
+    if (s.indexOf("iso") === 0) return "iso";
+    return "band";
   }
 
   function planExercises(planType) {
     var map = {
       "band-a": SF.bandPlanA, "band-b": SF.bandPlanB,
       "mil-1": SF.milS1, "mil-2": SF.milS2, "mil-3": SF.milS3,
+      "iso-chest": SF.isoChest, "iso-back": SF.isoBack,
+      "iso-shoulders": SF.isoShoulders, "iso-biceps": SF.isoBiceps,
+      "iso-triceps": SF.isoTriceps, "iso-legs": SF.isoLegs,
     };
     var items = [];
     (map[planType] || []).forEach(function (sec) {
@@ -1235,11 +1311,13 @@
     var panels = {
       band: buildBandPanel(),
       mil: buildMilPanel(),
+      iso: buildIsoPanel(),
       flare: buildFlarePanel(),
     };
     var tabsDef = [
       { key: "band", label: "⚡ Bands" },
       { key: "mil", label: "🎖 Military" },
+      { key: "iso", label: "💪 Isolation" },
       { key: "flare", label: "🔴 Flare-Up" },
     ];
     var current = "band";
@@ -1262,6 +1340,7 @@
     root.appendChild(tabBar);
     root.appendChild(panels.band);
     root.appendChild(panels.mil);
+    root.appendChild(panels.iso);
     root.appendChild(panels.flare);
 
     loadTracking();

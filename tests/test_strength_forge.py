@@ -56,6 +56,27 @@ class TestWorkoutSessionService:
                 svc.log_session("bogus-plan")
             assert WorkoutSession.query.count() == 0
 
+    def test_all_valid_plan_types_log_and_are_labeled(self, app):
+        # #315: every plan type the frontend can POST must log without error
+        # AND carry a human label — guards VALID_PLAN_TYPES ↔ PLAN_LABELS
+        # drift (e.g. a new session added to one list but not the other).
+        with app.app_context():
+            for pt in svc.VALID_PLAN_TYPES:
+                session = svc.log_session(pt)
+                assert session.plan_type == pt
+                assert svc.PLAN_LABELS.get(pt), f"missing label for {pt}"
+            assert WorkoutSession.query.count() == len(svc.VALID_PLAN_TYPES)
+
+    def test_isolation_plan_types_present(self, app):
+        # #315: the six one-muscle band isolation sessions are loggable.
+        expected = {
+            "iso-chest", "iso-back", "iso-shoulders",
+            "iso-biceps", "iso-triceps", "iso-legs",
+        }
+        assert expected <= set(svc.VALID_PLAN_TYPES)
+        for pt in expected:
+            assert svc.PLAN_LABELS.get(pt)
+
     def test_summary_counts_this_week(self, app):
         with app.app_context():
             svc.log_session("band-a")

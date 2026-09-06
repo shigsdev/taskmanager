@@ -232,6 +232,13 @@ describe("planTypesForRole (#313 — full-plan print)", () => {
         expect(planTypesForRole("mil")).toEqual(["mil-1", "mil-2", "mil-3"]);
     });
 
+    test("iso → all six one-muscle sessions, in order (#315)", () => {
+        expect(planTypesForRole("iso")).toEqual([
+            "iso-chest", "iso-back", "iso-shoulders",
+            "iso-biceps", "iso-triceps", "iso-legs",
+        ]);
+    });
+
     test("unknown / missing role → empty list (button falls back to current day)", () => {
         expect(planTypesForRole("flare")).toEqual([]);
         expect(planTypesForRole("")).toEqual([]);
@@ -244,8 +251,10 @@ describe("planTypesForRole (#313 — full-plan print)", () => {
         // lists can't drift. These are the labeled plan types the app ships.
         const known = new Set([
             "band-a", "band-b", "mil-1", "mil-2", "mil-3",
+            "iso-chest", "iso-back", "iso-shoulders",
+            "iso-biceps", "iso-triceps", "iso-legs",
         ]);
-        for (const role of ["band", "mil"]) {
+        for (const role of ["band", "mil", "iso"]) {
             for (const key of planTypesForRole(role)) {
                 expect(known.has(key)).toBe(true);
             }

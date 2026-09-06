@@ -71,6 +71,23 @@
     "hip-90-90": { title: "90/90 Hip Stretch", search: "90 90 hip stretch mobility", sets: "45s × 2 sides", rest: "15s to switch", desc: "Sit on the floor with the front leg bent 90° in front of you and the back leg bent 90° out to the side. Keep your spine tall and gently hinge forward from the hips over the front shin until you feel a stretch deep in the outer hip and glute. Hold, then switch sides. Opens the hips without loading the lower back.", safe: "back-safe" },
     "quad-stretch": { title: "Standing Quad Stretch", search: "standing quad stretch", sets: "45s × 2 sides", rest: "15s to switch", desc: "Stand tall and hold a wall or chair for balance. Bend one knee and grasp that ankle, drawing the heel toward your glute. Keep your knees together and push your hips slightly forward — do NOT arch your lower back. Hold, then switch legs.", safe: "back-safe" },
     "chest-stretch": { title: "Doorway Chest Stretch", search: "doorway chest stretch pec", sets: "30s × 2 sides", rest: "15s to switch", desc: "Stand in a doorway with one forearm against the frame, elbow at shoulder height. Step gently forward through the doorway until you feel a stretch across the chest and front of the shoulder. Keep your core braced and spine neutral. Hold, then switch sides. Counteracts the rounded-shoulder posture from desk work.", safe: "back-safe" },
+    // #315 — band ISOLATION moves for the "One Muscle at a Time" plan. All
+    // resistance-band, all done standing / seated / supported with a neutral
+    // spine (no spinal loading), so they stay back-safe for L4/L5 · L5/S1.
+    "band-chest-fly": { resist: true, title: "Standing Band Chest Fly", search: "standing band chest fly", sets: "3 × 12", rest: "45s between sets", desc: "Anchor the band behind you at chest height. Hold one end in each hand, arms out to the sides with a slight elbow bend. Brace your core and stand tall — do NOT arch your lower back. Bring both hands together in front of your chest in a wide hugging arc, squeeze the chest for 1 second, then control the return. Standing removes all spinal compression.", safe: "back-safe" },
+    "band-low-fly": { resist: true, title: "Band Low-to-High Fly", search: "band low to high chest fly upper chest", sets: "3 × 12", rest: "45s between sets", desc: "Anchor the band low behind you, near the floor. Start with hands down by your hips, palms forward. Keeping the arms fairly straight with a soft elbow, sweep both hands up and together to about shoulder height in a scooping arc. Squeeze the upper chest, lower slowly. Stay tall and braced — no leaning back.", safe: "back-safe" },
+    "band-lat-pulldown": { resist: true, title: "Band Lat Pulldown", search: "resistance band lat pulldown kneeling", sets: "3 × 12", rest: "60s between sets", desc: "Anchor the band high overhead (top of a door frame). Kneel tall or stand with a tall, neutral spine. Hold one end in each hand, arms extended overhead. Pull both hands down and slightly out toward your shoulders, driving the elbows down and squeezing your lats. Control the return. Keep the torso upright — do not lean back or round.", safe: "back-safe" },
+    "band-straight-arm-pulldown": { resist: true, title: "Band Straight-Arm Pulldown", search: "band straight arm pulldown lat", sets: "3 × 12", rest: "45s between sets", desc: "Anchor the band high. Stand tall, arms extended overhead holding the band. Keeping your arms straight, pull the band down in a wide arc to your thighs using your lats, then slowly return overhead. Brace your core and keep your spine neutral — the movement comes from the shoulders, not the back.", safe: "back-safe" },
+    "band-lateral-raise": { resist: true, title: "Band Lateral Raise", search: "resistance band lateral raise side delt", sets: "3 × 15", rest: "45s between sets", desc: "Stand on the middle of the band, one end in each hand at your sides. Stand tall, core braced. With a slight elbow bend, raise both arms out to the sides until they reach shoulder height, leading with the elbows. Pause, then lower slowly. Do not swing or lean — keep the spine still and let the side shoulders do the work.", safe: "back-safe" },
+    "band-front-raise": { resist: true, title: "Band Front Raise", search: "resistance band front raise shoulder", sets: "3 × 12", rest: "45s between sets", desc: "Stand on the band, one end in each hand in front of your thighs, palms down. Keeping the arms straight, raise both hands forward and up to shoulder height. Pause, then lower slowly. Brace your core so you do not lean back to help — the front of the shoulder should do all the work.", safe: "back-safe" },
+    "band-rear-delt-fly": { resist: true, title: "Standing Band Rear Delt Fly", search: "band rear delt fly standing", sets: "3 × 15", rest: "45s between sets", desc: "Anchor the band in front of you at chest height, or hold it with arms crossed. Stand tall with arms extended forward. Pull both hands apart and back in a wide arc, squeezing the rear shoulders and upper back. Keep your torso upright and still — do NOT bend forward. Control the return.", safe: "back-safe" },
+    "band-hammer-curl": { resist: true, title: "Band Hammer Curl", search: "resistance band hammer curl", sets: "3 × 12", rest: "45s between sets", desc: "Stand on the band, one end in each hand, palms facing each other (thumbs up). Keep your elbows pinned to your sides. Curl both hands up toward your shoulders keeping the neutral grip, squeeze, then lower for 3 seconds. Stay tall and still — no swinging or leaning back.", safe: "back-safe" },
+    "band-concentration-curl": { resist: true, title: "Seated Band Concentration Curl", search: "seated concentration curl band", sets: "3 × 10 each", rest: "45s between sets", desc: "Sit on a sturdy chair, feet flat. Loop the band under one foot and hold that end with the same-side hand, the back of your upper arm resting against the inside of your thigh. Curl the hand toward your shoulder, squeeze the bicep hard, lower slowly. Switch sides. The seated, braced position keeps all load off your spine.", safe: "back-safe" },
+    "band-overhead-tricep": { resist: true, title: "Band Overhead Tricep Extension", search: "band overhead tricep extension", sets: "3 × 12", rest: "45s between sets", desc: "Stand on the band and reach one end overhead with both hands, elbows pointing up and staying close to your head. Extend both hands straight up until the arms lock out, squeezing the triceps, then lower slowly behind your head. Brace your core hard — do NOT arch your lower back as you press up.", safe: "back-safe" },
+    "band-tricep-kickback": { resist: true, title: "Band Tricep Kickback", search: "resistance band tricep kickback", sets: "3 × 12 each", rest: "45s between sets", desc: "Anchor the band low in front of you. Stagger your stance and rest your free hand on your front thigh for support, keeping your back flat and nearly upright (only a slight hinge). Tuck the working elbow to your side, then extend the hand straight back until the arm locks, squeezing the tricep. Return slowly. Switch sides.", safe: "back-safe" },
+    "band-leg-curl": { resist: true, title: "Standing Band Hamstring Curl", search: "standing band hamstring leg curl", sets: "3 × 12 each", rest: "45s between sets", desc: "Anchor the band low in front of you and loop the other end around one ankle. Hold a wall or chair for balance and stand tall. Keeping your thigh vertical, curl your heel up toward your glute against the band, squeeze the hamstring, then lower slowly. Switch legs. Standing and supported — no spinal loading.", safe: "back-safe" },
+    "band-glute-kickback": { resist: true, title: "Standing Band Glute Kickback", search: "standing band glute kickback", sets: "3 × 12 each", rest: "45s between sets", desc: "Anchor the band low in front of you and loop it around one ankle. Hold a wall for balance, stand tall with a braced core. Keeping the leg fairly straight, push it straight back behind you using your glute — only about 20–30°. Squeeze at the top, return slowly. Do NOT arch your lower back to get more range. Switch legs.", safe: "back-safe" },
+    "band-calf-raise": { resist: true, title: "Band Calf Raise", search: "band calf raise standing", sets: "3 × 15", rest: "45s between sets", desc: "Stand on the middle of the band, holding an end in each hand at your sides for light tension. Stand tall. Rise up onto the balls of your feet as high as you can, squeeze the calves at the top, then lower slowly under control. Hold a wall for balance if needed. Upright and back-safe.", safe: "back-safe" },
   };
 
   var bandPlanA = [
@@ -156,6 +173,108 @@
     ] },
   ];
 
+  // #315 — "One Muscle at a Time" (Isolation) plan: band-only sessions that
+  // each focus on a SINGLE muscle group, for the days you want to isolate
+  // rather than train full-body. Every move is back-safe (upright / seated /
+  // supported, neutral spine). Do any 2–3 of these per week, rotating.
+  var isoChest = [
+    { section: "Warm-Up", badge: "3 min", role: "band", num: "01", items: [
+      { id: "arm-swings", name: "Arm Circles + Shoulder Rolls", sets: "10 each", rest: "No rest" },
+      { id: "band-pull-apart", name: "Band Pull-Apart", sets: "15 reps", rest: "No rest" },
+    ] },
+    { section: "Chest — Main Work", badge: "18 min", role: "iso", num: "02", items: [
+      { id: "band-chest-press", name: "Standing Band Chest Press", sets: "3 × 12", rest: "45s between sets" },
+      { id: "band-chest-fly", name: "Standing Band Chest Fly", sets: "3 × 12", rest: "45s between sets" },
+      { id: "band-low-fly", name: "Band Low-to-High Fly (Upper Chest)", sets: "3 × 12", rest: "45s between sets" },
+      { id: "incline-pushup", name: "Incline Push-Up", sets: "3 × 8–12", rest: "60s between sets" },
+    ] },
+    { section: "Cool-Down", badge: "3 min", role: "mil", num: "03", items: [
+      { id: "chest-stretch", name: "Doorway Chest Stretch", sets: "30s × 2 sides", rest: "15s to switch" },
+      { id: "box-breathing", name: "Box Breathing (4-4-4-4)", sets: "4–6 cycles", rest: "End of session" },
+    ] },
+  ];
+
+  var isoBack = [
+    { section: "Warm-Up", badge: "3 min", role: "band", num: "01", items: [
+      { id: "cat-cow", name: "Cat-Cow Stretch", sets: "10 reps", rest: "No rest" },
+      { id: "band-pull-apart", name: "Band Pull-Apart", sets: "15 reps", rest: "No rest" },
+    ] },
+    { section: "Back — Main Work", badge: "18 min", role: "iso", num: "02", items: [
+      { id: "band-lat-pulldown", name: "Band Lat Pulldown", sets: "3 × 12", rest: "60s between sets" },
+      { id: "band-row", name: "Band Seated Row", sets: "3 × 12", rest: "60s between sets" },
+      { id: "band-straight-arm-pulldown", name: "Band Straight-Arm Pulldown", sets: "3 × 12", rest: "45s between sets" },
+      { id: "face-pull", name: "Band Face Pull", sets: "3 × 15", rest: "45s between sets" },
+    ] },
+    { section: "Cool-Down", badge: "2 min", role: "mil", num: "03", items: [
+      { id: "box-breathing", name: "Box Breathing (4-4-4-4)", sets: "4–6 cycles", rest: "End of session" },
+    ] },
+  ];
+
+  var isoShoulders = [
+    { section: "Warm-Up", badge: "3 min", role: "band", num: "01", items: [
+      { id: "arm-swings", name: "Arm Circles + Shoulder Rolls", sets: "10 each", rest: "No rest" },
+      { id: "band-pull-apart", name: "Band Pull-Apart", sets: "15 reps", rest: "No rest" },
+    ] },
+    { section: "Shoulders — Main Work", badge: "18 min", role: "iso", num: "02", items: [
+      { id: "band-ohp", name: "Seated Band Overhead Press", sets: "3 × 10", rest: "60s between sets" },
+      { id: "band-lateral-raise", name: "Band Lateral Raise", sets: "3 × 15", rest: "45s between sets" },
+      { id: "band-front-raise", name: "Band Front Raise", sets: "3 × 12", rest: "45s between sets" },
+      { id: "band-rear-delt-fly", name: "Standing Band Rear Delt Fly", sets: "3 × 15", rest: "45s between sets" },
+    ] },
+    { section: "Cool-Down", badge: "3 min", role: "mil", num: "03", items: [
+      { id: "chest-stretch", name: "Doorway Chest Stretch", sets: "30s × 2 sides", rest: "15s to switch" },
+      { id: "box-breathing", name: "Box Breathing (4-4-4-4)", sets: "4–6 cycles", rest: "End of session" },
+    ] },
+  ];
+
+  var isoBiceps = [
+    { section: "Warm-Up", badge: "2 min", role: "band", num: "01", items: [
+      { id: "arm-swings", name: "Arm Circles + Shoulder Rolls", sets: "10 each", rest: "No rest" },
+    ] },
+    { section: "Biceps — Main Work", badge: "15 min", role: "iso", num: "02", items: [
+      { id: "band-curl", name: "Band Bicep Curl", sets: "3 × 12", rest: "45s between sets" },
+      { id: "band-hammer-curl", name: "Band Hammer Curl", sets: "3 × 12", rest: "45s between sets" },
+      { id: "band-concentration-curl", name: "Seated Band Concentration Curl", sets: "3 × 10 each", rest: "45s between sets" },
+      { id: "band-curl", name: "Band Curl — 21s Finisher", sets: "1 × 21", rest: "End of session" },
+    ] },
+    { section: "Cool-Down", badge: "2 min", role: "mil", num: "03", items: [
+      { id: "box-breathing", name: "Box Breathing (4-4-4-4)", sets: "4–6 cycles", rest: "End of session" },
+    ] },
+  ];
+
+  var isoTriceps = [
+    { section: "Warm-Up", badge: "2 min", role: "band", num: "01", items: [
+      { id: "arm-swings", name: "Arm Circles + Shoulder Rolls", sets: "10 each", rest: "No rest" },
+    ] },
+    { section: "Triceps — Main Work", badge: "15 min", role: "iso", num: "02", items: [
+      { id: "band-tricep", name: "Band Tricep Pushdown", sets: "3 × 12", rest: "45s between sets" },
+      { id: "band-overhead-tricep", name: "Band Overhead Tricep Extension", sets: "3 × 12", rest: "45s between sets" },
+      { id: "band-tricep-kickback", name: "Band Tricep Kickback", sets: "3 × 12 each", rest: "45s between sets" },
+      { id: "diamond-pushup", name: "Diamond Push-Up (Knees if Needed)", sets: "3 × 6–10", rest: "60s between sets" },
+    ] },
+    { section: "Cool-Down", badge: "2 min", role: "mil", num: "03", items: [
+      { id: "box-breathing", name: "Box Breathing (4-4-4-4)", sets: "4–6 cycles", rest: "End of session" },
+    ] },
+  ];
+
+  var isoLegs = [
+    { section: "Warm-Up", badge: "4 min", role: "band", num: "01", items: [
+      { id: "leg-swings", name: "Leg Swings (Front/Back + Side)", sets: "10 each", rest: "No rest" },
+      { id: "glute-bridge", name: "Glute Bridge Warm-Up (No Band)", sets: "15 reps", rest: "No rest" },
+    ] },
+    { section: "Legs — Main Work", badge: "20 min", role: "iso", num: "02", items: [
+      { id: "band-squat", name: "Band Assisted Squat", sets: "3 × 12", rest: "60s between sets" },
+      { id: "band-leg-curl", name: "Standing Band Hamstring Curl", sets: "3 × 12 each", rest: "45s between sets" },
+      { id: "glute-bridge", name: "Band Glute Bridge", sets: "3 × 15", rest: "45s between sets", resist: true },
+      { id: "band-glute-kickback", name: "Standing Band Glute Kickback", sets: "3 × 12 each", rest: "45s between sets" },
+      { id: "band-calf-raise", name: "Band Calf Raise", sets: "3 × 15", rest: "45s between sets" },
+    ] },
+    { section: "Cool-Down", badge: "4 min", role: "mil", num: "03", items: [
+      { id: "quad-stretch", name: "Standing Quad Stretch", sets: "45s × 2 sides", rest: "15s to switch" },
+      { id: "hip-90-90", name: "90/90 Hip Stretch", sets: "45s × 2 sides", rest: "15s to switch" },
+    ] },
+  ];
+
   var flarePhases = [
     { id: "immediate", label: "Day 1–2", title: "Acute Phase", subtitle: "First 24–48 hrs", role: "flare", icon: "🔴",
       desc: "Inflammation is peaking. Goal is decompression and gentle movement only. No loading whatsoever.",
@@ -208,6 +327,12 @@
     milS1: milS1,
     milS2: milS2,
     milS3: milS3,
+    isoChest: isoChest,
+    isoBack: isoBack,
+    isoShoulders: isoShoulders,
+    isoBiceps: isoBiceps,
+    isoTriceps: isoTriceps,
+    isoLegs: isoLegs,
     flarePhases: flarePhases,
     avoidList: avoidList,
     warnSigns: warnSigns,

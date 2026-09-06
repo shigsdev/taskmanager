@@ -153,8 +153,9 @@ function isDraftFresh(savedAtMs, nowMs, maxHours) {
  * workout day of a plan at once (#313 — "print the full one"), instead of
  * only the day currently toggled on screen.
  *
- *   "band" -> ["band-a", "band-b"]           (Workouts A + B)
- *   "mil"  -> ["mil-1", "mil-2", "mil-3"]     (Sessions 1–3)
+ *   "band" -> ["band-a", "band-b"]                             (Workouts A + B)
+ *   "mil"  -> ["mil-1", "mil-2", "mil-3"]                       (Sessions 1–3)
+ *   "iso"  -> ["iso-chest", ... "iso-legs"]  (#315 — one muscle per session)
  *   unknown / missing -> []
  *
  * Single source of truth for the role→days mapping; kept here (pure) so the
@@ -163,6 +164,12 @@ function isDraftFresh(savedAtMs, nowMs, maxHours) {
 function planTypesForRole(role) {
     if (role === "band") return ["band-a", "band-b"];
     if (role === "mil") return ["mil-1", "mil-2", "mil-3"];
+    if (role === "iso") {
+        return [
+            "iso-chest", "iso-back", "iso-shoulders",
+            "iso-biceps", "iso-triceps", "iso-legs",
+        ];
+    }
     return [];
 }
 

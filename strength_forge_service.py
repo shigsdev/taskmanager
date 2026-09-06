@@ -12,9 +12,17 @@ from datetime import timedelta
 from models import FlareState, WorkoutSession, WorkoutSet, db
 from utils import local_today_date
 
-# The 5 loggable plans (band A/B + military sessions 1-3). The flare-up
-# protocol is tracked separately (Phase B.2), not logged as a session.
-VALID_PLAN_TYPES = ("band-a", "band-b", "mil-1", "mil-2", "mil-3")
+# The loggable plans: band A/B + military sessions 1-3 + the #315 band
+# isolation ("one muscle at a time") sessions. The flare-up protocol is
+# tracked separately (Phase B.2), not logged as a session. Keep this list in
+# lockstep with PLAN_LABELS_JS + planSections() in static/strength_forge.js
+# and planTypesForRole() in static/strength_forge_helpers.js.
+VALID_PLAN_TYPES = (
+    "band-a", "band-b",
+    "mil-1", "mil-2", "mil-3",
+    "iso-chest", "iso-back", "iso-shoulders",
+    "iso-biceps", "iso-triceps", "iso-legs",
+)
 
 PLAN_LABELS = {
     "band-a": "Bands · Workout A",
@@ -22,6 +30,12 @@ PLAN_LABELS = {
     "mil-1": "Military · Push + Core",
     "mil-2": "Military · Pull + Legs",
     "mil-3": "Military · Full-Body Circuit",
+    "iso-chest": "Isolation · Chest",
+    "iso-back": "Isolation · Back",
+    "iso-shoulders": "Isolation · Shoulders",
+    "iso-biceps": "Isolation · Biceps",
+    "iso-triceps": "Isolation · Triceps",
+    "iso-legs": "Isolation · Legs",
 }
 
 

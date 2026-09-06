@@ -5467,6 +5467,7 @@ table.quality-gates code {
 .sf-role-mil   { --sf-accent: #6d9fe8; }
 .sf-role-flare { --sf-accent: var(--rust); }
 .sf-role-safe  { --sf-accent: var(--sage); }
+.sf-role-iso   { --sf-accent: #b08bd0; }  /* #315 — band isolation accent */
 
 .sf-page { max-width: 860px; margin: 0 auto; padding: 20px 16px 80px; }
 
@@ -5574,6 +5575,7 @@ table.quality-gates code {
 .sf-intro--mil   { --sf-accent: #6d9fe8; }
 .sf-intro--flare { --sf-accent: var(--rust); }
 .sf-intro--safe  { --sf-accent: var(--sage); }
+.sf-intro--iso   { --sf-accent: #b08bd0; }  /* #315 — band isolation accent */
 .sf-intro-title { font-weight: 700; font-size: 1.02rem; color: var(--sf-accent); margin-bottom: 5px; }
 .sf-intro-body { font-size: 0.8rem; color: var(--cream-dim); line-height: 1.65; }
 
