@@ -14,6 +14,34 @@ _(nothing in flight)_
 
 ## Completed
 
+- [x] **Board says when filters are hiding tasks — RCA for "missing" inbox items (#316)** —
+  User reported (2026-09-06) tasks missing from the inbox plus a missing daily
+  recurring task, and asked for an integrity check + RCA + fix. **No data loss
+  found.** RCA: (1) *Inbox* — all 7 inbox tasks were on the server (4 typed
+  `work`, 3 `personal`); all four filter dimensions (view / project / objective
+  / search) persist in `localStorage` across sessions and the board gave **no
+  indication** a filter was active or that it was hiding anything, so a view
+  left on Work/Personal showed 3 of 7 and read as data loss — user confirmed
+  "I have a filter on and that is why". (2) *Daily recurring* — "check CoP
+  survey new participants" has `end_date: 2026-04-30` and last spawned exactly
+  then; the spawn cron stops after the end date by design (#101), so it's
+  expired not broken (same for "Agenda for POC Working Group", 2026-07-31).
+  Verified healthy: recycle bin empty (last deletion 2026-08-30, 2 items), 0
+  server ERRORs in 7d, crons firing daily 04:01–04:05 UTC, recurring spawning
+  correctly (weekday templates 09-01→09-04 correctly skipping Sat/Sun).
+  **Fix:** new pure `describeActiveFilters()` (dual-export, +10 Jest tests) +
+  `renderFilterBanner()` called from `renderBoard` — a high-contrast banner
+  stating how many tasks are hidden, naming the active filters, with a one-tap
+  `clearAllFilters()` that resets all four dimensions + localStorage +
+  re-syncs the view tabs / chips / search input. CACHE_VERSION v230→v231; docs
+  Filters section updated (fact-checked). Pre-deploy ALL 11 GATES GREEN (jest
+  422, coverage 84.60%, local Playwright 107). Phase 6 desktop 1280×800 +
+  mobile 375×812: banner hidden with no filter; "10 tasks are hidden by
+  filters — Work only" (24 total vs 14 filtered, math verified); +search names
+  both; Clear restores all 24; mobile full-width 44px tap target, no overflow;
+  0 console errors. Post-deploy DEPLOY GREEN + MONITOR GREEN at 2cbad53 +
+  47/47 prod smoke. — RESOLVED 2026-09-06 (2cbad53).
+
 - [x] **"One Muscle at a Time" band isolation plan — new Strength Forge tab (#315)** —
   User asked (2026-09-02) for another Strength Forge workout plan focused on
   doing one muscle at a time with resistance bands (clarified over the
