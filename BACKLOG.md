@@ -14,6 +14,34 @@ _(nothing in flight)_
 
 ## Completed
 
+- [x] **Band Glute Bridge showed the plain bodyweight how-to (#317)** —
+  User-reported 2026-09-07: the ℹ️ instructions for "Band Glute Bridge" described
+  the regular glute bridge with no mention of the band. Cause: the plan item
+  overrode the display *name* but kept `id: "glute-bridge"`, and the detail
+  modal looks up `SF.exercises[item.id]` — so it rendered the bodyweight
+  entry. Exactly the #290 bug class (an item borrowing another exercise's id
+  shows the wrong how-to); #290 had explicitly waved this case through in a
+  comment as a "legitimate variant", which it isn't — the band IS the movement.
+  Audited every plan item name against its catalog entry: 2 real instances
+  (bandPlanA + isoLegs main work); the "No Band" warm-ups correctly point at
+  the bodyweight entry and the other name≠title diffs are benign qualifiers.
+  **Fix:** new `band-glute-bridge` catalog entry (resist: true) teaching the
+  banded version (band above knees, press knees outward and hold that tension,
+  hip drive from the glutes, never arch the lower back); repointed both items
+  and dropped their now-redundant `resist` overrides (catalog carries it —
+  log form still renders reps+resistance). `glute-bridge` stays bodyweight.
+  **Drift guards** (second time this class shipped): added the six #315
+  isolation plans to `PLAN_KEYS` (they were missing, so the existing
+  referential-integrity invariants never ran against them) + a new test that a
+  band-named item must resolve to an entry teaching the band (unless the name
+  says "No Band") — verified against a negative control, the old mapping IS
+  flagged. CACHE_VERSION v231→v232. Pre-deploy ALL 11 GATES GREEN (jest 425,
+  coverage 84.64%, local Playwright 107). Phase 6 desktop 1280×800 + mobile
+  375×812: modal correct in BOTH Bands A and Isolation→Legs, "No Band" warm-up
+  still bodyweight, log form reps+resistance intact, no overflow, 0 console
+  errors. Post-deploy DEPLOY GREEN + MONITOR GREEN at 2a8008d + 47/47 prod
+  smoke. — RESOLVED 2026-09-07 (2a8008d).
+
 - [x] **Board says when filters are hiding tasks — RCA for "missing" inbox items (#316)** —
   User reported (2026-09-06) tasks missing from the inbox plus a missing daily
   recurring task, and asked for an integrity check + RCA + fix. **No data loss
