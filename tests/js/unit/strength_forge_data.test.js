@@ -27,7 +27,12 @@ function loadSFData() {
 }
 
 const SF = loadSFData();
-const PLAN_KEYS = ["bandPlanA", "bandPlanB", "milS1", "milS2", "milS3"];
+// #317: the six #315 isolation plans were missing here, so the referential
+// integrity invariants below never ran against them. Added.
+const PLAN_KEYS = [
+  "bandPlanA", "bandPlanB", "milS1", "milS2", "milS3",
+  "isoChest", "isoBack", "isoShoulders", "isoBiceps", "isoTriceps", "isoLegs",
+];
 
 function allItems() {
   const items = [];
@@ -58,8 +63,10 @@ describe("SFData plan referential integrity", () => {
   // The bug class: a stretch item pointing at a non-stretch exercise.
   // A stretch-named item must resolve to a stretch-titled exercise, so
   // the detail modal describes a stretch — not a Glute Bridge / Box
-  // Breathing. (Exact name===title is too strict: legitimate variants
-  // like "Band Glute Bridge" -> "Glute Bridge" must still pass.)
+  // Breathing. (Exact name===title is still too strict: qualifier-only
+  // variants like "Diamond Push-Up (Knees if Needed)" -> "Diamond Push-Up"
+  // legitimately share an entry. The band case is covered separately below
+  // — see #317.)
   test("stretch items resolve to a stretch exercise", () => {
     const mismatches = allItems()
       .filter(({ item }) => /stretch/i.test(item.name))
@@ -75,5 +82,41 @@ describe("SFData plan referential integrity", () => {
     expect(SF.exercises["hip-90-90"].title).toBe("90/90 Hip Stretch");
     expect(SF.exercises["quad-stretch"].title).toBe("Standing Quad Stretch");
     expect(SF.exercises["chest-stretch"].title).toBe("Doorway Chest Stretch");
+  });
+
+  // #317 (user-reported 2026-09-07): "Band Glute Bridge" reused the plain
+  // "glute-bridge" entry, so its ℹ️ how-to described the BODYWEIGHT bridge
+  // and never mentioned the band. Same class as the #290 stretch bug: an
+  // item whose NAME promises one thing while the modal describes another.
+  // A band-named item must resolve to an entry that actually teaches the
+  // banded version — unless the name explicitly says "No Band".
+  test("band-named items resolve to a band exercise", () => {
+    const mismatches = allItems()
+      .filter(({ item }) => /band/i.test(item.name))
+      .filter(({ item }) => !/no band/i.test(item.name))
+      .filter(({ item }) => {
+        const e = SF.exercises[item.id] || {};
+        return !/band/i.test(e.title || "") && !/band/i.test(e.desc || "");
+      })
+      .map(({ plan, item }) => {
+        const t = (SF.exercises[item.id] || {}).title;
+        return `${plan}: "${item.name}" -> "${t}" (id "${item.id}")`;
+      });
+    expect(mismatches).toEqual([]);
+  });
+
+  test("Band Glute Bridge has its own entry that teaches the band", () => {
+    const e = SF.exercises["band-glute-bridge"];
+    expect(e).toBeTruthy();
+    expect(e.title).toBe("Band Glute Bridge");
+    expect(e.resist).toBe(true);
+    expect(/band/i.test(e.desc)).toBe(true);
+    // and it must be distinct from the bodyweight bridge's how-to
+    expect(e.desc).not.toBe(SF.exercises["glute-bridge"].desc);
+  });
+
+  test("the plain glute-bridge entry stays bodyweight (No Band warm-ups use it)", () => {
+    expect(SF.exercises["glute-bridge"].title).toBe("Glute Bridge");
+    expect(SF.exercises["glute-bridge"].resist).toBeUndefined();
   });
 });

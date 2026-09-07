@@ -45,6 +45,13 @@
     "band-row": { resist: true, title: "Band Seated Row", search: "resistance band seated row", sets: "3 × 12", rest: "60 sec between sets · 30 sec before next", desc: "Sit on floor with legs extended. Loop band around both feet. Sit TALL — do not round forward. Pull elbows back past your torso, squeezing shoulder blades together. Critical for correcting the forward-rounded posture that worsens back pain.", safe: "back-safe" },
     "band-chest-press": { resist: true, title: "Standing Band Chest Press", search: "resistance band standing chest press", sets: "3 × 12", rest: "60 sec between sets · 30 sec before next", desc: "Anchor band behind you at chest height. Press both hands forward until arms are nearly straight, then slowly return. Keep core braced — do not arch your lower back. Standing removes all spinal compression.", safe: "back-safe" },
     "glute-bridge": { title: "Glute Bridge", search: "glute bridge exercise form", sets: "3 × 15", rest: "45 sec between sets · 30 sec before next", desc: "Lie on back, knees bent, feet flat on floor hip-width apart. Drive hips up by squeezing glutes hard — body forms a straight line from shoulders to knees. Hold 1 second at top, lower slowly. Directly strengthens muscles that stabilize L4/L5 and L5/S1.", safe: "therapeutic" },
+    // #317: the BANDED bridge needs its own entry. It used to reuse
+    // "glute-bridge", so the ℹ️ modal for "Band Glute Bridge" described the
+    // plain bodyweight bridge with no mention of the band — user-reported
+    // 2026-09-07. Same bug class as the #290 cool-down stretches (an item
+    // borrowing another exercise's id shows the wrong how-to); #290 explicitly
+    // waved this one through as a "legitimate variant", which it isn't.
+    "band-glute-bridge": { resist: true, title: "Band Glute Bridge", search: "banded glute bridge resistance band above knees", sets: "3 × 15", rest: "45 sec between sets · 30 sec before next", desc: "Loop a light band just ABOVE your knees. Lie on your back, knees bent, feet flat and hip-width apart. Press your knees OUTWARD into the band and hold that outward tension for the entire set — that is what makes this different from the plain bridge. Drive your hips up by squeezing your glutes hard; body forms a straight line from shoulders to knees. Hold 1 second at the top, then lower slowly. The band recruits the glute medius on top of the main hip drive. The lift comes from your glutes — never from arching your lower back.", safe: "therapeutic" },
     "lateral-walk": { resist: true, title: "Band Lateral Walk", search: "resistance band lateral walk glute", sets: "3 × 12 each way", rest: "45 sec between sets · 30 sec before next", desc: "Band around ankles. Sink into a slight squat and hold that position throughout. Step sideways maintaining tension at all times. Targets the glute medius — the hip stabilizer that protects your lower back and knees.", safe: "back-safe" },
     "pallof-press": { resist: true, title: "Pallof Press", search: "pallof press band anti rotation core", sets: "3 × 10 each side", rest: "45 sec between sets", desc: "Anchor band at chest height to your side. Stand perpendicular to anchor. Brace core hard and press both hands straight out — hold 2 seconds resisting the band's pull to rotate you. Safest core exercise for herniated discs — never flexes the spine.", safe: "therapeutic" },
     "dead-bug": { title: "Dead Bug", search: "dead bug exercise core", sets: "3 × 8 each side", rest: "45 sec between sets", desc: "Lie on back. Raise both arms toward ceiling and bend both knees to 90°. Press lower back FIRMLY into floor the entire time. Slowly extend right arm overhead and left leg straight simultaneously. Return, switch sides. Approved in herniated disc rehabilitation protocols.", safe: "therapeutic" },
@@ -99,7 +106,7 @@
       { id: "band-squat", name: "Band Assisted Squat", sets: "3 × 10", rest: "60s sets · 30s next" },
       { id: "band-row", name: "Band Seated Row", sets: "3 × 12", rest: "60s sets · 30s next" },
       { id: "band-chest-press", name: "Standing Band Chest Press", sets: "3 × 12", rest: "60s sets · 30s next" },
-      { id: "glute-bridge", name: "Band Glute Bridge", sets: "3 × 15", rest: "45s sets · 30s next", resist: true },
+      { id: "band-glute-bridge", name: "Band Glute Bridge", sets: "3 × 15", rest: "45s sets · 30s next" },
       { id: "lateral-walk", name: "Band Lateral Walk", sets: "3 × 12 each", rest: "45s sets · 30s next" },
       { id: "pallof-press", name: "Pallof Press", sets: "3 × 10 each", rest: "45s between sets" },
     ] },
@@ -265,7 +272,7 @@
     { section: "Legs — Main Work", badge: "20 min", role: "iso", num: "02", items: [
       { id: "band-squat", name: "Band Assisted Squat", sets: "3 × 12", rest: "60s between sets" },
       { id: "band-leg-curl", name: "Standing Band Hamstring Curl", sets: "3 × 12 each", rest: "45s between sets" },
-      { id: "glute-bridge", name: "Band Glute Bridge", sets: "3 × 15", rest: "45s between sets", resist: true },
+      { id: "band-glute-bridge", name: "Band Glute Bridge", sets: "3 × 15", rest: "45s between sets" },
       { id: "band-glute-kickback", name: "Standing Band Glute Kickback", sets: "3 × 12 each", rest: "45s between sets" },
       { id: "band-calf-raise", name: "Band Calf Raise", sets: "3 × 15", rest: "45s between sets" },
     ] },
