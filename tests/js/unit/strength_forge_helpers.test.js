@@ -239,6 +239,15 @@ describe("planTypesForRole (#313 — full-plan print)", () => {
         ]);
     });
 
+    test("split → the three training days, in order (#320)", () => {
+        expect(planTypesForRole("split")).toEqual(["split-1", "split-2", "split-3"]);
+    });
+
+    test("split excludes the rest day — it is schedule-only (#320)", () => {
+        expect(planTypesForRole("split")).not.toContain("split-4");
+        expect(planTypesForRole("split")).toHaveLength(3);
+    });
+
     test("unknown / missing role → empty list (button falls back to current day)", () => {
         expect(planTypesForRole("flare")).toEqual([]);
         expect(planTypesForRole("")).toEqual([]);
@@ -253,8 +262,9 @@ describe("planTypesForRole (#313 — full-plan print)", () => {
             "band-a", "band-b", "mil-1", "mil-2", "mil-3",
             "iso-chest", "iso-back", "iso-shoulders",
             "iso-biceps", "iso-triceps", "iso-legs",
+            "split-1", "split-2", "split-3",
         ]);
-        for (const role of ["band", "mil", "iso"]) {
+        for (const role of ["band", "mil", "iso", "split"]) {
             for (const key of planTypesForRole(role)) {
                 expect(known.has(key)).toBe(true);
             }

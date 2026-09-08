@@ -13,7 +13,8 @@ from models import FlareState, WorkoutSession, WorkoutSet, db
 from utils import local_today_date
 
 # The loggable plans: band A/B + military sessions 1-3 + the #315 band
-# isolation ("one muscle at a time") sessions. The flare-up protocol is
+# isolation ("one muscle at a time") sessions + the #320 split-routine days
+# (the cycle's rest day is schedule-only, so it is not a plan type). The flare-up protocol is
 # tracked separately (Phase B.2), not logged as a session. Keep this list in
 # lockstep with PLAN_LABELS_JS + planSections() in static/strength_forge.js
 # and planTypesForRole() in static/strength_forge_helpers.js.
@@ -22,6 +23,7 @@ VALID_PLAN_TYPES = (
     "mil-1", "mil-2", "mil-3",
     "iso-chest", "iso-back", "iso-shoulders",
     "iso-biceps", "iso-triceps", "iso-legs",
+    "split-1", "split-2", "split-3",
 )
 
 PLAN_LABELS = {
@@ -36,6 +38,9 @@ PLAN_LABELS = {
     "iso-biceps": "Isolation · Biceps",
     "iso-triceps": "Isolation · Triceps",
     "iso-legs": "Isolation · Legs",
+    "split-1": "Split · Day 1 — Chest / Triceps / Front Delts / Abs",
+    "split-2": "Split · Day 2 — Back / Biceps / Rear Delts / Abs",
+    "split-3": "Split · Day 3 — Legs",
 }
 
 

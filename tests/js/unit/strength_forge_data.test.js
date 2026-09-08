@@ -32,6 +32,7 @@ const SF = loadSFData();
 const PLAN_KEYS = [
   "bandPlanA", "bandPlanB", "milS1", "milS2", "milS3",
   "isoChest", "isoBack", "isoShoulders", "isoBiceps", "isoTriceps", "isoLegs",
+  "splitDay1", "splitDay2", "splitDay3",
 ];
 
 function allItems() {
@@ -124,7 +125,7 @@ describe("SFData plan referential integrity", () => {
 // #318: the weekly schedule is shared by the on-screen strip AND the print
 // sheet, so it has to stay structurally sound for every trainable program.
 describe("SFData schedules (#318)", () => {
-  const ROLES = ["band", "mil", "iso"];
+  const ROLES = ["band", "mil", "iso", "split"];
 
   test("every trainable program has a schedule", () => {
     expect(typeof SF.schedules).toBe("object");
@@ -174,7 +175,61 @@ describe("SFData schedules (#318)", () => {
     });
   });
 
+  test("#320: split is a 4-day cycle — 3 training days + 1 rest", () => {
+    const sc = SF.schedules.split;
+    expect(sc.days).toHaveLength(4);
+    expect(sc.on).toEqual([0, 1, 2]);
+    expect(/rest/i.test(sc.days[3])).toBe(true);
+    // it must say it REPEATS — it is a cycle, not a Mon-Sat week
+    expect(/repeat/i.test(sc.days[3] + " " + sc.note)).toBe(true);
+  });
+
   test("each schedule carries a usable note", () => {
     ROLES.forEach((r) => expect(SF.schedules[r].note.length).toBeGreaterThan(10));
+  });
+});
+
+// #320: the nutritionist prescribed "abs" on split Days 1 and 2. Loaded spinal
+// flexion (sit-ups / crunches) is on this app's permanent avoid-list —
+// contraindicated for L4/L5 + L5/S1 herniation — so the plan substitutes
+// Pallof Press + Dead Bug. This guard exists so a future edit can't quietly
+// reintroduce a contraindicated movement into the split.
+describe("split routine core work is disc-safe (#320)", () => {
+  const SPLIT = ["splitDay1", "splitDay2", "splitDay3"];
+  const BANNED = /sit-?up|crunch|russian twist|toe touch|v-?up/i;
+
+  const splitItems = () => SPLIT.flatMap((k) =>
+    (SF[k] || []).flatMap((sec) => sec.items || []));
+
+  test("no sit-up / crunch style movement anywhere in the split", () => {
+    const bad = splitItems().filter((it) => BANNED.test(it.name || ""));
+    expect(bad.map((b) => b.name)).toEqual([]);
+  });
+
+  test("every split exercise resolves to a catalog entry marked safe", () => {
+    const unsafe = splitItems().filter((it) => {
+      const e = SF.exercises[it.id] || {};
+      return !e.safe;  // every movement must carry a safety classification
+    });
+    expect(unsafe.map((u) => u.id)).toEqual([]);
+  });
+
+  test("Days 1 and 2 carry the substituted core work", () => {
+    for (const key of ["splitDay1", "splitDay2"]) {
+      const ids = (SF[key] || []).flatMap((sec) => (sec.items || []).map((i) => i.id));
+      expect(ids).toContain("pallof-press");
+      expect(ids).toContain("dead-bug");
+    }
+  });
+
+  test("every prescribed set is the 3 x 10-12 the nutritionist asked for", () => {
+    // main-work sections only — warm-ups/cool-downs are time/rep based
+    const main = SPLIT.flatMap((k) =>
+      (SF[k] || []).filter((sec) => sec.role === "split")
+        .flatMap((sec) => sec.items || []));
+    expect(main.length).toBeGreaterThan(10);
+    for (const it of main) {
+      expect(it.sets).toMatch(/^3 × 10–12/);
+    }
   });
 });

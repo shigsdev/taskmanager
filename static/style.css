@@ -5517,6 +5517,7 @@ table.quality-gates code {
 .sf-role-flare { --sf-accent: var(--rust); }
 .sf-role-safe  { --sf-accent: var(--sage); }
 .sf-role-iso   { --sf-accent: #b08bd0; }  /* #315 — band isolation accent */
+.sf-role-split { --sf-accent: #4fa89c; }  /* #320 — split routine accent */
 
 .sf-page { max-width: 860px; margin: 0 auto; padding: 20px 16px 80px; }
 
@@ -5625,6 +5626,7 @@ table.quality-gates code {
 .sf-intro--flare { --sf-accent: var(--rust); }
 .sf-intro--safe  { --sf-accent: var(--sage); }
 .sf-intro--iso   { --sf-accent: #b08bd0; }  /* #315 — band isolation accent */
+.sf-intro--split { --sf-accent: #4fa89c; }  /* #320 — split routine accent */
 .sf-intro-title { font-weight: 700; font-size: 1.02rem; color: var(--sf-accent); margin-bottom: 5px; }
 .sf-intro-body { font-size: 0.8rem; color: var(--cream-dim); line-height: 1.65; }
 
@@ -5640,6 +5642,12 @@ table.quality-gates code {
     color: var(--cream-dim); cursor: pointer; font-weight: 600; font-size: 0.72rem; transition: all 0.15s; }
 .sf-toggle-btn:hover { color: var(--cream); }
 .sf-toggle-btn.active { border-color: var(--sf-accent); color: var(--sf-accent); background: color-mix(in srgb, var(--sf-accent) 10%, transparent); }
+/* #320: the workout day/session pickers were 26px tall on a phone — under the
+   44px tap-target standard, and this page gets used one-handed mid-workout.
+   Applies to every panel's picker (Bands / Military / Isolation / Split). */
+@media (max-width: 700px) {
+    .sf-toggle-btn { min-height: 44px; padding: 6px 12px; }
+}
 
 .sf-worksec { margin-bottom: 22px; }
 .sf-worksec-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }

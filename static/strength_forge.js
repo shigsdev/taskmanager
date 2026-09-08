@@ -372,6 +372,59 @@
     return panel;
   }
 
+  // #320: "Split Routine" — the nutritionist's 4-day cycle (2026-09-08). Day
+  // selector like the Military/Isolation panels; the rest day lives in the
+  // schedule strip rather than as a selectable session.
+  var SPLIT_SESSIONS = [
+    { key: "1", label: "Day 1 · Push" },
+    { key: "2", label: "Day 2 · Pull" },
+    { key: "3", label: "Day 3 · Legs" },
+  ];
+
+  function splitPlan(key) {
+    var map = { "1": SF.splitDay1, "2": SF.splitDay2, "3": SF.splitDay3 };
+    return map[key] || [];
+  }
+
+  function buildSplitPanel() {
+    var panel = el("div", { cls: "sf-panel", attrs: { "data-tab": "split", hidden: "hidden" } });
+    panel.appendChild(intro("split", "Split Routine — Next Block",
+      "Your nutritionist's 4-day cycle: Day 1 chest/triceps/front delts, Day 2 back/biceps/rear delts, Day 3 legs, Day 4 rest — then repeat from Day 1. Every exercise is 3 × 10–12; pick a band where the last 2–3 reps are hard but your form still holds, and step up the band as that gets easy. Run the Isolation plan for a couple of months FIRST — this is the block after it."));
+    panel.appendChild(schedFor("split"));
+
+    var sk = "1";
+    var planMount = el("div", { cls: "sf-plan-mount" });
+    function renderPlan() {
+      while (planMount.firstChild) planMount.removeChild(planMount.firstChild);
+      splitPlan(sk).forEach(function (sec) { planMount.appendChild(workSec(sec, "split")); });
+    }
+    var toggle = el("div", { cls: "sf-toggle-row" }, SPLIT_SESSIONS.map(function (s) {
+      return el("button", {
+        cls: "sf-toggle-btn sf-role-split" + (s.key === sk ? " active" : ""),
+        text: s.label, attrs: { type: "button" },
+        on: { click: function () {
+          sk = s.key; renderPlan();
+          toggle.querySelectorAll(".sf-toggle-btn").forEach(function (b, i) {
+            b.classList.toggle("active", SPLIT_SESSIONS[i].key === sk);
+          });
+        } },
+      });
+    }));
+    panel.appendChild(toggle);
+    panel.appendChild(planMount);
+    renderPlan();
+    panel.appendChild(logButton("split", function () { return "split-" + sk; }));
+    panel.appendChild(notesBox([
+      "Start this AFTER a couple of consistent months on the Isolation plan — changing the stimulus every few months is what prevents plateaus.",
+      "3 × 10–12 on every exercise. The last 2–3 reps should be hard while your form stays clean; when they stop being hard, move up a band.",
+      "Form over resistance, always. A heavier band with a rounded back is worse than no session at all.",
+      "Give legs extra recovery — don't start the next Day 1 while your legs are still sore from Day 3.",
+      "Abs here are Pallof Press + Dead Bug, NOT sit-ups or crunches: loaded spinal flexion is contraindicated for your L4/L5 and L5/S1 discs. These train the same deep core without ever flexing the spine.",
+      "If your lower back flares during any exercise, stop and switch to the Flare-Up tab.",
+    ], "split"));
+    return panel;
+  }
+
   function buildFlarePanel() {
     var panel = el("div", { cls: "sf-panel", attrs: { "data-tab": "flare", hidden: "hidden" } });
     panel.appendChild(el("div", { cls: "sf-flare-alert" }, [
@@ -641,6 +694,7 @@
       "iso-chest": SF.isoChest, "iso-back": SF.isoBack,
       "iso-shoulders": SF.isoShoulders, "iso-biceps": SF.isoBiceps,
       "iso-triceps": SF.isoTriceps, "iso-legs": SF.isoLegs,
+      "split-1": SF.splitDay1, "split-2": SF.splitDay2, "split-3": SF.splitDay3,
     };
     return map[planType] || [];
   }
@@ -900,6 +954,9 @@
     "iso-biceps": "Isolation · Biceps",
     "iso-triceps": "Isolation · Triceps",
     "iso-legs": "Isolation · Legs",
+    "split-1": "Split · Day 1 — Chest / Triceps / Front Delts / Abs",
+    "split-2": "Split · Day 2 — Back / Biceps / Rear Delts / Abs",
+    "split-3": "Split · Day 3 — Legs",
   };
 
   // #313: program-level titles for the full-plan print sheet (the day-level
@@ -908,12 +965,14 @@
     band: "Resistance Band Training",
     mil: "Military Calisthenics",
     iso: "One Muscle at a Time (Band Isolation)",
+    split: "Split Routine (4-Day Cycle)",
   };
 
   function roleForPlanType(planType) {
     var s = String(planType || "");
     if (s.indexOf("mil") === 0) return "mil";
     if (s.indexOf("iso") === 0) return "iso";
+    if (s.indexOf("split") === 0) return "split";
     return "band";
   }
 
@@ -924,6 +983,7 @@
       "iso-chest": SF.isoChest, "iso-back": SF.isoBack,
       "iso-shoulders": SF.isoShoulders, "iso-biceps": SF.isoBiceps,
       "iso-triceps": SF.isoTriceps, "iso-legs": SF.isoLegs,
+      "split-1": SF.splitDay1, "split-2": SF.splitDay2, "split-3": SF.splitDay3,
     };
     var items = [];
     (map[planType] || []).forEach(function (sec) {
@@ -1350,12 +1410,14 @@
       band: buildBandPanel(),
       mil: buildMilPanel(),
       iso: buildIsoPanel(),
+      split: buildSplitPanel(),
       flare: buildFlarePanel(),
     };
     var tabsDef = [
       { key: "band", label: "⚡ Bands" },
       { key: "mil", label: "🎖 Military" },
       { key: "iso", label: "💪 Isolation" },
+      { key: "split", label: "🔁 Split" },
       { key: "flare", label: "🔴 Flare-Up" },
     ];
     var current = "band";
@@ -1379,6 +1441,7 @@
     root.appendChild(panels.band);
     root.appendChild(panels.mil);
     root.appendChild(panels.iso);
+    root.appendChild(panels.split);
     root.appendChild(panels.flare);
 
     loadTracking();

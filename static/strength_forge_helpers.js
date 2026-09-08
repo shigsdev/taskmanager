@@ -156,6 +156,8 @@ function isDraftFresh(savedAtMs, nowMs, maxHours) {
  *   "band" -> ["band-a", "band-b"]                             (Workouts A + B)
  *   "mil"  -> ["mil-1", "mil-2", "mil-3"]                       (Sessions 1–3)
  *   "iso"  -> ["iso-chest", ... "iso-legs"]  (#315 — one muscle per session)
+ *   "split" -> ["split-1", "split-2", "split-3"]   (#320 — 4-day cycle; the
+ *              rest day is schedule-only, so it is not a plan type)
  *   unknown / missing -> []
  *
  * Single source of truth for the role→days mapping; kept here (pure) so the
@@ -170,6 +172,7 @@ function planTypesForRole(role) {
             "iso-biceps", "iso-triceps", "iso-legs",
         ];
     }
+    if (role === "split") return ["split-1", "split-2", "split-3"];
     return [];
 }
 

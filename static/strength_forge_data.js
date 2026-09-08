@@ -310,6 +310,87 @@
       ] },
   ];
 
+  // #320 — "Split Routine", per the nutritionist's 2026-09-08 note. A 4-day
+  // repeating cycle (Day 1 → Day 2 → Day 3 → Rest → repeat), NOT a fixed
+  // weekday grid:
+  //   Day 1: chest, triceps, front shoulders, abs
+  //   Day 2: back, biceps, rear shoulders, abs
+  //   Day 3: legs
+  //   Day 4: rest, then restart at Day 1
+  // Every exercise is 3 × 10–12 per their prescription, with band tension as
+  // the load: pick a band where the last 2–3 reps are hard but your form holds.
+  //
+  // ABS ADAPTATION (deliberate deviation, do not "fix"): the note says abs on
+  // Days 1 and 2. Sit-ups / crunches / any loaded spinal flexion are on this
+  // app's permanent avoid-list — contraindicated for L4/L5 + L5/S1 herniation.
+  // Pallof Press (anti-rotation) and Dead Bug are used instead; both are tagged
+  // `therapeutic` in the catalog and train the same deep core without ever
+  // flexing the spine.
+  //
+  // This is the NEXT block, not a replacement — the nutritionist explicitly
+  // said to run the Isolation plan consistently for a couple of months first.
+  var splitDay1 = [
+    { section: "Warm-Up", badge: "4 min", role: "band", num: "01", items: [
+      { id: "arm-swings", name: "Arm Circles + Shoulder Rolls", sets: "10 each", rest: "No rest" },
+      { id: "band-pull-apart", name: "Band Pull-Apart", sets: "15 reps", rest: "No rest" },
+    ] },
+    { section: "Chest · Triceps · Front Delts", badge: "22 min", role: "split", num: "02", items: [
+      { id: "band-chest-press", name: "Standing Band Chest Press", sets: "3 × 10–12", rest: "60s between sets" },
+      { id: "band-chest-fly", name: "Standing Band Chest Fly", sets: "3 × 10–12", rest: "60s between sets" },
+      { id: "band-front-raise", name: "Band Front Raise", sets: "3 × 10–12", rest: "45s between sets" },
+      { id: "band-tricep", name: "Band Tricep Pushdown", sets: "3 × 10–12", rest: "45s between sets" },
+      { id: "band-overhead-tricep", name: "Band Overhead Tricep Extension", sets: "3 × 10–12", rest: "45s between sets" },
+    ] },
+    { section: "Core (disc-safe)", badge: "6 min", role: "safe", num: "03", items: [
+      { id: "pallof-press", name: "Pallof Press", sets: "3 × 10 each side", rest: "45s between sets" },
+      { id: "dead-bug", name: "Dead Bug", sets: "3 × 10 each side", rest: "45s between sets" },
+    ] },
+    { section: "Cool-Down", badge: "3 min", role: "mil", num: "04", items: [
+      { id: "chest-stretch", name: "Doorway Chest Stretch", sets: "30s × 2 sides", rest: "15s to switch" },
+      { id: "box-breathing", name: "Box Breathing (4-4-4-4)", sets: "4–6 cycles", rest: "End of session" },
+    ] },
+  ];
+
+  var splitDay2 = [
+    { section: "Warm-Up", badge: "4 min", role: "band", num: "01", items: [
+      { id: "cat-cow", name: "Cat-Cow Stretch", sets: "10 reps", rest: "No rest" },
+      { id: "band-pull-apart", name: "Band Pull-Apart", sets: "15 reps", rest: "No rest" },
+    ] },
+    { section: "Back · Biceps · Rear Delts", badge: "22 min", role: "split", num: "02", items: [
+      { id: "band-lat-pulldown", name: "Band Lat Pulldown", sets: "3 × 10–12", rest: "60s between sets" },
+      { id: "band-row", name: "Band Seated Row", sets: "3 × 10–12", rest: "60s between sets" },
+      { id: "band-rear-delt-fly", name: "Standing Band Rear Delt Fly", sets: "3 × 10–12", rest: "45s between sets" },
+      { id: "band-curl", name: "Band Bicep Curl", sets: "3 × 10–12", rest: "45s between sets" },
+      { id: "band-hammer-curl", name: "Band Hammer Curl", sets: "3 × 10–12", rest: "45s between sets" },
+    ] },
+    { section: "Core (disc-safe)", badge: "6 min", role: "safe", num: "03", items: [
+      { id: "pallof-press", name: "Pallof Press", sets: "3 × 10 each side", rest: "45s between sets" },
+      { id: "dead-bug", name: "Dead Bug", sets: "3 × 10 each side", rest: "45s between sets" },
+    ] },
+    { section: "Cool-Down", badge: "3 min", role: "mil", num: "04", items: [
+      { id: "box-breathing", name: "Box Breathing (4-4-4-4)", sets: "4–6 cycles", rest: "End of session" },
+    ] },
+  ];
+
+  var splitDay3 = [
+    { section: "Warm-Up", badge: "4 min", role: "band", num: "01", items: [
+      { id: "leg-swings", name: "Leg Swings (Front/Back + Side)", sets: "10 each", rest: "No rest" },
+      { id: "glute-bridge", name: "Glute Bridge Warm-Up (No Band)", sets: "15 reps", rest: "No rest" },
+    ] },
+    { section: "Legs", badge: "24 min", role: "split", num: "02", items: [
+      { id: "band-squat", name: "Band Assisted Squat", sets: "3 × 10–12", rest: "60s between sets" },
+      { id: "band-leg-curl", name: "Standing Band Hamstring Curl", sets: "3 × 10–12 each", rest: "45s between sets" },
+      { id: "band-glute-bridge", name: "Band Glute Bridge", sets: "3 × 10–12", rest: "45s between sets" },
+      { id: "band-glute-kickback", name: "Standing Band Glute Kickback", sets: "3 × 10–12 each", rest: "45s between sets" },
+      { id: "lateral-walk", name: "Band Lateral Walk", sets: "3 × 10–12 each way", rest: "45s between sets" },
+      { id: "band-calf-raise", name: "Band Calf Raise", sets: "3 × 10–12", rest: "45s between sets" },
+    ] },
+    { section: "Cool-Down", badge: "4 min", role: "mil", num: "03", items: [
+      { id: "quad-stretch", name: "Standing Quad Stretch", sets: "45s × 2 sides", rest: "15s to switch" },
+      { id: "hip-90-90", name: "90/90 Hip Stretch", sets: "45s × 2 sides", rest: "15s to switch" },
+    ] },
+  ];
+
   // #318: the per-program weekly schedule. Lifted out of the panel builders in
   // strength_forge.js so the SAME data drives the on-screen strip AND the
   // printable sheet (user asked to print the schedule alongside the workouts)
@@ -334,6 +415,18 @@
       days: ["Chest", "Back", "Shoulders", "Biceps", "Triceps", "Legs"],
       on: [0, 1, 2, 3, 4, 5],
       note: "Rotate through these — do any 2–3 per week. Don't train the same muscle on consecutive days.",
+    },
+    // #320: a repeating 4-day CYCLE, not a Mon–Sat week — after the rest day
+    // you start again at Day 1, so the cycle drifts across the calendar week.
+    split: {
+      days: [
+        "Chest · Triceps · Front Delts · Abs",
+        "Back · Biceps · Rear Delts · Abs",
+        "Legs",
+        "Rest — then repeat from Day 1",
+      ],
+      on: [0, 1, 2],
+      note: "A repeating 4-day cycle, not a fixed week: Day 1 → 2 → 3 → Rest → back to Day 1. Give legs extra recovery — never run Day 3 back-to-back with the next Day 1 if your legs are still sore.",
     },
   };
 
@@ -367,6 +460,9 @@
     isoBiceps: isoBiceps,
     isoTriceps: isoTriceps,
     isoLegs: isoLegs,
+    splitDay1: splitDay1,
+    splitDay2: splitDay2,
+    splitDay3: splitDay3,
     flarePhases: flarePhases,
     schedules: schedules,
     avoidList: avoidList,

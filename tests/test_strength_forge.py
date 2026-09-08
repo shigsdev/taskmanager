@@ -67,6 +67,15 @@ class TestWorkoutSessionService:
                 assert svc.PLAN_LABELS.get(pt), f"missing label for {pt}"
             assert WorkoutSession.query.count() == len(svc.VALID_PLAN_TYPES)
 
+    def test_split_plan_types_present(self, app):
+        """#320: the nutritionist's split days are loggable; the cycle's rest
+        day is schedule-only and must NOT be a plan type."""
+        expected = {"split-1", "split-2", "split-3"}
+        assert expected <= set(svc.VALID_PLAN_TYPES)
+        assert "split-4" not in svc.VALID_PLAN_TYPES
+        for pt in expected:
+            assert svc.PLAN_LABELS.get(pt)
+
     def test_isolation_plan_types_present(self, app):
         # #315: the six one-muscle band isolation sessions are loggable.
         expected = {
