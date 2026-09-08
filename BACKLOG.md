@@ -14,6 +14,30 @@ _(nothing in flight)_
 
 ## Completed
 
+- [x] **Print the weekly schedule alongside the workouts (#318)** —
+  User asked (2026-09-07) for the workout printout to include the schedule. The
+  print sheet now opens with the program's weekly schedule (training days vs
+  rest) for Bands / Military / Isolation; the Flare-Up print doesn't get one —
+  its Acute → Recovery → Return phases already ARE its schedule. The schedule
+  was hardcoded inline in each panel builder, so a printout could silently
+  drift from the app; lifted it to `SFData.schedules` (days + training-day
+  indices + guidance note) with both `schedFor()` and `appendPrintSchedule()`
+  rendering from that one source. **Also fixed a bug this surfaced:** `sched()`
+  hardcoded "days 1, 3 and 5 are training days" — right for Bands/Military,
+  wrong for the #315 isolation plan, where it rendered Back/Biceps/Legs as REST
+  days when all six are sessions. Training days are now explicit per program.
+  Print CSS uses a solid border + bold label for training days so the sheet
+  reads in black-and-white (no colour-only cue); 6→3 columns under 600px.
+  CACHE_VERSION v232→v233; docs print section updated (fact-checked). +6 drift
+  tests (schedule exists per program, `on` indices in range + unique, band/mil
+  alternate with real rest slots, iso has no rest slots, iso labels line up
+  with its six plans, notes non-trivial). Pre-deploy ALL 11 GATES GREEN (jest
+  431, coverage 84.64%, local Playwright 107). Phase 6 desktop 1280×800 +
+  mobile 375×812: DOM order title → schedule → first workout; all three
+  programs correct; flare has none; mobile collapses to 3 columns with no
+  overflow; 0 console errors. Post-deploy DEPLOY GREEN + MONITOR GREEN at
+  33979ab + 47/47 prod smoke. — RESOLVED 2026-09-07 (33979ab).
+
 - [x] **Band Glute Bridge showed the plain bodyweight how-to (#317)** —
   User-reported 2026-09-07: the ℹ️ instructions for "Band Glute Bridge" described
   the regular glute bridge with no mention of the band. Cause: the plan item
