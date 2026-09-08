@@ -14,6 +14,44 @@ _(nothing in flight)_
 
 ## Completed
 
+- [x] **Duplicate recurring tasks — boot replay fired in UTC, not the scheduler's TZ (#319)** —
+  User-reported 2026-09-07 ("the screen refreshed and tasks re-appeared") with a
+  screenshot showing two identical "Agenda for Working Group Meeting" cards.
+  Confirmed genuine duplicate ROWS: `f97c1b60` created 2026-09-07T04:05Z (the
+  real cron) and `a64a5465` created 2026-09-08T00:38:55Z — 18ms after a boot
+  replay's "start recurring_spawn" log line. **RCA (primary):** app.py builds
+  `BackgroundScheduler(timezone=DIGEST_TZ)` so the nightly jobs fire at HH:MM
+  *local* (00:05 America/New_York = 04:05 UTC, matching every real spawn), but
+  `cron_audit_service.replay_missed` used `datetime.now(UTC)` and computed
+  "today's scheduled fire" at HH:MM **UTC** — so every night between 00:05 UTC
+  and the real local fire (~4h on EDT), ANY container boot judged all four
+  nightly jobs "missed" and replayed them hours early, re-running
+  `recurring_spawn` for an already-spawned day. Both observed incidents (boots
+  at 2026-09-02T00:20Z and 2026-09-08T00:38Z) fall in that window.
+  **RCA (secondary):** `spawn_today_tasks` deduped on
+  `(recurring_task_id, due_date)` but filtered `status == ACTIVE`, so a
+  COMPLETED/CANCELLED instance was invisible and got re-created — turning each
+  false replay into a real duplicate and allowing runaway repeats (audit found
+  37 duplicated (title, due_date) pairs / 50 excess rows; worst case 13 copies
+  of "Pick up e cigs"). **Fix:** new `_scheduler_tz()` (DIGEST_TZ, matching
+  app.py); replay does the schedule math in that TZ while still
+  persisting/comparing instants in UTC; dedup no longer filters status.
+  **Two existing tests encoded the bug and were rewritten deliberately** —
+  `test_spawn_dedup_ignores_completed_tasks` claimed "yesterday's spawn" but
+  seeded `due_date == target` (same day), so it asserted a task could be
+  re-spawned onto its own date; split into a prior-day test (intent preserved)
+  + a same-day regression covering archived AND cancelled. The subtask-cycle
+  test used archive-then-respawn-TODAY to fake two cycles; it now targets the
+  next day. `_today_at` in the cron tests was building HH:MM UTC — the exact
+  off-by-a-TZ semantics that caused this — now anchored to the scheduler TZ.
+  New `test_boot_after_local_fire_does_not_replay` reproduces the 00:38Z boot
+  exactly. ALL 11 GATES GREEN (pytest 84.61%, jest 431, local Playwright 107);
+  no UI change (Phase 6 N/A). Post-deploy DEPLOY GREEN + MONITOR GREEN at
+  e627b10; **verified live** — the deploy's own boot at 01:08 UTC (inside the
+  old bug window) skipped all four jobs `reason=already_ran` instead of
+  replaying. Pre-existing duplicate rows are untouched (user data — cleanup
+  offered separately). — RESOLVED 2026-09-07 (e627b10).
+
 - [x] **Print the weekly schedule alongside the workouts (#318)** —
   User asked (2026-09-07) for the workout printout to include the schedule. The
   print sheet now opens with the program's weekly schedule (training days vs
