@@ -626,7 +626,6 @@ def spawn_today_tasks(*, target_date: date | None = None) -> list[Task]:
     ``title`` (the old key) — title was a fragile match (case
     sensitivity, edits, etc.) and missed cross-tier duplicates.
     """
-    from models import TaskStatus
 
     # Resolve target_date in the user's local TZ when not passed —
     # the cron + manual API both call us with no args, and using UTC
@@ -639,9 +638,16 @@ def spawn_today_tasks(*, target_date: date | None = None) -> list[Task]:
 
     templates = tasks_due_today(target_date=target_date)
 
-    # Pre-compute the set of (recurring_task_id, due_date) tuples that
-    # already have an active task — across ALL tiers, not just TODAY.
-    # This is the cross-tier dedup that closes Gap B from #38.
+    # Pre-compute the set of (recurring_task_id, due_date) tuples that already
+    # have a task — across ALL tiers, not just TODAY. This is the cross-tier
+    # dedup that closes Gap B from #38.
+    #
+    # #319: this used to filter `status == ACTIVE`, so once you COMPLETED or
+    # CANCELLED a spawned task it became invisible to the dedup and the next
+    # spawn re-created it. Combined with the replay bug (a boot could re-run
+    # spawn for an already-spawned day) that produced runaway duplicates —
+    # worst case 13 copies of one task. A template has fired for a given date
+    # whether or not the resulting task is still open, so match on ANY status.
     template_ids = [rt.id for rt in templates]
     existing_keys: set[tuple] = set()
     if template_ids:
@@ -649,7 +655,6 @@ def spawn_today_tasks(*, target_date: date | None = None) -> list[Task]:
             select(Task).where(
                 Task.recurring_task_id.in_(template_ids),
                 Task.due_date == target_date,
-                Task.status == TaskStatus.ACTIVE,
             )
         )
         existing_keys = {(t.recurring_task_id, t.due_date) for t in rows}

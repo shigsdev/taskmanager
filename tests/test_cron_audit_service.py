@@ -17,7 +17,12 @@ from models import CronAudit, db
 
 
 def _set_audit_row(job_id: str, when: _dt.datetime, status: str = "OK") -> None:
-    """Helper: seed a CronAudit row directly."""
+    """Helper: seed a CronAudit row directly.
+
+    #319: stored timestamps are UTC (replay reads naive values back as UTC), so
+    normalise here — callers pass scheduler-local times via ``_today_at``.
+    """
+    when = when.astimezone(_dt.UTC)
     row = db.session.get(CronAudit, job_id)
     if row is None:
         row = CronAudit(
@@ -35,8 +40,15 @@ def _set_audit_row(job_id: str, when: _dt.datetime, status: str = "OK") -> None:
 
 
 def _today_at(hour: int, minute: int, *, ref: _dt.datetime | None = None) -> _dt.datetime:
-    """Return today's ``HH:MM`` as a TZ-aware UTC datetime."""
-    base = ref or _dt.datetime.now(_dt.UTC)
+    """Return today's ``HH:MM`` in the SCHEDULER's timezone (DIGEST_TZ).
+
+    #319: these jobs fire at HH:MM *local* (BackgroundScheduler is constructed
+    with timezone=DIGEST_TZ), not HH:MM UTC. Building the reference in UTC made
+    these tests assert the very off-by-a-timezone semantics that caused the
+    duplicate-spawn bug, so the helper now anchors to the scheduler's TZ.
+    """
+    tz = audit._scheduler_tz()
+    base = (ref or _dt.datetime.now(_dt.UTC)).astimezone(tz)
     return base.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
@@ -200,6 +212,40 @@ class TestReplayMissed:
             )
             assert stub_helpers == []
 
+    def test_boot_after_local_fire_does_not_replay(self, app, stub_helpers):
+        """#319 REGRESSION — the duplicate-spawn bug, reproduced exactly.
+
+        Production incident 2026-09-08: a container booted at 00:38 UTC. The
+        nightly jobs had ALREADY fired that local day at 00:05 America/New_York
+        (= 04:05 UTC on 2026-09-07). Because replay computed "today at 00:05"
+        in **UTC**, it judged all four jobs missed and replayed them ~4 hours
+        early — re-running recurring_spawn for an already-spawned day and
+        duplicating the user's tasks.
+
+        With the TZ fix, 00:38 UTC is 20:38 the previous evening in DIGEST_TZ,
+        the local 00:05 fire is already recorded, and every job skips.
+        """
+        with app.app_context():
+            # 2026-09-08T00:38Z == 2026-09-07 20:38 EDT
+            boot = _dt.datetime(2026, 9, 8, 0, 38, tzinfo=_dt.UTC)
+            # the real local fires that day: 00:0X EDT == 04:0X UTC Sep 7
+            for job_id, _hour, minute, _spec in JOB_ORDER:
+                _set_audit_row(job_id, _dt.datetime(2026, 9, 7, 4, minute, tzinfo=_dt.UTC))
+
+            results = audit.replay_missed(now=boot)
+
+            assert all(r["status"] == "SKIPPED" for r in results), results
+            assert all(r["reason"] == "already ran today" for r in results), results
+            # the load-bearing assertion: nothing re-ran, so nothing respawned
+            assert stub_helpers == []
+
+    def test_scheduler_tz_matches_digest_tz(self, app, monkeypatch):
+        """#319: replay must resolve the SAME timezone the scheduler uses."""
+        monkeypatch.setenv("DIGEST_TZ", "America/Chicago")
+        assert str(audit._scheduler_tz()) == "America/Chicago"
+        monkeypatch.delenv("DIGEST_TZ", raising=False)
+        assert str(audit._scheduler_tz()) == "America/New_York"
+
     def test_failure_isolated_to_one_job(self, app, monkeypatch):
         """``promote_due_today`` raises — the other 3 still run, statuses
         per-job, exit results carry ERROR for the failed job only.
@@ -260,8 +306,10 @@ class TestReplayMissed:
         """
         with app.app_context():
             now = _today_at(6, 0)
-            # Seed a TZ-naive row that says we already ran today.
-            scheduled_naive = _today_at(0, 1).replace(tzinfo=None)
+            # Seed a TZ-naive row that says we already ran today. #319: naive
+            # stored values are read back as UTC, so the naive wall-clock must
+            # be the UTC form of today's LOCAL 00:01 fire (04:01Z on EDT).
+            scheduled_naive = _today_at(0, 1).astimezone(_dt.UTC).replace(tzinfo=None)
             row = CronAudit(
                 job_id="tomorrow_roll",
                 last_fire_at=scheduled_naive,

@@ -45,6 +45,7 @@ import contextlib
 import datetime as _dt
 import importlib
 import logging
+import os
 import time
 from typing import Any
 
@@ -112,8 +113,28 @@ def record(
         )
 
 
+def _scheduler_tz() -> _dt.tzinfo:
+    """The timezone the nightly crons actually fire in.
+
+    #319: MUST match ``BackgroundScheduler(timezone=...)`` in app.py, which
+    uses ``DIGEST_TZ`` (default America/New_York). Falls back to UTC only if
+    zoneinfo/tzdata is unavailable.
+    """
+    try:
+        from zoneinfo import ZoneInfo
+
+        return ZoneInfo(os.environ.get("DIGEST_TZ", "America/New_York"))
+    except Exception:  # noqa: BLE001 — tzdata missing; UTC is the safe floor
+        return _dt.UTC
+
+
 def _scheduled_today(hour: int, minute: int, *, now: _dt.datetime) -> _dt.datetime:
-    """Return today's scheduled-fire timestamp in the same TZ as ``now``."""
+    """Return today's scheduled-fire timestamp in the same TZ as ``now``.
+
+    ``now`` must already be in the SCHEDULER's timezone — see ``_scheduler_tz``
+    and the conversion in ``replay_missed``. Computing this in UTC while the
+    scheduler fires in DIGEST_TZ was the #319 duplicate-spawn bug.
+    """
     return now.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
@@ -154,11 +175,23 @@ def replay_missed(now: _dt.datetime | None = None) -> list[dict[str, Any]]:
     Caller must be inside a Flask app context (we read+write ``db``).
     """
     now = now if now is not None else _dt.datetime.now(_dt.UTC)
+    # Persist/compare instants in UTC (stored naive values are read back as
+    # UTC — see the tzinfo normalisation below), but do the SCHEDULE math in
+    # the scheduler's own timezone.
+    #
+    # #319: the scheduler fires these jobs at HH:MM in DIGEST_TZ, so "today's
+    # scheduled time" must be computed in THAT timezone. Comparing against
+    # HH:MM *UTC* meant that every night between 00:05 UTC and the real local
+    # fire (04:05 UTC on EDT), any container boot judged all four nightly jobs
+    # "missed" and replayed them ~4 hours early — re-running recurring_spawn
+    # for a day that had already spawned, which duplicated the user's tasks.
+    now = now.astimezone(_dt.UTC)
+    now_local = now.astimezone(_scheduler_tz())
     results: list[dict[str, Any]] = []
 
     for job_id, hour, minute, spec in JOB_ORDER:
-        scheduled = _scheduled_today(hour, minute, now=now)
-        if now < scheduled:
+        scheduled = _scheduled_today(hour, minute, now=now_local)
+        if now_local < scheduled:
             logger.warning(
                 "cron_audit.replay_missed skip %s reason=future_today scheduled=%s",
                 job_id, scheduled.isoformat(),

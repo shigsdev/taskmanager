@@ -966,11 +966,17 @@ class TestSpawnDueDateAndCrossTierDedup:
             assert len(spawned) == 1
             assert spawned[0].due_date == today
 
-    def test_spawn_dedup_ignores_completed_tasks(self, app):
-        """If yesterday's spawn was completed, today's spawn should
-        proceed normally — completed tasks must NOT block new spawns
-        because the dedup query filters status == ACTIVE."""
-        from datetime import date
+    def test_completed_task_from_a_PRIOR_day_does_not_block_today(self, app):
+        """Yesterday's spawn being completed must NOT block today's spawn.
+
+        (Was ``test_spawn_dedup_ignores_completed_tasks``. Its docstring said
+        "yesterday's spawn", but it seeded the completed task with
+        ``due_date == target`` — the SAME day being spawned — so it actually
+        asserted that a completed task can be re-spawned on its own date. That
+        is the #319 duplicate bug; see the same-day test below. Dedup keys on
+        due_date, so a prior day's task never blocks today either way.)
+        """
+        from datetime import date, timedelta
 
         from models import Task, TaskStatus, Tier
         from recurring_service import spawn_today_tasks
@@ -981,7 +987,7 @@ class TestSpawnDueDateAndCrossTierDedup:
                 title="Daily check-in",
                 type=TaskType.WORK,
                 tier=Tier.TODAY,
-                due_date=target,
+                due_date=target - timedelta(days=1),  # YESTERDAY's instance
                 recurring_task_id=rt.id,
                 status=TaskStatus.ARCHIVED,  # completed
             )
@@ -991,6 +997,36 @@ class TestSpawnDueDateAndCrossTierDedup:
             spawned = spawn_today_tasks(target_date=target)
             assert len(spawned) == 1
             assert spawned[0].status == TaskStatus.ACTIVE
+
+    def test_completed_task_for_the_SAME_day_blocks_respawn(self, app):
+        """#319 REGRESSION: completing today's task must not resurrect it.
+
+        The dedup used to filter ``status == ACTIVE``, so once you completed
+        (or cancelled) a spawned task it became invisible and the next spawn
+        re-created it. Any boot-time replay then produced a duplicate — the
+        real incident reached 13 copies of one task.
+        """
+        from datetime import date
+
+        from models import Task, TaskStatus, Tier
+        from recurring_service import spawn_today_tasks
+        with app.app_context():
+            rt = _make_recurring(title="Pick up e cigs", frequency=RecurringFrequency.DAILY)
+            target = date(2026, 4, 24)
+            for status in (TaskStatus.ARCHIVED, TaskStatus.CANCELLED):
+                db.session.query(Task).delete()
+                db.session.add(Task(
+                    title="Pick up e cigs",
+                    type=TaskType.WORK,
+                    tier=Tier.TODAY,
+                    due_date=target,
+                    recurring_task_id=rt.id,
+                    status=status,
+                ))
+                db.session.commit()
+
+                spawned = spawn_today_tasks(target_date=target)
+                assert spawned == [], f"re-spawned over a {status.value} task"
 
 
 # --- Blueprint registration --------------------------------------------------
@@ -1312,15 +1348,27 @@ class TestSpawnWithSubtasks:
         }
         assert len(sub_ids_1) == 2
 
-        # Archive everything (simulating completion), then re-spawn
+        # Archive everything (simulating completion), then spawn the NEXT
+        # cycle. #319: the second spawn must target a DIFFERENT day — a
+        # same-day re-spawn is now correctly deduped (completing a task no
+        # longer resurrects it), so re-firing "today" would produce nothing.
+        # The behaviour under test is per-cycle subtask cloning, not same-day
+        # duplication.
         for t in first:
             authed_client.patch(
                 f"/api/tasks/{t['id']}", json={"status": "archived"}
             )
-        authed_client.post("/api/recurring/spawn")
+        with app.app_context():
+            from datetime import timedelta
 
-        second_resp = authed_client.get("/api/tasks?tier=today").get_json()
-        parent2 = next(t for t in second_resp if t["title"] == "Cycle")
+            from recurring_service import spawn_today_tasks
+            from utils import local_today_date
+
+            spawn_today_tasks(target_date=local_today_date() + timedelta(days=1))
+
+        second_resp = authed_client.get("/api/tasks?status=all").get_json()
+        parents = [t for t in second_resp if t["title"] == "Cycle"]
+        parent2 = next(t for t in parents if t["id"] != parent1["id"])
         sub_ids_2 = {
             t["id"] for t in second_resp if t.get("parent_id") == parent2["id"]
         }
