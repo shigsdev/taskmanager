@@ -163,11 +163,18 @@
     return el("div", { cls: "sf-worksec" }, [head, list]);
   }
 
-  function sched(days, role) {
+  // #318: the schedule now comes from SF.schedules[role] (shared with the
+  // print sheet). Training days are explicit per program — the old hardcoded
+  // "days 1, 3 and 5 are on" rule was wrong for the isolation plan, where all
+  // six entries are sessions and none are rest days.
+  function schedFor(role) {
+    var sc = (SF.schedules || {})[role];
+    if (!sc) return el("div", { cls: "sf-sched" });
+    var on = {};
+    (sc.on || []).forEach(function (i) { on[i] = true; });
     var grid = el("div", { cls: "sf-sched" });
-    days.forEach(function (day, i) {
-      var on = i === 0 || i === 2 || i === 4;
-      grid.appendChild(el("div", { cls: "sf-sched-day" + (on ? " on sf-role-" + role : "") }, [
+    (sc.days || []).forEach(function (day, i) {
+      grid.appendChild(el("div", { cls: "sf-sched-day" + (on[i] ? " on sf-role-" + role : "") }, [
         el("div", { cls: "sf-sched-num", text: "Day " + (i + 1) }),
         el("div", { cls: "sf-sched-label", text: day }),
       ]));
@@ -207,7 +214,7 @@
     var panel = el("div", { cls: "sf-panel", attrs: { "data-tab": "band" } });
     panel.appendChild(intro("band", "Resistance Band Training",
       "Full-body strength and fat-loss using resistance bands only. Every exercise protects your L4/L5 and L5/S1 discs. Tap ℹ️ for a real photo link and full instructions."));
-    panel.appendChild(sched(["Full Body A", "Rest", "Full Body B", "Rest", "Full Body A", "Rest / Walk"], "band"));
+    panel.appendChild(schedFor("band"));
 
     var planMount = el("div", { cls: "sf-plan-mount" });
     var notesMount = el("div");
@@ -250,7 +257,7 @@
     var panel = el("div", { cls: "sf-panel", attrs: { "data-tab": "mil", hidden: "hidden" } });
     panel.appendChild(intro("mil", "Military Calisthenics",
       "Adapted from military PT — fully modified for L4/L5 and L5/S1 disc protection. No sit-ups, no burpees, no jumping. Tap ℹ️ for a real photo link and full instructions."));
-    panel.appendChild(sched(["Push + Core", "Rest", "Pull + Legs", "Rest", "Full Body", "Walk / Mobility"], "mil"));
+    panel.appendChild(schedFor("mil"));
 
     var sessions = [
       { key: "1", label: "Session 1 — Push+Core" },
@@ -331,8 +338,7 @@
     var panel = el("div", { cls: "sf-panel", attrs: { "data-tab": "iso", hidden: "hidden" } });
     panel.appendChild(intro("iso", "One Muscle at a Time",
       "Band-only isolation sessions — each day targets a SINGLE muscle group instead of the full body. Every move is back-safe (upright / seated / supported, neutral spine — no spinal loading). Do any 2–3 of these per week and rotate through them. Tap ℹ️ for a real photo link and full instructions."));
-    panel.appendChild(sched(
-      ["Chest", "Back", "Shoulders", "Biceps", "Triceps", "Legs"], "iso"));
+    panel.appendChild(schedFor("iso"));
 
     var isoK = "chest";
     var planMount = el("div", { cls: "sf-plan-mount" });
@@ -652,6 +658,35 @@
     if (e.key === "Escape" && printOverlay) closePrintSheet();
   });
 
+  // #318: render the program's weekly schedule onto the print sheet, from the
+  // same SF.schedules data the on-screen strip uses. Training days are marked;
+  // rest days print plainly so the sheet reads correctly in black-and-white.
+  function appendPrintSchedule(sheet, role) {
+    var sc = (SF.schedules || {})[role];
+    if (!sc || !sc.days || !sc.days.length) return;
+    var on = {};
+    (sc.on || []).forEach(function (i) { on[i] = true; });
+
+    var grid = el("div", { cls: "sf-print-sched-grid" });
+    sc.days.forEach(function (day, i) {
+      grid.appendChild(el("div", {
+        cls: "sf-print-sched-day" + (on[i] ? " on" : ""),
+      }, [
+        el("span", { cls: "sf-print-sched-num", text: "Day " + (i + 1) }),
+        el("span", { cls: "sf-print-sched-label", text: day }),
+      ]));
+    });
+
+    var wrap = el("div", { cls: "sf-print-sched" }, [
+      el("div", { cls: "sf-print-sched-title", text: "Weekly schedule" }),
+      grid,
+    ]);
+    if (sc.note) {
+      wrap.appendChild(el("div", { cls: "sf-print-sched-note", text: sc.note }));
+    }
+    sheet.appendChild(wrap);
+  }
+
   // Render one exercise block (head + rest + blank write-in rows) onto the
   // print sheet. Shared by every day when printing a full plan (#313).
   function appendPrintExercise(sheet, item, setCount) {
@@ -716,6 +751,9 @@
         el("span", { cls: "sf-print-date", text: todayLabel }),
       ]),
     ]);
+    // #318: print the program's weekly schedule alongside the workouts, so the
+    // sheet says WHEN to do each one, not just what's in it.
+    appendPrintSchedule(sheet, roleForPlanType(planTypes[0]));
 
     planTypes.forEach(function (planType, planIdx) {
       // #313: when printing more than one day, each gets its own header and

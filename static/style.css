@@ -5797,6 +5797,27 @@ table.quality-gates code {
     border-bottom: 2px solid #16130f; padding-bottom: 8px; margin-bottom: 16px; }
 .sf-print-plan { font-family: var(--font-display); font-size: 1.3rem; font-weight: 800; }
 .sf-print-date { font-family: var(--font-mono); font-size: 0.8rem; color: #55504a; white-space: nowrap; }
+/* #318: weekly schedule block on the print sheet. Training days get a solid
+   border + bold label so the sheet still reads correctly printed in
+   black-and-white (no reliance on colour alone). */
+.sf-print-sched { margin: 14px 0 4px; break-inside: avoid; page-break-inside: avoid; }
+.sf-print-sched-title { font-family: var(--font-mono); font-size: 0.66rem;
+    letter-spacing: 0.08em; text-transform: uppercase; color: #55504a;
+    margin-bottom: 6px; }
+.sf-print-sched-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.sf-print-sched-day { border: 1px dashed #cfc8bf; border-radius: 4px;
+    padding: 5px 6px; text-align: center; min-width: 0; }
+.sf-print-sched-day.on { border: 1.5px solid #16130f; }
+.sf-print-sched-num { display: block; font-family: var(--font-mono);
+    font-size: 0.58rem; color: #8a827a; }
+.sf-print-sched-label { display: block; font-size: 0.72rem; overflow-wrap: anywhere; }
+.sf-print-sched-day.on .sf-print-sched-label { font-weight: 800; }
+.sf-print-sched-note { font-size: 0.7rem; color: #55504a; font-style: italic; margin-top: 6px; }
+@media (max-width: 600px) {
+    /* 6 columns is unreadable at 375px — go two rows of three. */
+    .sf-print-sched-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
 /* #313: per-day header when the print sheet spans a full plan (all
    workouts). Heavier rule than a section header; each day after the first
    starts on a fresh page. */

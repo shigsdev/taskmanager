@@ -120,3 +120,61 @@ describe("SFData plan referential integrity", () => {
     expect(SF.exercises["glute-bridge"].resist).toBeUndefined();
   });
 });
+
+// #318: the weekly schedule is shared by the on-screen strip AND the print
+// sheet, so it has to stay structurally sound for every trainable program.
+describe("SFData schedules (#318)", () => {
+  const ROLES = ["band", "mil", "iso"];
+
+  test("every trainable program has a schedule", () => {
+    expect(typeof SF.schedules).toBe("object");
+    ROLES.forEach((r) => expect(Array.isArray(SF.schedules[r].days)).toBe(true));
+  });
+
+  test("every schedule has days, and `on` indices point at real days", () => {
+    ROLES.forEach((r) => {
+      const sc = SF.schedules[r];
+      expect(sc.days.length).toBeGreaterThan(0);
+      expect(Array.isArray(sc.on)).toBe(true);
+      sc.on.forEach((i) => {
+        expect(Number.isInteger(i)).toBe(true);
+        expect(i).toBeGreaterThanOrEqual(0);
+        expect(i).toBeLessThan(sc.days.length);
+      });
+      expect(new Set(sc.on).size).toBe(sc.on.length); // no dupes
+    });
+  });
+
+  test("band/military alternate train + rest days", () => {
+    ["band", "mil"].forEach((r) => {
+      expect(SF.schedules[r].on).toEqual([0, 2, 4]);
+      // the non-training slots really are rest/recovery, not workouts
+      SF.schedules[r].days.forEach((d, i) => {
+        if (!SF.schedules[r].on.includes(i)) {
+          expect(/rest|walk|mobility/i.test(d)).toBe(true);
+        }
+      });
+    });
+  });
+
+  test("isolation has NO rest slots — all six are sessions", () => {
+    const sc = SF.schedules.iso;
+    expect(sc.on).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(sc.days.every((d) => !/^rest/i.test(d))).toBe(true);
+  });
+
+  test("isolation schedule labels line up with its six plans", () => {
+    // Guard against the schedule strip drifting from the actual sessions.
+    const planTitles = ["isoChest", "isoBack", "isoShoulders",
+      "isoBiceps", "isoTriceps", "isoLegs"];
+    expect(SF.schedules.iso.days.length).toBe(planTitles.length);
+    planTitles.forEach((key, i) => {
+      const label = SF.schedules.iso.days[i].toLowerCase();
+      expect(key.toLowerCase()).toContain(label.replace(/\s+/g, ""));
+    });
+  });
+
+  test("each schedule carries a usable note", () => {
+    ROLES.forEach((r) => expect(SF.schedules[r].note.length).toBeGreaterThan(10));
+  });
+});

@@ -310,6 +310,33 @@
       ] },
   ];
 
+  // #318: the per-program weekly schedule. Lifted out of the panel builders in
+  // strength_forge.js so the SAME data drives the on-screen strip AND the
+  // printable sheet (user asked to print the schedule alongside the workouts)
+  // — one source of truth, no risk of the printout drifting from the app.
+  //
+  // `on` lists the indices that are TRAINING days (the rest are rest days).
+  // Band/Military alternate train/rest; the isolation plan has no rest slots —
+  // all six are sessions you rotate through, which is why `on` is explicit per
+  // program instead of the old hardcoded "days 1, 3 and 5" rule.
+  var schedules = {
+    band: {
+      days: ["Full Body A", "Rest", "Full Body B", "Rest", "Full Body A", "Rest / Walk"],
+      on: [0, 2, 4],
+      note: "Never train on consecutive days — your recovery needs that full rest day.",
+    },
+    mil: {
+      days: ["Push + Core", "Rest", "Pull + Legs", "Rest", "Full Body", "Walk / Mobility"],
+      on: [0, 2, 4],
+      note: "Three sessions a week with a rest day between each.",
+    },
+    iso: {
+      days: ["Chest", "Back", "Shoulders", "Biceps", "Triceps", "Legs"],
+      on: [0, 1, 2, 3, 4, 5],
+      note: "Rotate through these — do any 2–3 per week. Don't train the same muscle on consecutive days.",
+    },
+  };
+
   var avoidList = [
     { item: "Sit-ups, crunches, any spinal flexion under load", reason: "Compresses the herniated disc directly — worst possible movement during a flare" },
     { item: "Deadlifts or Romanian deadlifts", reason: "High spinal loading — skip entirely until at least 1 week post-flare" },
@@ -341,6 +368,7 @@
     isoTriceps: isoTriceps,
     isoLegs: isoLegs,
     flarePhases: flarePhases,
+    schedules: schedules,
     avoidList: avoidList,
     warnSigns: warnSigns,
     SAFE_LABELS: SAFE_LABELS,
