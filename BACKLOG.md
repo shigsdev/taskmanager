@@ -14,6 +14,33 @@ _(nothing in flight)_
 
 ## Completed
 
+- [x] **Split Routine — the nutritionist's next training block (#320)** —
+  User forwarded their nutritionist's 2026-09-08 note: keep the current program
+  for a couple of months, then switch to a split — Day 1 chest/triceps/front
+  shoulders/abs, Day 2 back/biceps/rear shoulders/abs, Day 3 legs, Day 4 rest,
+  repeat; 3 sets of 10–12 per exercise, progressive overload, extra recovery
+  after leg day, form over load. Added a 🔁 **Split** tab implementing exactly
+  that as a repeating 4-day CYCLE (not a fixed week). Deliberately **additive**
+  — the note says to run Isolation consistently first, so the intro/notes/docs
+  frame this as the block that comes *after* it. **Abs adaptation (documented
+  deviation):** sit-ups/crunches are on the app's permanent avoid-list
+  (contraindicated for L4/L5 + L5/S1), so Days 1–2 use Pallof Press + Dead Bug —
+  same deep core, zero spinal flexion — called out in the panel notes and
+  /docs so it can't be mistaken for an oversight. No new catalog exercises
+  needed (all 29 movements already existed); Band Lateral Walk moved
+  3 × 12 → 3 × 10–12 each way so every main lift matches the prescription.
+  Full parity: ℹ️ modals, logging, and 🖨 print (title + schedule + all 3 days).
+  **Bundled mobile fix:** the day/session pickers were 26px tall on a phone
+  across ALL panels (pre-existing) — under the 44px tap-target standard on a
+  page used one-handed mid-workout; now 44px. CACHE_VERSION v233→v234.
+  Pre-deploy ALL 11 GATES GREEN (jest 438, coverage 84.19%, local Playwright
+  107). Phase 6 desktop 1280×800 + mobile 375×812: 5 tabs fit ONE row at 375px;
+  all 3 days render (11/10/10 exercises); print = 31 exercises + 2 page breaks;
+  POST split-2 → 201; no overflow; 0 console errors. +7 tests incl. a safety
+  guard that no sit-up/crunch movement can ever enter the split and that every
+  main-work item is 3 × 10–12. Post-deploy DEPLOY GREEN + MONITOR GREEN at
+  c9fb8ea + 47/47 prod smoke. — RESOLVED 2026-09-08 (c9fb8ea).
+
 - [x] **Duplicate recurring tasks — boot replay fired in UTC, not the scheduler's TZ (#319)** —
   User-reported 2026-09-07 ("the screen refreshed and tasks re-appeared") with a
   screenshot showing two identical "Agenda for Working Group Meeting" cards.
