@@ -113,7 +113,7 @@ def _preflight_database_url(getaddrinfo=socket.getaddrinfo) -> None:
                 f"DATABASE_URL points at {host}, which is only resolvable "
                 f"from inside Railway. Use 'railway ssh' then "
                 f"'/app/scripts/run_missed_crons.py' (the shebang pins the "
-                f"in-container venv) instead of 'railway run …'.",
+                f"in-container venv) instead of 'railway run ...'.",
                 file=sys.stderr,
             )
             sys.exit(2)

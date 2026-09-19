@@ -44,20 +44,65 @@ Dry-run is the DEFAULT — it prints the plan and writes nothing::
     /app/scripts/dedupe_recurring_tasks.py --apply
     /app/scripts/dedupe_recurring_tasks.py --apply --no-resurrected
 
-From a laptop (slower, hits Railway's DNS edge)::
+``railway run python scripts/dedupe_recurring_tasks.py`` is the legacy
+fallback: it injects the prod env into your LOCAL python, but Railway's
+internal Postgres hostname doesn't resolve off-network, so it fails on most
+laptops. ``_preflight_database_url`` catches that in ~2s with a hint (#168).
 
-    railway run python scripts/dedupe_recurring_tasks.py
-
-Exit codes: 0 = clean/planned OK, 1 = an error occurred.
+Exit codes: 0 = clean/planned OK, 1 = an error occurred, 2 = wrong invocation
+(DATABASE_URL unreachable from here — use ``railway ssh``).
 """
 from __future__ import annotations
 
 import argparse
 import os
+import socket
 import sys
 from collections import defaultdict
+from urllib.parse import urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _preflight_database_url(getaddrinfo=socket.getaddrinfo) -> None:
+    """#168 — fast-fail with a hint when invoked outside Railway's network.
+
+    Mirrors ``scripts/run_missed_crons.py``. Railway's internal Postgres
+    hostname (``postgres.railway.internal``) only resolves inside the Railway
+    network; ``railway run`` pipes env vars through but does NOT proxy DNS, so
+    without this the connection dies inside SQLAlchemy as a 100-line traceback.
+
+    The default ``getaddrinfo`` is parameterized only so tests can inject a
+    stub — production callers should not pass anything.
+    """
+    db_url = os.environ.get("DATABASE_URL", "")
+    if ".railway.internal" not in db_url:
+        return
+
+    try:
+        host = urlparse(db_url).hostname or ""
+    except Exception:  # noqa: BLE001 — a malformed URL is not our problem here
+        host = ""
+    if not host or ".railway.internal" not in host:
+        return
+
+    original_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(2.0)
+    try:
+        try:
+            getaddrinfo(host, None)
+        except OSError:
+            # gaierror and timeout are both OSError subclasses.
+            print(
+                f"DATABASE_URL points at {host}, which is only resolvable "
+                f"from inside Railway. Use 'railway ssh' then "
+                f"'/app/scripts/dedupe_recurring_tasks.py' (the shebang pins "
+                f"the in-container venv) instead of 'railway run ...'.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+    finally:
+        socket.setdefaulttimeout(original_timeout)
 
 
 def _plan(tasks):
@@ -121,6 +166,10 @@ def main() -> int:
     from dotenv import load_dotenv
 
     load_dotenv()
+    # #168: bail in ~2s with a hint BEFORE importing app (which opens the
+    # DB pool), so a laptop invocation never turns into a wall of traceback.
+    _preflight_database_url()
+
     from app import create_app
     from models import Task, TaskStatus, db
     from task_service import delete_task

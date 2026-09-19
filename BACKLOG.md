@@ -10,7 +10,21 @@ file is the index pointer.
 
 ## In Progress
 
-_(nothing in flight)_
+- [ ] **`dedupe_recurring_tasks.py` missing the #168 DNS pre-flight (#322)** —
+  Operator-reported 2026-09-19. Running the #319 cleanup via
+  `railway run python scripts/dedupe_recurring_tasks.py` from a Windows laptop
+  produced a ~100-line SQLAlchemy traceback ending in
+  `failed to resolve host 'postgres.railway.internal'`. That is EXACTLY the
+  papercut #168 was filed to retire — but the guard was only ever added to
+  `run_missed_crons.py`, and when I shipped the dedupe script (f72f924) I
+  carried over #169's shebang + `100755` mode bit and missed #168's pre-flight.
+  So the class of bug was fixed once and then silently reintroduced by the next
+  prod script. Fix: port `_preflight_database_url()` verbatim (2s
+  `getaddrinfo` probe, exit 2, hint naming THIS script) and call it before
+  `from app import create_app` so the pool never opens. Also swapped the `…` in
+  both hints for ASCII `...` — it renders as mojibake in the Windows cp1252
+  console the hint is actually read in. 🔄 IN PROGRESS — code + 8 tests
+  written, awaiting gates.
 
 ## Completed
 
@@ -634,9 +648,9 @@ The script preserves operator-added prose across re-renders. -->
 | Audit row | Finding | First seen | Last seen | Notes / Status |
 |---|---|---|---|---|
 <!-- audit-row: bug-pattern/bare-1fr-grids/static-style.css -->
-| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 42: bare 1fr | 2026-05-27 | 2026-09-18 | 🟢 auto-detected resolved 2026-09-18 |
+| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 42: bare 1fr | 2026-05-27 | 2026-09-19 | 🟢 auto-detected resolved 2026-09-19 |
 <!-- audit-row: coverage/overall-coverage-drift/ -->
-| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-09-18 | 🟢 auto-detected resolved 2026-09-18 |
+| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-09-19 | 🟢 auto-detected resolved 2026-09-19 |
 <!-- audit-row: coverage/per-file-coverage-drift/app.py -->
 | `coverage/per-file-coverage-drift/app.py` | **app.py** — coverage dropped 9.9pp (90.2% → 80.3%; tolerance 5.0pp) | 2026-06-26 | 2026-07-17 | 🟢 auto-detected resolved 2026-07-17 |
 <!-- audit-row: coverage/per-file-coverage-drift/digest_api.py -->

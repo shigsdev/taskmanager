@@ -8,10 +8,14 @@ removed, because getting that wrong destroys user data.
 from __future__ import annotations
 
 import importlib.util
+import socket
+import subprocess
 import sys
 import uuid
 from datetime import date
 from pathlib import Path
+
+import pytest
 
 _SPEC = importlib.util.spec_from_file_location(
     "dedupe_recurring_tasks",
@@ -162,3 +166,102 @@ class TestProductionIncident:
         assert len(a) == 1
         assert len(b) == 3
         assert len(_ids(a) | _ids(b)) == 4
+
+
+class TestPreflightDatabaseUrl:
+    """#168 — fast-fail with a hint when invoked outside Railway's network.
+
+    Filed after the 2026-09-19 operator run: `railway run` from a laptop
+    produced a ~100-line SQLAlchemy traceback instead of the one-line hint
+    that #168 shipped for run_missed_crons.py. Same guard, same contract.
+    """
+
+    _RAILWAY_URL = "postgres://u:p@postgres.railway.internal:5432/railway"
+
+    def test_exits_2_with_hint_when_host_unresolvable(self, monkeypatch, capsys):
+        monkeypatch.setenv("DATABASE_URL", self._RAILWAY_URL)
+
+        def fake_getaddrinfo(host, _port):
+            raise socket.gaierror("getaddrinfo failed")
+
+        with pytest.raises(SystemExit) as exc:
+            dedupe._preflight_database_url(getaddrinfo=fake_getaddrinfo)
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "postgres.railway.internal" in err
+        assert "railway ssh" in err
+        # The hint must name THIS script, not run_missed_crons.py.
+        assert "dedupe_recurring_tasks.py" in err
+
+    def test_exits_2_on_timeout(self, monkeypatch, capsys):
+        monkeypatch.setenv("DATABASE_URL", self._RAILWAY_URL)
+
+        def fake_getaddrinfo(host, _port):
+            raise TimeoutError("timed out")
+
+        with pytest.raises(SystemExit) as exc:
+            dedupe._preflight_database_url(getaddrinfo=fake_getaddrinfo)
+        assert exc.value.code == 2
+        assert "railway ssh" in capsys.readouterr().err
+
+    def test_noop_inside_railway_where_dns_resolves(self, monkeypatch):
+        monkeypatch.setenv("DATABASE_URL", self._RAILWAY_URL)
+        probed = {"yes": False}
+
+        def fake_getaddrinfo(host, _port):
+            probed["yes"] = True
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.1", 0))]
+
+        dedupe._preflight_database_url(getaddrinfo=fake_getaddrinfo)  # no raise
+        assert probed["yes"], "preflight should have probed DNS"
+
+    def test_noop_for_non_railway_host(self, monkeypatch):
+        monkeypatch.setenv("DATABASE_URL", "postgres://u:p@localhost:5432/dev")
+
+        def boom(host, _port):
+            raise AssertionError("must not probe DNS for a non-Railway host")
+
+        dedupe._preflight_database_url(getaddrinfo=boom)
+
+    def test_noop_when_database_url_unset(self, monkeypatch):
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+
+        def boom(host, _port):
+            raise AssertionError("must not probe DNS with no DATABASE_URL")
+
+        dedupe._preflight_database_url(getaddrinfo=boom)
+
+    def test_restores_default_socket_timeout(self, monkeypatch):
+        """The guard mutates the global default timeout — it must put it back
+        even on the exit path, or it silently reshapes every later socket."""
+        monkeypatch.setenv("DATABASE_URL", self._RAILWAY_URL)
+        before = socket.getdefaulttimeout()
+
+        def fake_getaddrinfo(host, _port):
+            raise socket.gaierror("nope")
+
+        with pytest.raises(SystemExit):
+            dedupe._preflight_database_url(getaddrinfo=fake_getaddrinfo)
+        assert socket.getdefaulttimeout() == before
+
+
+class TestInvocationContract:
+    """#169 — the in-container invocation must keep working."""
+
+    _PATH = Path(__file__).resolve().parents[1] / "scripts" / "dedupe_recurring_tasks.py"
+
+    def test_shebang_pins_the_container_venv(self):
+        first = self._PATH.read_text(encoding="utf-8").splitlines()[0]
+        assert first == "#!/opt/venv/bin/python"
+
+    def test_git_index_mode_is_executable(self):
+        """Windows has no +x bit, but the git index mode ships to the
+        container — assert THAT so `/app/scripts/...` stays runnable."""
+        # noqa S603 + S607 — fixed argv, no user input; "git" is on PATH
+        # in every dev + CI environment we support.
+        out = subprocess.run(  # noqa: S603
+            ["git", "ls-files", "-s", "scripts/dedupe_recurring_tasks.py"],  # noqa: S607
+            capture_output=True, text=True, check=True,
+            cwd=str(self._PATH.parents[1]),
+        ).stdout
+        assert out.startswith("100755"), f"expected mode 100755, got: {out!r}"
