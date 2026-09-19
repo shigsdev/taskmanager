@@ -970,7 +970,14 @@ flowchart TD
                             <strong>dependency drift</strong>
                             (<code>pip list --outdated</code> +
                             <code>npm outdated</code>; flags
-                            major-version-behind packages);
+                            major-version-behind packages, scoped
+                            since #321 to deps we actually declare
+                            in <code>requirements*.txt</code> —
+                            <code>pip list</code> sees the whole
+                            runner environment, and a transitive
+                            dev-tool dep we never pin is noise, not
+                            debt; <code>pip-audit</code> still covers
+                            the full tree for CVEs);
                             <strong>stale tests</strong> (test files
                             untouched in &gt; 180 days);
                             <strong>code duplication</strong>

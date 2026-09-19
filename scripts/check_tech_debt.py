@@ -21,6 +21,10 @@ Three mechanical checks ship in the first cut:
       bump ahead of the installed `version`. This is lighter than
       #210's CVE check — it catches "we're 3 majors behind" hygiene
       drift before it becomes a forced migration.
+      Scoped (#321) to deps we actually DECLARE in requirements*.txt
+      / package.json: `pip list --outdated` sees the whole runner
+      environment, and drift on a transitive dev-tool dep we never
+      pin (filelock ← virtualenv ← pre-commit) is noise, not debt.
 
   stale-tests
       For each `tests/test_*.py`, run `git log -1 --format=%cI` and
@@ -206,13 +210,89 @@ def _semver_major(v: str) -> int | None:
         return None
 
 
+# The requirements files that define "a dependency we own" (#321).
+# requirements-dev.txt starts with `-r requirements.txt`, so parsing
+# both and following includes covers the whole declared set.
+_REQUIREMENTS_FILES = ("requirements.txt", "requirements-dev.txt")
+
+
+def _normalize_pkg_name(name: str) -> str:
+    """PEP 503 canonical form — lowercase, any run of -_. becomes a
+    single '-'. `Flask_Dance` and `flask-dance` are the same package."""
+    return re.sub(r"[-_.]+", "-", str(name).strip()).lower()
+
+
+def _parse_requirements(path: Path, _seen: set[Path] | None = None) -> set[str]:
+    """Canonical package names declared in one requirements file,
+    following `-r other.txt` includes. Unreadable file → empty set."""
+    seen = _seen if _seen is not None else set()
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return set()
+    if resolved in seen:
+        return set()  # cyclic `-r` include — stop
+    seen.add(resolved)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return set()
+
+    names: set[str] = set()
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()  # drop comments
+        if not line:
+            continue
+        include = re.match(r"^(?:-r|--requirement)[=\s]+(.+)$", line)
+        if include:
+            names |= _parse_requirements(
+                path.parent / include.group(1).strip(), seen
+            )
+            continue
+        if line.startswith("-"):
+            continue  # some other pip option (-e, --index-url, …)
+        # Strip extras / version specifiers / env markers:
+        #   "psycopg[binary]==3.2.13" -> "psycopg"
+        name = re.split(r"[\[<>=!~;\s]", line, maxsplit=1)[0]
+        if name:
+            names.add(_normalize_pkg_name(name))
+    return names
+
+
+def _declared_pip_packages() -> set[str]:
+    """Canonical names of the pip packages this project actually pins.
+
+    `pip list --outdated` reports the ENTIRE environment, which on the
+    CI runner includes transitive deps of our dev tooling (filelock ←
+    virtualenv ← pre-commit) and whatever the runner image preinstalls.
+    Those aren't ours to pin or bump, so major-version drift on them is
+    noise rather than debt (#321) — and `pip-audit` (gate 6) already
+    covers the full tree for the thing that DOES matter transitively,
+    namely CVEs.
+
+    Fail-open by design: if the requirements files can't be read this
+    returns an empty set and the caller reports everything, so a
+    parsing bug degrades to the old noisy behaviour instead of
+    silently blinding the audit.
+    """
+    names: set[str] = set()
+    for fname in _REQUIREMENTS_FILES:
+        names |= _parse_requirements(PROJECT_ROOT / fname)
+    return names
+
+
 def check_dependency_drift() -> list[Finding]:
     """Flag major-version-behind dependencies via `pip list --outdated`
     and `npm outdated`. Skips when the tooling isn't available
     (returns []) — the GitHub Actions workflow installs both, so the
     cron always exercises the full path.
+
+    Only dependencies we DECLARE are flagged (#321) — see
+    `_declared_pip_packages`. `npm outdated` already reports only
+    package.json's own deps, so no equivalent filter is needed there.
     """
     findings: list[Finding] = []
+    declared = _declared_pip_packages()
 
     # --- pip ---
     try:
@@ -230,6 +310,11 @@ def check_dependency_drift() -> list[Finding]:
                 packages = []
             for pkg in packages:
                 name = pkg.get("name", "?")
+                # #321: skip anything we don't declare ourselves. An
+                # empty `declared` means the requirements files were
+                # unreadable — fall back to reporting everything.
+                if declared and _normalize_pkg_name(name) not in declared:
+                    continue
                 installed = pkg.get("version", "?")
                 latest = pkg.get("latest_version", "?")
                 cur_major = _semver_major(installed)
@@ -443,7 +528,7 @@ CHECK_DESCRIPTIONS = {
     "todo-fixme-accumulation":
         "TODO/FIXME/XXX/HACK markers piling up — too many in total, or too many in one file.",
     "dependency-drift":
-        "A dependency stuck a major version behind the latest release.",
+        "A dependency we pin stuck a major version behind the latest release.",
     "stale-tests":
         "A test file untouched for 180+ days while its module may have moved on.",
     "code-duplication":
