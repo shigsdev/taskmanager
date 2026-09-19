@@ -228,6 +228,189 @@ class TestDependencyDriftCheck:
         assert td_mod.check_dependency_drift() == []
 
 
+class TestDriftScopedToDeclaredDeps:
+    """#321: `pip list --outdated` reports the WHOLE environment. A
+    transitive dep of our dev tooling (the real case: filelock, pulled
+    in by virtualenv ← pre-commit) is not ours to pin, so flagging it
+    is noise. Only packages named in requirements*.txt are actionable.
+    """
+
+    @staticmethod
+    def _pip_reports(monkeypatch, packages):
+        """Stub subprocess.run: pip returns `packages`, npm returns ''."""
+        class _Pip:
+            returncode = 0
+            stdout = json.dumps(packages)
+
+        class _Empty:
+            returncode = 0
+            stdout = ""
+
+        calls = {"i": 0}
+
+        def fake_run(cmd, **kw):
+            calls["i"] += 1
+            return _Pip() if calls["i"] == 1 else _Empty()
+
+        monkeypatch.setattr(td_mod.subprocess, "run", fake_run)
+
+    def test_undeclared_transitive_dep_not_flagged(
+        self, with_project_root: Path, monkeypatch,
+    ):
+        (with_project_root / "requirements.txt").write_text(
+            "cryptography==50.0.0\n", encoding="utf-8",
+        )
+        self._pip_reports(monkeypatch, [{
+            "name": "filelock",          # transitive via virtualenv
+            "version": "3.32.7",
+            "latest_version": "4.0.1",
+        }])
+        assert td_mod.check_dependency_drift() == []
+
+    def test_declared_dep_still_flagged(
+        self, with_project_root: Path, monkeypatch,
+    ):
+        """The signal we must NOT lose — every historical drift finding
+        (cryptography, gunicorn) was a declared pin."""
+        (with_project_root / "requirements.txt").write_text(
+            "cryptography==49.0.0\n", encoding="utf-8",
+        )
+        self._pip_reports(monkeypatch, [{
+            "name": "cryptography",
+            "version": "49.0.0",
+            "latest_version": "50.0.0",
+        }])
+        findings = td_mod.check_dependency_drift()
+        assert len(findings) == 1
+        assert "cryptography" in findings[0].detail
+
+    def test_mixed_report_keeps_only_declared(
+        self, with_project_root: Path, monkeypatch,
+    ):
+        (with_project_root / "requirements.txt").write_text(
+            "gunicorn==22.0.0\n", encoding="utf-8",
+        )
+        self._pip_reports(monkeypatch, [
+            {"name": "filelock", "version": "3.32.7",
+             "latest_version": "4.0.1"},
+            {"name": "gunicorn", "version": "22.0.0",
+             "latest_version": "26.0.0"},
+            {"name": "virtualenv", "version": "20.0.0",
+             "latest_version": "21.0.0"},
+        ])
+        findings = td_mod.check_dependency_drift()
+        assert len(findings) == 1
+        assert "gunicorn" in findings[0].detail
+
+    def test_declared_match_is_name_normalized(
+        self, with_project_root: Path, monkeypatch,
+    ):
+        """pip reports the distribution's own casing/separators; the
+        requirements file may spell it differently."""
+        (with_project_root / "requirements.txt").write_text(
+            "flask-dance==7.1.0\n", encoding="utf-8",
+        )
+        self._pip_reports(monkeypatch, [{
+            "name": "Flask_Dance",
+            "version": "7.1.0",
+            "latest_version": "8.0.0",
+        }])
+        assert len(td_mod.check_dependency_drift()) == 1
+
+    def test_no_requirements_files_falls_back_to_reporting_all(
+        self, with_project_root: Path, monkeypatch,
+    ):
+        """Fail-OPEN: an unreadable requirements set must degrade to the
+        old noisy behaviour, never to silence."""
+        assert not (with_project_root / "requirements.txt").exists()
+        self._pip_reports(monkeypatch, [{
+            "name": "filelock",
+            "version": "3.32.7",
+            "latest_version": "4.0.1",
+        }])
+        findings = td_mod.check_dependency_drift()
+        assert len(findings) == 1
+        assert "filelock" in findings[0].detail
+
+
+class TestDeclaredPipPackages:
+    def test_reads_both_requirements_files(self, with_project_root: Path):
+        (with_project_root / "requirements.txt").write_text(
+            "flask==3.1.3\n", encoding="utf-8",
+        )
+        (with_project_root / "requirements-dev.txt").write_text(
+            "ruff==0.6.3\n", encoding="utf-8",
+        )
+        assert td_mod._declared_pip_packages() == {"flask", "ruff"}
+
+    def test_strips_extras_specifiers_and_markers(
+        self, with_project_root: Path,
+    ):
+        (with_project_root / "requirements.txt").write_text(
+            "psycopg[binary]==3.2.13\n"
+            "requests>=2.33.0\n"
+            "openpyxl~=3.1.5\n"
+            'tomli==2.0.1; python_version < "3.11"\n',
+            encoding="utf-8",
+        )
+        assert td_mod._declared_pip_packages() == {
+            "psycopg", "requests", "openpyxl", "tomli",
+        }
+
+    def test_ignores_comments_blank_lines_and_options(
+        self, with_project_root: Path,
+    ):
+        (with_project_root / "requirements.txt").write_text(
+            "# a leading comment\n"
+            "\n"
+            "--index-url https://example.invalid/simple\n"
+            "flask==3.1.3  # an inline comment\n"
+            "-e .\n",
+            encoding="utf-8",
+        )
+        assert td_mod._declared_pip_packages() == {"flask"}
+
+    def test_follows_dash_r_includes(self, with_project_root: Path):
+        (with_project_root / "requirements.txt").write_text(
+            "flask==3.1.3\n", encoding="utf-8",
+        )
+        (with_project_root / "requirements-dev.txt").write_text(
+            "-r requirements.txt\nruff==0.6.3\n", encoding="utf-8",
+        )
+        assert td_mod._declared_pip_packages() == {"flask", "ruff"}
+
+    def test_cyclic_include_terminates(self, with_project_root: Path):
+        (with_project_root / "requirements.txt").write_text(
+            "-r requirements-dev.txt\nflask==3.1.3\n", encoding="utf-8",
+        )
+        (with_project_root / "requirements-dev.txt").write_text(
+            "-r requirements.txt\nruff==0.6.3\n", encoding="utf-8",
+        )
+        assert td_mod._declared_pip_packages() == {"flask", "ruff"}
+
+    def test_missing_files_return_empty_set(self, with_project_root: Path):
+        assert td_mod._declared_pip_packages() == set()
+
+    def test_real_requirements_parse_to_known_pins(self):
+        """Exercise the ACTUAL repo files, not just synthetic ones — a
+        parser that only works on fixtures is worthless here."""
+        declared = td_mod._declared_pip_packages()
+        assert {"flask", "cryptography", "gunicorn", "psycopg"} <= declared
+        assert "filelock" not in declared  # the #321 false positive
+
+
+class TestNormalizePkgName:
+    @pytest.mark.parametrize(("raw", "expected"), [
+        ("Flask", "flask"),
+        ("Flask_Dance", "flask-dance"),
+        ("flask.dance", "flask-dance"),
+        ("ruamel__yaml", "ruamel-yaml"),
+        ("  requests  ", "requests"),
+    ])
+    def test_pep503_canonical_form(self, raw, expected):
+        assert td_mod._normalize_pkg_name(raw) == expected
+
+
 class TestSemverMajor:
     def test_basic(self):
         assert td_mod._semver_major("1.2.3") == 1
@@ -600,7 +783,7 @@ class TestSendAuditEmail:
         body = cap["body"]["textContent"]
         assert "0 findings across 3 checks" in body
         # #302: shared clearer format — per-check plain-English description.
-        assert "✓ dependency-drift — A dependency stuck a major version behind" in body
+        assert "✓ dependency-drift — A dependency we pin stuck a major version" in body
 
     def test_findings_subject(self, monkeypatch):
         cap = self._patch_brevo(monkeypatch)

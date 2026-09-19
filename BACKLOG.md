@@ -10,7 +10,22 @@ file is the index pointer.
 
 ## In Progress
 
-_(nothing in flight)_
+- [ ] **Tech-debt drift check flags deps we don't own (#321)** —
+  The 2026-09-19 weekly audit reported `pip dep 'filelock' stuck at 3.32.7 —
+  latest is 4.0.1`. `filelock` appears in NEITHER requirements file, is never
+  imported by this app, and arrives transitively as virtualenv ← pre-commit —
+  so there is nothing to bump. Root cause: `check_dependency_drift` reads
+  `pip list --outdated`, which reports the ENTIRE runner environment (our dev
+  tooling's transitive deps + whatever the GH runner image preinstalls), not
+  the set we pin. Fix: scope the pip side to names declared in
+  `requirements*.txt` (PEP 503-normalized, extras/specifiers/markers stripped,
+  `-r` includes followed). Fail-OPEN — unreadable requirements degrade to the
+  old noisy behaviour, never to silence. No signal lost: every historical pip
+  drift row in this file (`cryptography`, `gunicorn`) is a declared pin, and
+  `pip-audit` (gate 6) still covers the full tree for CVEs, which is the part
+  that genuinely matters transitively. npm side unchanged — `npm outdated`
+  already reports only package.json's own deps. 🔄 IN PROGRESS — code + 17
+  tests written, awaiting gates + deploy.
 
 ## Completed
 
