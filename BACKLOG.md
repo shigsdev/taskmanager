@@ -10,7 +10,11 @@ file is the index pointer.
 
 ## In Progress
 
-- [ ] **`dedupe_recurring_tasks.py` missing the #168 DNS pre-flight (#322)** —
+_(nothing in flight)_
+
+## Completed
+
+- [x] **`dedupe_recurring_tasks.py` missing the #168 DNS pre-flight (#322)** —
   Operator-reported 2026-09-19. Running the #319 cleanup via
   `railway run python scripts/dedupe_recurring_tasks.py` from a Windows laptop
   produced a ~100-line SQLAlchemy traceback ending in
@@ -23,10 +27,14 @@ file is the index pointer.
   `getaddrinfo` probe, exit 2, hint naming THIS script) and call it before
   `from app import create_app` so the pool never opens. Also swapped the `…` in
   both hints for ASCII `...` — it renders as mojibake in the Windows cp1252
-  console the hint is actually read in. 🔄 IN PROGRESS — code + 8 tests
-  written, awaiting gates.
-
-## Completed
+  console the hint is actually read in. +8 tests: unresolvable host, timeout,
+  in-Railway no-op, non-Railway no-op, unset `DATABASE_URL`, default-socket-
+  timeout restored on the exit path, plus #169 contract guards (shebang is
+  line 1, git index mode is `100755`) so the in-container invocation can't
+  silently rot. Verified by reproducing the operator's exact invocation
+  locally: 1s, exit 2, one line instead of ~100. ALL 11 GATES GREEN (jest 438,
+  coverage 84.18%, local Playwright 107). DEPLOY GREEN + MONITOR GREEN @
+  4e59617a, 47/47 prod smoke. Phase 6 N/A — scripts + tests only.
 
 - [x] **Tech-debt drift check flags deps we don't own (#321)** —
   The 2026-09-19 weekly audit reported `pip dep 'filelock' stuck at 3.32.7 —
