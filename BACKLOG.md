@@ -10,7 +10,11 @@ file is the index pointer.
 
 ## In Progress
 
-- [ ] **Tech-debt drift check flags deps we don't own (#321)** —
+_(nothing in flight)_
+
+## Completed
+
+- [x] **Tech-debt drift check flags deps we don't own (#321)** —
   The 2026-09-19 weekly audit reported `pip dep 'filelock' stuck at 3.32.7 —
   latest is 4.0.1`. `filelock` appears in NEITHER requirements file, is never
   imported by this app, and arrives transitively as virtualenv ← pre-commit —
@@ -24,10 +28,16 @@ file is the index pointer.
   drift row in this file (`cryptography`, `gunicorn`) is a declared pin, and
   `pip-audit` (gate 6) still covers the full tree for CVEs, which is the part
   that genuinely matters transitively. npm side unchanged — `npm outdated`
-  already reports only package.json's own deps. 🔄 IN PROGRESS — code + 17
-  tests written, awaiting gates + deploy.
-
-## Completed
+  already reports only package.json's own deps. +17 tests (parser, PEP 503
+  normalization, `-r` include + cycle guard, the filelock regression, the
+  cryptography signal, and the fail-open path) plus one that parses the REAL
+  requirements files so a fixture-only parser can't pass. ALL 11 GATES GREEN
+  (jest 438, coverage 84.19%, local Playwright 107). Phase 6 desktop 1280×800
+  + mobile 375×812 on /architecture: edited cron row renders, 0/21 tables
+  clipped at desktop, the 12 wide ones at mobile scroll horizontally as
+  designed (#217) — verified the edited cell reaches the viewport when
+  swiped; 3 Mermaid SVGs render; parity PASS both; 0 console errors.
+  DEPLOY GREEN + MONITOR GREEN @ 84cbddd1, 47/47 prod smoke.
 
 - [x] **Split Routine — the nutritionist's next training block (#320)** —
   User forwarded their nutritionist's 2026-09-08 note: keep the current program
