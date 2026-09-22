@@ -20,6 +20,10 @@
     <p class="recurring-hint">Templates that spawn new tasks each day at 00:05. Multi-select rows to bulk-edit fields or pause/delete.</p>
 
     <div class="recurring-toolbar">
+        {# #323: create a template straight from this page. Until now the
+           only birth paths were a capture-bar hint, the task detail panel's
+           repeat rule, or a voice memo — this page could only edit. #}
+        <button type="button" id="recurringNew" class="btn btn-sm">+ New template</button>
         <button type="button" id="recurringSelectToggle" class="btn btn-sm">Select</button>
         <span id="recurringSelectedCount" class="recurring-selected-count" style="display:none">0 selected</span>
         <div class="recurring-bulk-actions" id="recurringBulkActions" style="display:none">
@@ -43,7 +47,8 @@
 <div class="detail-overlay" id="recurEditOverlay" style="display:none">
     <div class="detail-panel" id="recurEditPanel">
         <div class="detail-header">
-            <h3>Edit recurring template</h3>
+            {# #323: same panel serves edit + create; JS swaps the heading. #}
+            <h3 id="recurEditHeading">Edit recurring template</h3>
             <button type="button" class="icon-btn" id="recurEditClose" title="Close">✕</button>
         </div>
         <form id="recurEditForm">
@@ -157,7 +162,9 @@
             <textarea id="recurEditNotes" rows="3"></textarea>
 
             <div class="detail-actions">
-                <button type="submit" class="btn">Save</button>
+                <button type="submit" class="btn" id="recurEditSave">Save</button>
+                {# #323: pause/delete are meaningless on a template that
+                   doesn't exist yet — JS hides them in create mode. #}
                 <button type="button" class="btn" id="recurEditPause">Pause</button>
                 <button type="button" class="btn btn-danger" id="recurEditDelete">Delete</button>
             </div>

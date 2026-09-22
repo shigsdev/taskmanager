@@ -3922,6 +3922,19 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     flex-wrap: wrap;
     margin-bottom: 16px;
 }
+/* #323: "+ New template" is the page's primary action, so it gets the
+   accent fill rather than the neutral .btn-sm chrome its toolbar
+   siblings use — the affordance has to READ as the way to create a
+   template, not hide among the bulk-edit controls. (Deliberately not
+   defining a global .btn-primary: that class is referenced but never
+   defined, and adding it now would restyle /utilities too.) */
+.recurring-toolbar #recurringNew {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+    font-weight: 600;
+}
+.recurring-toolbar #recurringNew:hover { background: var(--accent-hover); }
 .recurring-bulk-actions {
     display: flex;
     align-items: center;

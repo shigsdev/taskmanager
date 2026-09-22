@@ -7,9 +7,11 @@
  */
 "use strict";
 
-const { buildRecurringEditPayload } = require(
-    "../../../static/recurring_helpers"
-);
+const {
+    buildRecurringEditPayload,
+    blankRecurringDraft,
+    recurringSubmitTarget,
+} = require("../../../static/recurring_helpers");
 
 const BASE = {
     title: "Standup",
@@ -123,5 +125,97 @@ describe("buildRecurringEditPayload — frequency branching + stale clearing", (
         const p = buildRecurringEditPayload();
         expect(p.title).toBe("");
         expect(p.day_of_week).toBeNull();
+    });
+});
+
+
+/**
+ * #323 — creating a template from /recurring. The same panel now serves
+ * both verbs, so the create-vs-edit split and the blank draft's defaults
+ * are real branches that need real assertions.
+ */
+describe("recurringSubmitTarget", () => {
+    test("no id → POST the collection (create)", () => {
+        expect(recurringSubmitTarget(null)).toEqual({
+            method: "POST", url: "/api/recurring",
+        });
+    });
+
+    test("an id → PATCH that template (edit)", () => {
+        expect(recurringSubmitTarget("abc-123")).toEqual({
+            method: "PATCH", url: "/api/recurring/abc-123",
+        });
+    });
+
+    test("blank / whitespace id counts as create, not PATCH /api/recurring/", () => {
+        // A stray "" must not build "/api/recurring/" — that's a 404 route,
+        // and silently failing to save is worse than obviously creating.
+        for (const blank of ["", "   ", undefined, null]) {
+            expect(recurringSubmitTarget(blank).method).toBe("POST");
+            expect(recurringSubmitTarget(blank).url).toBe("/api/recurring");
+        }
+    });
+
+    test("id is trimmed into the URL", () => {
+        expect(recurringSubmitTarget("  xyz  ").url).toBe("/api/recurring/xyz");
+    });
+});
+
+describe("blankRecurringDraft", () => {
+    test("empty text fields and safe frequency/type defaults", () => {
+        const d = blankRecurringDraft(new Date(2026, 8, 22));  // Tue 22 Sep 2026
+        expect(d.title).toBe("");
+        expect(d.url).toBe("");
+        expect(d.notes).toBe("");
+        expect(d.endDate).toBe("");
+        expect(d.projectId).toBe("");
+        expect(d.goalId).toBe("");
+        expect(d.frequency).toBe("daily");
+        expect(d.type).toBe("work");
+        expect(d.daysOfWeek).toEqual([]);
+        expect(d.weekOfMonth).toBe(1);
+    });
+
+    test("dayOfWeek uses 0=Monday, NOT JS getDay()'s 0=Sunday", () => {
+        // The app stores Python weekday() convention. Getting this wrong
+        // schedules every new weekly template one day early.
+        expect(blankRecurringDraft(new Date(2026, 8, 21)).dayOfWeek).toBe(0); // Mon
+        expect(blankRecurringDraft(new Date(2026, 8, 22)).dayOfWeek).toBe(1); // Tue
+        expect(blankRecurringDraft(new Date(2026, 8, 26)).dayOfWeek).toBe(5); // Sat
+        expect(blankRecurringDraft(new Date(2026, 8, 27)).dayOfWeek).toBe(6); // Sun
+    });
+
+    test("dayOfMonth is today's date", () => {
+        expect(blankRecurringDraft(new Date(2026, 8, 22)).dayOfMonth).toBe(22);
+        expect(blankRecurringDraft(new Date(2026, 0, 1)).dayOfMonth).toBe(1);
+    });
+
+    test("falls back to the real clock when no date is injected", () => {
+        const d = blankRecurringDraft();
+        expect(d.dayOfWeek).toBeGreaterThanOrEqual(0);
+        expect(d.dayOfWeek).toBeLessThanOrEqual(6);
+        expect(d.dayOfMonth).toBeGreaterThanOrEqual(1);
+        expect(d.dayOfMonth).toBeLessThanOrEqual(31);
+    });
+
+    test("a non-Date argument is ignored rather than crashing", () => {
+        expect(() => blankRecurringDraft("2026-09-22")).not.toThrow();
+        expect(blankRecurringDraft("2026-09-22").frequency).toBe("daily");
+    });
+
+    test("the draft feeds buildRecurringEditPayload into a valid create body", () => {
+        // End-to-end on the pure layer: blank draft -> payload the POST
+        // endpoint accepts (title is the only thing the user must supply).
+        const d = blankRecurringDraft(new Date(2026, 8, 22));
+        d.title = "  Water the plants  ";
+        d.frequency = "weekly";
+        const body = buildRecurringEditPayload(d);
+        expect(body.title).toBe("Water the plants");   // trimmed
+        expect(body.frequency).toBe("weekly");
+        expect(body.type).toBe("work");
+        expect(body.day_of_week).toBe(1);              // Tue
+        expect(body.days_of_week).toBeNull();
+        expect(body.day_of_month).toBeNull();
+        expect(body.end_date).toBeNull();
     });
 });

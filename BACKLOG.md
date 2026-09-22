@@ -10,7 +10,21 @@ file is the index pointer.
 
 ## In Progress
 
-_(nothing in flight)_
+- [ ] **Create a recurring template from /recurring (#323)** —
+  User-requested 2026-09-22: "you should be able to initiate reoccuring tasks
+  from the recurring tab". The page could list, edit and bulk-edit templates
+  but never *create* one — a template could only be born from a capture-bar
+  hint (`#daily`/`#weekly`/…), a task detail panel's repeat rule, or a voice
+  memo. So the page named after the feature was the one place you couldn't
+  start one. Backend needed nothing: `POST /api/recurring` + `create_recurring`
+  already existed and were already route-tested; this was a pure frontend gap.
+  **+ New template** opens the SAME #266 editor panel in create mode — heading
+  and submit label swap, Pause/Delete hide (they act on a row that doesn't
+  exist yet), and submit POSTs the collection instead of PATCHing an id.
+  Blank-draft defaults follow the capture-bar convention already documented on
+  /docs: Daily / Work, with the weekly + monthly pickers pre-set to today's
+  weekday / date. CACHE_VERSION v234→v235. 🔄 IN PROGRESS — code + 12 Jest +
+  2 Playwright tests written, awaiting deploy.
 
 ## Completed
 

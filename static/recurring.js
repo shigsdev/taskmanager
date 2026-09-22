@@ -240,8 +240,55 @@
         _el("recurEditMonthlyNthField").style.display = f === "monthly_nth_weekday" ? "" : "none";
     }
 
+    /**
+     * #323: put the shared panel into create or edit mode. Pause/Delete
+     * act on a row that doesn't exist yet in create mode, so they're
+     * hidden rather than left to fail at click time.
+     */
+    function _setEditorMode(isCreate) {
+        _el("recurEditHeading").textContent = isCreate
+            ? "New recurring template"
+            : "Edit recurring template";
+        _el("recurEditSave").textContent = isCreate ? "Create" : "Save";
+        // NOT `.hidden` — `.btn { display: inline-block }` is an author
+        // style and beats the UA stylesheet's `[hidden] { display: none }`,
+        // so the attribute alone leaves both buttons on screen (caught by
+        // the #323 Playwright test). style.display is what the rest of this
+        // file uses anyway.
+        _el("recurEditPause").style.display = isCreate ? "none" : "";
+        _el("recurEditDelete").style.display = isCreate ? "none" : "";
+    }
+
+    function openCreator() {
+        _populateEditorDropdowns();
+        var d = window.recurringHelpers.blankRecurringDraft();
+        _editId = null;
+        _el("recurEditId").value = "";
+        _el("recurEditTitle").value = d.title;
+        _el("recurEditFrequency").value = d.frequency;
+        _el("recurEditType").value = d.type;
+        _el("recurEditProject").value = d.projectId;
+        _el("recurEditGoal").value = d.goalId;
+        _el("recurEditUrl").value = d.url;
+        _el("recurEditEndDate").value = d.endDate;
+        _el("recurEditNotes").value = d.notes;
+        _el("recurEditDay").value = String(d.dayOfWeek);
+        _el("recurEditNthDay").value = String(d.dayOfWeek);
+        _el("recurEditDayOfMonth").value = String(d.dayOfMonth);
+        _el("recurEditWeekOfMonth").value = String(d.weekOfMonth);
+        document.querySelectorAll("#recurEditDays input[type=checkbox]")
+            .forEach(function (c) { c.checked = false; });
+        _el("recurEditResult").textContent = "";
+        _el("recurEditResult").classList.remove("utility-result-err");
+        _setEditorMode(true);
+        recurEditFreqChanged();
+        _el("recurEditOverlay").style.display = "";
+        _el("recurEditTitle").focus();
+    }
+
     function openEditor(rt) {
         _populateEditorDropdowns();
+        _setEditorMode(false);
         _editId = rt.id;
         _el("recurEditId").value = rt.id;
         _el("recurEditTitle").value = rt.title || "";
@@ -306,17 +353,20 @@
 
     async function saveEditor(e) {
         if (e) e.preventDefault();
-        if (!_editId) return;
+        // #323: no early `if (!_editId) return` — a null _editId now means
+        // "create", which is a legitimate submit.
         var resultEl = _el("recurEditResult");
+        var target = window.recurringHelpers.recurringSubmitTarget(_editId);
         try {
-            await window.apiFetch("/api/recurring/" + _editId, {
-                method: "PATCH",
+            await window.apiFetch(target.url, {
+                method: target.method,
                 body: JSON.stringify(collectEditor()),
             });
             closeEditor();
             await load();
         } catch (err) {
-            resultEl.textContent = "Save failed: " + (err.message || err);
+            resultEl.textContent = (target.method === "POST" ? "Create" : "Save")
+                + " failed: " + (err.message || err);
             resultEl.classList.add("utility-result-err");
         }
     }
@@ -386,6 +436,9 @@
             ]);
         });
         document.getElementById("recurringBulkDelete").addEventListener("click", bulkDelete);
+
+        // #323: create a template from this page.
+        _el("recurringNew").addEventListener("click", openCreator);
 
         // #266: editor wiring.
         _el("recurEditFrequency").addEventListener("change", recurEditFreqChanged);

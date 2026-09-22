@@ -56,8 +56,68 @@ function buildRecurringEditPayload(v) {
     return payload;
 }
 
+/**
+ * blankRecurringDraft — field values for a brand-new template (#323).
+ *
+ * The same editor panel serves edit and create, so "new" needs an
+ * explicit blank shape rather than whatever the last-opened template
+ * left behind. Frequency-specific defaults follow the capture-bar hint
+ * convention already documented on /docs: a fresh template matches
+ * TODAY's weekday / day-of-month, so picking "Weekly" without touching
+ * the day picker gives you "weekly on today's weekday".
+ *
+ * `today` is injected so this is deterministic under test; production
+ * callers pass nothing and get the real clock.
+ *
+ * NOTE the weekday conversion: JS `getDay()` is 0=Sunday, but this app
+ * stores 0=Monday (Python's `weekday()` convention — see the
+ * recurring_service module docstring). Off-by-one here would silently
+ * schedule every new weekly template one day early.
+ */
+function blankRecurringDraft(today) {
+    const d = today instanceof Date ? today : new Date();
+    return {
+        title: "",
+        frequency: "daily",
+        type: "work",
+        projectId: "",
+        goalId: "",
+        url: "",
+        notes: "",
+        endDate: "",
+        dayOfWeek: (d.getDay() + 6) % 7,  // Sun=0 -> Mon=0
+        daysOfWeek: [],
+        dayOfMonth: d.getDate(),
+        weekOfMonth: 1,
+    };
+}
+
+/**
+ * recurringSubmitTarget — where the editor form posts (#323).
+ *
+ * One form, two verbs: a template being edited PATCHes its own URL, a
+ * new one POSTs the collection. Keeping the branch here (rather than
+ * inline in the submit handler) means the create/edit split is covered
+ * by a real logic test instead of a string-match — CLAUDE.md
+ * anti-pattern #3. A blank/missing id is always "create"; anything
+ * else edits that id.
+ */
+function recurringSubmitTarget(editId) {
+    const id = typeof editId === "string" ? editId.trim() : editId;
+    if (!id) return { method: "POST", url: "/api/recurring" };
+    return { method: "PATCH", url: "/api/recurring/" + id };
+}
+
 if (typeof module !== "undefined" && module.exports) {
-    module.exports = { buildRecurringEditPayload };
+    module.exports = {
+        buildRecurringEditPayload,
+        blankRecurringDraft,
+        recurringSubmitTarget,
+    };
 } else if (typeof window !== "undefined") {
-    window.recurringHelpers = { buildRecurringEditPayload };
+    window.recurringHelpers = {
+        buildRecurringEditPayload,
+        blankRecurringDraft,
+        recurringSubmitTarget,
+    };
 }

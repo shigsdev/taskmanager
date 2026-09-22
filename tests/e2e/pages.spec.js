@@ -1357,3 +1357,65 @@ test.describe("Tier board horizontal overflow (#216 / #138 D-B1)", () => {
         expect(overflow.scrollWidth, JSON.stringify(overflow)).toBeLessThanOrEqual(overflow.innerWidth);
     });
 });
+
+/**
+ * #323 — create a recurring template from /recurring.
+ *
+ * Until this shipped, the page could only list and edit; a template had
+ * to be born from a capture-bar hint, a task's repeat rule, or a voice
+ * memo. The round-trip (button → blank panel → POST → row in the list
+ * after a reload) is the actual user path, so it gets a real browser
+ * assertion rather than trusting the Jest helper tests alone.
+ */
+test.describe("Recurring — create a template from the page (#323)", () => {
+    test("+ New template round-trips a new row into the list", async ({ page }) => {
+        await page.goto("/recurring?nosw=1");
+        await page.waitForLoadState("networkidle");
+
+        const title = `E2E weekly template ${Date.now()}`;
+
+        await page.locator("#recurringNew").click();
+        const panel = page.locator("#recurEditOverlay");
+        await expect(panel).toBeVisible({ timeout: 2000 });
+
+        // Create mode: heading + submit label switch, and the actions that
+        // need an existing row are hidden rather than left to fail.
+        await expect(page.locator("#recurEditHeading")).toHaveText("New recurring template");
+        await expect(page.locator("#recurEditSave")).toHaveText("Create");
+        await expect(page.locator("#recurEditPause")).toBeHidden();
+        await expect(page.locator("#recurEditDelete")).toBeHidden();
+
+        await page.locator("#recurEditTitle").fill(title);
+        await page.locator("#recurEditFrequency").selectOption("weekly");
+        // Weekly reveals the day picker, pre-set to today's weekday.
+        await expect(page.locator("#recurEditWeeklyField")).toBeVisible();
+        await page.locator("#recurEditSave").click();
+
+        // Panel closes and the list re-renders with the new template.
+        await expect(panel).toBeHidden({ timeout: 3000 });
+        await expect(page.locator(".recurring-row", { hasText: title })).toHaveCount(1);
+
+        // It really persisted — not just an optimistic client-side row.
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator(".recurring-row", { hasText: title })).toHaveCount(1);
+    });
+
+    test("opening an existing row after a create shows edit mode again", async ({ page }) => {
+        // The panel is shared, so create mode must not leak into the next
+        // edit (hidden Pause/Delete would strand the user).
+        await page.goto("/recurring?nosw=1");
+        await page.waitForLoadState("networkidle");
+
+        await page.locator("#recurringNew").click();
+        await expect(page.locator("#recurEditPause")).toBeHidden();
+        await page.locator("#recurEditClose").click();
+
+        await page.locator(".recurring-row .recurring-row-info").first().click();
+        await expect(page.locator("#recurEditOverlay")).toBeVisible({ timeout: 2000 });
+        await expect(page.locator("#recurEditHeading")).toHaveText("Edit recurring template");
+        await expect(page.locator("#recurEditSave")).toHaveText("Save");
+        await expect(page.locator("#recurEditPause")).toBeVisible();
+        await expect(page.locator("#recurEditDelete")).toBeVisible();
+    });
+});
