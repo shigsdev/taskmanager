@@ -23,6 +23,53 @@
                     id="reflTabVoice" role="tab">🎙️ Record</button>
         </div>
 
+        {# #325: the runway this reflection counts down to. Hidden until
+           something is configured, so the page stays quiet for anyone
+           not working toward a dated milestone. "Set a milestone" is
+           the discoverable entry point when it's empty. #}
+        <div class="reflection-milestone" id="reflMilestone">
+            <div class="reflection-milestone-main">
+                <div class="reflection-milestone-title" id="reflMilestoneTitle"></div>
+                <div class="reflection-milestone-sub" id="reflMilestoneSub"></div>
+                <div class="reflection-milestone-warn" id="reflMilestoneWarn"
+                     style="display:none" role="status"></div>
+            </div>
+            <button type="button" class="btn btn-sm" id="reflMilestoneEdit">Edit</button>
+        </div>
+
+        {# #325: continuity — what you committed to last time, so a
+           multi-sitting plan builds instead of restarting. #}
+        <div class="reflection-lastweek" id="reflLastWeek" style="display:none">
+            <span class="reflection-lastweek-label">Last reflection</span>
+            <span id="reflLastWeekText"></span>
+        </div>
+
+        <div class="reflection-milestone-form" id="reflMilestoneForm" style="display:none">
+            <label for="reflMilestoneGoal">What are you working toward?</label>
+            <select id="reflMilestoneGoal">
+                <option value="">— Type a name instead —</option>
+            </select>
+            <small class="form-hint">Link a goal and the name follows it, and
+                Claude attaches related new tasks to that goal.</small>
+
+            <label for="reflMilestoneLabel">Name</label>
+            <input type="text" id="reflMilestoneLabel" maxlength="120"
+                   placeholder="e.g. New role starts">
+
+            <label for="reflMilestoneDate">Date</label>
+            <input type="date" id="reflMilestoneDate">
+            <small class="form-hint">Goals don't carry a date, so the
+                countdown always uses this one.</small>
+
+            <div class="reflection-milestone-form-actions">
+                <button type="button" class="btn btn-sm" id="reflMilestoneSave">Save</button>
+                <button type="button" class="btn btn-sm" id="reflMilestoneCancel">Cancel</button>
+                <button type="button" class="btn btn-sm btn-danger"
+                        id="reflMilestoneClear">Clear</button>
+            </div>
+            <p class="utility-result" id="reflMilestoneResult" aria-live="polite"></p>
+        </div>
+
         {# #324: resumable drafts. A reflection written across several
            sittings (and across phone + laptop) needs its in-progress text
            to survive leaving the page, so it autosaves server-side. The

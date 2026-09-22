@@ -210,6 +210,70 @@
         return days + (days === 1 ? " day ago" : " days ago");
     }
 
+    var _MILE_MON = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+
+    /** "2026-11-02" -> "2 Nov 2026". Fixed month names, no locale, so
+     *  the header reads the same everywhere and is testable. */
+    function _mileDate(iso) {
+        if (typeof iso !== "string") return "";
+        var m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!m) return "";
+        var mon = _MILE_MON[parseInt(m[2], 10) - 1];
+        if (!mon) return "";
+        return parseInt(m[3], 10) + " " + mon + " " + m[1];
+    }
+
+    /**
+     * milestoneHeadline — the /reflection runway header (#325).
+     *
+     * Turns the resolved milestone into `{title, sub, warning}` (or null
+     * when nothing is configured, so the header stays out of the way
+     * until it has something to say).
+     *
+     * Countdown wording is the point: a reflection is most useful when
+     * you can see how much runway is left at a glance. A milestone in
+     * the PAST says so plainly rather than reading "0 weeks left"
+     * forever, and a milestone with no date still shows its name
+     * (partial configuration shouldn't blank the header).
+     */
+    function milestoneHeadline(m) {
+        if (!m || !m.configured) return null;
+        var label = m.label || "your milestone";
+        var out = { title: "", sub: "", warning: m.warning || "" };
+
+        if (!m.date) {
+            out.title = "Working toward: " + label;
+            out.sub = "No date set";
+            return out;
+        }
+
+        var when = _mileDate(m.date) || m.date;
+        out.title = "Working toward: " + label + " · " + when;
+
+        var days = m.days_left;
+        if (typeof days !== "number") { out.sub = ""; return out; }
+
+        if (m.passed) {
+            var ago = Math.abs(days);
+            out.sub = ago === 0
+                ? "That was today"
+                : "That was " + ago + (ago === 1 ? " day" : " days") + " ago";
+            return out;
+        }
+        if (days === 0) { out.sub = "That's today"; return out; }
+        if (days === 1) { out.sub = "1 day left"; return out; }
+
+        var weeks = m.weeks_left;
+        var dayPart = days + " days left";
+        out.sub = (typeof weeks === "number" && weeks > 1)
+            ? weeks + " weeks left · " + days + " days"
+            : dayPart;
+        return out;
+    }
+
     var api = {
         defaultChecked: defaultChecked,
         actionLabel: actionLabel,
@@ -219,6 +283,7 @@
         selectedActions: selectedActions,
         appendTranscriptSegment: appendTranscriptSegment,
         shouldAutosaveDraft: shouldAutosaveDraft,
+        milestoneHeadline: milestoneHeadline,
         formatSavedAt: formatSavedAt,
     };
 

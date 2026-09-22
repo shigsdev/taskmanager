@@ -174,7 +174,8 @@ user just wrote (or spoke) a weekly reflection. Read it and propose \
 concrete changes to their projects, goals, and tasks.
 
 Today's date is {today} (ISO week {iso_week}).
-
+{milestone}
+{recent_reflections}
 The user's CURRENT state (only act on these — never invent IDs):
 
 PROJECTS (id | name | type | status | priority):
@@ -320,12 +321,76 @@ def _extract_action_object(text: str) -> dict[str, Any]:
     return {"explicit": [], "suggested": []}
 
 
-def analyze_reflection(transcript: str) -> dict[str, Any]:
+# #325: how many past reflections Claude sees, and how much of each.
+# Three is enough to establish "what I said I'd do and whether it
+# happened" without turning every analysis into a re-read of the whole
+# history (tokens, and older context crowds out this week's words).
+_RECENT_REFLECTION_COUNT = 3
+_RECENT_REFLECTION_CHARS = 1200
+
+
+def _milestone_block() -> str:
+    """The runway line, wrapped for the prompt. Empty when unset."""
+    try:
+        from milestone_service import milestone_prompt_line
+        line = milestone_prompt_line()
+    except Exception:  # noqa: BLE001 — context is a bonus, never a blocker
+        logger.exception("milestone prompt line failed; continuing without it")
+        return ""
+    return f"\n{line}\n" if line else ""
+
+
+def recent_reflections_block(exclude_id=None) -> str:
+    """Prior reflections, newest first, as prompt context (#325).
+
+    Turns a series of isolated check-ins into a thread: Claude can see
+    what the user committed to last time and whether this week's words
+    follow through. Truncated per-reflection so a long transcript can't
+    crowd out the one being analysed. Best-effort — an error here must
+    never block the analysis.
+    """
+    try:
+        rows = list_reflections(limit=_RECENT_REFLECTION_COUNT + 1)
+    except Exception:  # noqa: BLE001
+        logger.exception("recent reflections lookup failed; continuing")
+        return ""
+    lines = []
+    for r in rows:
+        if exclude_id is not None and r.id == exclude_id:
+            continue
+        if len(lines) >= _RECENT_REFLECTION_COUNT:
+            break
+        text = (r.transcript or "").strip()
+        if not text:
+            continue
+        if len(text) > _RECENT_REFLECTION_CHARS:
+            text = text[:_RECENT_REFLECTION_CHARS].rstrip() + "…"
+        when = r.created_at.date().isoformat() if r.created_at else r.iso_week
+        lines.append(f"[{when}] {text}")
+    if not lines:
+        return ""
+    body = "\n\n".join(lines)
+    return (
+        "\nThe user's PREVIOUS reflections (newest first) — use these for "
+        "continuity: notice what they committed to before, what recurs, and "
+        "what has quietly stalled. Do NOT re-propose something already "
+        "acted on.\n"
+        f"{body}\n"
+    )
+
+
+def analyze_reflection(transcript: str, exclude_id=None) -> dict[str, Any]:
     """Send a reflection transcript to Claude and return proposed actions.
 
     Returns ``{"explicit": [...], "suggested": [...], "ai_cost_usd":
     float | None, "snapshot": {...}}`` where the action lists are
     normalised + validated against the current state.
+
+    ``exclude_id`` (#325) is the id of the reflection being analysed.
+    The API persists the transcript BEFORE calling this, so without it
+    the reflection would appear in its own "previous reflections"
+    context — handing Claude the same words twice and inviting it to
+    treat this week's thoughts as last week's commitments.
 
     Raises:
         RuntimeError: if ANTHROPIC_API_KEY is missing or the call fails.
@@ -344,6 +409,11 @@ def analyze_reflection(transcript: str) -> dict[str, Any]:
     prompt = _REFLECT_PROMPT.format(
         today=datetime.now(UTC).date().isoformat(),
         iso_week=current_iso_week(),
+        # #325: runway + continuity. Without these every reflection is
+        # analysed cold — week 4 has no idea what week 1 committed to,
+        # and no idea a deadline exists.
+        milestone=_milestone_block(),
+        recent_reflections=recent_reflections_block(exclude_id=exclude_id),
         projects=_fmt_rows(
             snapshot["projects"],
             ("id", "name", "type", "status", "priority"),

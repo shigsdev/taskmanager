@@ -67,7 +67,6 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "priority":    {"desc": "How important right now", "notes": "P1 / P2 / P3"},
             "status":      {"desc": "Active, achieved, or paused", "notes": ""},
             "actions":        {"desc": "Free-text notes on what you're doing for this goal", "notes": "Optional"},
-            "target_date":    {"desc": "When you want to hit it", "notes": "Optional"},
             "priority_rank":  {"desc": "Sort order within priority tier", "notes": "Lower = higher in the goals list"},
             "target_quarter": {"desc": "Quarter you're aiming to hit it (e.g. \"Q2 2026\")", "notes": "Optional, free text"},
             "notes":          {"desc": "Long-form notes on the goal", "notes": "Optional"},
@@ -207,7 +206,7 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "vars. Single-user app — no per-user namespacing."
         ),
         "columns": {
-            "key":    {"desc": "Well-known config name (e.g. 'weekly_focus_slot_count')", "notes": "Unique"},
+            "key":    {"desc": "Well-known config name (e.g. 'weekly_focus_slot_count', or the #325 'reflection_milestone_label' / '_date' / '_goal_id' trio backing the /reflection runway header)", "notes": "Unique"},
             "value":  {"desc": "String value (caller parses to int / etc.)", "notes": "500 char cap"},
         },
     },

@@ -5043,6 +5043,75 @@ table.quality-gates code {
     font: inherit;
     resize: vertical;
 }
+/* #325: the runway header. Copper-accented because it's the page's
+   orienting fact — the first thing you should read. Muted when nothing
+   is set, so an unconfigured milestone invites rather than shouts. */
+.reflection-milestone {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 12px;
+    padding: 10px 14px;
+    border: 1px solid var(--copper, #b87333);
+    border-left-width: 3px;
+    border-radius: var(--radius, 6px);
+    background: var(--surface-sunk, rgba(184, 115, 51, 0.08));
+}
+.reflection-milestone-empty {
+    border-color: var(--border, #3a3a3a);
+    background: transparent;
+}
+.reflection-milestone-main { min-width: 0; }  /* let long labels wrap */
+.reflection-milestone-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    overflow-wrap: anywhere;
+}
+.reflection-milestone-sub {
+    font-size: 0.85rem;
+    color: var(--text-muted, #8b8b8b);
+    margin-top: 2px;
+}
+.reflection-milestone-warn {
+    font-size: 0.85rem;
+    color: var(--rust, #c0392b);
+    margin-top: 4px;
+}
+.reflection-milestone-form {
+    margin: 0 0 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--border, #3a3a3a);
+    border-radius: var(--radius, 6px);
+    background: var(--surface, #1e1e1e);
+}
+.reflection-milestone-form label {
+    display: block;
+    margin: 8px 0 4px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+.reflection-milestone-form select,
+.reflection-milestone-form input { width: 100%; }
+.reflection-milestone-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+/* #325: "Last reflection — …" continuity line. */
+.reflection-lastweek {
+    margin: 0 0 12px;
+    font-size: 0.85rem;
+    color: var(--text-muted, #8b8b8b);
+    overflow-wrap: anywhere;
+}
+.reflection-lastweek-label {
+    font-weight: 600;
+    color: var(--text, #e8e8e8);
+    margin-right: 6px;
+}
+
 /* #324: resumable drafts. The banner only renders when a draft was
    actually restored, so it should read as reassurance ("your words are
    still here"), not as a warning — sage, not rust. */

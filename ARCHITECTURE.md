@@ -246,6 +246,26 @@ component is added, a data flow changes, or a security boundary shifts.
   exactly one place at every instant — never zero (lost reflection),
   never two (a stale draft reappearing and inviting a duplicate
   submit).
+  **Runway + continuity (#325)**: `milestone_service.py` stores ONE
+  milestone ("what you're working toward, and by when") in the
+  `AppSetting` key/value store (`reflection_milestone_label` /
+  `_date` / `_goal_id` — no migration). Its name is either typed or
+  linked to a `Goal`, in which case the label FOLLOWS that goal's title
+  and the goal id is offered to Claude so proposals attach to it. The
+  date always lives on the milestone because `goals` has no
+  `target_date` column — only free-text `target_quarter`, which cannot
+  drive a day-accurate countdown. A linked goal that is renamed updates
+  the header; one that is deleted or completed degrades LOUDLY via a
+  `warning` field rather than silently ceasing to track.
+  `analyze_reflection` now injects two extra prompt blocks: the runway
+  line (so proposals are sequenced and time-boxed against a real date)
+  and the previous 3 reflections, truncated to 1200 chars each (so week
+  N builds on week N−1 instead of being analysed cold). The reflection
+  under analysis is excluded from its own history block — the API
+  persists the transcript BEFORE analysing, so without that exclusion
+  Claude would receive the same words twice. Drafts are excluded too.
+  Both blocks are best-effort: a failure there logs and yields an empty
+  string rather than blocking the analysis.
 - **URL save**: user pastes or types a URL in the quick-capture bar → the
   browser `POST`s to `/api/tasks/url-preview` → Flask resolves the hostname,
   validates it is not a private/loopback IP (SSRF protection), fetches the
@@ -607,6 +627,7 @@ the code.
 /api/reflection                                  # POST submit (typed/audio), GET list
 /api/reflection/transcribe-segment               # POST — #232 one-segment Whisper transcribe for the pause/resume flow (no Reflection row, no Claude call)
 /api/reflection/draft                            # GET open draft / PUT autosave in-progress text / DELETE discard — #324 resumable multi-sitting reflections (free: no Whisper, no Claude)
+/api/reflection/milestone                        # GET resolved runway / PUT set (label or goal_id + target_date) / DELETE clear — #325; feeds the /reflection header AND the Claude prompt
 /api/reflection/<uuid:reflection_id>             # GET one (history detail), DELETE soft-delete (#238)
 /api/reflection/<uuid:reflection_id>/confirm     # POST apply confirmed actions
 /api/reflection/<uuid:reflection_id>/archive     # POST #238 — hide from default history

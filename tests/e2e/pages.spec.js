@@ -1524,3 +1524,103 @@ test.describe("Reflection — resumable drafts (#324)", () => {
         expect(draft.draft).toBeNull();
     });
 });
+
+/**
+ * #325 — the reflection milestone header.
+ *
+ * The countdown is what makes a multi-week plan legible, so the
+ * round-trip (set → header renders → survives a reload) gets a real
+ * browser assertion rather than trusting the helper tests alone.
+ */
+test.describe("Reflection — milestone runway (#325)", () => {
+    test.beforeEach(async ({ page }) => {
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.evaluate(() =>
+            fetch("/api/reflection/milestone", { method: "DELETE" }));
+    });
+
+    test.afterEach(async ({ page }) => {
+        await page.evaluate(() =>
+            fetch("/api/reflection/milestone", { method: "DELETE" }));
+    });
+
+    test("unset shows an invitation, not an empty bar", async ({ page }) => {
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator("#reflMilestoneTitle")).toHaveText(
+            "No milestone set", { timeout: 5000 },
+        );
+        await expect(page.locator("#reflMilestoneEdit")).toHaveText("Set a milestone");
+    });
+
+    test("setting a milestone renders the countdown and survives reload",
+        async ({ page }) => {
+            await page.goto("/reflection?nosw=1");
+            await page.waitForLoadState("networkidle");
+
+            await page.locator("#reflMilestoneEdit").click();
+            await expect(page.locator("#reflMilestoneForm")).toBeVisible();
+
+            await page.locator("#reflMilestoneLabel").fill("New role starts");
+            await page.locator("#reflMilestoneDate").fill("2099-01-01");
+            await page.locator("#reflMilestoneSave").click();
+
+            await expect(page.locator("#reflMilestoneForm")).toBeHidden({ timeout: 5000 });
+            await expect(page.locator("#reflMilestoneTitle")).toContainText(
+                "Working toward: New role starts",
+            );
+            await expect(page.locator("#reflMilestoneTitle")).toContainText("1 Jan 2099");
+            await expect(page.locator("#reflMilestoneSub")).toContainText("left");
+
+            await page.reload();
+            await page.waitForLoadState("networkidle");
+            await expect(page.locator("#reflMilestoneTitle")).toContainText(
+                "New role starts", { timeout: 5000 },
+            );
+        });
+
+    test("clearing removes it for good", async ({ page }) => {
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator("#reflMilestoneEdit").click();
+        await page.locator("#reflMilestoneLabel").fill("Temporary");
+        await page.locator("#reflMilestoneDate").fill("2099-01-01");
+        await page.locator("#reflMilestoneSave").click();
+        await expect(page.locator("#reflMilestoneTitle")).toContainText("Temporary");
+
+        await page.locator("#reflMilestoneEdit").click();
+        page.once("dialog", (d) => d.accept());
+        await page.locator("#reflMilestoneClear").click();
+        await expect(page.locator("#reflMilestoneTitle")).toHaveText(
+            "No milestone set", { timeout: 5000 },
+        );
+
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator("#reflMilestoneTitle")).toHaveText(
+            "No milestone set", { timeout: 5000 },
+        );
+    });
+
+    test("picking a goal takes over the name field", async ({ page }) => {
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator("#reflMilestoneEdit").click();
+
+        const opts = page.locator("#reflMilestoneGoal option");
+        if (await opts.count() < 2) test.skip(true, "no goals seeded");
+
+        await page.locator("#reflMilestoneGoal").selectOption({ index: 1 });
+        // The label mirrors the goal and locks — the name comes from the goal.
+        await expect(page.locator("#reflMilestoneLabel")).toBeDisabled();
+        const goalTitle = await opts.nth(1).textContent();
+        await expect(page.locator("#reflMilestoneLabel")).toHaveValue(goalTitle.trim());
+
+        await page.locator("#reflMilestoneDate").fill("2099-01-01");
+        await page.locator("#reflMilestoneSave").click();
+        await expect(page.locator("#reflMilestoneTitle")).toContainText(
+            goalTitle.trim(), { timeout: 5000 },
+        );
+    });
+});

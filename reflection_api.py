@@ -34,6 +34,7 @@ import logging
 from flask import Blueprint, g, jsonify, request
 
 from auth import login_required
+from milestone_service import clear_milestone, get_milestone, set_milestone
 from models import ReflectionInputMode
 from rate_limit import PAID_API, limiter
 from reflection_service import (
@@ -201,7 +202,8 @@ def submit(email: str):  # noqa: ARG001
     # error so the client shows "saved, analysis failed — retry" and
     # the transcript is visible in the history list, NOT lost.
     try:
-        analysis = analyze_reflection(transcript)
+        # #325: exclude THIS reflection from its own continuity context.
+        analysis = analyze_reflection(transcript, exclude_id=reflection.id)
     except RuntimeError as e:
         logger.warning(
             "Reflection analysis failed (transcript %s saved): %s",
@@ -391,6 +393,49 @@ def put_draft(email: str):  # noqa: ARG001
 def delete_draft(email: str):  # noqa: ARG001
     """Discard the open draft. 204 either way — idempotent."""
     discard_draft()
+    return "", 204
+
+
+# --- Milestone: the runway the reflection counts down to (#325) -------------
+# Free endpoints (no paid API). The milestone feeds BOTH the /reflection
+# header and the Claude prompt, so proposals get sequenced against a real
+# date instead of floating free.
+
+
+@bp.get("/milestone")
+@login_required
+def get_milestone_route(email: str):  # noqa: ARG001
+    """The resolved milestone (may be unconfigured)."""
+    return jsonify(get_milestone())
+
+
+@bp.put("/milestone")
+@login_required
+@validate_json_body
+def put_milestone(email: str):  # noqa: ARG001
+    """Set the milestone.
+
+    Body: ``{"label": "...", "target_date": "YYYY-MM-DD", "goal_id": "..."}``.
+    ``goal_id`` links the name to a goal (the label then follows that
+    goal's title); omit it to use the typed ``label``.
+    """
+    data = g.json_body
+    try:
+        milestone = set_milestone(
+            label=data.get("label"),
+            target_date=data.get("target_date"),
+            goal_id=data.get("goal_id") or None,
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 422
+    return jsonify(milestone), 200
+
+
+@bp.delete("/milestone")
+@login_required
+def delete_milestone(email: str):  # noqa: ARG001
+    """Clear the milestone. Idempotent."""
+    clear_milestone()
     return "", 204
 
 

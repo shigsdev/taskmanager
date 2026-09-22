@@ -10,7 +10,33 @@ file is the index pointer.
 
 ## In Progress
 
-_(nothing in flight)_
+- [ ] **Reflection milestone — runway + continuity in the reflection tab (#325)** —
+  User-requested 2026-09-22: "this should be built into the task manager ui in
+  the reflection tab" — i.e. stop making them hand-type the orientation line
+  I'd suggested as a workaround in #324. Two halves, both feeding the UI AND
+  the Claude prompt. **Runway:** `milestone_service.py` stores ONE milestone
+  in the existing `AppSetting` store (no migration) — name either typed or
+  LINKED to a Goal, plus a date. The /reflection header renders
+  "Working toward: X · 2 Nov 2026 / 6 weeks left · 41 days"; unset shows an
+  invitation rather than an empty bar. A linked goal's title is followed
+  live; a deleted/completed one degrades LOUDLY via a `warning` field rather
+  than silently ceasing to track. **Design correction the user should know:**
+  the options I offered implied a goal could supply the DATE — it can't.
+  `goals` has no `target_date` column, only free-text `target_quarter`, so
+  linking supplies the name + the attachment point and the date always lives
+  on the milestone. That wrong assumption came from a REAL doc bug, now
+  fixed: `_SCHEMA_DESCRIPTIONS["goals"]` documented a `target_date` column
+  that never existed — the drift gate only catches column-without-description,
+  never description-without-column, so it sat there indefinitely.
+  **Continuity:** the prompt now carries the previous 3 reflections
+  (truncated 1200 chars each) so week N builds on week N−1, plus a
+  "Last reflection — …" line on the page. The reflection under analysis is
+  excluded from its own history block (the API persists BEFORE analysing, so
+  without it Claude sees this week's words twice) and drafts never count as
+  something previously said. Both blocks best-effort — a failure logs and
+  yields "" rather than blocking analysis. CACHE_VERSION v236→v237.
+  🔄 IN PROGRESS — code + 28 pytest + 12 Jest + 4 Playwright tests
+  written, awaiting deploy.
 
 ## Completed
 

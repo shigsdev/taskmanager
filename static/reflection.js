@@ -1072,9 +1072,165 @@
         }
     }
 
+    // ---- milestone: the runway this reflection counts down to (#325) ----
+    // Before this, every reflection was analysed cold — no deadline, no
+    // memory of last week. The header makes the runway visible; the
+    // server hands the same facts to Claude.
+
+    var mileWrap = document.getElementById("reflMilestone");
+    var mileTitle = document.getElementById("reflMilestoneTitle");
+    var mileSub = document.getElementById("reflMilestoneSub");
+    var mileWarn = document.getElementById("reflMilestoneWarn");
+    var mileEditBtn = document.getElementById("reflMilestoneEdit");
+    var mileForm = document.getElementById("reflMilestoneForm");
+    var mileGoal = document.getElementById("reflMilestoneGoal");
+    var mileLabel = document.getElementById("reflMilestoneLabel");
+    var mileDate = document.getElementById("reflMilestoneDate");
+    var mileResult = document.getElementById("reflMilestoneResult");
+    var lastWeekWrap = document.getElementById("reflLastWeek");
+    var lastWeekText = document.getElementById("reflLastWeekText");
+    var _milestone = null;
+
+    function renderMilestone(m) {
+        _milestone = m;
+        var head = RH_.milestoneHeadline(m);
+        if (!head) {
+            // Nothing configured — offer the entry point rather than
+            // rendering an empty bar the user can't act on.
+            mileTitle.textContent = "No milestone set";
+            mileSub.textContent = "Add one to count down and let Claude plan against it";
+            mileEditBtn.textContent = "Set a milestone";
+            mileWarn.style.display = "none";
+            mileWrap.classList.add("reflection-milestone-empty");
+            return;
+        }
+        mileWrap.classList.remove("reflection-milestone-empty");
+        mileTitle.textContent = head.title;
+        mileSub.textContent = head.sub;
+        mileEditBtn.textContent = "Edit";
+        if (head.warning) {
+            mileWarn.textContent = head.warning;
+            mileWarn.style.display = "";
+        } else {
+            mileWarn.style.display = "none";
+        }
+    }
+
+    async function openMilestoneForm() {
+        mileResult.textContent = "";
+        // Goal dropdown, refetched each open so a goal created since the
+        // page loaded is selectable without a reload.
+        var goals = [];
+        try {
+            var res = await window.apiFetch("/api/goals");
+            goals = Array.isArray(res) ? res : (res && res.goals) || [];
+        } catch (e) { /* fall back to the type-a-name path */ }
+        mileGoal.replaceChildren();
+        var none = document.createElement("option");
+        none.value = "";
+        none.textContent = "— Type a name instead —";
+        mileGoal.appendChild(none);
+        goals.forEach(function (g) {
+            var o = document.createElement("option");
+            o.value = g.id;
+            o.textContent = g.title;
+            mileGoal.appendChild(o);
+        });
+        mileGoal.value = (_milestone && _milestone.goal_id) || "";
+        mileLabel.value = (_milestone && _milestone.source === "custom"
+            && _milestone.label) || "";
+        mileDate.value = (_milestone && _milestone.date) || "";
+        mileLabel.disabled = !!mileGoal.value;
+        mileForm.style.display = "";
+        mileGoal.focus();
+    }
+
+    function closeMilestoneForm() { mileForm.style.display = "none"; }
+
+    async function saveMilestone() {
+        var body = { target_date: mileDate.value || "" };
+        if (mileGoal.value) {
+            body.goal_id = mileGoal.value;
+        } else {
+            body.label = mileLabel.value || "";
+        }
+        try {
+            var m = await window.apiFetch("/api/reflection/milestone", {
+                method: "PUT",
+                body: JSON.stringify(body),
+            });
+            renderMilestone(m);
+            closeMilestoneForm();
+        } catch (e) {
+            mileResult.textContent = "Couldn't save: " + (e.message || e);
+            mileResult.classList.add("utility-result-err");
+        }
+    }
+
+    async function clearMilestone() {
+        if (!window.confirm("Clear the milestone?")) return;
+        try {
+            await window.apiFetch("/api/reflection/milestone", { method: "DELETE" });
+        } catch (e) { /* fall through — re-render from the server below */ }
+        await loadMilestone();
+        closeMilestoneForm();
+    }
+
+    async function loadMilestone() {
+        try {
+            var m = await window.apiFetch("/api/reflection/milestone");
+            renderMilestone(m);
+        } catch (e) {
+            // A milestone is a bonus, never a blocker — leave the header
+            // as-is rather than throwing an error at someone who just
+            // wants to write a reflection.
+            mileWrap.style.display = "none";
+        }
+    }
+
+    /** #325: "Last reflection — <opening words>", so you can see where
+     *  you left off without opening History. */
+    async function loadLastReflection() {
+        try {
+            var data = await window.apiFetch("/api/reflection");
+            var rows = (data && data.reflections) || [];
+            if (!rows.length) return;
+            var r = rows[0];
+            var text = (r.transcript || "").trim();
+            if (!text) return;
+            if (text.length > 160) text = text.slice(0, 160).trim() + "…";
+            lastWeekText.textContent = text;
+            lastWeekWrap.style.display = "";
+        } catch (e) { /* non-essential */ }
+    }
+
+    if (mileEditBtn) {
+        mileEditBtn.addEventListener("click", function () {
+            if (mileForm.style.display === "none") openMilestoneForm();
+            else closeMilestoneForm();
+        });
+        document.getElementById("reflMilestoneSave")
+            .addEventListener("click", saveMilestone);
+        document.getElementById("reflMilestoneCancel")
+            .addEventListener("click", closeMilestoneForm);
+        document.getElementById("reflMilestoneClear")
+            .addEventListener("click", clearMilestone);
+        // Picking a goal means the name comes from it — make that visible
+        // rather than leaving a stale typed name in a disabled-looking box.
+        mileGoal.addEventListener("change", function () {
+            mileLabel.disabled = !!mileGoal.value;
+            if (mileGoal.value) {
+                var sel = mileGoal.options[mileGoal.selectedIndex];
+                mileLabel.value = sel ? sel.textContent : "";
+            }
+        });
+    }
+
     // ---- init ----
     selectMode("type");
     showState("input");
     loadHistory();
     restoreDraft();
+    loadMilestone();
+    loadLastReflection();
 })();

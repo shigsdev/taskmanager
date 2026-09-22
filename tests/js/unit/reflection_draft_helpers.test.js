@@ -94,3 +94,94 @@ describe("formatSavedAt", () => {
         expect(formatSavedAt(iso)).toBe("just now");
     });
 });
+
+/**
+ * #325 — the /reflection runway header.
+ *
+ * The countdown is the whole point of the feature, so its wording gets
+ * real assertions: a passed milestone must SAY so rather than reading
+ * "0 weeks left" forever, and a partially-configured milestone must
+ * still show its name instead of blanking the header.
+ */
+describe("milestoneHeadline", () => {
+    const { milestoneHeadline } = require("../../../static/reflection_helpers");
+
+    const base = {
+        configured: true, label: "New role", date: "2026-11-02",
+        days_left: 41, weeks_left: 6, passed: false, warning: null,
+    };
+
+    test("unconfigured returns null so the header stays quiet", () => {
+        expect(milestoneHeadline(null)).toBeNull();
+        expect(milestoneHeadline({ configured: false })).toBeNull();
+    });
+
+    test("future milestone shows name, date and both units", () => {
+        const h = milestoneHeadline(base);
+        expect(h.title).toBe("Working toward: New role · 2 Nov 2026");
+        expect(h.sub).toBe("6 weeks left · 41 days");
+    });
+
+    test("under a week drops the weeks half", () => {
+        const h = milestoneHeadline({ ...base, days_left: 4, weeks_left: 1 });
+        expect(h.sub).toBe("4 days left");
+    });
+
+    test("today and tomorrow read naturally, not '0 weeks'", () => {
+        expect(milestoneHeadline({ ...base, days_left: 0, weeks_left: 0 }).sub)
+            .toBe("That's today");
+        expect(milestoneHeadline({ ...base, days_left: 1, weeks_left: 1 }).sub)
+            .toBe("1 day left");
+    });
+
+    test("a PASSED milestone says so instead of clamping to zero", () => {
+        const h = milestoneHeadline({
+            ...base, days_left: -3, weeks_left: -1, passed: true,
+        });
+        expect(h.sub).toBe("That was 3 days ago");
+        expect(h.sub).not.toContain("left");
+    });
+
+    test("passed today is worded separately from 'N days ago'", () => {
+        expect(milestoneHeadline({
+            ...base, days_left: 0, weeks_left: 0, passed: true,
+        }).sub).toBe("That was today");
+    });
+
+    test("singular day ago", () => {
+        expect(milestoneHeadline({
+            ...base, days_left: -1, weeks_left: -1, passed: true,
+        }).sub).toBe("That was 1 day ago");
+    });
+
+    test("name but no date still renders — partial config isn't blank", () => {
+        const h = milestoneHeadline({
+            configured: true, label: "New role", date: null,
+        });
+        expect(h.title).toBe("Working toward: New role");
+        expect(h.sub).toBe("No date set");
+    });
+
+    test("missing label falls back rather than printing 'undefined'", () => {
+        const h = milestoneHeadline({ ...base, label: null });
+        expect(h.title).toContain("your milestone");
+        expect(h.title).not.toContain("undefined");
+    });
+
+    test("warning is surfaced for the caller to render", () => {
+        const h = milestoneHeadline({ ...base, warning: "goal was deleted" });
+        expect(h.warning).toBe("goal was deleted");
+    });
+
+    test("date formatting is locale-independent", () => {
+        expect(milestoneHeadline({ ...base, date: "2026-01-01" }).title)
+            .toContain("1 Jan 2026");
+        expect(milestoneHeadline({ ...base, date: "2026-12-31" }).title)
+            .toContain("31 Dec 2026");
+    });
+
+    test("a malformed date degrades to the raw string, not a crash", () => {
+        const h = milestoneHeadline({ ...base, date: "not-a-date" });
+        expect(h.title).toContain("not-a-date");
+    });
+});
