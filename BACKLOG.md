@@ -10,7 +10,11 @@ file is the index pointer.
 
 ## In Progress
 
-- [ ] **Reflection milestone — runway + continuity in the reflection tab (#325)** —
+_(nothing in flight)_
+
+## Completed
+
+- [x] **Reflection milestone — runway + continuity in the reflection tab (#325)** —
   User-requested 2026-09-22: "this should be built into the task manager ui in
   the reflection tab" — i.e. stop making them hand-type the orientation line
   I'd suggested as a workaround in #324. Two halves, both feeding the UI AND
@@ -35,10 +39,19 @@ file is the index pointer.
   without it Claude sees this week's words twice) and drafts never count as
   something previously said. Both blocks best-effort — a failure logs and
   yields "" rather than blocking analysis. CACHE_VERSION v236→v237.
-  🔄 IN PROGRESS — code + 28 pytest + 12 Jest + 4 Playwright tests
-  written, awaiting deploy.
-
-## Completed
+  +28 pytest (countdown boundaries incl. the target day itself and a PASSED
+  milestone; linked-goal rename/delete/done resolution; and prompt assertions
+  that inspect what `_call_claude` was really SENT rather than string-matching
+  source), +12 Jest (countdown wording), +4 Playwright × 2 viewports.
+  ALL 11 GATES GREEN (pytest 84.41%, jest 474 / 21 suites, local Playwright
+  125). Phase 6 desktop 1280×800 + mobile 375×812: empty state invites
+  rather than showing an empty bar; typed milestone → "6 weeks left · 41 days"
+  (exact vs 2026-11-02); goal link mirrors + locks the name and persists with
+  source=goal; renaming the goal live-updates the header; marking it done
+  surfaces the rust warning while still tracking the date; header 351/375 and
+  all form buttons 44px at mobile; parity PASS both; 0 console errors.
+  DEPLOY GREEN + MONITOR GREEN @ 915627a0, 47/47 prod smoke, milestone
+  endpoint + header markup confirmed live.
 
 - [x] **Resumable reflection drafts — write a reflection across several sittings (#324)** —
   User-requested 2026-09-22. Context: they resigned and start a new role on
