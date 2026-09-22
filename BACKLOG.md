@@ -10,7 +10,11 @@ file is the index pointer.
 
 ## In Progress
 
-- [ ] **Resumable reflection drafts — write a reflection across several sittings (#324)** —
+_(nothing in flight)_
+
+## Completed
+
+- [x] **Resumable reflection drafts — write a reflection across several sittings (#324)** —
   User-requested 2026-09-22. Context: they resigned and start a new role on
   **2026-11-02**, want to use the weekly reflection to build a ~6-week prep
   plan, and explicitly reflect **in pieces, across phone and laptop**.
@@ -31,16 +35,28 @@ file is the index pointer.
   call, so the text exists in exactly one place at every instant — never zero
   (lost reflection), never two (stale draft inviting a duplicate submit);
   covered by a test on the analysis-failure path specifically.
-  CACHE_VERSION v235→v236. 🔄 IN PROGRESS — code + 15 pytest + 14 Jest +
-  4 Playwright tests written, awaiting deploy.
+  CACHE_VERSION v235→v236. +15 pytest (incl. a fresh-test-client case proving
+  the draft is genuinely server state, and the analysis-failure retirement
+  path), +14 Jest (autosave gating incl. the clear-vs-phantom asymmetry,
+  relative-time formatting), +4 Playwright × 2 viewports (type → reload →
+  text survives; two sittings accumulate; discard is permanent; an untouched
+  empty box creates no phantom draft). ALL 11 GATES GREEN (pytest 84.30%,
+  jest 462 / 21 suites, local Playwright 119). **Phase 6 caught a real mobile
+  defect:** "Discard draft" rendered 26px tall — under the 44px tap-target
+  standard on a DESTRUCTIVE control tapped one-handed; now 44px via
+  inline-flex (min-height doesn't apply to an inline `.btn-link`). Phase 6
+  desktop 1280×800 + mobile 375×812: autosave → "Draft saved"; reload
+  restores text + "Draft restored — last saved just now" banner; draft never
+  leaks into history (3 seeded reflections stayed 3); discard clears textarea
+  + banner + server row; parity PASS both; 0 console errors on a clean tab.
+  DEPLOY GREEN (`migrations ok` — schema change applied) + MONITOR GREEN @
+  69efdd67, 47/47 prod smoke, draft endpoint + banner markup confirmed live.
   **Deliberately NOT built** (user scoped to drafts): reflections still don't
   accumulate — each submit gets an isolated Claude analysis with no memory of
   prior weeks, and the prompt has no target-date concept so it can't sequence
   against 11-02. If the plan feels disconnected week to week, that's the
   cause; cross-reflection context + a runway date in `_REFLECT_PROMPT` is the
   fix.
-
-## Completed
 
 - [x] **Create a recurring template from /recurring (#323)** —
   User-requested 2026-09-22: "you should be able to initiate reoccuring tasks
