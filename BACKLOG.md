@@ -10,7 +10,11 @@ file is the index pointer.
 
 ## In Progress
 
-- [ ] **Longer voice segments in the weekly reflection (#326)** —
+_(nothing in flight)_
+
+## Completed
+
+- [x] **Longer voice segments in the weekly reflection (#326)** —
   User asked to analyse raising the 10-minute per-segment cap ahead of
   long-form prep dictation. **Analysis:** the real ceiling is Whisper's
   25MB PER-REQUEST limit — a SIZE limit, not a duration one. Measured in a
@@ -30,9 +34,28 @@ file is the index pointer.
   2 min, and an auto-pause explains itself. **Voice memo is a SEPARATE
   flow and stays at 10 min** (quick capture, not long-form); /docs states
   both so they can't be confused. CACHE_VERSION v237→v238.
-  🔄 IN PROGRESS — code + 13 Jest tests written, awaiting gates + deploy.
-
-## Completed
+  +13 Jest (size-beats-time ordering — blowing the byte budget loses the
+  audio, running out of clock is merely an interruption; inclusive
+  boundaries; the warn threshold; non-finite inputs never spuriously
+  pausing a live recording). ALL 11 GATES GREEN (pytest 84.46%, jest 487
+  / 21 suites, local Playwright 125). **Phase 6 verified the mechanism
+  live, not just the UI:** stubbed `getUserMedia` with a synthetic stream
+  so the app's REAL recording path ran headless — constructor received
+  `{audioBitsPerSecond:32000}`, recorder reported 32000, timeslice 5000
+  applied, and 2 chunks / 41,260 bytes arrived DURING recording (~33 kbps
+  measured, confirming the pin end-to-end). Timer rendered "0:12 / 30:00";
+  copper warn state verified by computed style. **Phase 6 also caught a
+  stale string no test could:** the hint under the record button still
+  read "Max 10 min per segment" — every test passed while the app
+  misstated its own limit; fixed and re-verified after a preview restart
+  (dev bypass caches templates). Mobile 375×812: timer fits, parity PASS,
+  0 console errors on a clean tab. DEPLOY GREEN + MONITOR GREEN @
+  19a0e59a, 47/47 prod smoke, live constants + copy confirmed on prod.
+  **Follow-up (open):** a 30-min segment is 3x the exposure to iOS
+  evicting a backgrounded tab mid-recording, which loses the in-memory
+  chunks entirely (#324 drafts protect transcribed TEXT, not un-uploaded
+  AUDIO). Recommended fix is flush-on-background — pause+upload from the
+  existing `visibilitychange` handler, reusing paths that already exist.
 
 - [x] **Reflection milestone — runway + continuity in the reflection tab (#325)** —
   User-requested 2026-09-22: "this should be built into the task manager ui in
