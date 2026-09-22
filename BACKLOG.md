@@ -10,7 +10,11 @@ file is the index pointer.
 
 ## In Progress
 
-- [ ] **Transient on-device audio buffer — stop an evicted tab losing a recording (#327, ADR-036)** —
+_(nothing in flight)_
+
+## Completed
+
+- [x] **Transient on-device audio buffer — stop an evicted tab losing a recording (#327, ADR-036)** —
   Follow-up to #326, which raised the reflection segment cap 10 → 30 min and
   thereby TRIPLED the blast radius of an existing flaw: a segment's audio
   lived only in an in-memory `chunks` array until Pause, so an iOS tab
@@ -34,10 +38,24 @@ file is the index pointer.
   including the two user-facing ones and the CLAUDE.md security rule (which
   now carries a do-NOT-re-widen note pointing at the ADR). New static asset
   cascade done: `sw.js` APP_SHELL + `health.py` EXPECTED_STATIC_FILES +
-  CACHE_VERSION v238→v239. 🔄 IN PROGRESS — code + ADR + 14 Jest + 10
-  Playwright tests written, awaiting gates + deploy.
-
-## Completed
+  CACHE_VERSION v238→v239. +14 Jest on the retention logic (the exact 24h
+  boundary; an UNDATABLE orphan failing TOWARD deletion so nothing can
+  linger forever) and +10 Playwright × 2 viewports against **real
+  IndexedDB** — a shim would prove nothing about a promise concerning
+  actual storage. Load-bearing assertions: `dropSegment` leaves neither the
+  index row NOR the chunks, an expired orphan is purged unread and never
+  offered, and offering an orphan does not consume it. Audio is
+  deliberately KEPT when transcription FAILS so Retry still has something
+  to send. ALL 11 GATES GREEN (pytest 84.41%, jest 501 / 22 suites, local
+  Playwright 145). Phase 6 desktop 1280×800 + mobile 375×812 drove the REAL
+  recorder via a synthetic `getUserMedia` stream: 2 chunks / 41,260 bytes
+  were on disk **while still recording**; a reload mid-recording surfaced
+  "about 21s of audio — Transcribe it / Discard"; Discard cleared it;
+  `purgeExpired` dropped the 30h-old seed and kept the fresh one; banner
+  351/375 with both buttons 44px at mobile; parity PASS; 0 console errors.
+  DEPLOY GREEN + MONITOR GREEN @ b6ce9b05 (`static_assets ok` — new asset
+  present), 47/47 prod smoke; `audio_buffer.js` 200, recovery UI markup and
+  the narrowed user-facing claim both confirmed live on prod.
 
 - [x] **Longer voice segments in the weekly reflection (#326)** —
   User asked to analyse raising the 10-minute per-segment cap ahead of
