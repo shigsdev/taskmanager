@@ -10,7 +10,11 @@ file is the index pointer.
 
 ## In Progress
 
-- [ ] **Create a recurring template from /recurring (#323)** —
+_(nothing in flight)_
+
+## Completed
+
+- [x] **Create a recurring template from /recurring (#323)** —
   User-requested 2026-09-22: "you should be able to initiate reoccuring tasks
   from the recurring tab". The page could list, edit and bulk-edit templates
   but never *create* one — a template could only be born from a capture-bar
@@ -23,10 +27,23 @@ file is the index pointer.
   exist yet), and submit POSTs the collection instead of PATCHing an id.
   Blank-draft defaults follow the capture-bar convention already documented on
   /docs: Daily / Work, with the weekly + monthly pickers pre-set to today's
-  weekday / date. CACHE_VERSION v234→v235. 🔄 IN PROGRESS — code + 12 Jest +
-  2 Playwright tests written, awaiting deploy.
-
-## Completed
+  weekday / date. CACHE_VERSION v234→v235. +12 Jest (create-vs-edit routing,
+  blank-draft defaults, and the 0=Monday conversion — JS `getDay()` is
+  0=Sunday, so an off-by-one would schedule every new weekly template a day
+  early) and +2 Playwright × 2 viewports. **The Playwright test paid for
+  itself immediately:** `el.hidden = true` did NOT hide Pause/Delete because
+  `.btn { display: inline-block }` is an author style and beats the UA
+  stylesheet's `[hidden] { display: none }` — create mode would have shipped
+  with two live-looking buttons that silently do nothing. Switched to
+  `style.display`. Styling scoped to `#recurringNew` rather than a global
+  `.btn-primary` (that class is referenced twice but never defined; defining
+  it would restyle /utilities). ALL 11 GATES GREEN (jest 448, coverage 84.18%,
+  local Playwright 111). Phase 6 desktop 1280×800 + mobile 375×812: real
+  pointer-click create round-trip (list 5→6, API confirms weekly/Tue/work/
+  active), reopening the new row shows Edit mode so create state doesn't leak,
+  button is 44px at mobile, panel fits 375px exactly, parity PASS both, 0
+  console errors. DEPLOY GREEN + MONITOR GREEN @ 5be1dfe8, 47/47 prod smoke,
+  markup confirmed live on prod.
 
 - [x] **`dedupe_recurring_tasks.py` missing the #168 DNS pre-flight (#322)** —
   Operator-reported 2026-09-19. Running the #319 cleanup via
