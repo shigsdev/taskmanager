@@ -10,7 +10,27 @@ file is the index pointer.
 
 ## In Progress
 
-_(nothing in flight)_
+- [ ] **Longer voice segments in the weekly reflection (#326)** —
+  User asked to analyse raising the 10-minute per-segment cap ahead of
+  long-form prep dictation. **Analysis:** the real ceiling is Whisper's
+  25MB PER-REQUEST limit — a SIZE limit, not a duration one. Measured in a
+  real browser: `new MediaRecorder(stream)` with no options picks
+  **128 kbps**, putting 25MB at ~27 min; 10 min was a conservative proxy
+  because nothing pinned the bitrate, so minutes-per-MB was unknowable at
+  runtime. **Fix:** pin `audioBitsPerSecond: 32000` (Whisper downsamples
+  to 16kHz mono internally, so speech quality is untouched) — 25MB now
+  ≈109 min. Add a live BYTE budget (20MB hard stop) fed by a 5s `start()`
+  timeslice, since without a timeslice `ondataavailable` fires only at
+  stop() — far too late to prevent an oversized segment; this also covers
+  a browser that ignores the bitrate hint (Safari records AAC). Cap then
+  raised 10 → 30 min (6.9MB, 2.9x under the byte budget, 3.6x under
+  Whisper's). **Plus the UX bug found during analysis:** the timer counted
+  UP with no indication a cap existed, so recording just stopped
+  mid-sentence — it now reads "12:34 / 30:00", turns copper for the last
+  2 min, and an auto-pause explains itself. **Voice memo is a SEPARATE
+  flow and stays at 10 min** (quick capture, not long-form); /docs states
+  both so they can't be confused. CACHE_VERSION v237→v238.
+  🔄 IN PROGRESS — code + 13 Jest tests written, awaiting gates + deploy.
 
 ## Completed
 

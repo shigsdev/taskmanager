@@ -5043,6 +5043,14 @@ table.quality-gates code {
     font: inherit;
     resize: vertical;
 }
+/* #326: the recording timer now shows its cap ("12:34 / 30:00"). Amber
+   for the final two minutes so a long dictation can be wrapped up
+   rather than cut off mid-sentence. */
+.reflection-timer-warn {
+    color: var(--copper, #b87333);
+    font-weight: 600;
+}
+
 /* #325: the runway header. Copper-accented because it's the page's
    orienting fact — the first thing you should read. Muted when nothing
    is set, so an unconfigured milestone invites rather than shouts. */

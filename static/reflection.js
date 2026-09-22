@@ -29,7 +29,31 @@
     "use strict";
 
     var H = window.reflectionHelpers || {};
-    var MAX_RECORDING_MS = 10 * 60 * 1000;
+
+    // #326 — how long a single spoken segment may run.
+    //
+    // The REAL ceiling is Whisper's 25MB per-request limit, which is a
+    // SIZE limit, not a duration one. Left unspecified, MediaRecorder
+    // picks 128 kbps (measured), which puts 25MB at ~27 minutes — so the
+    // old 10-minute cap was a conservative proxy for a ceiling the code
+    // couldn't actually predict.
+    //
+    // Pinning the bitrate makes minutes-per-megabyte knowable. 32 kbps
+    // is generous for speech (Whisper downsamples to 16kHz mono
+    // internally anyway) and puts 25MB at ~109 minutes, so a 30-minute
+    // clock cap now has ~3.6x of headroom instead of 2.6x of guesswork.
+    var SPEECH_BITS_PER_SECOND = 32000;
+    var MAX_RECORDING_MS = 30 * 60 * 1000;
+    // Hard stop well under Whisper's 25MB so a browser that IGNORES the
+    // bitrate hint (Safari records AAC and may) still can't produce a
+    // segment the API will reject.
+    var MAX_SEGMENT_BYTES = 20 * 1024 * 1024;
+    // Deliver data every 5s so accumulated size is observable DURING
+    // recording — without a timeslice, ondataavailable fires only at
+    // stop(), which is far too late to prevent an oversized segment.
+    var RECORDER_TIMESLICE_MS = 5000;
+    // Warn for the last 2 minutes rather than cutting off mid-sentence.
+    var RECORDING_WARN_SEC = 120;
 
     var states = {
         input: document.getElementById("reflStateInput"),
@@ -102,6 +126,11 @@
     var mediaRecorder = null;
     var mediaStream = null;
     var chunks = [];
+    // #326: bytes accumulated in THIS segment, and why it auto-paused
+    // (null when the user paused deliberately) so the status line can
+    // explain an interruption the user didn't ask for.
+    var recordedBytes = 0;
+    var autoPauseNotice = null;
     var recordStartMs = 0;
     var recordTimerId = null;
     var recordCapTimeoutId = null;
@@ -225,15 +254,38 @@
             }
         }
         chunks = [];
+        recordedBytes = 0;
         try {
-            mediaRecorder = new MediaRecorder(mediaStream);
+            // #326: pin the bitrate so minutes-per-megabyte is knowable.
+            mediaRecorder = new MediaRecorder(mediaStream, {
+                audioBitsPerSecond: SPEECH_BITS_PER_SECOND,
+            });
         } catch (err) {
-            stopMediaStream();
-            showErr("MediaRecorder failed to initialize: " + err.message, false);
-            return;
+            // A browser that rejects the options form still gets a
+            // recorder — the byte budget below is the backstop.
+            try {
+                mediaRecorder = new MediaRecorder(mediaStream);
+            } catch (err2) {
+                stopMediaStream();
+                showErr(
+                    "MediaRecorder failed to initialize: " + err2.message, false,
+                );
+                return;
+            }
         }
         mediaRecorder.ondataavailable = function (e) {
-            if (e.data && e.data.size > 0) chunks.push(e.data);
+            if (!e.data || e.data.size <= 0) return;
+            chunks.push(e.data);
+            recordedBytes += e.data.size;
+            // #326: size is the limit that actually breaks transcription
+            // (Whisper rejects >25MB outright), so enforce it live rather
+            // than discovering it at upload time.
+            if (H.autoPauseReason(
+                recordedBytes, MAX_SEGMENT_BYTES, 0, Infinity,
+            ) === "size") {
+                autoPauseNotice = "size";
+                pauseSegment();
+            }
         };
         mediaRecorder.onstop = function () {
             // Per-segment upload. Don't release the mic stream — we may
@@ -258,11 +310,16 @@
             );
         };
         recordStartMs = Date.now();
+        autoPauseNotice = null;
         startTimer();
-        // Per-segment 10-min cap (was per-session before #232). Each
-        // segment can be up to 10 min; user can chain many.
-        recordCapTimeoutId = setTimeout(pauseSegment, MAX_RECORDING_MS);
-        mediaRecorder.start();
+        // Per-segment clock cap (#232 made it per-segment; #326 raised it
+        // to 30 min once the bitrate was pinned). Chain as many as you like.
+        recordCapTimeoutId = setTimeout(function () {
+            autoPauseNotice = "time";
+            pauseSegment();
+        }, MAX_RECORDING_MS);
+        // #326: timeslice so size is observable while recording.
+        mediaRecorder.start(RECORDER_TIMESLICE_MS);
         showVoiceSubState("recording");
     }
 
@@ -271,8 +328,26 @@
         if (!mediaRecorder || mediaRecorder.state !== "recording") return;
         // iOS Safari freezes setTimeout when backgrounded; re-check the
         // per-segment cap when foregrounding.
-        if (Date.now() - recordStartMs >= MAX_RECORDING_MS) pauseSegment();
+        if (Date.now() - recordStartMs >= MAX_RECORDING_MS) {
+            autoPauseNotice = "time";
+            pauseSegment();
+        }
     });
+
+    /** #326: explain an interruption the user didn't ask for. Returns ""
+     *  for a deliberate pause, so the status line stays quiet then. */
+    function autoPauseMessage() {
+        if (autoPauseNotice === "size") {
+            return "Paused automatically — that segment reached the size "
+                + "limit for transcription. Your words are saved; hit "
+                + "Resume to keep going.";
+        }
+        if (autoPauseNotice === "time") {
+            return "Paused automatically at the 30-minute segment limit. "
+                + "Your words are saved; hit Resume to keep going.";
+        }
+        return "";
+    }
 
     function pauseSegment() {
         clearCap();
@@ -352,9 +427,15 @@
             recorded_at: new Date().toISOString(),
         });
         var wc = seg.split(/\s+/).filter(Boolean).length;
-        voiceStatus.textContent =
-            "Added " + wc + " word" + (wc === 1 ? "" : "s") + ". "
-            + "Resume to add more, or Done to analyze.";
+        // #326: if the pause was FORCED (clock or size), say why — being
+        // cut off mid-thought with no explanation is the worst version
+        // of this. A deliberate pause keeps the normal message.
+        var forced = autoPauseMessage();
+        voiceStatus.textContent = forced
+            ? "Added " + wc + " word" + (wc === 1 ? "" : "s") + ". " + forced
+            : "Added " + wc + " word" + (wc === 1 ? "" : "s") + ". "
+              + "Resume to add more, or Done to analyze.";
+        autoPauseNotice = null;
         // Successful segment — drop the kept-for-retry blob so a future
         // Retry click doesn't re-upload the already-applied segment.
         lastSegmentBlob = null;
@@ -466,10 +547,14 @@
         }
     }
     function updateTimer() {
-        var totalSec = Math.floor((Date.now() - recordStartMs) / 1000);
-        var m = Math.floor(totalSec / 60);
-        var s = totalSec % 60;
-        timerEl.textContent = m + ":" + (s < 10 ? "0" : "") + s;
+        // #326: show the cap, not just the elapsed time. The old timer
+        // counted up with no hint a limit existed, so recording simply
+        // stopped mid-sentence when it hit one.
+        var t = H.formatRecordingTime(
+            Date.now() - recordStartMs, MAX_RECORDING_MS, RECORDING_WARN_SEC,
+        );
+        timerEl.textContent = t.text;
+        timerEl.classList.toggle("reflection-timer-warn", t.warn);
     }
     function mimeExt(mt) {
         mt = (mt || "").toLowerCase().split(";")[0];

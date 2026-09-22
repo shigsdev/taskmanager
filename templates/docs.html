@@ -638,7 +638,15 @@ https://example.com/foo
             <h3>Size and duration limits</h3>
             <ul>
                 <li>Voice memo recording cap: <strong>10 minutes</strong> (client-side hard stop).</li>
-                <li>Whisper upload cap: <strong>25 MB</strong>.</li>
+                <li>Weekly reflection recording cap: <strong>30 minutes
+                    per segment</strong>, and you can record as many
+                    segments as you like (#326). Longer than the voice
+                    memo because a reflection is long-form — a memo is a
+                    quick capture.</li>
+                <li>Whisper upload cap: <strong>25 MB</strong> — this is the
+                    real limit behind both. Reflection audio is recorded at
+                    a speech-grade bitrate so 25 MB is roughly 100 minutes,
+                    and a segment auto-pauses well before it.</li>
                 <li>Global request cap for any upload: <strong>30 MB</strong>.</li>
             </ul>
 
@@ -671,6 +679,14 @@ https://example.com/foo
                 <li>Two tabs: <strong>⌨️ Type</strong> (a textarea) or
                     <strong>🎙️ Record</strong> (audio, transcribed via
                     Whisper on the server, in memory only).</li>
+                <li>Recording pauses and resumes: each segment is
+                    transcribed and appended to the text box, and you can
+                    chain as many segments as you like. A single segment
+                    runs up to <strong>30 minutes</strong>; the timer shows
+                    how much of that is left and turns amber for the last
+                    two minutes so you can finish a thought rather than be
+                    cut off. If a segment is auto-paused, the status line
+                    says why.</li>
                 <li>Your transcript is saved <strong>before</strong> the
                     Claude call, so a Claude hiccup never loses what you
                     wrote — it shows up in the history list to re-analyze

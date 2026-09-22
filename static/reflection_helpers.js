@@ -274,8 +274,64 @@
         return out;
     }
 
+    /**
+     * autoPauseReason — should recording stop now, and why? (#326)
+     *
+     * Two independent limits, and the SIZE one is the real constraint:
+     * Whisper rejects any request over 25MB, so a segment that exceeds
+     * the byte budget cannot be transcribed at all. The clock cap is a
+     * secondary comfort limit.
+     *
+     * Returns "size" | "time" | null. Size is checked FIRST because
+     * blowing the byte budget is the failure that loses the recording;
+     * hitting the clock is merely an interruption.
+     */
+    function autoPauseReason(bytes, maxBytes, elapsedMs, capMs) {
+        var b = typeof bytes === "number" && isFinite(bytes) ? bytes : 0;
+        var mb = typeof maxBytes === "number" && maxBytes > 0 ? maxBytes : Infinity;
+        if (b >= mb) return "size";
+        var e = typeof elapsedMs === "number" && isFinite(elapsedMs) ? elapsedMs : 0;
+        var cm = typeof capMs === "number" && capMs > 0 ? capMs : Infinity;
+        if (e >= cm) return "time";
+        return null;
+    }
+
+    function _mmss(totalSec) {
+        var m = Math.floor(totalSec / 60);
+        var s = totalSec % 60;
+        return m + ":" + (s < 10 ? "0" : "") + s;
+    }
+
+    /**
+     * formatRecordingTime — the live timer, WITH its cap (#326).
+     *
+     * The timer used to count up with no indication a cap existed, so
+     * recording just stopped mid-sentence at the limit. Showing
+     * "12:34 / 30:00" makes the budget visible, and `warn` goes true
+     * for the last `warnSec` so the user can wrap up a thought instead
+     * of being cut off.
+     */
+    function formatRecordingTime(elapsedMs, capMs, warnSec) {
+        var e = typeof elapsedMs === "number" && isFinite(elapsedMs) && elapsedMs > 0
+            ? elapsedMs : 0;
+        var elapsedSec = Math.floor(e / 1000);
+        if (typeof capMs !== "number" || !(capMs > 0)) {
+            return { text: _mmss(elapsedSec), warn: false, remainingSec: null };
+        }
+        var capSec = Math.floor(capMs / 1000);
+        var remaining = Math.max(0, capSec - elapsedSec);
+        var threshold = typeof warnSec === "number" && warnSec >= 0 ? warnSec : 120;
+        return {
+            text: _mmss(elapsedSec) + " / " + _mmss(capSec),
+            warn: remaining <= threshold,
+            remainingSec: remaining,
+        };
+    }
+
     var api = {
         defaultChecked: defaultChecked,
+        autoPauseReason: autoPauseReason,
+        formatRecordingTime: formatRecordingTime,
         actionLabel: actionLabel,
         changeSummary: changeSummary,
         focusCandidates: focusCandidates,

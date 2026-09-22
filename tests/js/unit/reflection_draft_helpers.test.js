@@ -185,3 +185,90 @@ describe("milestoneHeadline", () => {
         expect(h.title).toContain("not-a-date");
     });
 });
+
+/**
+ * #326 — longer voice segments.
+ *
+ * The binding constraint is Whisper's 25MB per-request limit, which is a
+ * SIZE limit; the clock cap is secondary comfort. These pin that
+ * ordering and the "show the cap" timer, because being cut off
+ * mid-sentence with no warning was the original complaint.
+ */
+describe("autoPauseReason", () => {
+    const { autoPauseReason } = require("../../../static/reflection_helpers");
+    const MB = 1024 * 1024;
+
+    test("under both limits keeps recording", () => {
+        expect(autoPauseReason(5 * MB, 20 * MB, 60000, 1800000)).toBeNull();
+    });
+
+    test("size limit stops recording", () => {
+        expect(autoPauseReason(20 * MB, 20 * MB, 1000, 1800000)).toBe("size");
+    });
+
+    test("time limit stops recording", () => {
+        expect(autoPauseReason(1 * MB, 20 * MB, 1800000, 1800000)).toBe("time");
+    });
+
+    test("SIZE wins when both are hit — it's the one that loses the audio", () => {
+        // Blowing the byte budget means Whisper rejects the request
+        // outright; running out of clock is merely an interruption.
+        expect(autoPauseReason(30 * MB, 20 * MB, 9999999, 1800000)).toBe("size");
+    });
+
+    test("boundaries are inclusive — at the limit is AT the limit", () => {
+        expect(autoPauseReason(20 * MB - 1, 20 * MB, 0, Infinity)).toBeNull();
+        expect(autoPauseReason(20 * MB, 20 * MB, 0, Infinity)).toBe("size");
+    });
+
+    test("missing/!finite inputs never spuriously pause a recording", () => {
+        expect(autoPauseReason(undefined, 20 * MB, undefined, 1800000)).toBeNull();
+        expect(autoPauseReason(NaN, 20 * MB, NaN, 1800000)).toBeNull();
+        expect(autoPauseReason(5 * MB, 0, 1000, 0)).toBeNull();
+    });
+});
+
+describe("formatRecordingTime", () => {
+    const { formatRecordingTime } = require("../../../static/reflection_helpers");
+    const CAP = 30 * 60 * 1000;
+
+    test("shows elapsed AND the cap, so the budget is visible", () => {
+        const t = formatRecordingTime(90 * 1000, CAP, 120);
+        expect(t.text).toBe("1:30 / 30:00");
+        expect(t.warn).toBe(false);
+        expect(t.remainingSec).toBe(28 * 60 + 30);
+    });
+
+    test("zero-pads seconds", () => {
+        expect(formatRecordingTime(65 * 1000, CAP).text).toBe("1:05 / 30:00");
+        expect(formatRecordingTime(0, CAP).text).toBe("0:00 / 30:00");
+    });
+
+    test("warns in the final two minutes, not before", () => {
+        expect(formatRecordingTime((30 * 60 - 121) * 1000, CAP, 120).warn).toBe(false);
+        expect(formatRecordingTime((30 * 60 - 120) * 1000, CAP, 120).warn).toBe(true);
+        expect(formatRecordingTime((30 * 60 - 5) * 1000, CAP, 120).warn).toBe(true);
+    });
+
+    test("past the cap clamps remaining at 0 and stays warning", () => {
+        const t = formatRecordingTime((31 * 60) * 1000, CAP, 120);
+        expect(t.remainingSec).toBe(0);
+        expect(t.warn).toBe(true);
+    });
+
+    test("no cap falls back to a plain count-up", () => {
+        const t = formatRecordingTime(65 * 1000, null);
+        expect(t.text).toBe("1:05");
+        expect(t.warn).toBe(false);
+        expect(t.remainingSec).toBeNull();
+    });
+
+    test("negative / non-finite elapsed reads 0:00 rather than garbage", () => {
+        expect(formatRecordingTime(-5000, CAP).text).toBe("0:00 / 30:00");
+        expect(formatRecordingTime(NaN, CAP).text).toBe("0:00 / 30:00");
+    });
+
+    test("long durations render minutes past 60 correctly", () => {
+        expect(formatRecordingTime(75 * 60 * 1000, null).text).toBe("75:00");
+    });
+});
