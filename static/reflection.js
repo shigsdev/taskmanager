@@ -323,6 +323,12 @@
         var H_ = window.reflectionHelpers || {};
         if (typeof H_.appendTranscriptSegment === "function") {
             textArea.value = H_.appendTranscriptSegment(textArea.value, seg);
+            // #324: a spoken segment already cost a Whisper call — get it
+            // server-side immediately rather than waiting out the typing
+            // debounce that a voice user may never trigger.
+            if (typeof window.__reflectionSaveDraftNow === "function") {
+                window.__reflectionSaveDraftNow();
+            }
         } else {
             // Defensive fallback (helpers file failed to load).
             textArea.value = (textArea.value
@@ -500,12 +506,19 @@
             // at History.
             markStep(stepSave, "done");
             markStep(stepClaude, "fail");
+            // #324: the server retires the draft right after persisting
+            // the transcript and BEFORE calling Claude — so on this path
+            // the draft is already gone even though analysis failed.
+            // Clearing here stops a pending autosave from re-creating a
+            // draft holding text that is now a submitted reflection.
+            clearDraftUi();
             showErr("Analysis failed: " + (err.message || err), true);
             loadHistory();
             return;
         }
         markStep(stepSave, "done");
         markStep(stepClaude, "done");
+        clearDraftUi();  // #324
         current = data;
         renderReview(data);
         loadHistory();
@@ -934,8 +947,134 @@
         showArchivedCheckbox.addEventListener("change", loadHistory);
     }
 
+    // ---- draft autosave / restore (#324) ----------------------------
+    // A reflection written across several sittings has to survive
+    // leaving the page — and has to follow the user between phone and
+    // laptop, which rules out localStorage. The draft lives server-side
+    // and costs nothing: no Whisper, no Claude, until Analyze.
+
+    // IIFE-scoped alias — the `H_` inside handleSegment() is local to
+    // that function, so it isn't visible here.
+    var RH_ = window.reflectionHelpers || {};
+    var draftBanner = document.getElementById("reflDraftBanner");
+    var draftBannerText = document.getElementById("reflDraftBannerText");
+    var draftDiscardBtn = document.getElementById("reflDraftDiscard");
+    var draftStatus = document.getElementById("reflDraftStatus");
+    var DRAFT_DEBOUNCE_MS = 1200;
+    var draftTimer = null;
+    var lastSavedText = null;   // null = "we've never saved"
+    var draftSaving = false;
+
+    function setDraftStatus(msg, isError) {
+        if (!draftStatus) return;
+        draftStatus.textContent = msg || "";
+        draftStatus.classList.toggle("reflection-draft-status-err", !!isError);
+    }
+
+    async function saveDraftNow() {
+        if (!textArea) return;
+        var text = textArea.value || "";
+        if (!RH_.shouldAutosaveDraft(lastSavedText, text)) return;
+        if (draftSaving) return;  // a save is in flight; the trailing
+                                  // debounce will catch any newer text
+        draftSaving = true;
+        setDraftStatus("Saving…");
+        try {
+            var body = { text: text };
+            if (rawSegments && rawSegments.length) {
+                body.raw_segments = rawSegments.slice();
+            }
+            await window.apiFetch("/api/reflection/draft", {
+                method: "PUT",
+                body: JSON.stringify(body),
+            });
+            lastSavedText = text;
+            setDraftStatus("Draft saved");
+        } catch (e) {
+            // Never destructive: the text is still in the textarea. Say
+            // so plainly rather than a bare "failed" — the whole point
+            // of this feature is trusting that work isn't lost.
+            setDraftStatus(
+                "Couldn't save draft (your text is still here) — retrying…",
+                true,
+            );
+            scheduleDraftSave(5000);  // back off, then try again
+        } finally {
+            draftSaving = false;
+        }
+    }
+
+    function scheduleDraftSave(delayMs) {
+        if (draftTimer) clearTimeout(draftTimer);
+        draftTimer = setTimeout(saveDraftNow, delayMs || DRAFT_DEBOUNCE_MS);
+    }
+
+    function clearDraftUi() {
+        lastSavedText = null;
+        if (draftTimer) { clearTimeout(draftTimer); draftTimer = null; }
+        if (draftBanner) draftBanner.style.display = "none";
+        setDraftStatus("");
+    }
+
+    // Exposed so the submit path can stop a pending autosave from
+    // re-creating the draft the server just retired, and so a landed
+    // voice segment can flush immediately.
+    window.__reflectionClearDraftUi = clearDraftUi;
+    window.__reflectionSaveDraftNow = saveDraftNow;
+
+    if (textArea) {
+        textArea.addEventListener("input", function () { scheduleDraftSave(); });
+        // Leaving the tab is the classic "lost it" moment — flush now
+        // rather than waiting out the debounce.
+        document.addEventListener("visibilitychange", function () {
+            if (document.visibilityState === "hidden") saveDraftNow();
+        });
+    }
+
+    if (draftDiscardBtn) {
+        draftDiscardBtn.addEventListener("click", async function () {
+            if (!confirm("Discard this draft? The text will be deleted.")) return;
+            if (draftTimer) { clearTimeout(draftTimer); draftTimer = null; }
+            try {
+                await window.apiFetch("/api/reflection/draft", { method: "DELETE" });
+            } catch (e) { /* fall through — clear locally regardless */ }
+            if (textArea) textArea.value = "";
+            rawSegments.length = 0;
+            clearDraftUi();
+        });
+    }
+
+    async function restoreDraft() {
+        if (!textArea) return;
+        var data;
+        try {
+            data = await window.apiFetch("/api/reflection/draft");
+        } catch (e) {
+            return;  // no draft UI rather than a scary error on load
+        }
+        var draft = data && data.draft;
+        if (!draft || !draft.transcript) return;
+        // Don't clobber anything the user already started typing in the
+        // moment before this fetch returned.
+        if ((textArea.value || "").trim()) return;
+        textArea.value = draft.transcript;
+        lastSavedText = draft.transcript;
+        if (Array.isArray(draft.raw_segments) && draft.raw_segments.length) {
+            rawSegments.length = 0;
+            draft.raw_segments.forEach(function (s) { rawSegments.push(s); });
+        }
+        if (draftBanner && draftBannerText) {
+            var when = RH_.formatSavedAt(draft.updated_at, Date.now());
+            draftBannerText.textContent = when
+                ? "Draft restored — last saved " + when
+                : "Draft restored";
+            draftBanner.style.display = "";
+        }
+    }
+
     // ---- init ----
     selectMode("type");
     showState("input");
     loadHistory();
+    restoreDraft();
 })();

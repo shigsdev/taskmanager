@@ -1419,3 +1419,108 @@ test.describe("Recurring — create a template from the page (#323)", () => {
         await expect(page.locator("#recurEditDelete")).toBeVisible();
     });
 });
+
+/**
+ * #324 — a reflection written across several sittings must survive
+ * leaving the page.
+ *
+ * Before this, the in-progress text lived only in the textarea: a reload,
+ * a closed tab, or iOS evicting the PWA destroyed it silently. Nothing in
+ * the browser persists that text across a reload, so if it comes back
+ * after one, it genuinely came from the server — which is also what makes
+ * it follow the user from phone to laptop.
+ */
+test.describe("Reflection — resumable drafts (#324)", () => {
+    test.beforeEach(async ({ page }) => {
+        // Start from a known state; a leftover draft would mask a failure.
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.evaluate(() => fetch("/api/reflection/draft", { method: "DELETE" }));
+    });
+
+    test.afterEach(async ({ page }) => {
+        await page.evaluate(() => fetch("/api/reflection/draft", { method: "DELETE" }));
+    });
+
+    test("typed text autosaves and is restored after a reload", async ({ page }) => {
+        const text = `Week of prep notes ${Date.now()}`;
+
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+
+        // No banner before there is anything to restore.
+        await expect(page.locator("#reflDraftBanner")).toBeHidden();
+
+        await page.locator("#reflText").fill(text);
+        await expect(page.locator("#reflDraftStatus")).toHaveText(
+            "Draft saved", { timeout: 5000 },
+        );
+
+        // The reload is the whole point: nothing client-side keeps this.
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+
+        await expect(page.locator("#reflText")).toHaveValue(text, { timeout: 5000 });
+        await expect(page.locator("#reflDraftBanner")).toBeVisible();
+        await expect(page.locator("#reflDraftBannerText")).toContainText("Draft restored");
+    });
+
+    test("adding to a restored draft keeps both sittings", async ({ page }) => {
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator("#reflText").fill("Sitting one.");
+        await expect(page.locator("#reflDraftStatus")).toHaveText(
+            "Draft saved", { timeout: 5000 },
+        );
+
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator("#reflText")).toHaveValue("Sitting one.", { timeout: 5000 });
+
+        await page.locator("#reflText").fill("Sitting one. Sitting two.");
+        await expect(page.locator("#reflDraftStatus")).toHaveText(
+            "Draft saved", { timeout: 5000 },
+        );
+
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator("#reflText")).toHaveValue(
+            "Sitting one. Sitting two.", { timeout: 5000 },
+        );
+    });
+
+    test("discarding a draft clears it for good", async ({ page }) => {
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator("#reflText").fill("Text to throw away.");
+        await expect(page.locator("#reflDraftStatus")).toHaveText(
+            "Draft saved", { timeout: 5000 },
+        );
+
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator("#reflDraftBanner")).toBeVisible({ timeout: 5000 });
+
+        page.once("dialog", (d) => d.accept());
+        await page.locator("#reflDraftDiscard").click();
+        await expect(page.locator("#reflText")).toHaveValue("");
+        await expect(page.locator("#reflDraftBanner")).toBeHidden();
+
+        // And it stays gone.
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator("#reflText")).toHaveValue("");
+        await expect(page.locator("#reflDraftBanner")).toBeHidden();
+    });
+
+    test("an untouched empty box does not create a phantom draft", async ({ page }) => {
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator("#reflText").click();
+        await page.waitForTimeout(2000);  // longer than the autosave debounce
+
+        const draft = await page.evaluate(() =>
+            fetch("/api/reflection/draft").then((r) => r.json()));
+        expect(draft.draft).toBeNull();
+    });
+});

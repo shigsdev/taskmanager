@@ -657,13 +657,94 @@ def list_reflections(
         ``is_active=False`` (soft-deleted). UI passes ``True`` only
         for the Recently-deleted section so the user can restore.
     """
-    stmt = select(Reflection)
+    # #324: an unsubmitted draft is not history — it has no analysis and
+    # is still being written. It surfaces only via get_open_draft().
+    stmt = select(Reflection).where(Reflection.is_draft.is_(False))
     if not include_archived:
         stmt = stmt.where(Reflection.is_archived.is_(False))
     if not include_deleted:
         stmt = stmt.where(Reflection.is_active.is_(True))
     stmt = stmt.order_by(Reflection.created_at.desc()).limit(limit)
     return list(db.session.scalars(stmt))
+
+
+# --- Drafts: reflecting across several sittings (#324) -----------------------
+# The in-progress transcript lives server-side so it survives a reload, a
+# closed tab, an evicted PWA, and a move between phone and laptop. Free:
+# no Whisper/Claude call happens until the reflection is submitted.
+
+
+def get_open_draft() -> Reflection | None:
+    """The single open draft, or None. Newest wins if somehow several
+    exist (belt-and-braces — save_draft keeps it to one)."""
+    stmt = (
+        select(Reflection)
+        .where(
+            Reflection.is_draft.is_(True),
+            Reflection.is_active.is_(True),
+        )
+        .order_by(Reflection.updated_at.desc())
+        .limit(1)
+    )
+    return db.session.scalars(stmt).first()
+
+
+def save_draft(
+    *,
+    transcript: str,
+    raw_segments: list[dict[str, Any]] | None = None,
+) -> Reflection:
+    """Upsert THE open draft with the current in-progress text.
+
+    Deliberately upsert-one rather than append-a-row: the client sends
+    the whole textarea on each autosave, so a new row per keystroke-burst
+    would be noise. ``updated_at`` (onupdate) is what the UI shows as
+    "last saved".
+
+    Unlike ``save_reflection`` the transcript is NOT required to be
+    non-empty — an empty draft is a legitimate "user cleared the box"
+    state, and refusing it would strand the client mid-autosave.
+    """
+    draft = get_open_draft()
+    text = (transcript or "").strip()
+    segments = _normalise_raw_segments(raw_segments)
+    if draft is None:
+        draft = Reflection(
+            iso_week=current_iso_week(),
+            input_mode=(
+                ReflectionInputMode.VOICE if segments
+                else ReflectionInputMode.TYPED
+            ),
+            transcript=text,
+            raw_segments=segments,
+            proposed_actions={"explicit": [], "suggested": []},
+            is_draft=True,
+        )
+        db.session.add(draft)
+    else:
+        draft.transcript = text
+        draft.raw_segments = segments
+        if segments:
+            draft.input_mode = ReflectionInputMode.VOICE
+    db.session.commit()
+    return draft
+
+
+def discard_draft() -> bool:
+    """Delete the open draft outright. Returns False if there wasn't one.
+
+    A hard delete, not the soft ``is_active=False`` used for submitted
+    reflections: an abandoned draft was never a reflection, so keeping it
+    in the Recently-deleted list would be clutter rather than history.
+    The "keep every transcript forever" promise in #165 is about
+    SUBMITTED reflections.
+    """
+    draft = get_open_draft()
+    if draft is None:
+        return False
+    db.session.delete(draft)
+    db.session.commit()
+    return True
 
 
 def set_reflection_archived(

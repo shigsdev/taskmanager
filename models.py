@@ -531,6 +531,16 @@ class Reflection(db.Model):
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True,
     )
+    # #324 (2026-09-22): an UNSUBMITTED reflection still being written.
+    # Reflecting across several sittings (and across devices — phone in
+    # the morning, laptop at night) needs the in-progress text to live
+    # server-side, not in one browser's localStorage. A draft row holds
+    # the accumulated transcript, costs nothing (no Whisper/Claude call
+    # until submit), and is hidden from the history list. At most one is
+    # open at a time; submitting clears it.
+    is_draft: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now

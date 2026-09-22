@@ -40,8 +40,11 @@ from reflection_service import (
     analyze_reflection,
     apply_selected_actions,
     attach_analysis,
+    discard_draft,
+    get_open_draft,
     get_reflection,
     list_reflections,
+    save_draft,
     save_reflection,
 )
 from utils import validate_json_body, validate_upload
@@ -79,6 +82,12 @@ def _serialize(reflection) -> dict:
         # on the Recently-deleted list.
         "is_archived": bool(reflection.is_archived),
         "is_active": bool(reflection.is_active),
+        # #324: unsubmitted draft (no analysis yet, hidden from history).
+        "is_draft": bool(reflection.is_draft),
+        # The client shows this as "last saved" on a restored draft.
+        "updated_at": (
+            reflection.updated_at.isoformat() if reflection.updated_at else None
+        ),
         "applied_actions": reflection.applied_actions,
         "applied_at": (
             reflection.applied_at.isoformat()
@@ -178,6 +187,14 @@ def submit(email: str):  # noqa: ARG001
         ai_cost_usd=None,
         raw_segments=raw_segments,  # #237
     )
+
+    # #324: the draft has become a real reflection — retire it. Done
+    # HERE, right after the transcript is durably saved and BEFORE the
+    # failure-prone Claude call, so the text exists in exactly one place
+    # at every instant: never zero (that would lose the reflection) and
+    # never two (a stale draft would reappear on the next page load and
+    # invite a duplicate submit).
+    discard_draft()
 
     # Analyze with Claude (proposes create/update/delete actions). On
     # failure the reflection is ALREADY saved — return its id + the
@@ -331,6 +348,50 @@ def confirm(email: str, reflection_id):  # noqa: ARG001
             else None
         ),
     }), status
+
+
+# --- Drafts: reflecting across several sittings (#324) ----------------------
+# Free endpoints — no Whisper, no Claude, so no PAID_API limit. The draft
+# lives server-side (not localStorage) so it follows the user from phone
+# to laptop and survives an evicted PWA.
+
+
+@bp.get("/draft")
+@login_required
+def get_draft(email: str):  # noqa: ARG001
+    """The open draft, or ``{"draft": null}`` when there isn't one."""
+    draft = get_open_draft()
+    return jsonify({"draft": _serialize(draft) if draft else None})
+
+
+@bp.put("/draft")
+@login_required
+@validate_json_body
+def put_draft(email: str):  # noqa: ARG001
+    """Autosave the in-progress reflection.
+
+    Body: ``{"text": "...", "raw_segments": [...]}``. Upserts the single
+    open draft. An empty ``text`` is allowed on purpose — the user
+    clearing the box is a state worth saving, and rejecting it would
+    strand the client's autosave loop.
+    """
+    data = g.json_body
+    text = data.get("text")
+    if text is not None and not isinstance(text, str):
+        return jsonify({"error": "text must be a string"}), 422
+    raw_segments = data.get("raw_segments")
+    if raw_segments is not None and not isinstance(raw_segments, list):
+        return jsonify({"error": "raw_segments must be a list"}), 422
+    draft = save_draft(transcript=text or "", raw_segments=raw_segments)
+    return jsonify({"draft": _serialize(draft)}), 200
+
+
+@bp.delete("/draft")
+@login_required
+def delete_draft(email: str):  # noqa: ARG001
+    """Discard the open draft. 204 either way — idempotent."""
+    discard_draft()
+    return "", 204
 
 
 @bp.get("")

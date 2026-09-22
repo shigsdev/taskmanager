@@ -232,6 +232,20 @@ component is added, a data flow changes, or a security boundary shifts.
   Reflections history list. Branchy client logic (focus-candidate
   derivation, summary formatting, selection filtering) is extracted to
   the Jest-tested `reflection_helpers.js` per the anti-pattern #3 rule.
+  **Drafts (#324)**: a reflection is often written across several
+  sittings, so the in-progress text autosaves (debounced ~1.2s, plus an
+  immediate flush on tab-hide and after each landed voice segment) to
+  `PUT /api/reflection/draft` — a `reflections` row with
+  `is_draft=True`. It is deliberately SERVER-side rather than
+  `localStorage` so the draft follows the user between phone and
+  laptop and survives an evicted iOS PWA. Drafts are free (no Whisper,
+  no Claude — so no `PAID_API` limit), carry no `proposed_actions`, and
+  are excluded from `list_reflections`. At most one is open at a time.
+  The submit path deletes the draft immediately after the transcript is
+  durably saved and BEFORE the Claude call, so the text exists in
+  exactly one place at every instant — never zero (lost reflection),
+  never two (a stale draft reappearing and inviting a duplicate
+  submit).
 - **URL save**: user pastes or types a URL in the quick-capture bar → the
   browser `POST`s to `/api/tasks/url-preview` → Flask resolves the hostname,
   validates it is not a private/loopback IP (SSRF protection), fetches the
@@ -592,6 +606,7 @@ the code.
 # reflection_api.py — Weekly Reflection (2026-05-16)
 /api/reflection                                  # POST submit (typed/audio), GET list
 /api/reflection/transcribe-segment               # POST — #232 one-segment Whisper transcribe for the pause/resume flow (no Reflection row, no Claude call)
+/api/reflection/draft                            # GET open draft / PUT autosave in-progress text / DELETE discard — #324 resumable multi-sitting reflections (free: no Whisper, no Claude)
 /api/reflection/<uuid:reflection_id>             # GET one (history detail), DELETE soft-delete (#238)
 /api/reflection/<uuid:reflection_id>/confirm     # POST apply confirmed actions
 /api/reflection/<uuid:reflection_id>/archive     # POST #238 — hide from default history

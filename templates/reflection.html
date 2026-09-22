@@ -23,6 +23,17 @@
                     id="reflTabVoice" role="tab">🎙️ Record</button>
         </div>
 
+        {# #324: resumable drafts. A reflection written across several
+           sittings (and across phone + laptop) needs its in-progress text
+           to survive leaving the page, so it autosaves server-side. The
+           banner only appears when a draft was actually restored; the
+           status line reports every save so "did that stick?" is never
+           a guess. #}
+        <div class="reflection-draft-banner" id="reflDraftBanner" style="display:none">
+            <span id="reflDraftBannerText">Draft restored</span>
+            <button type="button" class="btn-link" id="reflDraftDiscard">Discard draft</button>
+        </div>
+
         <!-- Typed sub-state -->
         <div class="reflection-typed" id="reflTyped">
             <textarea id="reflText" rows="10" maxlength="20000"
@@ -31,6 +42,10 @@
                 <button class="btn btn-primary" id="reflAnalyzeBtn" type="button">
                     Analyze with Claude
                 </button>
+                {# #324: autosave status. aria-live so it's announced,
+                   polite so it doesn't interrupt dictation. #}
+                <span class="reflection-draft-status" id="reflDraftStatus"
+                      aria-live="polite"></span>
             </div>
         </div>
 

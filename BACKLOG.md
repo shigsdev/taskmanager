@@ -10,7 +10,35 @@ file is the index pointer.
 
 ## In Progress
 
-_(nothing in flight)_
+- [ ] **Resumable reflection drafts — write a reflection across several sittings (#324)** —
+  User-requested 2026-09-22. Context: they resigned and start a new role on
+  **2026-11-02**, want to use the weekly reflection to build a ~6-week prep
+  plan, and explicitly reflect **in pieces, across phone and laptop**.
+  Examination found the feature could not do that, and failed SILENTLY:
+  `static/reflection.js` had zero `localStorage`/`sessionStorage` and no
+  `beforeunload` guard, so in-progress text lived only in the textarea and a
+  reload / closed tab / evicted iOS PWA destroyed it with no warning. There
+  was also no PATCH endpoint — a submitted reflection is immutable — and
+  submit fires Whisper+Claude immediately, so a partial reflection could not
+  be parked. (Strength Forge's log form already had the autosave pattern;
+  reflection was the outlier.) Fix: a `reflections` row with `is_draft=True`,
+  autosaved via `PUT /api/reflection/draft` — deliberately SERVER-side, since
+  localStorage cannot cross devices, which their phone+laptop workflow
+  requires. Debounced ~1.2s, plus an immediate flush on tab-hide and after
+  each landed voice segment. Free (no Whisper/Claude, so no `PAID_API`
+  limit), excluded from history, at most one open. The submit path deletes
+  the draft right after the transcript is durably saved and BEFORE the Claude
+  call, so the text exists in exactly one place at every instant — never zero
+  (lost reflection), never two (stale draft inviting a duplicate submit);
+  covered by a test on the analysis-failure path specifically.
+  CACHE_VERSION v235→v236. 🔄 IN PROGRESS — code + 15 pytest + 14 Jest +
+  4 Playwright tests written, awaiting deploy.
+  **Deliberately NOT built** (user scoped to drafts): reflections still don't
+  accumulate — each submit gets an isolated Claude analysis with no memory of
+  prior weeks, and the prompt has no target-date concept so it can't sequence
+  against 11-02. If the plan feels disconnected week to week, that's the
+  cause; cross-reflection context + a runway date in `_REFLECT_PROMPT` is the
+  fix.
 
 ## Completed
 

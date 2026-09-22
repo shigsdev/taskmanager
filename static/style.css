@@ -5043,6 +5043,32 @@ table.quality-gates code {
     font: inherit;
     resize: vertical;
 }
+/* #324: resumable drafts. The banner only renders when a draft was
+   actually restored, so it should read as reassurance ("your words are
+   still here"), not as a warning — sage, not rust. */
+.reflection-draft-banner {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0 0 12px;
+    padding: 8px 12px;
+    border: 1px solid var(--sage, #6b8f71);
+    border-left-width: 3px;
+    border-radius: var(--radius, 6px);
+    background: var(--surface-sunk, rgba(107, 143, 113, 0.08));
+    font-size: 0.9rem;
+}
+.reflection-draft-status {
+    align-self: center;
+    font-size: 0.85rem;
+    color: var(--text-muted, #8b8b8b);
+    /* Reserve the line so the actions row doesn't jump as the status
+       flips between "Saving…" and "Draft saved". */
+    min-height: 1.2em;
+}
+.reflection-draft-status-err { color: var(--danger, #c0392b); }
+
 .reflection-input-actions,
 .reflection-review-actions,
 .reflection-done-actions,
@@ -5288,6 +5314,15 @@ table.quality-gates code {
     .reflection-review-actions .btn,
     .reflection-done-actions .btn { width: 100%; min-height: 48px; }
     .reflection-mode-tab { font-size: 0.95rem; }
+    /* #324: "Discard draft" is a destructive control the user taps
+       one-handed on a phone — it rendered 26px tall, under the 44px
+       tap-target standard. inline-flex so min-height actually applies
+       to the inline .btn-link. */
+    .reflection-draft-banner .btn-link {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+    }
 }
 
 /* === #222 (2026-05-24): /utilities page === */

@@ -162,6 +162,54 @@
         return ex + " " + seg;
     }
 
+    /**
+     * shouldAutosaveDraft — is this content worth a PUT? (#324)
+     *
+     * The autosave fires on a debounce as the user types. Re-sending
+     * text identical to what the server already has is pure noise, and
+     * saving "" over a draft the user hasn't touched yet would blank it
+     * for no reason. Returns true only when the content actually
+     * CHANGED from the last saved value.
+     *
+     * Note the deliberate asymmetry: clearing a draft that HAD text is a
+     * real edit and must save (the user meant to erase it), but ""
+     * when nothing was ever saved is a no-op.
+     */
+    function shouldAutosaveDraft(lastSaved, current) {
+        var cur = typeof current === "string" ? current : "";
+        var prev = typeof lastSaved === "string" ? lastSaved : "";
+        if (cur === prev) return false;          // nothing changed
+        if (!cur.trim() && !prev) return false;  // empty, nothing to erase
+        return true;
+    }
+
+    /**
+     * formatSavedAt — the "last saved" label on the draft banner (#324).
+     *
+     * Reflecting across days means the banner has to answer "how stale
+     * is this?" at a glance. Recent saves read as relative time; older
+     * ones name the day, because "3 days ago" is the case where the user
+     * most needs to know they're resuming something old.
+     *
+     * `nowMs` is injected so this is deterministic under test.
+     */
+    function formatSavedAt(iso, nowMs) {
+        if (typeof iso !== "string" || !iso) return "";
+        var then = Date.parse(iso);
+        if (!isFinite(then)) return "";
+        var now = typeof nowMs === "number" ? nowMs : Date.now();
+        var secs = Math.round((now - then) / 1000);
+        if (secs < 0) secs = 0;               // clock skew — treat as now
+        if (secs < 10) return "just now";
+        if (secs < 60) return secs + "s ago";
+        var mins = Math.floor(secs / 60);
+        if (mins < 60) return mins + (mins === 1 ? " min ago" : " mins ago");
+        var hours = Math.floor(mins / 60);
+        if (hours < 24) return hours + (hours === 1 ? " hour ago" : " hours ago");
+        var days = Math.floor(hours / 24);
+        return days + (days === 1 ? " day ago" : " days ago");
+    }
+
     var api = {
         defaultChecked: defaultChecked,
         actionLabel: actionLabel,
@@ -170,6 +218,8 @@
         applySummaryText: applySummaryText,
         selectedActions: selectedActions,
         appendTranscriptSegment: appendTranscriptSegment,
+        shouldAutosaveDraft: shouldAutosaveDraft,
+        formatSavedAt: formatSavedAt,
     };
 
     if (typeof module !== "undefined" && module.exports) {
