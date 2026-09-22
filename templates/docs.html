@@ -652,7 +652,10 @@ https://example.com/foo
 
             <h3>Privacy</h3>
             <ul>
-                <li>Voice memo audio is processed in memory only — never written to disk or database.</li>
+                <li>Voice memo audio is processed in memory only and is never written to
+                    disk or the database — the voice memo flow has no device-side
+                    buffer. (The weekly reflection does keep a temporary on-device
+                    copy while recording; see above.)</li>
                 <li>Dictation audio never leaves the browser (Web Speech API is client-side).</li>
                 <li>Transcripts are not persisted beyond the review screen.</li>
             </ul>
@@ -678,7 +681,12 @@ https://example.com/foo
             <ul>
                 <li>Two tabs: <strong>⌨️ Type</strong> (a textarea) or
                     <strong>🎙️ Record</strong> (audio, transcribed via
-                    Whisper on the server, in memory only).</li>
+                    Whisper on the server, in memory only — never written
+                    to server disk or the database). While recording, a
+                    temporary copy is buffered on your own device so an
+                    interrupted session can be recovered; it is deleted the
+                    moment the segment is transcribed, and anything
+                    orphaned is purged after 24 hours (#327).</li>
                 <li>Recording pauses and resumes: each segment is
                     transcribed and appended to the text box, and you can
                     chain as many segments as you like. A single segment

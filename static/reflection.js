@@ -131,6 +131,12 @@
     // explain an interruption the user didn't ask for.
     var recordedBytes = 0;
     var autoPauseNotice = null;
+    // #327: on-device chunk buffer. Null when IndexedDB is unavailable
+    // (private mode, old browser) — recording then behaves exactly as
+    // it did before, just without the safety net.
+    var AB = (typeof window !== "undefined" && window.audioBuffer) || null;
+    var currentSegmentId = null;
+    var chunkSeq = 0;
     var recordStartMs = 0;
     var recordTimerId = null;
     var recordCapTimeoutId = null;
@@ -273,10 +279,30 @@
                 return;
             }
         }
+        // #327: identify this segment so its buffered chunks can be
+        // found (and deleted) independently of any other.
+        currentSegmentId = "seg-" + Date.now() + "-"
+            + Math.random().toString(36).slice(2, 8);
+        chunkSeq = 0;
+        if (AB) {
+            AB.beginSegment(currentSegmentId, {
+                startedAt: Date.now(),
+                mime: mediaRecorder.mimeType || "",
+            });
+        }
         mediaRecorder.ondataavailable = function (e) {
             if (!e.data || e.data.size <= 0) return;
             chunks.push(e.data);
             recordedBytes += e.data.size;
+            // #327: persist each chunk as it lands so an evicted tab
+            // costs seconds, not the whole segment. Fire-and-forget —
+            // a buffer failure must never interrupt recording.
+            if (AB) {
+                AB.putChunk(
+                    currentSegmentId, chunkSeq++, e.data,
+                    mediaRecorder.mimeType || "",
+                );
+            }
             // #326: size is the limit that actually breaks transcription
             // (Whisper rejects >25MB outright), so enforce it live rather
             // than discovering it at upload time.
@@ -440,6 +466,13 @@
         // Retry click doesn't re-upload the already-applied segment.
         lastSegmentBlob = null;
         lastSegmentMime = null;
+        // #327: transcribed, so the on-disk copy has served its purpose.
+        // This is the PRIMARY cleanup path — the words are now safely in
+        // the textarea (and the #324 draft), so the audio is redundant.
+        if (AB && currentSegmentId) {
+            AB.dropSegment(currentSegmentId);
+            currentSegmentId = null;
+        }
         showVoiceSubState("paused");
     }
 
@@ -502,6 +535,10 @@
         if (segmentsSnapshot.length > 0) {
             payload.raw_segments = segmentsSnapshot;
         }
+        // #327: Done — every segment is transcribed and the text is being
+        // submitted, so nothing on disk is still needed. Belt-and-braces
+        // over the per-segment drop above.
+        if (AB) { AB.purgeAll(); currentSegmentId = null; }
         submitReflection({ json: payload });
     }
 
@@ -521,6 +558,9 @@
         // — the user can hit Cancel mid-session to abandon a bad segment
         // without losing the words they already committed.
         hasSegmentText = false;
+        // #327: Cancel means "I don't want that audio" — purge it. The
+        // TEXT survives (above); the recording does not.
+        if (AB) { AB.purgeAll(); currentSegmentId = null; }
         showVoiceSubState("idle");
     }
 
@@ -1311,6 +1351,48 @@
         });
     }
 
+    // ---- recovered audio (#327) --------------------------------------
+    // If a tab died mid-recording, its chunks are still on disk. Offer
+    // them back rather than transcribing silently (that costs money) or
+    // binning them silently (that's the bug this fixes).
+
+    async function offerRecoveredAudio() {
+        if (!AB) return;
+        try {
+            // Retention sweep FIRST — an expired orphan is never offered,
+            // it's deleted. "Temporary" has to mean something.
+            await AB.purgeExpired();
+            var segs = await AB.listSegments();
+            if (!segs.length) return;
+            var seg = segs[0];
+            var what = AB.describeOrphan(seg, 32000);
+            var banner = document.getElementById("reflRecoverBanner");
+            var text = document.getElementById("reflRecoverText");
+            if (!banner || !text) return;
+            text.textContent = "Unsent recording found from an interrupted "
+                + "session — " + what + ".";
+            banner.style.display = "";
+
+            document.getElementById("reflRecoverUse").onclick = async function () {
+                var blob = await AB.assembleSegment(seg.segmentId);
+                if (!blob) {
+                    text.textContent = "That recording couldn't be read.";
+                    return;
+                }
+                banner.style.display = "none";
+                selectMode("voice");
+                showVoiceSubState("transcribing");
+                currentSegmentId = seg.segmentId;
+                uploadSegment(blob, seg.mime || "audio/webm");
+            };
+            document.getElementById("reflRecoverDiscard").onclick = async function () {
+                if (!window.confirm("Discard the unsent recording?")) return;
+                await AB.dropSegment(seg.segmentId);
+                banner.style.display = "none";
+            };
+        } catch (e) { /* insurance, never a dependency */ }
+    }
+
     // ---- init ----
     selectMode("type");
     showState("input");
@@ -1318,4 +1400,5 @@
     restoreDraft();
     loadMilestone();
     loadLastReflection();
+    offerRecoveredAudio();
 })();

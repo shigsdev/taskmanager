@@ -637,6 +637,13 @@ as gate 8d.
 - Never commit `.env` or secrets to git — `.env` is in `.gitignore` from day one
 - All user input sanitized before DB insertion
 - Images are processed in memory only — never written to disk or DB
+- Audio (voice memo, reflection) is processed in memory only ON THE
+  SERVER — never written to server disk or the DB. #327 narrowed this:
+  in-flight reflection audio IS buffered transiently on the USER'S OWN
+  DEVICE (browser IndexedDB, `static/audio_buffer.js`) so an evicted
+  tab doesn't lose a 30-min recording. That copy is deleted on
+  transcription / Done / Cancel and purged after 24h. Do NOT re-widen
+  the claim to "never written to disk" — see the #327 ADR.
 - Google Vision and Claude API calls are server-side only — browsers never
   talk to those APIs directly
 - Session tokens expire after 30 days of inactivity (sliding)

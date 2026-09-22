@@ -149,6 +149,7 @@ EXPECTED_STATIC_FILES = (
     "static/voice_input.js",     # PR54 — voice-to-text helper for any text field
     "static/import.js",  # PR24 BUG-1: was missing — sw.js APP_SHELL caches it
     "static/voice_memo.js",
+    "static/audio_buffer.js",  # #327 — transient on-device audio buffer
     "static/voice_memo_helpers.js",  # #197 — Jest-importable mimeTypeToExt
     "static/day_group.js",
     "static/projects.js",

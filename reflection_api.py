@@ -25,7 +25,10 @@ Endpoints:
 
 The transcript is always persisted (the user explicitly wants every
 reflection kept for future reference). Audio is processed in memory only
-— never written to disk or the DB (handled by voice_service).
+on the SERVER — never written to server disk or the DB (handled by
+voice_service). #327 buffers in-flight audio transiently in the browser's
+IndexedDB on the user's own device so an interrupted recording survives;
+that device-local copy is deleted as soon as the segment is transcribed.
 """
 from __future__ import annotations
 

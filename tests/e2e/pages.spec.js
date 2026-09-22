@@ -1624,3 +1624,152 @@ test.describe("Reflection — milestone runway (#325)", () => {
         );
     });
 });
+
+/**
+ * #327 — the transient on-device audio buffer, against REAL IndexedDB.
+ *
+ * This is the regression test the ADR's promise rests on. The app's
+ * guarantee changed from "audio is never written to disk" to "audio may
+ * rest on THIS DEVICE temporarily, then is cleaned up" — so the thing
+ * that must be mechanically enforced is the CLEANUP, not the storage.
+ */
+test.describe("Reflection — transient audio buffer (#327)", () => {
+    const seed = async (page, segmentId, chunks, startedAt) => page.evaluate(
+        async ([id, sizes, started]) => {
+            await window.audioBuffer.beginSegment(id, {
+                startedAt: started, mime: "audio/webm",
+            });
+            for (let i = 0; i < sizes.length; i++) {
+                await window.audioBuffer.putChunk(
+                    id, i, new Blob([new Uint8Array(sizes[i])]), "audio/webm",
+                );
+            }
+        }, [segmentId, chunks, startedAt]);
+
+    test.beforeEach(async ({ page }) => {
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.evaluate(() => window.audioBuffer.purgeAll());
+    });
+
+    test.afterEach(async ({ page }) => {
+        await page.evaluate(() => window.audioBuffer.purgeAll());
+    });
+
+    test("chunks persist and reassemble in order", async ({ page }) => {
+        await seed(page, "seg-a", [100, 200, 300], Date.now());
+        const out = await page.evaluate(async () => {
+            const segs = await window.audioBuffer.listSegments();
+            const blob = await window.audioBuffer.assembleSegment("seg-a");
+            return { count: segs.length, bytes: segs[0].bytes,
+                     chunkCount: segs[0].chunkCount, assembled: blob ? blob.size : null };
+        });
+        expect(out.count).toBe(1);
+        expect(out.bytes).toBe(600);
+        expect(out.chunkCount).toBe(3);
+        // Reassembly must total the parts — ordering/completeness is correctness.
+        expect(out.assembled).toBe(600);
+    });
+
+    test("it SURVIVES a reload — that is the whole point", async ({ page }) => {
+        await seed(page, "seg-survive", [500], Date.now());
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        const bytes = await page.evaluate(async () => {
+            const segs = await window.audioBuffer.listSegments();
+            return segs.length ? segs[0].bytes : 0;
+        });
+        expect(bytes).toBe(500);
+    });
+
+    test("dropSegment leaves NOTHING behind — the cleanup promise", async ({ page }) => {
+        await seed(page, "seg-drop", [100, 100], Date.now());
+        const after = await page.evaluate(async () => {
+            await window.audioBuffer.dropSegment("seg-drop");
+            const segs = await window.audioBuffer.listSegments();
+            const blob = await window.audioBuffer.assembleSegment("seg-drop");
+            return { segs: segs.length, blob: blob === null };
+        });
+        expect(after.segs).toBe(0);
+        expect(after.blob).toBe(true);   // chunks gone, not just the index row
+    });
+
+    test("dropping one segment does not touch another", async ({ page }) => {
+        await seed(page, "seg-1", [100], Date.now());
+        await seed(page, "seg-2", [250], Date.now());
+        const out = await page.evaluate(async () => {
+            await window.audioBuffer.dropSegment("seg-1");
+            const segs = await window.audioBuffer.listSegments();
+            return { ids: segs.map(s => s.segmentId), bytes: segs[0] && segs[0].bytes };
+        });
+        expect(out.ids).toEqual(["seg-2"]);
+        expect(out.bytes).toBe(250);
+    });
+
+    test("purgeExpired deletes audio past the retention window", async ({ page }) => {
+        const old = Date.now() - 25 * 60 * 60 * 1000;   // 25h — expired
+        const fresh = Date.now() - 60 * 60 * 1000;      // 1h  — keep
+        await seed(page, "seg-old", [100], old);
+        await seed(page, "seg-fresh", [100], fresh);
+        const out = await page.evaluate(async () => {
+            const dropped = await window.audioBuffer.purgeExpired();
+            const segs = await window.audioBuffer.listSegments();
+            return { dropped, remaining: segs.map(s => s.segmentId) };
+        });
+        expect(out.dropped).toBe(1);
+        expect(out.remaining).toEqual(["seg-fresh"]);
+    });
+
+    test("purgeAll clears everything (Done / Cancel path)", async ({ page }) => {
+        await seed(page, "seg-x", [100], Date.now());
+        await seed(page, "seg-y", [100], Date.now());
+        const left = await page.evaluate(async () => {
+            await window.audioBuffer.purgeAll();
+            return (await window.audioBuffer.listSegments()).length;
+        });
+        expect(left).toBe(0);
+    });
+
+    test("orphaned audio is OFFERED on load, not silently used or binned",
+        async ({ page }) => {
+            await seed(page, "seg-orphan", [32000 * 60 / 8], Date.now());
+            await page.reload();
+            await page.waitForLoadState("networkidle");
+            const banner = page.locator("#reflRecoverBanner");
+            await expect(banner).toBeVisible({ timeout: 5000 });
+            await expect(page.locator("#reflRecoverText")).toContainText("about 1 minute");
+            // Still present — offering must not consume it.
+            const still = await page.evaluate(async () =>
+                (await window.audioBuffer.listSegments()).length);
+            expect(still).toBe(1);
+        });
+
+    test("an EXPIRED orphan is purged on load, never offered", async ({ page }) => {
+        await seed(page, "seg-stale", [50000], Date.now() - 30 * 60 * 60 * 1000);
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator("#reflRecoverBanner")).toBeHidden();
+        const left = await page.evaluate(async () =>
+            (await window.audioBuffer.listSegments()).length);
+        expect(left).toBe(0);
+    });
+
+    test("Discard removes the recovered audio for good", async ({ page }) => {
+        await seed(page, "seg-discard", [40000], Date.now());
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator("#reflRecoverBanner")).toBeVisible({ timeout: 5000 });
+        page.once("dialog", (d) => d.accept());
+        await page.locator("#reflRecoverDiscard").click();
+        await expect(page.locator("#reflRecoverBanner")).toBeHidden();
+        const left = await page.evaluate(async () =>
+            (await window.audioBuffer.listSegments()).length);
+        expect(left).toBe(0);
+    });
+
+    test("nothing buffered means no banner at all", async ({ page }) => {
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator("#reflRecoverBanner")).toBeHidden();
+    });
+});

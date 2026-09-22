@@ -8,7 +8,9 @@ The confirm endpoint reuses the scan_service candidate-creation logic
 with a "voice" source prefix so the recycle bin / undo flow can
 distinguish voice batches from scan batches.
 
-Audio is processed entirely in memory — never written to disk or DB.
+Audio is processed entirely in memory server-side — never written to
+server disk or DB. (The voice MEMO flow has no device-side buffer; #327's
+transient on-device buffer is reflection-only.)
 """
 from __future__ import annotations
 

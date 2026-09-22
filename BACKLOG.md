@@ -10,7 +10,32 @@ file is the index pointer.
 
 ## In Progress
 
-_(nothing in flight)_
+- [ ] **Transient on-device audio buffer — stop an evicted tab losing a recording (#327, ADR-036)** —
+  Follow-up to #326, which raised the reflection segment cap 10 → 30 min and
+  thereby TRIPLED the blast radius of an existing flaw: a segment's audio
+  lived only in an in-memory `chunks` array until Pause, so an iOS tab
+  eviction mid-recording lost all of it silently. (#324 drafts protect
+  transcribed TEXT, not un-uploaded AUDIO.) Flush-on-background was
+  considered and REJECTED on analysis — it races a shutdown it cannot win
+  (audio is megabytes; `sendBeacon` caps ~64KB) and is blind to an outright
+  tab kill, which fires no event at all. **Operator decision 2026-09-22:**
+  audio MAY rest on disk temporarily, then be cleaned up. Scope is
+  deliberately narrow and recorded in **ADR-036**: the SERVER stays strictly
+  in-memory (no audio ever touches server disk or the DB — unchanged and
+  still binding); the DEVICE buffers chunks in sandboxed browser IndexedDB
+  via the 5s timeslice #326 already added. Transient by construction —
+  deleted on successful transcription (primary path), on Done, on Cancel,
+  and purged after a 24h retention window on next load. Orphans are OFFERED
+  back ("about 18 minutes of audio — Transcribe it / Discard"), never
+  silently transcribed (costs money) nor silently binned (the bug being
+  fixed). Fails open: if IndexedDB is unavailable, recording behaves exactly
+  as before — a buffer is insurance, never a dependency. **All 8 sites that
+  stated the old "never written to disk" claim were narrowed, not deleted**,
+  including the two user-facing ones and the CLAUDE.md security rule (which
+  now carries a do-NOT-re-widen note pointing at the ADR). New static asset
+  cascade done: `sw.js` APP_SHELL + `health.py` EXPECTED_STATIC_FILES +
+  CACHE_VERSION v238→v239. 🔄 IN PROGRESS — code + ADR + 14 Jest + 10
+  Playwright tests written, awaiting gates + deploy.
 
 ## Completed
 

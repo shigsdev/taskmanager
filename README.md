@@ -177,8 +177,11 @@ task candidates by Claude, and surfaced on a review screen. Selected
 candidates land in your Inbox.
 
 Recording is hard-capped at 10 minutes per memo (matches Whisper's 25 MB
-upload limit at typical opus bitrates). Audio is processed in memory only —
-never written to disk or DB. Per-memo cost is logged to AppLog at INFO
+upload limit at typical opus bitrates). Audio is processed in memory only
+on the server — never written to server disk or DB. Reflection recordings
+are additionally buffered on the user's OWN DEVICE (browser IndexedDB)
+while in flight so an interrupted session isn't lost, and that copy is
+deleted on transcription (#327). Per-memo cost is logged to AppLog at INFO
 level so you can audit transcription spend via `/api/debug/logs`.
 
 **Cost** at OpenAI Whisper API pricing ($0.006/min as of 2026-04):

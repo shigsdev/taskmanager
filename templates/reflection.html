@@ -23,6 +23,18 @@
                     id="reflTabVoice" role="tab">🎙️ Record</button>
         </div>
 
+        {# #327: audio recovered from an interrupted session. Hidden
+           unless something was actually found. Offered, never
+           auto-transcribed (that would spend money without asking) and
+           never auto-binned (that's the bug this fixes). #}
+        <div class="reflection-recover" id="reflRecoverBanner" style="display:none">
+            <span id="reflRecoverText"></span>
+            <span class="reflection-recover-actions">
+                <button type="button" class="btn btn-sm" id="reflRecoverUse">Transcribe it</button>
+                <button type="button" class="btn-link" id="reflRecoverDiscard">Discard</button>
+            </span>
+        </div>
+
         {# #325: the runway this reflection counts down to. Hidden until
            something is configured, so the page stays quiet for anyone
            not working toward a dated milestone. "Set a milestone" is
@@ -114,9 +126,12 @@
                     to add more — each segment appears in the textarea
                     above. Click <strong>Done</strong> when finished to
                     analyze. Max 30 min per segment (#326) — the timer shows
-                    how much is left. Audio is transcribed
-                    via Whisper in memory only — never written to disk
-                    or the database.
+                    how much is left. Audio is transcribed via Whisper on
+                    the server <strong>in memory only</strong> — it is never
+                    written to server disk or the database. While you
+                    record, a copy is held on <em>this device</em> so an
+                    interrupted session isn't lost; it is deleted as soon
+                    as the segment is transcribed (#327).
                 </p>
             </div>
             <div class="reflection-voice-controls" id="reflVoiceRecording" style="display:none">
@@ -284,6 +299,7 @@
 {# reflection_helpers.js exposes window.reflectionHelpers (pure logic,
    Jest-tested per CLAUDE.md anti-pattern #3); must load before
    reflection.js which consumes it. #}
+<script src="{{ url_for('static', filename='audio_buffer.js') }}"></script>
 <script src="{{ url_for('static', filename='reflection_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='reflection.js') }}"></script>
 {% endblock %}

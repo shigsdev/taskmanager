@@ -476,7 +476,9 @@ class Reflection(db.Model):
 
     The transcript is persisted forever — the user explicitly wants every
     reflection saved for future reference / retrospectives. Audio is
-    processed in memory only and is never written to disk or the DB
+    processed in memory only server-side and is never written to server
+    disk or the DB (#327 buffers it transiently on the USER'S DEVICE
+    while recording; that copy is deleted on transcription)
     (same guarantee as the voice-memo pipeline).
     """
 

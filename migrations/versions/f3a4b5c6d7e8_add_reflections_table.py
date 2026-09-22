@@ -8,7 +8,9 @@ Weekly Reflection feature (user-requested 2026-05-16). The user records
 or types a weekly reflection; Claude proposes create/update/delete
 changes to projects/goals/tasks; the user reviews + confirms. Every
 reflection transcript is persisted forever for future reference /
-retrospectives. Audio is processed in memory only — never stored.
+retrospectives. Audio is processed in memory only server-side and is
+never stored in this table. (#327 later added a transient device-local
+buffer in the browser; nothing server-side changed.)
 """
 from alembic import op
 import sqlalchemy as sa

@@ -9,7 +9,9 @@ Pipeline:
    source_prefix="voice")
 
 Security (per CLAUDE.md):
-- Audio processed in memory only — never written to disk or DB
+- Audio processed in memory only SERVER-SIDE — never written to server
+  disk or DB. (#327 buffers in-flight REFLECTION audio on the user's own
+  device; this module is unaffected and still never persists bytes.)
 - Whisper API call is server-side only — browser never talks to OpenAI
 - Audio bytes are garbage-collected after the API call
 - Per-call cost is logged to AppLog so usage is auditable

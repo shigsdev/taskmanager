@@ -19,7 +19,10 @@ Pipeline (user-requested 2026-05-16):
 
 Security (per CLAUDE.md):
 - Audio is handled by voice_service in memory only; this module never
-  touches audio bytes, only the transcript string.
+  touches audio bytes, only the transcript string. Server-side audio
+  never reaches disk or the DB. (#327 added a transient DEVICE-local
+  buffer in the browser — see static/audio_buffer.js; nothing about the
+  server side changed.)
 - The Claude call goes through ``scan_service._post_to_claude`` →
   ``egress.safe_call_api`` (ADR-006/007) — key in a header, never a
   query string, errors scrubbed.

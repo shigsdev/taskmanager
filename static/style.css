@@ -5043,6 +5043,37 @@ table.quality-gates code {
     font: inherit;
     resize: vertical;
 }
+/* #327: recovered audio from an interrupted session. Copper (attention,
+   not alarm) — finding lost words back is good news, and the user
+   chooses whether to spend a transcription on it. */
+.reflection-recover {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0 0 12px;
+    padding: 10px 14px;
+    border: 1px solid var(--copper, #b87333);
+    border-left-width: 3px;
+    border-radius: var(--radius, 6px);
+    background: var(--surface-sunk, rgba(184, 115, 51, 0.08));
+    font-size: 0.9rem;
+}
+.reflection-recover-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+@media (max-width: 600px) {
+    /* Destructive-ish control tapped one-handed — meet the 44px standard. */
+    .reflection-recover-actions .btn-link {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+    }
+}
+
 /* #326: the recording timer now shows its cap ("12:34 / 30:00"). Amber
    for the final two minutes so a long dictation can be wrapped up
    rather than cut off mid-sentence. */
