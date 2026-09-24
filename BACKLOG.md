@@ -43,6 +43,16 @@ _(nothing in flight)_
   Jest. Docs: ADR-037, ARCHITECTURE Components + Route catalog,
   `_SCHEMA_DESCRIPTIONS`, docs.html "Adding context files", README feature
   bullet (the reflection had none), CLAUDE.md security rule. CACHE v240.
+  ✅ RESOLVED 2026-09-23 (3eca9d80) — ALL 11 GATES GREEN (pytest 84.54%,
+  jest 524/23 suites, Playwright local 169). Phase 6 desktop 1280×800 +
+  mobile 375×812: a real upload through the actual file input extracted
+  146 chars and round-tripped; a reload restored text AND attachment;
+  truncation showed "shortened from 31,499"; long filename ellipsized
+  (516px into 223px) with Remove still in the row; +Add file 321×44 and
+  Remove 64×44 on mobile; scrollWidth 375 ≤ 375; the draft payload was
+  632 bytes with the document body absent. DEPLOY GREEN + 5-min monitor
+  clean, `migrations: ok` (column live on prod Postgres), 47/47 prod
+  smoke, and the context block + narrowed claim confirmed live.
 
 - [x] **Transient on-device audio buffer — stop an evicted tab losing a recording (#327, ADR-036)** —
   Follow-up to #326, which raised the reflection segment cap 10 → 30 min and
