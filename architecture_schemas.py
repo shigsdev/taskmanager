@@ -186,6 +186,7 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
         ),
         "columns": {
             "iso_week":               {"desc": "ISO week the reflection belongs to (e.g. \"2026-W20\")", "notes": "Indexed; groups the history view"},
+            "title":                  {"desc": "A name you gave this sitting", "notes": "#339 — NULL means unnamed; the UI then shows a generated label (week, date, time, capture mode)"},
             "input_mode":             {"desc": "How it was captured", "notes": "voice (Whisper-transcribed) or typed"},
             "transcript":             {"desc": "The reflection text itself", "notes": "Required; persisted forever"},
             "audio_duration_seconds": {"desc": "Length of the recording", "notes": "Voice only; NULL for typed"},

@@ -488,6 +488,12 @@ class Reflection(db.Model):
     # ISO week label (e.g. "2026-W20") for grouping the history view and
     # retrospectives. Indexed because the history page queries by week.
     iso_week: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    # #339 (2026-09-24): a name the USER gave this sitting. NULL means
+    # "no custom name" and the UI falls back to a generated label. The
+    # generated label used to be `iso_week - date - input_mode`, which is
+    # identical for two reflections written on the same day: a user could
+    # not tell a throwaway test apart from a real multi-hour session.
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     input_mode: Mapped[ReflectionInputMode] = mapped_column(
         Enum(ReflectionInputMode), nullable=False
     )

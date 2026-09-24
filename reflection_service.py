@@ -391,7 +391,12 @@ def recent_reflections_block(exclude_id=None) -> str:
         if len(text) > _RECENT_REFLECTION_CHARS:
             text = text[:_RECENT_REFLECTION_CHARS].rstrip() + "…"
         when = r.created_at.date().isoformat() if r.created_at else r.iso_week
-        lines.append(f"[{when}] {text}")
+        # #339: if the user named the sitting, carry the name into the
+        # prompt. It is their own words for what that session was about,
+        # which is far better continuity signal than a date alone.
+        name = (r.title or "").strip()
+        label = f"{when} - {name}" if name else when
+        lines.append(f"[{label}] {text}")
     if not lines:
         return ""
     body = "\n\n".join(lines)
@@ -718,6 +723,25 @@ def _normalise_raw_segments(
             "recorded_at": recorded_at,
         })
     return out
+
+
+def set_reflection_title(reflection_id, title: str | None) -> Reflection | None:
+    """Name (or un-name) a reflection sitting (#339).
+
+    An empty or whitespace-only title stores NULL rather than "", so
+    "unnamed" is a single state: the UI's fallback label then applies,
+    and a stray space can never render as a blank name. Titles are
+    trimmed and length-capped to the column width.
+
+    Returns None when the id does not exist, so the route can 404.
+    """
+    reflection = get_reflection(reflection_id)
+    if reflection is None:
+        return None
+    clean = (title or "").strip()
+    reflection.title = clean[:200] if clean else None
+    db.session.commit()
+    return reflection
 
 
 def attach_analysis(

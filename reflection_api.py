@@ -74,6 +74,7 @@ from reflection_service import (
     list_reflections,
     save_draft,
     save_reflection,
+    set_reflection_title,
 )
 from utils import validate_json_body, validate_upload
 from voice_service import (
@@ -92,6 +93,10 @@ def _serialize(reflection) -> dict:
     return {
         "id": str(reflection.id),
         "iso_week": reflection.iso_week,
+        # #339: NULL means unnamed; the client falls back to a generated
+        # label rather than the server inventing one, so the same rule
+        # applies to a brand-new reflection that has never been saved.
+        "title": reflection.title,
         "input_mode": reflection.input_mode.value,
         "transcript": reflection.transcript,
         "audio_duration_seconds": reflection.audio_duration_seconds,
@@ -624,6 +629,32 @@ def list_all(email: str):  # noqa: ARG001
 
 
 # #238 (2026-05-26): archive + soft-delete endpoints.
+
+
+@bp.patch("/<uuid:reflection_id>")
+@login_required
+@validate_json_body
+def rename(email: str, reflection_id):  # noqa: ARG001
+    """Give a reflection a name, or clear it (#339).
+
+    History rows were labelled `iso_week - date - input_mode`, which is
+    byte-identical for two reflections written on the same day in the
+    same mode — a user could not tell a throwaway test apart from a real
+    multi-hour session. A name is the user's own words for what the
+    sitting was about, and it also rides into the continuity prompt so
+    Claude can refer back to it.
+
+    PATCH (not GET) because it mutates — see #190. Sending an empty or
+    whitespace-only title CLEARS the name rather than storing "", so the
+    generated fallback label applies again.
+    """
+    title = g.json_body.get("title")
+    if title is not None and not isinstance(title, str):
+        return jsonify({"error": "title must be a string"}), 422
+    reflection = set_reflection_title(reflection_id, title)
+    if reflection is None:
+        return jsonify({"error": "Reflection not found"}), 404
+    return jsonify(_serialize(reflection))
 
 
 @bp.post("/<uuid:reflection_id>/analyze")

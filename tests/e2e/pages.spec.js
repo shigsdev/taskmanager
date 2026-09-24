@@ -2339,3 +2339,93 @@ test.describe("Reflection - a live recording blocks the SW auto-reload (#331)", 
         expect(await page.evaluate(() => window.__userIsBusy())).toBe(true);
     });
 });
+
+test.describe("Reflection - naming a sitting (#339)", () => {
+    const firstRow = (page) =>
+        page.locator("#reflHistory .reflection-history-item").first();
+
+    const rename = async (page, value) => {
+        page.once("dialog", (d) => d.accept(value));
+        await firstRow(page).locator(
+            ".reflection-history-actions button", { hasText: /Name it|Rename/ }
+        ).click();
+    };
+
+    test.beforeEach(async ({ page }) => {
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await expect(firstRow(page)).toBeVisible({ timeout: 10000 });
+        // Seeded reflections may carry a name from a previous run.
+        await page.evaluate(async () => {
+            const res = await fetch("/api/reflection", { credentials: "same-origin" });
+            const { reflections } = await res.json();
+            for (const r of reflections) {
+                await fetch("/api/reflection/" + r.id, {
+                    method: "PATCH", credentials: "same-origin",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ title: "" }),
+                });
+            }
+        });
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+    });
+
+    test("unnamed rows are told apart by time, not just date", async ({ page }) => {
+        // The bug: same day + same mode produced byte-identical labels.
+        const labels = await page.locator(
+            "#reflHistory .reflection-history-item > summary"
+        ).allTextContents();
+        expect(labels.length).toBeGreaterThan(1);
+        labels.forEach((l) => expect(l).toMatch(/\d{2}:\d{2}/));
+        expect(new Set(labels).size).toBe(labels.length);
+    });
+
+    test("naming a sitting replaces its label", async ({ page }) => {
+        await firstRow(page).evaluate((el) => { el.open = true; });
+        await rename(page, "DTCC week 1 plan");
+        await expect(firstRow(page).locator("summary"))
+            .toHaveText(/DTCC week 1 plan/, { timeout: 10000 });
+        // And it survives a reload - i.e. it is on the server, not in the DOM.
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(firstRow(page).locator("summary"))
+            .toHaveText(/DTCC week 1 plan/, { timeout: 10000 });
+    });
+
+    test("the control reads Rename once a name exists", async ({ page }) => {
+        await firstRow(page).evaluate((el) => { el.open = true; });
+        await expect(firstRow(page).locator(
+            ".reflection-history-actions button", { hasText: "Name it" }
+        )).toBeVisible();
+        await rename(page, "Named now");
+        await expect(firstRow(page).locator("summary"))
+            .toHaveText(/Named now/, { timeout: 10000 });
+        await firstRow(page).evaluate((el) => { el.open = true; });
+        await expect(firstRow(page).locator(
+            ".reflection-history-actions button", { hasText: "Rename" }
+        )).toBeVisible();
+    });
+
+    test("clearing the name restores the generated label", async ({ page }) => {
+        await firstRow(page).evaluate((el) => { el.open = true; });
+        await rename(page, "Temporary");
+        await expect(firstRow(page).locator("summary"))
+            .toHaveText(/Temporary/, { timeout: 10000 });
+        await firstRow(page).evaluate((el) => { el.open = true; });
+        await rename(page, "   ");
+        await expect(firstRow(page).locator("summary"))
+            .toHaveText(/\d{4}-W\d{2}/, { timeout: 10000 });
+    });
+
+    test("cancelling the prompt changes nothing", async ({ page }) => {
+        await firstRow(page).evaluate((el) => { el.open = true; });
+        const before = await firstRow(page).locator("summary").textContent();
+        page.once("dialog", (d) => d.dismiss());
+        await firstRow(page).locator(
+            ".reflection-history-actions button", { hasText: /Name it|Rename/ }
+        ).click();
+        await page.waitForTimeout(400);
+        expect(await firstRow(page).locator("summary").textContent()).toBe(before);
+    });
+});

@@ -493,6 +493,48 @@
         return AUTO_RELOAD_BLOCKING_STATES.indexOf(state) !== -1;
     }
 
+    function _pad2(n) { return (n < 10 ? "0" : "") + n; }
+
+    /**
+     * reflectionLabel - how one past reflection is named in history.
+     *
+     * #339: rows used to read `iso_week - date - input_mode`, which is
+     * byte-identical for two reflections written on the same day in the
+     * same mode. A user could not tell a throwaway test apart from a
+     * real multi-hour session. Two changes: the generated label carries
+     * the TIME, and a user-supplied `title` overrides it entirely.
+     *
+     * The time is derived in the viewer's LOCAL zone from `created_at`,
+     * together with the date, so the two can never disagree across a
+     * midnight boundary the way a sliced ISO prefix plus a local clock
+     * would.
+     */
+    function reflectionLabel(r) {
+        if (!r || typeof r !== "object") return "";
+        var title = typeof r.title === "string" ? r.title.trim() : "";
+        if (title) return title;
+        var parts = [];
+        if (r.iso_week) parts.push(String(r.iso_week));
+        var stamp = "";
+        var d = r.created_at ? new Date(r.created_at) : null;
+        if (d && !isNaN(d.getTime())) {
+            stamp = d.getFullYear() + "-" + _pad2(d.getMonth() + 1) + "-"
+                + _pad2(d.getDate()) + " " + _pad2(d.getHours()) + ":"
+                + _pad2(d.getMinutes());
+        }
+        if (stamp) parts.push(stamp);
+        parts.push(String(r.input_mode || "typed"));
+        return parts.join(" · ");
+    }
+
+    /**
+     * reflectionIsNamed - does this row carry a user-given name? (#339)
+     * Drives whether the control reads "Rename" or "Name it".
+     */
+    function reflectionIsNamed(r) {
+        return !!(r && typeof r.title === "string" && r.title.trim());
+    }
+
     var api = {
         attachmentLabel: attachmentLabel,
         attachmentSummary: attachmentSummary,
@@ -512,6 +554,8 @@
         formatSavedAt: formatSavedAt,
         voiceIdleCopy: voiceIdleCopy,
         blocksAutoReload: blocksAutoReload,
+        reflectionLabel: reflectionLabel,
+        reflectionIsNamed: reflectionIsNamed,
         AUTO_RELOAD_BLOCKING_STATES: AUTO_RELOAD_BLOCKING_STATES,
     };
 

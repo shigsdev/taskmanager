@@ -1058,11 +1058,16 @@
         item.dataset.reflectionId = r.id;
 
         var sum = document.createElement("summary");
-        var when = (r.created_at || "").slice(0, 10);
+        // #339: the name comes from reflectionLabel — a user-given title
+        // when there is one, otherwise a generated label that includes
+        // the TIME. The old label (week + date + mode) was identical for
+        // two sittings on the same day.
         var applied = r.applied_at ? " ✓ applied" : "";
         var archivedTag = r.is_archived ? " · 📥 archived" : "";
-        sum.textContent = r.iso_week + " · " + when
-            + " · " + (r.input_mode || "typed") + applied + archivedTag;
+        var baseLabel = (RH_ && typeof RH_.reflectionLabel === "function")
+            ? RH_.reflectionLabel(r)
+            : r.iso_week + " · " + (r.created_at || "").slice(0, 10);
+        sum.textContent = baseLabel + applied + archivedTag;
         item.appendChild(sum);
 
         var pre = document.createElement("pre");
@@ -1096,6 +1101,34 @@
                               { method: "POST" });
             });
             actions.appendChild(archiveBtn);
+
+            // #339: name this sitting. prompt() rather than an inline
+            // editor because this is a rare, one-line action and an
+            // inline field would add a focus/escape/save state machine
+            // to every row in the list for no gain.
+            var named = RH_ && typeof RH_.reflectionIsNamed === "function"
+                ? RH_.reflectionIsNamed(r) : !!(r.title || "").trim();
+            var nameBtn = document.createElement("button");
+            nameBtn.type = "button";
+            nameBtn.className = "btn btn-sm";
+            nameBtn.textContent = named ? "✎ Rename" : "✎ Name it";
+            nameBtn.addEventListener("click", async function () {
+                var next = window.prompt(
+                    "Name this reflection (leave blank to clear the name):",
+                    r.title || "");
+                if (next === null) return;  // cancelled
+                try {
+                    await window.apiFetch("/api/reflection/" + r.id, {
+                        method: "PATCH",
+                        body: JSON.stringify({ title: next }),
+                    });
+                } catch (err) {
+                    alert("Couldn't rename: " + (err.message || err));
+                    return;
+                }
+                loadHistory();
+            });
+            actions.appendChild(nameBtn);
 
             // #338: re-run Claude over a reflection that is already
             // saved. The error state has always promised this ("can be
