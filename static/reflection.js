@@ -909,6 +909,10 @@
         // session's raw segments into the next submit — confusingly
         // attaching old voice transcripts to a fresh typed reflection.
         rawSegments = [];
+        // #328: the submitted reflection took its attachments with it;
+        // a fresh one starts with none.
+        renderAttachments([]);
+        setCtxStatus("");
         showState("input");
         selectMode("type");
         focusBtn.disabled = false;
@@ -1139,6 +1143,11 @@
         if (draftTimer) { clearTimeout(draftTimer); draftTimer = null; }
         if (draftBanner) draftBanner.style.display = "none";
         setDraftStatus("");
+        // #328: every caller of this is a "the draft is gone" moment —
+        // submitted, or discarded. The attachments went with it, so the
+        // list must not keep advertising files the server no longer has.
+        renderAttachments([]);
+        setCtxStatus("");
     }
 
     // Exposed so the submit path can stop a pending autosave from
@@ -1178,12 +1187,21 @@
             return;  // no draft UI rather than a scary error on load
         }
         var draft = data && data.draft;
-        if (!draft || !draft.transcript) return;
+        if (!draft) return;
+        // #328: attachments are server truth and restore independently of
+        // the text. A file attached before a single word was typed is
+        // still work worth bringing back — and it must come back even if
+        // the user has already started typing in this tab, because the
+        // server would otherwise send it to Claude invisibly.
+        renderAttachments(draft.context_files);
+        var hasFiles = Array.isArray(draft.context_files)
+            && draft.context_files.length > 0;
+        if (!draft.transcript && !hasFiles) return;
         // Don't clobber anything the user already started typing in the
         // moment before this fetch returned.
         if ((textArea.value || "").trim()) return;
-        textArea.value = draft.transcript;
-        lastSavedText = draft.transcript;
+        textArea.value = draft.transcript || "";
+        lastSavedText = draft.transcript || "";
         if (Array.isArray(draft.raw_segments) && draft.raw_segments.length) {
             rawSegments.length = 0;
             draft.raw_segments.forEach(function (s) { rawSegments.push(s); });
@@ -1195,6 +1213,159 @@
                 : "Draft restored";
             draftBanner.style.display = "";
         }
+    }
+
+    // ---- context documents (#328) ----
+    // Reference material the analysis reads alongside the reflection: a
+    // job description, a 30/60/90 plan, a photo of a whiteboard. The
+    // uploaded file never leaves the request — the server pulls the text
+    // out of it in memory and keeps only that, on the DRAFT, so an
+    // attachment follows the user between sittings and devices exactly
+    // like the draft text does (#324).
+
+    var ctxInput = document.getElementById("reflContextInput");
+    var ctxAddBtn = document.querySelector(".reflection-context-add");
+    var ctxList = document.getElementById("reflContextList");
+    var ctxSummary = document.getElementById("reflContextSummary");
+    var ctxStatus = document.getElementById("reflContextStatus");
+    // Mirrors reflection_context_service. The server re-validates
+    // everything; these only exist so an obviously-wrong pick fails
+    // instantly instead of after a 10MB upload.
+    var CTX_MAX_BYTES = 10 * 1024 * 1024;
+    var CTX_MAX_FILES = 5;
+    var CTX_MAX_CHARS = 60000;
+    var ctxBusy = false;
+
+    function setCtxStatus(msg, isError) {
+        if (!ctxStatus) return;
+        ctxStatus.textContent = msg || "";
+        ctxStatus.classList.toggle("reflection-context-status-err", !!isError);
+    }
+
+    function buildAttachmentRow(f) {
+        var label = RH_.attachmentLabel(f);
+        if (!label || !label.name) return null;
+
+        var li = document.createElement("li");
+        li.className = "reflection-context-item";
+
+        var text = document.createElement("div");
+        text.className = "reflection-context-item-text";
+        var name = document.createElement("span");
+        name.className = "reflection-context-item-name";
+        name.textContent = label.name;
+        text.appendChild(name);
+        if (label.meta) {
+            var meta = document.createElement("span");
+            meta.className = "reflection-context-item-meta";
+            meta.textContent = label.meta;
+            text.appendChild(meta);
+        }
+        li.appendChild(text);
+
+        var remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "btn-link reflection-context-remove";
+        remove.textContent = "Remove";
+        remove.setAttribute("aria-label", "Remove " + label.name);
+        remove.addEventListener("click", function () {
+            removeAttachment(f.id, label.name);
+        });
+        li.appendChild(remove);
+        return li;
+    }
+
+    function renderAttachments(files, meta) {
+        if (!ctxList) return;
+        var list = Array.isArray(files) ? files : [];
+        ctxList.replaceChildren();
+        list.forEach(function (f) {
+            var row = buildAttachmentRow(f);
+            if (row) ctxList.appendChild(row);
+        });
+
+        var maxFiles = (meta && meta.max_files) || CTX_MAX_FILES;
+        var maxChars = (meta && meta.max_total_chars) || CTX_MAX_CHARS;
+        if (ctxSummary) {
+            ctxSummary.textContent = RH_.attachmentSummary(
+                list, maxFiles, maxChars,
+            );
+        }
+        // A <label> can't be disabled, but a disabled input makes the
+        // label inert — browsers won't open the picker for it. The class
+        // is what makes that visible rather than mysterious.
+        var full = list.length >= maxFiles;
+        if (ctxInput) ctxInput.disabled = full;
+        if (ctxAddBtn) {
+            ctxAddBtn.classList.toggle("reflection-context-add-disabled", full);
+        }
+    }
+
+    async function uploadAttachment(file) {
+        if (!file || ctxBusy) return;
+        var problem = RH_.attachmentPreflight(file, CTX_MAX_BYTES);
+        if (problem) { setCtxStatus(problem, true); return; }
+
+        ctxBusy = true;
+        setCtxStatus("Reading " + file.name + "…");
+        try {
+            // Flush any pending text autosave first so the draft the
+            // server is about to re-save already carries the newest
+            // words — otherwise an attachment can momentarily pin an
+            // older transcript back onto the row.
+            await saveDraftNow();
+            var form = new FormData();
+            form.append("file", file);
+            var data = await window.apiFetch("/api/reflection/attachment", {
+                method: "POST",
+                body: form,
+            });
+            renderAttachments(data && data.context_files, data);
+            var added = data && data.attachment;
+            var added_name = (added && added.filename) || file.name;
+            if (added && added.truncated) {
+                // Say it out loud. Silently analysing the first third of
+                // a document is a worse failure than refusing it.
+                setCtxStatus(
+                    "Attached " + added_name + " — it's long, so only the "
+                    + "first part will be sent to Claude.",
+                );
+            } else {
+                setCtxStatus("Attached " + added_name);
+            }
+        } catch (err) {
+            setCtxStatus(err.message || "Couldn't attach that file.", true);
+        } finally {
+            ctxBusy = false;
+            // Reset the input so picking the SAME file again still fires
+            // a change event (the browser suppresses it otherwise).
+            if (ctxInput) ctxInput.value = "";
+        }
+    }
+
+    async function removeAttachment(id, name) {
+        if (!id || ctxBusy) return;
+        ctxBusy = true;
+        setCtxStatus("Removing…");
+        try {
+            var data = await window.apiFetch(
+                "/api/reflection/attachment/" + encodeURIComponent(id),
+                { method: "DELETE" },
+            );
+            renderAttachments(data && data.context_files, data);
+            setCtxStatus(name ? "Removed " + name : "Removed");
+        } catch (err) {
+            setCtxStatus(err.message || "Couldn't remove that file.", true);
+        } finally {
+            ctxBusy = false;
+        }
+    }
+
+    if (ctxInput) {
+        ctxInput.addEventListener("change", function () {
+            var file = ctxInput.files && ctxInput.files[0];
+            if (file) uploadAttachment(file);
+        });
     }
 
     // ---- milestone: the runway this reflection counts down to (#325) ----

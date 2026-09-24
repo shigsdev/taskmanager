@@ -8,6 +8,11 @@ Endpoints:
         segment (#232 pause+resume). No Reflection row, no Claude call —
         just audio→text. Frontend appends the text to its textarea and
         eventually POSTs the merged content to the main endpoint above.
+    POST   /api/reflection/attachment            — #328: attach ONE context
+        document (multipart field "file"; pdf/docx/xlsx/txt/md/image).
+        Extracted to text in memory; the file itself is never stored.
+        The text lands on the open draft and rides onto the reflection.
+    DELETE /api/reflection/attachment/<id>       — #328: detach one
     POST   /api/reflection/<id>/confirm          — apply the user-selected
         actions; returns an apply summary
     POST   /api/reflection/<id>/archive          — #238: hide from default
@@ -29,6 +34,13 @@ on the SERVER — never written to server disk or the DB (handled by
 voice_service). #327 buffers in-flight audio transiently in the browser's
 IndexedDB on the user's own device so an interrupted recording survives;
 that device-local copy is deleted as soon as the segment is transcribed.
+
+#328 attachments follow the same server posture as audio and /scan
+images: the uploaded file is decoded to text in memory and the bytes are
+dropped when the request ends. Only the extracted TEXT is persisted.
+Because that text is untrusted input feeding a prompt that can propose
+deletes, it is fenced and marked data-not-instructions — see
+``reflection_context_service`` and ADR-037.
 """
 from __future__ import annotations
 
@@ -40,6 +52,18 @@ from auth import login_required
 from milestone_service import clear_milestone, get_milestone, set_milestone
 from models import ReflectionInputMode
 from rate_limit import PAID_API, limiter
+from reflection_context_service import (
+    ALLOWED_EXTENSIONS,
+    MAX_FILES,
+    MAX_TOTAL_CHARS,
+    MAX_UPLOAD_BYTES,
+    ContextExtractionError,
+    build_attachment,
+    check_capacity,
+    normalise_context_files,
+    public_view,
+    total_chars,
+)
 from reflection_service import (
     analyze_reflection,
     apply_selected_actions,
@@ -88,6 +112,11 @@ def _serialize(reflection) -> dict:
         "is_active": bool(reflection.is_active),
         # #324: unsubmitted draft (no analysis yet, hidden from history).
         "is_draft": bool(reflection.is_draft),
+        # #328: attached context documents. METADATA ONLY — the extracted
+        # text can be tens of thousands of characters, the UI never
+        # renders it, and it would ride along on every draft autosave
+        # response.
+        "context_files": public_view(reflection.context_files),
         # The client shows this as "last saved" on a restored draft.
         "updated_at": (
             reflection.updated_at.isoformat() if reflection.updated_at else None
@@ -176,6 +205,15 @@ def submit(email: str):  # noqa: ARG001
             if rs:
                 input_mode = ReflectionInputMode.VOICE
 
+    # #328: the open draft carries any context documents attached over
+    # this (possibly multi-sitting) reflection. Read them BEFORE the
+    # draft is retired below, so they ride onto the reflection row and
+    # into the analysis rather than being dropped with the draft.
+    open_draft = get_open_draft()
+    context_files = normalise_context_files(
+        open_draft.context_files if open_draft else []
+    )
+
     # Persist the transcript FIRST, before the paid + failure-prone
     # Claude call. #165 requires every transcript persisted forever;
     # the original order (analyze → save) discarded the reflection on
@@ -190,6 +228,7 @@ def submit(email: str):  # noqa: ARG001
         audio_cost_usd=audio_cost,
         ai_cost_usd=None,
         raw_segments=raw_segments,  # #237
+        context_files=context_files,  # #328
     )
 
     # #324: the draft has become a real reflection — retire it. Done
@@ -206,7 +245,13 @@ def submit(email: str):  # noqa: ARG001
     # the transcript is visible in the history list, NOT lost.
     try:
         # #325: exclude THIS reflection from its own continuity context.
-        analysis = analyze_reflection(transcript, exclude_id=reflection.id)
+        # #328: attached documents come along as explicitly-untrusted
+        # reference material (see reflection_context_service / ADR-037).
+        analysis = analyze_reflection(
+            transcript,
+            exclude_id=reflection.id,
+            context_files=context_files,
+        )
     except RuntimeError as e:
         logger.warning(
             "Reflection analysis failed (transcript %s saved): %s",
@@ -387,6 +432,11 @@ def put_draft(email: str):  # noqa: ARG001
     raw_segments = data.get("raw_segments")
     if raw_segments is not None and not isinstance(raw_segments, list):
         return jsonify({"error": "raw_segments must be a list"}), 422
+    # NOTE: context_files is deliberately NOT accepted here. Attachments
+    # are added and removed through the /attachment endpoints below; the
+    # autosave loop sends only text, and letting it also write the
+    # attachment list would let a stale in-flight save resurrect a file
+    # the user just removed.
     draft = save_draft(transcript=text or "", raw_segments=raw_segments)
     return jsonify({"draft": _serialize(draft)}), 200
 
@@ -397,6 +447,108 @@ def delete_draft(email: str):  # noqa: ARG001
     """Discard the open draft. 204 either way — idempotent."""
     discard_draft()
     return "", 204
+
+
+# --- Context documents (#328) -----------------------------------------------
+# Attach reference material — a job description, a 30/60/90 plan, a photo
+# of a whiteboard — so the analysis reasons against more than the user's
+# words. The FILE is never stored: it is decoded to text in memory and
+# the bytes are dropped when the request ends. Only the extracted text is
+# persisted, on the draft (and from there onto the submitted reflection).
+#
+# Attachments live on the draft rather than in the browser so they follow
+# the user across sittings and devices, exactly like the draft text
+# itself (#324).
+
+
+def _attachment_payload(draft) -> dict:
+    files = normalise_context_files(draft.context_files if draft else [])
+    return {
+        "context_files": public_view(files),
+        "total_chars": total_chars(files),
+        "max_total_chars": MAX_TOTAL_CHARS,
+        "max_files": MAX_FILES,
+    }
+
+
+@bp.post("/attachment")
+@login_required
+@limiter.limit(PAID_API)  # paid: image attachments hit Google Vision OCR
+def add_attachment(email: str):  # noqa: ARG001
+    """Attach one context document to the open draft.
+
+    Accepts multipart/form-data with a 'file' field. Validates on
+    EXTENSION rather than Content-Type because the extension is what
+    selects the extractor, and browsers report unreliable MIME types for
+    .md / .docx / .xlsx (the same reasoning as the import routes, #194).
+
+    Returns the new attachment's metadata plus the full attachment list.
+    """
+    file_bytes, _ct, err = validate_upload(
+        request,
+        field_name="file",
+        max_bytes=MAX_UPLOAD_BYTES,
+        allowed_extensions=ALLOWED_EXTENSIONS,
+    )
+    if err:
+        return jsonify(err[0]), err[1]
+
+    filename = request.files["file"].filename or ""
+
+    # The file-count cap needs no extraction, so check it FIRST: a sixth
+    # attachment is refused before we pay Google Vision to OCR an image
+    # whose text we would immediately discard.
+    draft = get_open_draft()
+    existing = normalise_context_files(draft.context_files if draft else [])
+    full = check_capacity(existing)
+    if full:
+        return jsonify({"error": full}), 422
+
+    try:
+        attachment = build_attachment(filename, file_bytes)
+    except ContextExtractionError as e:
+        # Log the shape of the failure, never the filename or content.
+        logger.info(
+            "reflection attachment rejected (%d bytes): %s",
+            len(file_bytes), e,
+        )
+        return jsonify({"error": str(e)}), e.status
+    except Exception:
+        logger.exception("reflection attachment extraction crashed")
+        return jsonify({"error": "Couldn't read that file."}), 500
+
+    capacity_error = check_capacity(existing, attachment["chars"])
+    if capacity_error:
+        return jsonify({"error": capacity_error}), 422
+
+    draft = save_draft(
+        transcript=(draft.transcript if draft else "") or "",
+        raw_segments=(draft.raw_segments if draft else None),
+        context_files=[*existing, attachment],
+    )
+    payload = _attachment_payload(draft)
+    payload["attachment"] = {
+        k: v for k, v in attachment.items() if k != "text"
+    }
+    return jsonify(payload), 201
+
+
+@bp.delete("/attachment/<attachment_id>")
+@login_required
+def remove_attachment(email: str, attachment_id: str):  # noqa: ARG001
+    """Detach one context document from the open draft. Idempotent."""
+    draft = get_open_draft()
+    if draft is None:
+        return jsonify(_attachment_payload(None)), 200
+    existing = normalise_context_files(draft.context_files)
+    remaining = [f for f in existing if f["id"] != attachment_id]
+    if len(remaining) != len(existing):
+        draft = save_draft(
+            transcript=draft.transcript or "",
+            raw_segments=draft.raw_segments,
+            context_files=remaining,
+        )
+    return jsonify(_attachment_payload(draft)), 200
 
 
 # --- Milestone: the runway the reflection counts down to (#325) -------------

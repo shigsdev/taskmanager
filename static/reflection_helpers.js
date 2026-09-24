@@ -328,7 +328,108 @@
         };
     }
 
+    /**
+     * #328 — how one attached context file reads in the list.
+     *
+     * The character count is the honest unit here, not the file size:
+     * what actually reaches Claude is the extracted text, and a 4MB PDF
+     * of scanned pages can yield less of it than a 3KB note. Truncation
+     * is stated outright — quietly analysing the first third of a
+     * document would be a worse failure than refusing it.
+     */
+    function attachmentLabel(file) {
+        if (!file || typeof file !== "object") return "";
+        var name = (file.filename || "attachment").trim() || "attachment";
+        var chars = typeof file.chars === "number" && file.chars > 0
+            ? file.chars : 0;
+        var kind = (file.kind || "").toString().toLowerCase();
+        var bits = [];
+        if (kind) bits.push(kind.toUpperCase());
+        if (chars) bits.push(_thousands(chars) + " characters");
+        var meta = bits.join(" · ");
+        if (file.truncated) {
+            var src = typeof file.source_chars === "number"
+                && file.source_chars > chars ? file.source_chars : null;
+            meta += src
+                ? " (shortened from " + _thousands(src) + ")"
+                : " (shortened)";
+        }
+        return { name: name, meta: meta };
+    }
+
+    function _thousands(n) {
+        return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+
+    /**
+     * #328 — the one-line summary under the attachment list.
+     *
+     * Returns "" when nothing is attached so the block stays quiet on a
+     * fresh reflection rather than announcing an empty state.
+     */
+    function attachmentSummary(files, maxFiles, maxChars) {
+        var list = Array.isArray(files) ? files : [];
+        if (!list.length) return "";
+        var used = 0;
+        for (var i = 0; i < list.length; i++) {
+            var c = list[i] && list[i].chars;
+            if (typeof c === "number" && c > 0) used += c;
+        }
+        var n = list.length;
+        var cap = typeof maxFiles === "number" && maxFiles > 0 ? maxFiles : 5;
+        var budget = typeof maxChars === "number" && maxChars > 0
+            ? maxChars : 60000;
+        return n + " of " + cap + (n === 1 ? " file" : " files") + " · "
+            + _thousands(used) + " of " + _thousands(budget)
+            + " characters of context";
+    }
+
+    /**
+     * #328 — is this file worth sending at all?
+     *
+     * Checked client-side purely so an obviously-wrong pick fails
+     * instantly instead of after a 10MB upload. The server re-validates
+     * everything; this is a courtesy, never the gate.
+     */
+    var ATTACHMENT_EXTENSIONS = [
+        ".pdf", ".docx", ".xlsx", ".txt", ".md",
+        ".png", ".jpg", ".jpeg", ".webp",
+    ];
+
+    function attachmentPreflight(file, maxBytes, allowed) {
+        if (!file) return "No file selected.";
+        var exts = Array.isArray(allowed) && allowed.length
+            ? allowed : ATTACHMENT_EXTENSIONS;
+        var name = (file.name || "").toLowerCase();
+        var ok = false;
+        for (var i = 0; i < exts.length; i++) {
+            if (name.length > exts[i].length
+                && name.slice(-exts[i].length) === exts[i]) {
+                ok = true;
+                break;
+            }
+        }
+        if (!ok) {
+            return "That file type isn't supported. Attach a "
+                + exts.join(", ") + " file.";
+        }
+        var cap = typeof maxBytes === "number" && maxBytes > 0
+            ? maxBytes : 10 * 1024 * 1024;
+        if (typeof file.size === "number" && file.size > cap) {
+            return "That file is too large (max "
+                + Math.floor(cap / 1024 / 1024) + " MB).";
+        }
+        if (typeof file.size === "number" && file.size === 0) {
+            return "That file is empty.";
+        }
+        return null;
+    }
+
     var api = {
+        attachmentLabel: attachmentLabel,
+        attachmentSummary: attachmentSummary,
+        attachmentPreflight: attachmentPreflight,
+        ATTACHMENT_EXTENSIONS: ATTACHMENT_EXTENSIONS,
         defaultChecked: defaultChecked,
         autoPauseReason: autoPauseReason,
         formatRecordingTime: formatRecordingTime,

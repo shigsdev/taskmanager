@@ -93,6 +93,35 @@
             <button type="button" class="btn-link" id="reflDraftDiscard">Discard draft</button>
         </div>
 
+        {# #328: context documents. Sits OUTSIDE the type/record sub-states
+           because an attachment is context for the whole reflection, not
+           for one input mode — you can dictate the reflection and still
+           attach the job description you're talking about. The file
+           itself is never stored: the server reads the text out of it in
+           memory and keeps only that. #}
+        <div class="reflection-context" id="reflContext">
+            <div class="reflection-context-head">
+                <div class="reflection-context-copy">
+                    <span class="reflection-context-title">Context files</span>
+                    <span class="reflection-context-hint">
+                        Optional — attach a job description, a plan, notes or
+                        a photo and Claude reads them alongside your
+                        reflection. The file isn't stored; only the text
+                        pulled out of it is kept with this reflection.
+                    </span>
+                </div>
+                <label class="btn btn-sm reflection-context-add"
+                       for="reflContextInput">+ Add file</label>
+                <input type="file" id="reflContextInput"
+                       class="reflection-context-input"
+                       accept=".pdf,.docx,.xlsx,.txt,.md,.png,.jpg,.jpeg,.webp">
+            </div>
+            <ul class="reflection-context-list" id="reflContextList"></ul>
+            <p class="reflection-context-summary" id="reflContextSummary"></p>
+            <p class="reflection-context-status" id="reflContextStatus"
+               aria-live="polite"></p>
+        </div>
+
         <!-- Typed sub-state -->
         <div class="reflection-typed" id="reflTyped">
             <textarea id="reflText" rows="10" maxlength="20000"

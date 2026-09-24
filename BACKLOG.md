@@ -14,6 +14,36 @@ _(nothing in flight)_
 
 ## Completed
 
+- [x] **Reflection context files — attach documents so the analysis reads more than your words (#328, ADR-037)** —
+  User-requested 2026-09-23: "I have a use case - i want to be able to add
+  files to the reflection to add more context - can we enable the ability to
+  do to?" With a new role starting 2026-11-02, the material that should be
+  driving the prep plan (job description, 30/60/90 draft, skills matrix,
+  photographed whiteboard) had no way into the prompt short of retyping it.
+  **Built**: `reflection_context_service.py` decodes an upload to text IN
+  MEMORY — pypdf (new pure-Python dep) / python-docx / openpyxl / UTF-8 /
+  Google Vision OCR for images — and drops the bytes; only the extracted
+  TEXT is persisted, in the new `reflections.context_files` JSON column
+  (migration `l2a3b4c5d6e7`). `POST /api/reflection/attachment` +
+  `DELETE /api/reflection/attachment/<id>`, validated by EXTENSION because
+  the extension is what picks the extractor. Attachments land on the open
+  DRAFT (#324) so they survive a multi-sitting, multi-device reflection,
+  then ride onto the submitted row in the same step that retires the draft.
+  Caps: 5 files / 20k chars each / 60k total / 10MB per upload, with
+  truncation reported in the UI ("shortened from 84,312") and declared in
+  the prompt — never silent. **Trust boundary (ADR-037)**: first path that
+  feeds a FILE into a prompt whose output includes `delete`. Document text
+  is fenced in BEGIN/END markers, labelled data-never-instructions, and its
+  own marker lines are neutralised so it can't close its own fence; the
+  load-bearing control stays the human confirm step. `save_draft`'s
+  `context_files` is unset-means-UNCHANGED so the keystroke autosave can't
+  wipe an attachment, and `PUT /draft` refuses the field entirely.
+  **Tests**: 51 pytest (incl. a hand-built PDF with a real text stream — a
+  mocked PdfReader would pass with pypdf missing from requirements) + 23
+  Jest. Docs: ADR-037, ARCHITECTURE Components + Route catalog,
+  `_SCHEMA_DESCRIPTIONS`, docs.html "Adding context files", README feature
+  bullet (the reflection had none), CLAUDE.md security rule. CACHE v240.
+
 - [x] **Transient on-device audio buffer — stop an evicted tab losing a recording (#327, ADR-036)** —
   Follow-up to #326, which raised the reflection segment cap 10 → 30 min and
   thereby TRIPLED the blast radius of an existing flaw: a segment's audio
@@ -856,9 +886,9 @@ The script preserves operator-added prose across re-renders. -->
 | Audit row | Finding | First seen | Last seen | Notes / Status |
 |---|---|---|---|---|
 <!-- audit-row: bug-pattern/bare-1fr-grids/static-style.css -->
-| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 42: bare 1fr | 2026-05-27 | 2026-09-19 | 🟢 auto-detected resolved 2026-09-19 |
+| `bug-pattern/bare-1fr-grids/static-style.css` | **static/style.css** — line 42: bare 1fr | 2026-05-27 | 2026-09-23 | 🟢 auto-detected resolved 2026-09-23 |
 <!-- audit-row: coverage/overall-coverage-drift/ -->
-| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-09-19 | 🟢 auto-detected resolved 2026-09-19 |
+| `coverage/overall-coverage-drift/` |  | 2026-05-27 | 2026-09-23 |  |
 <!-- audit-row: coverage/per-file-coverage-drift/app.py -->
 | `coverage/per-file-coverage-drift/app.py` | **app.py** — coverage dropped 9.9pp (90.2% → 80.3%; tolerance 5.0pp) | 2026-06-26 | 2026-07-17 | 🟢 auto-detected resolved 2026-07-17 |
 <!-- audit-row: coverage/per-file-coverage-drift/digest_api.py -->

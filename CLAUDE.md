@@ -637,6 +637,15 @@ as gate 8d.
 - Never commit `.env` or secrets to git — `.env` is in `.gitignore` from day one
 - All user input sanitized before DB insertion
 - Images are processed in memory only — never written to disk or DB
+- Uploaded FILES are processed in memory only on the server — never
+  written to server disk or the DB. #328 added reflection context
+  documents (PDF / .docx / .xlsx / .txt / .md / image, via
+  `reflection_context_service.py`): the upload is decoded to text in
+  memory and the bytes are dropped; only the EXTRACTED TEXT is persisted
+  (`reflections.context_files`). Same rule as `/scan` and `/import`.
+  A document's text is UNTRUSTED input on a prompt path that can propose
+  `delete` actions — keep it fenced and labelled data-not-instructions,
+  and keep the human confirm step as the real control. See ADR-037.
 - Audio (voice memo, reflection) is processed in memory only ON THE
   SERVER — never written to server disk or the DB. #327 narrowed this:
   in-flight reflection audio IS buffered transiently on the USER'S OWN

@@ -509,6 +509,16 @@ class Reflection(db.Model):
     raw_segments: Mapped[list] = mapped_column(
         JSONType, nullable=False, default=list,
     )
+    # #328 (2026-09-23): context documents the user attached to give the
+    # analysis more to work with (a job description, a 30/60/90 plan, a
+    # photo of a whiteboard). Each entry is
+    # `{id, filename, kind, chars, source_chars, truncated, text,
+    # added_at}` — the EXTRACTED TEXT only. The uploaded file itself is
+    # decoded in memory and discarded: it never reaches server disk or
+    # this database. Empty list for reflections with no attachments.
+    context_files: Mapped[list] = mapped_column(
+        JSONType, nullable=False, default=list,
+    )
     # Claude's proposed actions, as returned by reflection_service after
     # normalisation. Shape: {"explicit": [...], "suggested": [...]}.
     proposed_actions: Mapped[dict] = mapped_column(

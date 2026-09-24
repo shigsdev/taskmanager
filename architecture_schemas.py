@@ -180,8 +180,9 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "Claude reads it against your active projects/goals/tasks "
             "and proposes create/update/delete changes you review + "
             "confirm. Every transcript is kept forever for future "
-            "reference / retrospectives. Audio is never stored — only "
-            "the transcript."
+            "reference / retrospectives. Neither audio nor attached "
+            "files are stored — only the transcript and the text "
+            "pulled out of each attachment."
         ),
         "columns": {
             "iso_week":               {"desc": "ISO week the reflection belongs to (e.g. \"2026-W20\")", "notes": "Indexed; groups the history view"},
@@ -194,6 +195,7 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "is_archived":            {"desc": "Hidden from the default history view (#238)", "notes": "User-toggleable. Show-archived UI toggle surfaces these rows alongside active ones, visually muted. Independent of is_active — a row can be archived AND soft-deleted."},
             "is_active":              {"desc": "Soft-delete flag (#238)", "notes": "False = soft-deleted; row stays in DB but drops from the default list. Recently-deleted UI section surfaces these with Restore buttons. Matches the Project / Goal / RecurringTask pattern."},
             "is_draft":               {"desc": "An unsubmitted reflection still being written (#324)", "notes": "Indexed. True = the in-progress text autosaved from /reflection; costs nothing (no Whisper/Claude runs until submit) and is hidden from the history list. At most one open draft at a time; submitting the reflection deletes it. Lives server-side rather than in localStorage so a reflection written across several sittings follows you between phone and laptop."},
+            "context_files":          {"desc": "Reference documents you attached to give the analysis more context (#328)", "notes": "JSON list of {id, filename, kind, chars, source_chars, truncated, text, added_at}. Holds the EXTRACTED TEXT only — the uploaded file (PDF / Word / Excel / notes / photo) is decoded in memory and its bytes are discarded, never written to server disk or this database. Attachments accumulate on the draft so they survive a reflection written across several sittings, then ride onto the submitted row. Empty list when nothing was attached."},
             "proposed_actions":       {"desc": "Claude's proposed changes", "notes": "JSON {explicit: [...], suggested: [...]}"},
             "applied_actions":        {"desc": "What you actually confirmed + the apply result", "notes": "JSON audit trail; NULL until confirmed"},
             "applied_at":             {"desc": "When the confirmed actions were applied", "notes": "NULL until you confirm"},

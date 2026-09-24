@@ -46,6 +46,10 @@ from models import (
     TaskStatus,
     db,
 )
+from reflection_context_service import (
+    context_files_block,
+    normalise_context_files,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -243,7 +247,7 @@ Rules:
   the exact name/title you used in that create action.
 - If the reflection contains no actionable changes, return
   {{"explicit": [], "suggested": []}}.
-
+{context_files}
 Reflection:
 {transcript}
 """
@@ -382,7 +386,9 @@ def recent_reflections_block(exclude_id=None) -> str:
     )
 
 
-def analyze_reflection(transcript: str, exclude_id=None) -> dict[str, Any]:
+def analyze_reflection(
+    transcript: str, exclude_id=None, context_files=None,
+) -> dict[str, Any]:
     """Send a reflection transcript to Claude and return proposed actions.
 
     Returns ``{"explicit": [...], "suggested": [...], "ai_cost_usd":
@@ -394,6 +400,11 @@ def analyze_reflection(transcript: str, exclude_id=None) -> dict[str, Any]:
     the reflection would appear in its own "previous reflections"
     context — handing Claude the same words twice and inviting it to
     treat this week's thoughts as last week's commitments.
+
+    ``context_files`` (#328) are the attached documents' extracted text.
+    They are rendered into a fenced, explicitly-untrusted block — see
+    ``reflection_context_service`` and ADR-037 for why a document's
+    contents must never be read as instructions.
 
     Raises:
         RuntimeError: if ANTHROPIC_API_KEY is missing or the call fails.
@@ -417,6 +428,10 @@ def analyze_reflection(transcript: str, exclude_id=None) -> dict[str, Any]:
         # and no idea a deadline exists.
         milestone=_milestone_block(),
         recent_reflections=recent_reflections_block(exclude_id=exclude_id),
+        # #328: attached documents, fenced and marked as data-not-
+        # instructions. Collapses to "" when nothing is attached, so a
+        # reflection without files gets byte-identical prompt to before.
+        context_files=context_files_block(context_files),
         projects=_fmt_rows(
             snapshot["projects"],
             ("id", "name", "type", "status", "priority"),
@@ -591,6 +606,7 @@ def save_reflection(
     audio_cost_usd: float | None = None,
     ai_cost_usd: float | None = None,
     raw_segments: list[dict[str, Any]] | None = None,
+    context_files: list[dict[str, Any]] | None = None,
 ) -> Reflection:
     """Persist a reflection + its proposed actions. Transcript is kept
     forever for future reference (the explicit user requirement).
@@ -600,6 +616,10 @@ def save_reflection(
     is a dict ``{text, duration_seconds, cost_usd, recorded_at}``.
     Defaults to ``[]`` (typed reflections + voice reflections that
     pre-date #237).
+
+    #328 (2026-09-23): ``context_files`` carries the EXTRACTED TEXT of
+    any documents the user attached (never the files themselves). Kept
+    with the reflection so a retrospective can see what informed it.
     """
     reflection = Reflection(
         iso_week=current_iso_week(),
@@ -609,6 +629,7 @@ def save_reflection(
         audio_cost_usd=audio_cost_usd,
         ai_cost_usd=ai_cost_usd,
         raw_segments=_normalise_raw_segments(raw_segments),
+        context_files=normalise_context_files(context_files),
         proposed_actions={
             "explicit": proposed.get("explicit", []),
             "suggested": proposed.get("suggested", []),
@@ -766,6 +787,7 @@ def save_draft(
     *,
     transcript: str,
     raw_segments: list[dict[str, Any]] | None = None,
+    context_files: list[dict[str, Any]] | None = None,
 ) -> Reflection:
     """Upsert THE open draft with the current in-progress text.
 
@@ -777,6 +799,12 @@ def save_draft(
     Unlike ``save_reflection`` the transcript is NOT required to be
     non-empty — an empty draft is a legitimate "user cleared the box"
     state, and refusing it would strand the client mid-autosave.
+
+    ``context_files`` is UNSET-means-UNCHANGED (#328), not
+    unset-means-empty. The text autosave fires on every keystroke burst
+    and sends only the textarea; treating its silence as "no
+    attachments" would delete a document the user attached minutes
+    earlier. Pass ``[]`` explicitly to clear them.
     """
     draft = get_open_draft()
     text = (transcript or "").strip()
@@ -790,6 +818,7 @@ def save_draft(
             ),
             transcript=text,
             raw_segments=segments,
+            context_files=normalise_context_files(context_files),
             proposed_actions={"explicit": [], "suggested": []},
             is_draft=True,
         )
@@ -797,6 +826,8 @@ def save_draft(
     else:
         draft.transcript = text
         draft.raw_segments = segments
+        if context_files is not None:
+            draft.context_files = normalise_context_files(context_files)
         if segments:
             draft.input_mode = ReflectionInputMode.VOICE
     db.session.commit()

@@ -35,3 +35,7 @@ flask-compress==1.24
 # feature surface.
 pytest==9.0.3
 pytest-cov==7.0.0
+# #328 (2026-09-23): PDF text extraction for reflection context files.
+# Pure Python (no native build) so it can't break the Railway image.
+# Only ever reads bytes already in memory — nothing is written to disk.
+pypdf==6.19.0

@@ -246,6 +246,31 @@ component is added, a data flow changes, or a security boundary shifts.
   exactly one place at every instant — never zero (lost reflection),
   never two (a stale draft reappearing and inviting a duplicate
   submit).
+  **Context files (#328)**: a reflection can carry reference documents
+  so the analysis reasons against more than the user's words — a job
+  description, a 30/60/90 plan, a skills matrix, a photo of a
+  whiteboard. `POST /api/reflection/attachment` takes ONE multipart
+  `file` (`.pdf` / `.docx` / `.xlsx` / `.txt` / `.md` / `.png` / `.jpg`
+  / `.jpeg` / `.webp`, 10MB cap, validated by EXTENSION because the
+  extension is what selects the extractor);
+  `reflection_context_service.py` decodes it to text IN MEMORY (pypdf /
+  python-docx / openpyxl / UTF-8 / Google Vision OCR for images) and
+  the bytes are dropped when the request ends — the file never reaches
+  server disk or the DB, the same posture as `/scan` images and
+  reflection audio. Only the EXTRACTED TEXT is persisted, in
+  `reflections.context_files`. Attachments land on the open DRAFT
+  first, so a file added from the phone on Monday is still attached
+  from the laptop on Thursday, and ride onto the submitted reflection
+  in the same step that retires the draft.
+  `DELETE /api/reflection/attachment/<attachment_id>` detaches one.
+  Budgets: 5 files, 20k characters each, 60k total — truncation is
+  reported to the user rather than applied silently.
+  **Trust boundary (ADR-037)**: this is the first path that feeds a
+  FILE's contents into a prompt whose output includes `delete` actions.
+  Document text is fenced in BEGIN/END markers, labelled
+  data-never-instructions, and its own marker lines are neutralised so
+  it cannot close the fence; the load-bearing control remains that
+  nothing is applied until the user ticks it in the review step.
   **Runway + continuity (#325)**: `milestone_service.py` stores ONE
   milestone ("what you're working toward, and by when") in the
   `AppSetting` key/value store (`reflection_milestone_label` /
@@ -626,6 +651,8 @@ the code.
 # reflection_api.py — Weekly Reflection (2026-05-16)
 /api/reflection                                  # POST submit (typed/audio), GET list
 /api/reflection/transcribe-segment               # POST — #232 one-segment Whisper transcribe for the pause/resume flow (no Reflection row, no Claude call)
+/api/reflection/attachment                       # POST attach ONE context document (multipart 'file'; pdf/docx/xlsx/txt/md/image) — #328; extracted to text in memory, file never stored
+/api/reflection/attachment/<attachment_id>       # DELETE detach one context document from the open draft — #328
 /api/reflection/draft                            # GET open draft / PUT autosave in-progress text / DELETE discard — #324 resumable multi-sitting reflections (free: no Whisper, no Claude)
 /api/reflection/milestone                        # GET resolved runway / PUT set (label or goal_id + target_date) / DELETE clear — #325; feeds the /reflection header AND the Claude prompt
 /api/reflection/<uuid:reflection_id>             # GET one (history detail), DELETE soft-delete (#238)

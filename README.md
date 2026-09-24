@@ -37,6 +37,15 @@ work and personal life, with a regulated (air-gapped) work environment.
   a **triage suggestions** panel above the review card listing stale tasks with
   one-click recommended actions (heuristic-based: e.g. inbox >7 days → Backlog,
   backlog >90 days → delete)
+- **Weekly reflection (AI)** — dedicated `/reflection` page; type or dictate a
+  reflection and Claude proposes create/update/delete changes to your
+  projects/goals/tasks, which you review and tick before anything is applied.
+  Autosaves as a server-side **draft** so it can be written across several
+  sittings and devices (#324), counts down to a **milestone** and reads your
+  three previous reflections for continuity (#325), and accepts **context
+  files** — PDF / Word / Excel / text / Markdown / photos, up to 5 files and
+  60k characters — whose text Claude reads alongside your words (#328). The
+  uploaded file is never stored; only the text extracted from it is.
 - **Plan my week (AI)** — dedicated `/plan` page; pick a Monday → one-click
   Claude Haiku pass reviews ALL active non-frozen tasks + 4 weeks of completion
   history + recurring fires + goals → returns a Mon–Sun plan with per-task
@@ -181,7 +190,10 @@ upload limit at typical opus bitrates). Audio is processed in memory only
 on the server — never written to server disk or DB. Reflection recordings
 are additionally buffered on the user's OWN DEVICE (browser IndexedDB)
 while in flight so an interrupted session isn't lost, and that copy is
-deleted on transcription (#327). Per-memo cost is logged to AppLog at INFO
+deleted on transcription (#327). The same server-side rule covers
+reflection context files (#328, ADR-037): an uploaded PDF / Word / Excel
+/ text / image attachment is decoded to text in memory and its bytes are
+discarded — only the extracted TEXT is persisted. Per-memo cost is logged to AppLog at INFO
 level so you can audit transcription spend via `/api/debug/logs`.
 
 **Cost** at OpenAI Whisper API pricing ($0.006/min as of 2026-04):

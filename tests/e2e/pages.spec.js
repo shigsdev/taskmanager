@@ -1773,3 +1773,206 @@ test.describe("Reflection — transient audio buffer (#327)", () => {
         await expect(page.locator("#reflRecoverBanner")).toBeHidden();
     });
 });
+
+/**
+ * #328 — reflection context documents, end to end through a real upload.
+ *
+ * The unit tests cover extraction and the prompt fence. What only a
+ * browser can prove is the part the user actually touches: that a real
+ * multipart upload round-trips, that the row says what was read, that an
+ * attachment SURVIVES a reload (the multi-sitting promise this feature
+ * exists for), and that the keystroke autosave doesn't quietly eat it.
+ */
+test.describe("Reflection — context files (#328)", () => {
+    // Drives the real <input type=file> with an in-memory buffer, so the
+    // whole multipart path runs exactly as it does for a user.
+    const attach = async (page, name, mimeType, body) => {
+        await page.locator("#reflContextInput").setInputFiles({
+            name, mimeType, buffer: Buffer.from(body),
+        });
+    };
+
+    const clearDraft = async (page) => page.evaluate(async () => {
+        await fetch("/api/reflection/draft", {
+            method: "DELETE", credentials: "same-origin",
+        });
+    });
+
+    test.beforeEach(async ({ page }) => {
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await clearDraft(page);
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+    });
+
+    test.afterEach(async ({ page }) => {
+        await clearDraft(page);
+    });
+
+    test("the block is visible and starts empty", async ({ page }) => {
+        await expect(page.locator("#reflContext")).toBeVisible();
+        await expect(page.locator(".reflection-context-add")).toBeVisible();
+        // No empty-state noise on a fresh reflection.
+        await expect(page.locator("#reflContextList")).toBeEmpty();
+        await expect(page.locator("#reflContextSummary")).toHaveText("");
+    });
+
+    test("attaching a note lists it with its character count", async ({ page }) => {
+        await attach(page, "plan.md", "text/markdown",
+            "# 30/60/90\n\nWeek one: learn the domain.");
+        const row = page.locator(".reflection-context-item").first();
+        await expect(row).toBeVisible({ timeout: 10000 });
+        await expect(row.locator(".reflection-context-item-name"))
+            .toHaveText("plan.md");
+        await expect(row.locator(".reflection-context-item-meta"))
+            .toContainText("MD");
+        await expect(row.locator(".reflection-context-item-meta"))
+            .toContainText("characters");
+        await expect(page.locator("#reflContextSummary"))
+            .toContainText("1 of 5 file");
+        await expect(page.locator("#reflContextStatus"))
+            .toContainText("Attached plan.md");
+    });
+
+    test("an attachment survives a reload — the multi-sitting promise",
+        async ({ page }) => {
+            await attach(page, "jd.txt", "text/plain",
+                "Director of Engineering. Starts 2 November.");
+            await expect(page.locator(".reflection-context-item"))
+                .toHaveCount(1, { timeout: 10000 });
+
+            await page.reload();
+            await page.waitForLoadState("networkidle");
+
+            await expect(page.locator(".reflection-context-item"))
+                .toHaveCount(1, { timeout: 10000 });
+            await expect(
+                page.locator(".reflection-context-item-name").first()
+            ).toHaveText("jd.txt");
+        });
+
+    test("typing does not wipe an attachment", async ({ page }) => {
+        // The autosave loop sends only the textarea. If the server read
+        // that silence as "no attachments", a file attached minutes
+        // earlier would vanish mid-sentence.
+        await attach(page, "notes.txt", "text/plain", "context that matters");
+        await expect(page.locator(".reflection-context-item"))
+            .toHaveCount(1, { timeout: 10000 });
+
+        await page.locator("#reflText").fill("This week I mostly read the JD.");
+        await expect(page.locator("#reflDraftStatus"))
+            .toContainText("Draft saved", { timeout: 10000 });
+
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator(".reflection-context-item"))
+            .toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator("#reflText"))
+            .toHaveValue("This week I mostly read the JD.");
+    });
+
+    test("Remove detaches it, and it stays gone", async ({ page }) => {
+        await attach(page, "gone.txt", "text/plain", "temporary context");
+        await expect(page.locator(".reflection-context-item"))
+            .toHaveCount(1, { timeout: 10000 });
+
+        await page.locator(".reflection-context-remove").first().click();
+        await expect(page.locator(".reflection-context-item")).toHaveCount(0);
+        await expect(page.locator("#reflContextStatus"))
+            .toContainText("Removed gone.txt");
+
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator(".reflection-context-item")).toHaveCount(0);
+    });
+
+    test("an unsupported type is refused without uploading", async ({ page }) => {
+        await attach(page, "payload.exe", "application/octet-stream", "MZ ");
+        await expect(page.locator("#reflContextStatus"))
+            .toContainText("isn't supported");
+        await expect(page.locator(".reflection-context-item")).toHaveCount(0);
+    });
+
+    test("a text-free file is refused by the server with a real reason",
+        async ({ page }) => {
+            await attach(page, "blank.txt", "text/plain", "   \n  \n");
+            await expect(page.locator("#reflContextStatus"))
+                .toHaveClass(/reflection-context-status-err/, { timeout: 10000 });
+            await expect(page.locator(".reflection-context-item")).toHaveCount(0);
+        });
+
+    test("the same file can be picked again after being removed",
+        async ({ page }) => {
+            // The <input> must be reset or the browser suppresses the
+            // second change event and the re-pick silently does nothing.
+            await attach(page, "again.txt", "text/plain", "first go");
+            await expect(page.locator(".reflection-context-item"))
+                .toHaveCount(1, { timeout: 10000 });
+            await page.locator(".reflection-context-remove").first().click();
+            await expect(page.locator(".reflection-context-item")).toHaveCount(0);
+
+            await attach(page, "again.txt", "text/plain", "first go");
+            await expect(page.locator(".reflection-context-item"))
+                .toHaveCount(1, { timeout: 10000 });
+        });
+
+    test("the file cap disables the picker rather than failing late",
+        async ({ page }) => {
+            for (let i = 0; i < 5; i++) {
+                await attach(page, `f${i}.txt`, "text/plain", `context ${i}`);
+                await expect(page.locator(".reflection-context-item"))
+                    .toHaveCount(i + 1, { timeout: 10000 });
+            }
+            await expect(page.locator("#reflContextSummary"))
+                .toContainText("5 of 5 files");
+            await expect(page.locator("#reflContextInput")).toBeDisabled();
+            await expect(page.locator(".reflection-context-add"))
+                .toHaveClass(/reflection-context-add-disabled/);
+        });
+
+    test("a long document is shortened and says so", async ({ page }) => {
+        const big = "The quick brown fox jumps over the lazy dog. ".repeat(600);
+        await attach(page, "handbook.txt", "text/plain", big);
+        await expect(page.locator(".reflection-context-item-meta").first())
+            .toContainText("shortened from", { timeout: 15000 });
+        await expect(page.locator("#reflContextStatus"))
+            .toContainText("only the first part");
+    });
+
+    test("discarding the draft clears the attachments", async ({ page }) => {
+        await attach(page, "bye.txt", "text/plain", "context");
+        await page.locator("#reflText").fill("some words");
+        await expect(page.locator(".reflection-context-item"))
+            .toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator("#reflDraftStatus"))
+            .toContainText("Draft saved", { timeout: 10000 });
+
+        // Discard-draft lives in the restored-draft banner, which only
+        // renders on a load that FOUND a draft (#324) — so the round trip
+        // is part of the scenario, not incidental to it.
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator("#reflDraftBanner")).toBeVisible({ timeout: 10000 });
+        await expect(page.locator(".reflection-context-item")).toHaveCount(1);
+
+        page.once("dialog", (d) => d.accept());
+        await page.locator("#reflDraftDiscard").click();
+        await expect(page.locator(".reflection-context-item")).toHaveCount(0);
+        await expect(page.locator("#reflText")).toHaveValue("");
+    });
+
+    test("no horizontal overflow with a very long filename", async ({ page }) => {
+        // #138 D-B1 class: a long unbroken string in a flex row.
+        await attach(
+            page,
+            "a-really-very-extremely-long-attachment-filename-that-goes-on.txt",
+            "text/plain", "context",
+        );
+        await expect(page.locator(".reflection-context-item"))
+            .toHaveCount(1, { timeout: 10000 });
+        const overflows = await page.evaluate(() =>
+            document.documentElement.scrollWidth > window.innerWidth);
+        expect(overflows).toBe(false);
+    });
+});
