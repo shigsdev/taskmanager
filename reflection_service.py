@@ -253,15 +253,33 @@ Reflection:
 """
 
 
+# #337: reflection analysis is a LONG call and must not run on the 60s
+# client default. `weekly_planner_service` already learned this ("large
+# max_tokens outputs genuinely take 60-150s end to end") and uses 180s;
+# reflection issues the same 4096-token request and, since #328, may ship
+# up to MAX_TOTAL_CHARS (60_000) of attached-document text on top of an
+# arbitrarily long transcript. A real user hit ReadTimeout on 2026-09-24
+# with ~44k chars of documents attached to a multi-hour reflection.
+_ANALYSIS_TIMEOUT_SEC = 180
+
+
 def _call_claude(api_key: str, prompt: str) -> dict[str, Any]:
     """Make the Claude call. Separated for testability (tests patch this).
 
-    Reuses ``scan_service._post_to_claude`` so the HTTP mechanics +
-    egress wrapper are identical to the scan / voice pipelines.
+    Calls ``claude_client.call_claude`` directly rather than going via
+    ``scan_service._post_to_claude``: that delegator takes no timeout, so
+    routing through it silently pinned this path to the 60s default (#337).
+    Same model and egress wrapper as the scan / voice pipelines.
     """
-    from scan_service import _post_to_claude
+    from claude_client import SONNET, call_claude
 
-    return _post_to_claude(api_key=api_key, prompt=prompt, max_tokens=4096)
+    return call_claude(
+        api_key=api_key,
+        prompt=prompt,
+        max_tokens=4096,
+        model=SONNET,
+        timeout_sec=_ANALYSIS_TIMEOUT_SEC,
+    )
 
 
 def _claude_cost_usd(usage: dict[str, Any] | None) -> float | None:

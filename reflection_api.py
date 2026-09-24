@@ -626,6 +626,59 @@ def list_all(email: str):  # noqa: ARG001
 # #238 (2026-05-26): archive + soft-delete endpoints.
 
 
+@bp.post("/<uuid:reflection_id>/analyze")
+@login_required
+@limiter.limit(PAID_API)  # paid: a full Claude analysis per click
+def reanalyze(email: str, reflection_id):  # noqa: ARG001
+    """Re-run Claude over an ALREADY-SAVED reflection (#338).
+
+    The error state has always told the user a failed analysis "can be
+    re-analyzed later" — and until now nothing could. The transcript is
+    persisted before the Claude call (see ``submit``), so a timeout or a
+    transient API error left the reflection saved forever and analysable
+    never. A real multi-hour reflection was stranded this way on
+    2026-09-24 by the 60s timeout fixed in #337.
+
+    Re-analysis uses the reflection's OWN stored transcript and
+    ``context_files``, so the attached documents are read again exactly
+    as they were on the first attempt. ``exclude_id`` keeps the
+    reflection out of its own continuity context, same as ``submit``.
+
+    Any previous ``proposed_actions`` are replaced: the user is asking
+    for a fresh read of the same words, and keeping a stale failed-run
+    remnant alongside would make the review screen ambiguous.
+    """
+    reflection = get_reflection(reflection_id)
+    if reflection is None:
+        return jsonify({"error": "Reflection not found"}), 404
+    if not (reflection.transcript or "").strip():
+        return jsonify({"error": "That reflection has no transcript to analyze."}), 422
+
+    context_files = normalise_context_files(reflection.context_files)
+    try:
+        analysis = analyze_reflection(
+            reflection.transcript,
+            exclude_id=reflection.id,
+            context_files=context_files,
+        )
+    except RuntimeError as e:
+        logger.warning("Re-analysis failed for reflection %s: %s", reflection.id, e)
+        return jsonify({"error": f"Analysis failed: {e}", "saved": True}), 422
+    except Exception:
+        logger.exception("Re-analysis crashed for reflection %s", reflection.id)
+        return jsonify({"error": "Analysis failed (unexpected)", "saved": True}), 500
+
+    reflection = attach_analysis(
+        reflection,
+        proposed={
+            "explicit": analysis["explicit"],
+            "suggested": analysis["suggested"],
+        },
+        ai_cost_usd=analysis["ai_cost_usd"],
+    )
+    return jsonify(_serialize(reflection))
+
+
 @bp.post("/<uuid:reflection_id>/archive")
 @login_required
 def archive(email: str, reflection_id):  # noqa: ARG001

@@ -8,6 +8,8 @@ tree right now.
 """
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -117,3 +119,37 @@ def test_no_nul_bytes_in_text_sources():
         "Python bytes literal) instead of embedding it - a raw NUL makes "
         "git and grep treat the file as binary and hides it from diffs."
     )
+
+
+# --- Browser-JS syntax (#338) ----------------------------------------------
+
+
+def test_browser_js_files_parse():
+    """Every static/*.js must be syntactically valid JavaScript.
+
+    Jest only loads the dual-export helper modules; the browser-only
+    files (`reflection.js`, `app.js`, ...) are never `require`d, so a
+    syntax error in one of them is invisible until the Playwright gate
+    runs a real browser - 14 minutes into the suite, and only if a test
+    happens to exercise that page. On 2026-09-24 a heredoc turned a `\n`
+    escape into a literal newline inside a string literal, breaking
+    `reflection.js` entirely; the page silently stopped initialising and
+    took nine unrelated tests down with it. `node --check` finds that in
+    about a second.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not installed")
+    broken = []
+    for path in sorted((REPO_ROOT / "static").glob("*.js")):
+        proc = subprocess.run(  # noqa: S603 - fixed argv, repo-local paths
+            [node, "--check", str(path)],
+            capture_output=True, text=True, check=False,
+        )
+        if proc.returncode != 0:
+            first = (proc.stderr or "").strip().splitlines()
+            detail = next(
+                (ln for ln in first if "Error" in ln), first[-1] if first else "?"
+            )
+            broken.append(f"{path.name}: {detail}")
+    assert not broken, "static JS failed to parse:\n  " + "\n  ".join(broken)

@@ -878,8 +878,8 @@ flowchart TD
                     </tr>
                     <tr>
                         <td><code>test_repo_hygiene</code></td>
-                        <td>Shell scripts + git hooks have LF line endings (no CRLF), have correct shebangs; no text source file (<code>.py .js .css .html .md .sh .json .yml</code>) contains a raw NUL byte</td>
-                        <td>Cross-platform exec failures from Windows autocrlf rewriting hook shebangs (#39). NUL check added #329 after a test wrote a literal NUL instead of an escape and silently turned the whole spec file binary to git, grep and diff — second occurrence of the raw-byte-instead-of-escape slip</td>
+                        <td>Shell scripts + git hooks have LF line endings (no CRLF), have correct shebangs; no text source file (<code>.py .js .css .html .md .sh .json .yml</code>) contains a raw NUL byte; every <code>static/*.js</code> parses under <code>node --check</code></td>
+                        <td>Cross-platform exec failures from Windows autocrlf rewriting hook shebangs (#39). NUL check added #329 after a test wrote a literal NUL instead of an escape and silently turned the whole spec file binary to git, grep and diff. JS parse check added #338: Jest never loads the browser-only files, so a broken string literal in <code>reflection.js</code> stayed invisible until Playwright ran 14 minutes later and took nine unrelated tests down with it</td>
                     </tr>
                     <tr>
                         <td><code>_build_enum_repair_statements</code></td>

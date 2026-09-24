@@ -150,10 +150,18 @@
                     <span class="voice-record-icon">●</span>
                     <span class="voice-record-label">Start recording</span>
                 </button>
+                {# #332: the Record tab hides the transcript (selectMode
+                   sets #reflTyped to display:none), so without this note a
+                   returning user sees a bare "Start recording" and cannot
+                   tell their earlier words survived. Populated by
+                   reflectionHelpers.voiceIdleCopy(); stays empty for a
+                   genuinely new reflection so a first-timer sees no noise. #}
+                <p class="reflection-voice-resume" id="reflResumeNote"
+                   role="status" style="display:none"></p>
                 <p class="reflection-hint">
                     Speak as long as you want. Pause to think, then Resume
-                    to add more — each segment appears in the textarea
-                    above. Click <strong>Done</strong> when finished to
+                    to add more — each segment is added to your
+                    reflection text (visible on the Type tab). Click <strong>Done</strong> when finished to
                     analyze. Max 30 min per segment (#326) — the timer shows
                     how much is left. Audio is transcribed via Whisper on
                     the server <strong>in memory only</strong> — it is never

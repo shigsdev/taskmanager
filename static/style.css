@@ -5198,6 +5198,23 @@ table.quality-gates code {
     margin: 8px 0 16px;
     font-style: italic;
 }
+/* #332: "you are continuing, not starting over" - shown on the Record
+   tab when the reflection already holds text. The Record tab hides the
+   transcript, so this is the only on-screen evidence the earlier words
+   survived; it reads as reassurance, not a warning, hence the accent
+   rule rather than the danger colour. */
+.reflection-voice-resume {
+    margin: 0 auto 12px;
+    max-width: 46ch;
+    padding: 8px 12px;
+    border-left: 3px solid var(--accent);
+    background: var(--surface-sunk, #f5f5f5);
+    border-radius: 6px;
+    color: var(--text-muted, #6b7280);
+    font-size: 0.9rem;
+    text-align: left;
+}
+
 .reflection-voice-error {
     margin: 16px 0;
     padding: 12px;

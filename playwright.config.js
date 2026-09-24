@@ -22,6 +22,14 @@
 // @ts-check
 const { defineConfig } = require("@playwright/test");
 
+// #331: headless Chromium needs an explicit fake capture device to
+// run MediaRecorder, and the auto-accept flag to skip the mic
+// permission prompt no test can click.
+const FAKE_MEDIA_ARGS = [
+    "--use-fake-ui-for-media-stream",
+    "--use-fake-device-for-media-stream",
+];
+
 const PROD_BASE_URL =
     process.env.TASKMANAGER_PROD_URL ||
     "https://web-production-3e3ae.up.railway.app";
@@ -60,6 +68,13 @@ module.exports = defineConfig({
                 headless: true,
                 browserName: "chromium",
                 actionTimeout: 10000,
+                // #331: a fake mic + auto-accepted permission prompt so
+                // the recording path can actually be driven in a test.
+                // The bug that made this necessary (a service-worker
+                // auto-reload killing a live recording) is unprovable
+                // without a real MediaRecorder running. No effect on
+                // tests that never call getUserMedia.
+                launchOptions: { args: FAKE_MEDIA_ARGS },
             },
         },
         {
@@ -116,6 +131,7 @@ module.exports = defineConfig({
                 browserName: "chromium",
                 actionTimeout: 10000,
                 viewport: { width: 375, height: 812 },
+                launchOptions: { args: FAKE_MEDIA_ARGS },  // #331
             },
         },
         {

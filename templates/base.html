@@ -107,6 +107,33 @@
     {% block scripts %}{% endblock %}
     <script>
     // --- Service worker auto-update (A + B: poll + banner fallback) ---
+    // #331: `userIsBusy` is defined OUTSIDE the registration branch below.
+    // It is pure DOM inspection with no service-worker dependency, and
+    // while it lived inside that branch it did not exist under ?nosw=1 -
+    // which is how every local e2e test loads the app, so the guard that
+    // protects a live recording was structurally untestable. Defining it
+    // here means the suite asserts the SAME function production runs.
+    function userIsBusy() {
+        // Don't auto-reload if the user is actively typing or has the
+        // detail panel open — we'd throw away their in-flight edits.
+        var el = document.activeElement;
+        if (el) {
+            var tag = (el.tagName || "").toLowerCase();
+            if (tag === "input" || tag === "textarea" || tag === "select") return true;
+            if (el.isContentEditable) return true;
+        }
+        var overlay = document.getElementById("detailOverlay");
+        if (overlay && overlay.style.display !== "none") return true;
+        // #331: someone DICTATING has no focused field, so the checks
+        // above all pass and the reload fires mid-sentence, destroying the
+        // live MediaRecorder. The reflection and voice-memo pages publish
+        // this flag from their state switchers. User-hit 2026-09-24
+        // during the #329 deploy.
+        if (window.__mediaCaptureBusy) return true;
+        return false;
+    }
+    window.__userIsBusy = userIsBusy;
+
     // Skip SW registration when ?nosw=1 is in the URL (used by Claude Preview
     // and local dev to avoid cached-SW reload loops in headless browsers).
     if ("serviceWorker" in navigator && new URLSearchParams(location.search).has("nosw")) {
@@ -118,20 +145,6 @@
         (function () {
             var reloading = false;
             var pendingWorker = null;
-
-            function userIsBusy() {
-                // Don't auto-reload if the user is actively typing or has the
-                // detail panel open — we'd throw away their in-flight edits.
-                var el = document.activeElement;
-                if (el) {
-                    var tag = (el.tagName || "").toLowerCase();
-                    if (tag === "input" || tag === "textarea" || tag === "select") return true;
-                    if (el.isContentEditable) return true;
-                }
-                var overlay = document.getElementById("detailOverlay");
-                if (overlay && overlay.style.display !== "none") return true;
-                return false;
-            }
 
             function showBanner() {
                 var banner = document.getElementById("updateBanner");

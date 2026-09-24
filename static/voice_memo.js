@@ -100,6 +100,18 @@
         Object.keys(states).forEach((k) => {
             if (states[k]) states[k].style.display = (k === name) ? "" : "none";
         });
+        // #331: block the service worker's auto-reload while audio is
+        // live or an upload is in flight. Same flag the reflection page
+        // sets; base.html reads it in userIsBusy().
+        const h = (typeof window !== "undefined" && window.reflectionHelpers)
+            || null;
+        if (typeof window !== "undefined") {
+            window.__mediaCaptureBusy = !!(
+                h && typeof h.blocksAutoReload === "function"
+                    ? h.blocksAutoReload(name)
+                    : (name === "recording" || name === "processing")
+            );
+        }
     }
 
     function showError(message, transcript) {

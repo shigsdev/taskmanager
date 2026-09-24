@@ -157,6 +157,10 @@
         tabVoice.classList.toggle("active", !typed);
         typedWrap.style.display = typed ? "" : "none";
         voiceWrap.style.display = typed ? "none" : "";
+        // #332: the draft restores asynchronously, so the text may have
+        // landed long after the initial render. Re-derive when the Record
+        // tab is actually opened, which is the moment the user reads it.
+        if (!typed && voiceSubState === "idle") refreshVoiceIdleCopy();
     }
     tabType.addEventListener("click", function () { selectMode("type"); });
     tabVoice.addEventListener("click", function () { selectMode("voice"); });
@@ -223,11 +227,49 @@
 
     function showVoiceSubState(name) {
         voiceSubState = name;
+        if (name === "idle") refreshVoiceIdleCopy();
+        // #331: tell base.html's service-worker updater that a reload
+        // right now would destroy live audio. Global because that script
+        // runs outside this IIFE and cannot see `mediaRecorder`.
+        var h331 = (typeof window !== "undefined" && window.reflectionHelpers)
+            || null;
+        if (typeof window !== "undefined") {
+            window.__mediaCaptureBusy = !!(
+                h331 && typeof h331.blocksAutoReload === "function"
+                    ? h331.blocksAutoReload(name)
+                    : (name === "recording" || name === "transcribing")
+            );
+        }
         voiceIdle.style.display = (name === "idle") ? "" : "none";
         voiceRecording.style.display = (name === "recording") ? "" : "none";
         voicePaused.style.display = (name === "paused") ? "" : "none";
         voiceTranscribing.style.display = (name === "transcribing") ? "" : "none";
         segmentError.style.display = (name === "error") ? "" : "none";
+    }
+
+    // #332: the idle controls describe themselves from the text already
+    // captured, so "Start recording" never appears over a reflection that
+    // is actually mid-flight. Re-derived every time idle is shown, which
+    // covers a restored draft, a cancelled segment and a silent segment
+    // alike - there is no separate "did we restore?" flag to keep in sync.
+    var resumeNote = document.getElementById("reflResumeNote");
+    var recordLabelEl = recordBtn
+        ? recordBtn.querySelector(".voice-record-label") : null;
+
+    function refreshVoiceIdleCopy() {
+        // Read the global rather than the RH_ alias: that alias is
+        // declared hundreds of lines below this point, so it is still
+        // undefined while init runs.
+        var h = (typeof window !== "undefined" && window.reflectionHelpers)
+            || null;
+        if (!h || typeof h.voiceIdleCopy !== "function") return;
+        var copy = h.voiceIdleCopy(textArea ? textArea.value : "");
+        if (recordLabelEl) recordLabelEl.textContent = copy.label;
+        if (recordBtn) recordBtn.setAttribute("aria-label", copy.aria);
+        if (resumeNote) {
+            resumeNote.textContent = copy.note;
+            resumeNote.style.display = copy.note ? "" : "none";
+        }
     }
 
     recordBtn.addEventListener("click", function () { startSegment(/*resume=*/false); });
@@ -1054,6 +1096,45 @@
                               { method: "POST" });
             });
             actions.appendChild(archiveBtn);
+
+            // #338: re-run Claude over a reflection that is already
+            // saved. The error state has always promised this ("can be
+            // re-analyzed later"); until now nothing delivered it, so a
+            // reflection whose analysis timed out was stranded forever.
+            var reBtn = document.createElement("button");
+            reBtn.type = "button";
+            reBtn.className = "btn btn-sm";
+            reBtn.textContent = r.proposed_actions
+                && ((r.proposed_actions.explicit || []).length
+                    + (r.proposed_actions.suggested || []).length) > 0
+                ? "↻ Re-analyze" : "✨ Analyze";
+            reBtn.addEventListener("click", async function () {
+                // A paid call on a possibly-large reflection: say so and
+                // make it a deliberate click, not a stray one.
+                var NL = String.fromCharCode(10);
+                if (!confirm("Ask Claude to analyze this reflection?"
+                    + NL + NL
+                    + "This costs a Claude call and may take up to a "
+                    + "couple of minutes on a long reflection.")) return;
+                reBtn.disabled = true;
+                reBtn.textContent = "Analyzing…";
+                var data;
+                try {
+                    data = await window.apiFetch(
+                        "/api/reflection/" + r.id + "/analyze",
+                        { method: "POST" },
+                    );
+                } catch (err) {
+                    reBtn.disabled = false;
+                    reBtn.textContent = "↻ Re-analyze";
+                    showErr("Analysis failed: " + (err.message || err), true);
+                    return;
+                }
+                current = data;
+                renderReview(data);
+                loadHistory();
+            });
+            actions.appendChild(reBtn);
 
             var delBtn = document.createElement("button");
             delBtn.type = "button";

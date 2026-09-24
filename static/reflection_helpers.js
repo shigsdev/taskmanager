@@ -425,6 +425,74 @@
         return null;
     }
 
+    /**
+     * voiceIdleCopy - what the Record tab says when it is NOT recording.
+     *
+     * #332: the idle button used to always read "Start recording", even
+     * when the reflection already held thousands of words from an earlier
+     * sitting. A user coming back (or bounced out by a page reload) read
+     * that as "this will start over" and stalled. Worse, `selectMode`
+     * hides the transcript in voice mode, so the Record tab gives no other
+     * evidence the earlier work still exists.
+     *
+     * So the copy is derived from the text already captured: the verb
+     * becomes Resume, and a note states the size of what is being resumed
+     * and that new speech is APPENDED. Pure so the wording is testable
+     * without a browser.
+     */
+    function voiceIdleCopy(existingText) {
+        var text = (typeof existingText === "string" ? existingText : "").trim();
+        if (!text) {
+            return {
+                label: "Start recording",
+                aria: "Start recording",
+                note: "",
+                resuming: false,
+            };
+        }
+        var words = text.split(/\s+/).filter(Boolean).length;
+        return {
+            label: "Resume recording",
+            aria: "Resume recording - adds to the " + _thousands(words)
+                + (words === 1 ? " word" : " words") + " already captured",
+            note: "Picking up a reflection already in progress - "
+                + _thousands(words) + (words === 1 ? " word" : " words")
+                + " so far. New recording is added to the end, and nothing "
+                + "you have already said is replaced.",
+            resuming: true,
+        };
+    }
+
+    /**
+     * blocksAutoReload - may the service worker reload the page now? (#331)
+     *
+     * On 2026-09-24 a deploy bumped CACHE_VERSION while the user was
+     * dictating. base.html polls for a new SW every 60s and auto-applies
+     * it unless `userIsBusy()` objects - but that guard only knew about a
+     * focused input/textarea/select and an open detail panel. Someone
+     * SPEAKING has no focused field, so the page reloaded and killed the
+     * live MediaRecorder mid-sentence.
+     *
+     * Blocking states, and why each one:
+     *   recording    - audio only in memory since the last 5s flush
+     *   transcribing - a paid Whisper upload is in flight
+     *   paused       - mid-session; a reload drops the Resume affordance
+     *   processing / review - voice-memo equivalents, same reasoning
+     *
+     * Deliberately NOT blocking on a merely non-empty draft: the draft is
+     * server-side and survives a reload, and blocking on it would strand
+     * the user on stale code for days. They still get the "Update
+     * available" banner and choose their own moment.
+     */
+    var AUTO_RELOAD_BLOCKING_STATES = [
+        "recording", "transcribing", "paused", "processing", "review",
+    ];
+
+    function blocksAutoReload(state) {
+        if (typeof state !== "string") return false;
+        return AUTO_RELOAD_BLOCKING_STATES.indexOf(state) !== -1;
+    }
+
     var api = {
         attachmentLabel: attachmentLabel,
         attachmentSummary: attachmentSummary,
@@ -442,6 +510,9 @@
         shouldAutosaveDraft: shouldAutosaveDraft,
         milestoneHeadline: milestoneHeadline,
         formatSavedAt: formatSavedAt,
+        voiceIdleCopy: voiceIdleCopy,
+        blocksAutoReload: blocksAutoReload,
+        AUTO_RELOAD_BLOCKING_STATES: AUTO_RELOAD_BLOCKING_STATES,
     };
 
     if (typeof module !== "undefined" && module.exports) {

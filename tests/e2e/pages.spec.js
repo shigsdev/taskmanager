@@ -2176,3 +2176,166 @@ test.describe("Reflection - leaving the review screen (#329)", () => {
         expect(overflows).toBe(false);
     });
 });
+
+test.describe("Reflection - Record tab says Resume, not Start (#332)", () => {
+    const setDraft = async (page, text) => page.evaluate(async (t) => {
+        await fetch("/api/reflection/draft", {
+            method: "PUT",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: t }),
+        });
+    }, text);
+
+    const clearDraft = async (page) => page.evaluate(async () => {
+        await fetch("/api/reflection/draft", {
+            method: "DELETE", credentials: "same-origin",
+        });
+    });
+
+    test.beforeEach(async ({ page }) => {
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await clearDraft(page);
+    });
+
+    test.afterEach(async ({ page }) => {
+        await clearDraft(page).catch(() => {});
+    });
+
+    test("a brand-new reflection still says Start recording", async ({ page }) => {
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await page.locator("#reflTabVoice").click();
+        await expect(page.locator("#reflRecordBtn .voice-record-label"))
+            .toHaveText("Start recording");
+        // No reassurance noise for someone who has nothing to lose yet.
+        await expect(page.locator("#reflResumeNote")).toBeHidden();
+    });
+
+    test("a restored draft flips the button to Resume with a word count",
+        async ({ page }) => {
+            // The reported case: page reloads mid-reflection, user opens
+            // Record, and the transcript is hidden by selectMode - so the
+            // button is the only thing telling them their words survived.
+            await setDraft(page, "one two three four five six seven");
+            await page.reload();
+            await page.waitForLoadState("networkidle");
+            await expect(page.locator("#reflText"))
+                .toHaveValue(/one two three/, { timeout: 10000 });
+
+            await page.locator("#reflTabVoice").click();
+            await expect(page.locator("#reflRecordBtn .voice-record-label"))
+                .toHaveText("Resume recording");
+            const note = page.locator("#reflResumeNote");
+            await expect(note).toBeVisible();
+            await expect(note).toContainText("7 words so far");
+            await expect(note).toContainText("added to the end");
+            await expect(note).toContainText(
+                "nothing you have already said is replaced");
+        });
+
+    test("the accessible name tells a screen reader the same thing",
+        async ({ page }) => {
+            await setDraft(page, "alpha beta");
+            await page.reload();
+            await page.waitForLoadState("networkidle");
+            await expect(page.locator("#reflText")).toHaveValue(/alpha/, { timeout: 10000 });
+            await page.locator("#reflTabVoice").click();
+            await expect(page.locator("#reflRecordBtn"))
+                .toHaveAttribute("aria-label", /^Resume recording/);
+            await expect(page.locator("#reflRecordBtn"))
+                .toHaveAttribute("aria-label", /2 words already captured/);
+        });
+
+    test("typing into an empty reflection promotes the button to Resume",
+        async ({ page }) => {
+            // Proves the copy is derived from live text, not from a
+            // one-shot "did we restore a draft?" flag set at load.
+            await page.reload();
+            await page.waitForLoadState("networkidle");
+            await page.locator("#reflTabVoice").click();
+            await expect(page.locator("#reflRecordBtn .voice-record-label"))
+                .toHaveText("Start recording");
+
+            await page.locator("#reflTabType").click();
+            await page.locator("#reflText").fill("now there are some words here");
+            await page.locator("#reflTabVoice").click();
+            await expect(page.locator("#reflRecordBtn .voice-record-label"))
+                .toHaveText("Resume recording");
+            await expect(page.locator("#reflResumeNote"))
+                .toContainText("6 words so far");
+        });
+
+    test("the Record tab does not overflow with the note shown", async ({ page }) => {
+        await setDraft(page, Array(40).fill("reflection").join(" "));
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator("#reflText")).toHaveValue(/reflection/, { timeout: 10000 });
+        await page.locator("#reflTabVoice").click();
+        await expect(page.locator("#reflResumeNote")).toBeVisible();
+        const overflows = await page.evaluate(() =>
+            document.documentElement.scrollWidth > window.innerWidth);
+        expect(overflows).toBe(false);
+    });
+});
+
+test.describe("Reflection - a live recording blocks the SW auto-reload (#331)", () => {
+    // Drives a REAL MediaRecorder against Chromium's fake capture device
+    // (see FAKE_MEDIA_ARGS in playwright.config.js) and asserts the actual
+    // guard in base.html - not a re-implementation of its rule, which
+    // would pass even if the guard were deleted.
+    test.beforeEach(async ({ page, context }) => {
+        await context.grantPermissions(["microphone"]);
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.evaluate(async () => {
+            await fetch("/api/reflection/draft", {
+                method: "DELETE", credentials: "same-origin",
+            });
+        });
+    });
+
+    test.afterEach(async ({ page }) => {
+        await page.evaluate(async () => {
+            await fetch("/api/reflection/draft", {
+                method: "DELETE", credentials: "same-origin",
+            });
+        }).catch(() => {});
+    });
+
+    test("an idle reflection page does not block updates", async ({ page }) => {
+        // Fail-open baseline: without this, the guard could block forever
+        // and quietly strand the user on stale code.
+        expect(await page.evaluate(() => window.__userIsBusy())).toBe(false);
+        expect(await page.evaluate(() => !!window.__mediaCaptureBusy)).toBe(false);
+    });
+
+    test("recording blocks, and stopping unblocks", async ({ page }) => {
+        await page.locator("#reflTabVoice").click();
+        await page.locator("#reflRecordBtn").click();
+        await expect(page.locator("#reflVoiceRecording")).toBeVisible({ timeout: 15000 });
+
+        // The exact condition of the 2026-09-24 incident: audio live, no
+        // focused field. The old guard returned false here and the page
+        // reloaded out from under the user.
+        expect(await page.evaluate(() => document.activeElement.tagName.toLowerCase()))
+            .not.toBe("textarea");
+        expect(await page.evaluate(() => window.__userIsBusy())).toBe(true);
+
+        // Cancel discards the audio and returns to idle -> safe to update.
+        await page.locator("#reflCancelBtn").click();
+        await expect(page.locator("#reflVoiceIdle")).toBeVisible({ timeout: 15000 });
+        await expect.poll(
+            () => page.evaluate(() => window.__userIsBusy()),
+            { timeout: 10000 }
+        ).toBe(false);
+    });
+
+    test("the guard still catches a focused textarea", async ({ page }) => {
+        // Regression cover for the ORIGINAL behaviour, so the #331 clause
+        // can't be added by accidentally replacing what was there.
+        await page.locator("#reflText").click();
+        expect(await page.evaluate(() => window.__userIsBusy())).toBe(true);
+    });
+});
