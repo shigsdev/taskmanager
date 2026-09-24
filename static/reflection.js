@@ -99,6 +99,7 @@
     var applyBtn = document.getElementById("reflApplyBtn");
     var focusBtn = document.getElementById("reflFocusBtn");
     var startOverBtn = document.getElementById("reflStartOverBtn");
+    var reviewExit = document.getElementById("reflReviewExit");
 
     // Done refs
     var doneMessage = document.getElementById("reflDoneMessage");
@@ -676,10 +677,20 @@
             emptyEl.style.display = "";
             applyBtn.style.display = "none";
             focusBtn.style.display = "none";
+            // #329: nothing to apply makes this screen terminal, so the
+            // way out stops being a neutral sibling of "Start Over" and
+            // becomes the filled primary. Dropping .btn-sm falls back to
+            // the accent-filled .btn rule — no new class, and in
+            // particular not the phantom .btn-primary (referenced in
+            // several templates, never defined in style.css).
+            if (reviewExit) reviewExit.classList.remove("btn-sm");
         } else {
             emptyEl.style.display = "none";
             applyBtn.style.display = "";
             focusBtn.style.display = "";
+            // Apply Selected is the primary here; the exit goes back to
+            // neutral so it doesn't compete with it.
+            if (reviewExit) reviewExit.classList.add("btn-sm");
         }
 
         BUCKETS.forEach(function (b) {

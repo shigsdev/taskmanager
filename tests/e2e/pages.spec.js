@@ -1888,7 +1888,7 @@ test.describe("Reflection — context files (#328)", () => {
     });
 
     test("an unsupported type is refused without uploading", async ({ page }) => {
-        await attach(page, "payload.exe", "application/octet-stream", "MZ ");
+        await attach(page, "payload.exe", "application/octet-stream", "MZ\u0000");
         await expect(page.locator("#reflContextStatus"))
             .toContainText("isn't supported");
         await expect(page.locator(".reflection-context-item")).toHaveCount(0);
@@ -1971,6 +1971,206 @@ test.describe("Reflection — context files (#328)", () => {
         );
         await expect(page.locator(".reflection-context-item"))
             .toHaveCount(1, { timeout: 10000 });
+        const overflows = await page.evaluate(() =>
+            document.documentElement.scrollWidth > window.innerWidth);
+        expect(overflows).toBe(false);
+    });
+});
+
+test.describe("Reflection - leaving the review screen (#329)", () => {
+    // The review state is only reachable through POST /api/reflection,
+    // which costs a real Claude call. Intercepting just that verb drives
+    // the genuine renderReview() path for free; the GET history listing
+    // on the same URL is left alone.
+    const stubAnalyze = async (page, proposed) => {
+        await page.route("**/api/reflection", async (route, request) => {
+            if (request.method() !== "POST") return route.continue();
+            await route.fulfill({
+                status: 201,
+                contentType: "application/json",
+                body: JSON.stringify({
+                    id: "00000000-0000-0000-0000-000000000329",
+                    iso_week: "2026-W39",
+                    input_mode: "typed",
+                    transcript: "A quiet week.",
+                    audio_duration_seconds: null,
+                    audio_cost_usd: null,
+                    ai_cost_usd: 0.0197,
+                    proposed_actions: proposed,
+                    raw_segments: [],
+                    is_archived: false,
+                    is_active: true,
+                }),
+            });
+        });
+    };
+
+    const analyze = async (page) => {
+        await page.locator("#reflText").fill("A quiet week.");
+        await page.locator("#reflAnalyzeBtn").click();
+        await expect(page.locator("#reflStateReview")).toBeVisible({ timeout: 10000 });
+    };
+
+    // .btn carries `transition: background 0.15s`, so a naive colour read
+    // can sample mid-flight - or, where the compositor clock is throttled,
+    // at currentTime 0 forever (observed in the Phase 6 preview pane
+    // 2026-09-24: playState "running", currentTime 0, never advancing).
+    // Finish any in-flight transition first so these assert the SETTLED
+    // colour rather than a timing race.
+    const SETTLED_BG = (el) => {
+        el.getAnimations().forEach((a) => a.finish());
+        return getComputedStyle(el).backgroundColor;
+    };
+
+    const NOTHING = { explicit: [], suggested: [] };
+    const SOMETHING = {
+        explicit: [{
+            op: "create", entity: "task", target: "Draft the 30/60/90",
+            reason: "You said you wanted one before day one.",
+        }],
+        suggested: [],
+    };
+
+    test.beforeEach(async ({ page }) => {
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+    });
+
+    // Typing into #reflText trips the #324 autosave, so every test here
+    // leaves a server-side draft behind. The stubbed POST never reaches
+    // the real submit path that would retire it, so clean up explicitly
+    // rather than leaking a draft into whatever block runs next.
+    test.afterEach(async ({ page }) => {
+        await page.unroute("**/api/reflection").catch(() => {});
+        await page.evaluate(async () => {
+            await fetch("/api/reflection/draft", {
+                method: "DELETE", credentials: "same-origin",
+            });
+        }).catch(() => {});
+    });
+
+    test("an empty review still offers a way back to the board", async ({ page }) => {
+        // The reported bug: Claude proposes nothing, Apply and Focus hide
+        // themselves, and the only control left is "Start Over" - which
+        // reads like "discard this" on a screen whose transcript is
+        // already saved.
+        await stubAnalyze(page, NOTHING);
+        await analyze(page);
+
+        await expect(page.locator("#reflEmpty")).toBeVisible();
+        await expect(page.locator("#reflApplyBtn")).toBeHidden();
+        await expect(page.locator("#reflFocusBtn")).toBeHidden();
+
+        const exit = page.locator("#reflReviewExit");
+        await expect(exit).toBeVisible();
+        await expect(exit).toHaveText("Go to Tasks");
+        await expect(exit).toHaveAttribute("href", "/");
+    });
+
+    test("the exit becomes the primary action when there is nothing to apply",
+        async ({ page }) => {
+            await stubAnalyze(page, NOTHING);
+            await analyze(page);
+            // .btn-sm dropped => the filled .btn rule applies. Assert the
+            // rendered colour, not just the class, so a CSS change that
+            // breaks the promotion is caught too.
+            await expect(page.locator("#reflReviewExit")).not.toHaveClass(/btn-sm/);
+            await page.mouse.move(0, 0);
+            const filled = await page.locator("#reflReviewExit").evaluate(SETTLED_BG);
+            const neutral = await page.locator("#reflStartOverBtn").evaluate(SETTLED_BG);
+            expect(filled).not.toBe(neutral);
+        });
+
+    test("the exit stays neutral while Apply Selected is on screen",
+        async ({ page }) => {
+            await stubAnalyze(page, SOMETHING);
+            await analyze(page);
+            await expect(page.locator("#reflApplyBtn")).toBeVisible();
+            await expect(page.locator("#reflReviewExit")).toBeVisible();
+            await expect(page.locator("#reflReviewExit")).toHaveClass(/btn-sm/);
+            // The class alone isn't enough: .btn and .btn-sm both set a
+            // background at equal specificity, so .btn-sm only wins by
+            // source order. Assert the resting colour instead.
+            //
+            // Compare against the --surface token, NOT against Start
+            // Over: at mobile the row is full-width and stacked, so
+            // after the Analyze click the pointer rests over whichever
+            // control reflows under it and .btn-sm:hover paints that one
+            // --surface-sunk. Parking the mouse makes this deterministic
+            // either way.
+            await page.mouse.move(0, 0);
+            const exitBg = await page.locator("#reflReviewExit").evaluate(SETTLED_BG);
+            const applyBg = await page.locator("#reflApplyBtn").evaluate(SETTLED_BG);
+            const surface = await page.evaluate(() => {
+                const probe = document.createElement("span");
+                probe.style.backgroundColor = "var(--surface)";
+                document.body.appendChild(probe);
+                const c = getComputedStyle(probe).backgroundColor;
+                probe.remove();
+                return c;
+            });
+            expect(exitBg).toBe(surface);
+            expect(exitBg).not.toBe(applyBg);
+        });
+
+    test("clicking it really navigates - nothing swallows the click",
+        async ({ page }) => {
+            await stubAnalyze(page, NOTHING);
+            await analyze(page);
+            // Stub the destination document so this proves the top-level
+            // navigation fired without loading the real board (which would
+            // register a service worker mid-suite; every other test here
+            // runs with ?nosw=1 precisely to avoid that).
+            await page.route(/^https?:\/\/[^/]+\/$/, async (route, request) => {
+                if (request.resourceType() !== "document") return route.continue();
+                await route.fulfill({
+                    status: 200, contentType: "text/html",
+                    body: "<title>board stub</title>ok",
+                });
+            });
+            await page.locator("#reflReviewExit").click();
+            await expect(page).toHaveTitle("board stub");
+        });
+
+    test("the exit is reachable and centred alongside its button siblings",
+        async ({ page }) => {
+            await stubAnalyze(page, NOTHING);
+            await analyze(page);
+            const exit = page.locator("#reflReviewExit");
+            const box = await exit.boundingBox();
+            const startOver = await page.locator("#reflStartOverBtn").boundingBox();
+            const mobile = (page.viewportSize() || {}).width < 700;
+
+            if (mobile) {
+                // 44px touch-target floor, and the <a> must centre its
+                // label the way its <button> siblings do. That comes from
+                // the shared mobile rule at style.css:3218
+                // (.btn/.btn-sm -> inline-flex + centred); an <a class="btn">
+                // left as plain inline-block would top-align its text in the
+                // 48px box. Asserted here because this row is the only place
+                // an anchor and a button sit side by side under that rule.
+                expect(box.height).toBeGreaterThanOrEqual(44);
+                const offset = await exit.evaluate((el) => {
+                    const t = el.getBoundingClientRect();
+                    const r = document.createRange();
+                    r.selectNodeContents(el);
+                    const text = r.getBoundingClientRect();
+                    return Math.abs(
+                        (text.top - t.top) - (t.bottom - text.bottom));
+                });
+                // Measured 2026-09-24 at 375px: 13.2 top / 14.8 bottom
+                // (1.6 apart - an <a> line box leads differently from a
+                // <button>'s). Top-aligned instead would be 7 / 21, i.e.
+                // 14 apart, so 6 separates them decisively without
+                // flaking on sub-pixel font rendering.
+                expect(offset).toBeLessThanOrEqual(6);
+            }
+            expect(box.height).toBeCloseTo(startOver.height, 0);
+        });
+
+    test("no horizontal overflow on the review screen", async ({ page }) => {
+        await stubAnalyze(page, SOMETHING);
+        await analyze(page);
         const overflows = await page.evaluate(() =>
             document.documentElement.scrollWidth > window.innerWidth);
         expect(overflows).toBe(false);

@@ -440,3 +440,60 @@ class TestUnauthorizedPage:
         monkeypatch.setattr(auth, "get_current_user_email", lambda: "bad@example.com")
         html = client.get("/").data.decode()
         assert "/login" in html
+
+
+# --- Reflection page ----------------------------------------------------------
+
+
+class TestReflectionReviewActions:
+    """#329 — the review screen must offer a non-destructive way out.
+
+    When Claude proposes nothing, `renderReview` hides Apply Selected and
+    Use as Next Week's Focus, so whatever else sits in that row IS the
+    whole control set. Before #329 that was "Start Over" alone: a label
+    that reads like "discard this" on a screen where the transcript is
+    already persisted (`save_reflection` runs before `analyze_reflection`
+    in `reflection_api.submit`). These assert the markup the user is left
+    with; `tests/e2e/pages.spec.js` drives the empty and non-empty states
+    in a real browser.
+    """
+
+    @staticmethod
+    def _review_actions(client) -> str:
+        html = client.get("/reflection").data.decode()
+        start = html.index('class="reflection-review-actions"')
+        end = html.index("</div>", start)
+        return html[start:end]
+
+    def test_renders_200(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        assert client.get("/reflection").status_code == 200
+
+    def test_review_actions_link_back_to_the_board(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        actions = self._review_actions(client)
+        assert 'id="reflReviewExit"' in actions, (
+            "the review actions row lost its exit link — with no proposals "
+            "to apply, Start Over would again be the only control"
+        )
+        assert 'href="/"' in actions
+
+    def test_exit_precedes_start_over(self, client, monkeypatch):
+        """Apply and Focus hide themselves when there is nothing to
+        apply, so DOM order decides what the user reads first in the
+        empty state. The exit has to come before Start Over."""
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        actions = self._review_actions(client)
+        assert actions.index('id="reflReviewExit"') < actions.index(
+            'id="reflStartOverBtn"'
+        )
+
+    def test_exit_starts_neutral(self, client, monkeypatch):
+        """Server-rendered, Apply Selected is the primary action, so the
+        exit ships as .btn-sm. reflection.js strips .btn-sm only when the
+        review comes back empty."""
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        actions = self._review_actions(client)
+        exit_tag = actions[actions.index("<a "):]
+        exit_tag = exit_tag[: exit_tag.index(">") + 1]
+        assert "btn-sm" in exit_tag

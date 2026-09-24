@@ -70,3 +70,50 @@ def test_pre_commit_hook_has_bash_shebang():
         f"pre-commit hook shebang is {first_line!r}; expected "
         f"b'#!/usr/bin/env bash' (no trailing \\r, no other interpreter)."
     )
+
+
+# --- Text-source byte hygiene (#329) ---------------------------------------
+
+
+# Suffixes that must stay readable as TEXT. A single NUL byte anywhere in
+# one of these makes git, grep and diff classify the whole file as binary:
+# `grep -n` then prints "Binary file X matches" instead of the line, and
+# reviewers lose the diff. Twice now a test needed to express a byte value
+# in a literal and the raw byte landed in the file instead of an escape
+# (`\x89PNG` in tests/test_reflection_context.py, `MZ\0` in
+# tests/e2e/pages.spec.js). The runtime value is identical either way, so
+# the escape costs nothing and keeps the file greppable.
+TEXT_SUFFIXES = {".py", ".js", ".css", ".html", ".md", ".sh", ".json", ".yml", ".yaml"}
+
+# Directories that hold generated or vendored bytes we don't author.
+SKIP_DIRS = {
+    ".git", "node_modules", ".venv", "venv", "__pycache__", ".pytest_cache",
+    "htmlcov", "test-results", "playwright-report", ".claude", "instance",
+    "migrations/__pycache__",
+}
+
+
+def _tracked_text_files():
+    for path in REPO_ROOT.rglob("*"):
+        if path.suffix not in TEXT_SUFFIXES or not path.is_file():
+            continue
+        if SKIP_DIRS & set(path.relative_to(REPO_ROOT).parts):
+            continue
+        yield path
+
+
+def test_no_nul_bytes_in_text_sources():
+    """A raw NUL turns a source file binary for every text tool."""
+    offenders = []
+    for path in _tracked_text_files():
+        raw = path.read_bytes()
+        if b"\x00" in raw:
+            line = raw[: raw.index(b"\x00")].count(b"\n") + 1
+            offenders.append(f"{path.relative_to(REPO_ROOT)}:{line}")
+    assert not offenders, (
+        "NUL byte(s) found in text source files: "
+        + ", ".join(offenders)
+        + ". Write the byte as an escape (`\\u0000` in JS, `\\x00` in a "
+        "Python bytes literal) instead of embedding it - a raw NUL makes "
+        "git and grep treat the file as binary and hides it from diffs."
+    )

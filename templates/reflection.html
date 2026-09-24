@@ -231,6 +231,15 @@
             in your history.
         </p>
 
+        {# #329: the way out. When Claude proposes nothing, Apply and
+           Focus hide themselves and "Start Over" was the only control
+           left — a label that reads like "throw this away" on a screen
+           where the reflection is already saved. Every other terminal
+           state in the app (Done, Error, /import, /scan, /voice-memo)
+           offers "Go to Tasks"; this one does too, placed ahead of
+           Start Over so it lands first when the review is empty.
+           reflection.js promotes it to the filled .btn style in that
+           case by dropping .btn-sm. #}
         <div class="reflection-review-actions">
             <button class="btn btn-primary" id="reflApplyBtn" type="button">
                 Apply Selected
@@ -239,6 +248,8 @@
                     title="Seed next week's Focus slots from this reflection">
                 ✨ Use as Next Week's Focus
             </button>
+            <a href="{{ url_for('index') }}" class="btn btn-sm"
+               id="reflReviewExit">Go to Tasks</a>
             <button class="btn btn-sm" id="reflStartOverBtn" type="button">
                 Start Over
             </button>
