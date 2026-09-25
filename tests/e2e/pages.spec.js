@@ -3426,3 +3426,170 @@ test.describe("Reflection - the draft keeps the last voice segment (#330)", () =
         expect(await segmentCount(page)).toBe(0);
     });
 });
+
+test.describe("Reflection - a submitted reflection never comes back as a draft (#341)", () => {
+    // The 2026-09-24 evidence: a submitted 4445-char row at 20:17:27 and a
+    // LIVE draft holding the same 4445 characters created at 20:19:41, two
+    // minutes later. clearDraftUi() set lastSavedText = null while the text
+    // was still sitting in the (hidden) textarea, so
+    // shouldAutosaveDraft(null, text) returned true and the next autosave
+    // trigger PUT it straight back. No typing required - a plain
+    // visibilitychange is enough, which is why locking a phone did it.
+    //
+    // That resurrected draft is what then invited a second submit, and a
+    // second submit is a second PAID Claude call.
+    const TEXT = "A reflection that must not come back as a draft after it is submitted.";
+
+    const stubAnalyze = async (page) => {
+        await page.route("**/api/reflection", async (route, request) => {
+            if (request.method() !== "POST") return route.continue();
+            // Mimic the real route, which retires the draft right after
+            // persisting and BEFORE calling Claude. Stubbing the POST
+            // without this would leave the draft on the server and the
+            // test would be asserting against a state the app never
+            // reaches.
+            await page.request.delete("/api/reflection/draft");
+            await route.fulfill({
+                status: 201, contentType: "application/json",
+                body: JSON.stringify({
+                    id: "00000000-0000-0000-0000-000000000341",
+                    iso_week: "2026-W39", title: null, input_mode: "typed",
+                    transcript: TEXT, audio_duration_seconds: null,
+                    audio_cost_usd: null, ai_cost_usd: 0.0193,
+                    proposed_actions: { explicit: [], suggested: [] },
+                    raw_segments: [], context_files: [],
+                    is_archived: false, is_active: true,
+                    created_at: "2026-09-25T18:00:00+00:00",
+                }),
+            });
+        });
+    };
+
+    const readDraft = (page) => page.evaluate(async () => {
+        const res = await fetch("/api/reflection/draft",
+                                { credentials: "same-origin" });
+        return (await res.json()).draft;
+    });
+
+    const hide = (page) => page.evaluate(async () => {
+        // The real trigger: the page going hidden. Patched rather than
+        // faked with a direct call, so the actual listener runs.
+        Object.defineProperty(document, "visibilityState",
+                              { value: "hidden", configurable: true });
+        document.dispatchEvent(new Event("visibilitychange"));
+        await new Promise((r) => setTimeout(r, 600));
+    });
+
+    test.beforeEach(async ({ page }) => {
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.evaluate(async () => {
+            await fetch("/api/reflection/draft", {
+                method: "DELETE", credentials: "same-origin",
+            });
+        });
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+    });
+
+    test.afterEach(async ({ page }) => {
+        await page.evaluate(async () => {
+            await fetch("/api/reflection/draft", {
+                method: "DELETE", credentials: "same-origin",
+            });
+        }).catch(() => {});
+    });
+
+    test("hiding the tab after a submit does not recreate the draft", async ({ page }) => {
+        await stubAnalyze(page);
+        await page.locator("#reflText").fill(TEXT);
+        // Let the autosave create a real draft first, so this test proves
+        // the draft is GONE rather than never having existed.
+        await expect.poll(() => readDraft(page), { timeout: 10000 })
+            .not.toBeNull();
+
+        await page.locator("#reflAnalyzeBtn").click();
+        await expect(page.locator("#reflStateReview")).toBeVisible({ timeout: 15000 });
+        expect(await readDraft(page)).toBeNull();
+
+        // THE regression. Pre-fix this PUT the submitted text straight back.
+        await hide(page);
+        expect(await readDraft(page)).toBeNull();
+    });
+
+    test("typing again after a submit DOES start a new draft", async ({ page }) => {
+        // The other half of the rule: the block must lift for real work,
+        // or discarding a draft and typing something new would never save.
+        await stubAnalyze(page);
+        await page.locator("#reflText").fill(TEXT);
+        await page.locator("#reflAnalyzeBtn").click();
+        await expect(page.locator("#reflStateReview")).toBeVisible({ timeout: 15000 });
+        expect(await readDraft(page)).toBeNull();
+
+        await page.locator("#reflStartOverBtn").click();
+        await page.locator("#reflText").fill("A genuinely new thought.");
+        await expect.poll(async () => {
+            const d = await readDraft(page);
+            return d ? d.transcript : null;
+        }, { timeout: 10000 }).toBe("A genuinely new thought.");
+    });
+
+    test("discarding a draft then typing still autosaves", async ({ page }) => {
+        // clearDraftUi() also runs on Discard, and that path must not be
+        // left unable to save ever again.
+        await page.locator("#reflText").fill(TEXT);
+        await expect.poll(() => readDraft(page), { timeout: 10000 })
+            .not.toBeNull();
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator("#reflText")).toHaveValue(TEXT, { timeout: 10000 });
+        page.once("dialog", (d) => d.accept());
+        await page.locator("#reflDraftDiscard").click();
+        await expect.poll(() => readDraft(page), { timeout: 10000 }).toBeNull();
+
+        await page.locator("#reflText").fill("Something else entirely.");
+        await expect.poll(async () => {
+            const d = await readDraft(page);
+            return d ? d.transcript : null;
+        }, { timeout: 10000 }).toBe("Something else entirely.");
+    });
+
+    test("the submit button is disabled while a submit is in flight", async ({ page }) => {
+        // Every click is a paid Claude call. The #333 interim button already
+        // guarded itself; the two submit buttons did not.
+        let posts = 0;
+        await page.route("**/api/reflection", async (route, request) => {
+            if (request.method() !== "POST") return route.continue();
+            posts += 1;
+            await new Promise((r) => setTimeout(r, 1500));
+            await route.fulfill({
+                status: 201, contentType: "application/json",
+                body: JSON.stringify({
+                    id: "00000000-0000-0000-0000-000000000341",
+                    iso_week: "2026-W39", title: null, input_mode: "typed",
+                    transcript: TEXT, audio_duration_seconds: null,
+                    audio_cost_usd: null, ai_cost_usd: 0.0193,
+                    proposed_actions: { explicit: [], suggested: [] },
+                    raw_segments: [], context_files: [],
+                    is_archived: false, is_active: true,
+                    created_at: "2026-09-25T18:00:00+00:00",
+                }),
+            });
+        });
+        await page.locator("#reflText").fill(TEXT);
+        const btn = page.locator("#reflAnalyzeBtn");
+        await btn.click();
+        await expect(btn).toBeDisabled({ timeout: 5000 });
+        // Force the button back on and click anyway. The `disabled`
+        // attribute is the visible affordance; the in-flight FLAG is the
+        // actual guard, and only this proves the flag is doing the work.
+        await page.evaluate(() => {
+            const b = document.getElementById("reflAnalyzeBtn");
+            b.disabled = false;
+            b.click();
+            b.click();
+        });
+        await page.waitForTimeout(2500);
+        expect(posts).toBe(1);
+    });
+});

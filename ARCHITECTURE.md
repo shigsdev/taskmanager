@@ -250,6 +250,29 @@ component is added, a data flow changes, or a security boundary shifts.
   exactly one place at every instant — never zero (lost reflection),
   never two (a stale draft reappearing and inviting a duplicate
   submit).
+  **The client half of that invariant (#341)**: the server kept its side,
+  the browser did not. `clearDraftUi()` set `lastSavedText = null` while
+  the submitted text was still in the (hidden) textarea, so
+  `shouldAutosaveDraft(null, text)` returned true and the next autosave
+  trigger PUT it straight back as a new draft — no typing needed, a plain
+  `visibilitychange` sufficed. A `draftRetired` flag now blocks that,
+  lifted by a real keystroke (typing IS the user starting fresh work, and
+  that keeps "Discard, then type something new" saving). `submitInFlight`
+  plus a disabled button stops a second click, which the #333 interim
+  button already did for itself. And the typed-tab submit now sends the
+  voice segments it holds, instead of relying on #330's server-side
+  fallback to the draft's copy.
+  **Server-side duplicate guard (#341)**: `find_recent_duplicate()` —
+  byte-identical, non-draft, non-deleted, inside
+  `DUPLICATE_WINDOW_SECONDS` (120). A match returns the EXISTING
+  reflection with 200 and makes no Claude call; if that row was saved but
+  never analyzed (its Claude call failed), the retry analyzes onto it
+  rather than leaving one dead entry beside one good one. This is the
+  layer the client cannot provide — two devices, where the phone submits
+  a draft the laptop restored earlier and still holds. Evidence it was
+  needed: on 2026-09-24 two rows carried identical 291-char transcripts
+  33s apart and were billed $0.0193 and $0.0197, and a third row had a
+  live draft holding text already submitted two minutes earlier.
   On `PUT /api/reflection/draft`, `raw_segments` is
   UNSET-means-UNCHANGED (#330), matching `context_files` — the autosave
   fires on every keystroke burst and sends only the textarea, so

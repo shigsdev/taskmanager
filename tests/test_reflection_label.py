@@ -205,6 +205,23 @@ class TestTheSerialisedTimestamp:
         # and the browser reads the UTC wall clock AS local time.
         assert created.endswith("+00:00"), created
 
+    def test_updated_at_also_carries_an_offset(self, app, client, monkeypatch):
+        """#341: #340 fixed created_at and left this one naive on SQLite.
+
+        `updated_at` is what `formatSavedAt` subtracts from now() for the
+        "last saved N ago" banner, so a bare timestamp parses as LOCAL,
+        lands in the future, and the negative age clamps to "just now" —
+        a draft from three days ago read as fresh in dev.
+        """
+        monkeypatch.setattr(
+            auth, "get_current_user_email", lambda: "me@example.com"
+        )
+        resp = client.put("/api/reflection/draft", json={"text": "hello"})
+        assert resp.status_code == 200
+        draft = resp.get_json()["draft"]
+        assert draft["updated_at"].endswith("+00:00"), draft["updated_at"]
+        assert draft["created_at"].endswith("+00:00"), draft["created_at"]
+
     def test_the_offset_survives_the_history_list(
         self, app, client, monkeypatch,
     ):

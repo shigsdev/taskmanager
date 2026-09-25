@@ -3,7 +3,13 @@
 Endpoints:
     POST   /api/reflection                       — submit a reflection (typed
         JSON {"text": ...} OR multipart audio field "audio"); transcribes
-        if audio, persists the Reflection, returns AI-proposed actions
+        if audio, persists the Reflection, returns AI-proposed actions.
+        201 for a new one; #341 returns 200 with the EXISTING reflection
+        when byte-identical text arrives again inside
+        DUPLICATE_WINDOW_SECONDS — no second row and no second paid Claude
+        call. If that earlier row was saved but never analyzed (its Claude
+        call failed), the retry analyzes onto THAT row rather than adding
+        a second one.
     POST   /api/reflection/transcribe-segment    — transcribe ONE audio
         segment (#232 pause+resume). No Reflection row, no Claude call —
         just audio→text. Frontend appends the text to its textarea and
@@ -95,6 +101,7 @@ from reflection_context_service import (
     total_chars,
 )
 from reflection_service import (
+    DUPLICATE_WINDOW_SECONDS,
     CombinedSelectionError,
     DraftAlreadyOpen,
     analyze_reflection,
@@ -104,6 +111,7 @@ from reflection_service import (
     continue_reflection,
     create_synthesis,
     discard_draft,
+    find_recent_duplicate,
     get_open_draft,
     get_reflection,
     list_reflections,
@@ -220,15 +228,15 @@ def _serialize(reflection) -> dict:
         # response.
         "context_files": public_view(reflection.context_files),
         # The client shows this as "last saved" on a restored draft.
-        "updated_at": (
-            reflection.updated_at.isoformat() if reflection.updated_at else None
-        ),
+        # #341: through _utc_iso like created_at. #340 fixed only
+        # created_at, which left this one still naive on SQLite — and it
+        # is the value `formatSavedAt` subtracts from now(), so a draft
+        # saved days ago read as "just now" in dev (the timestamp parses
+        # as local, lands in the future, and the negative age is clamped
+        # to zero). Prod was right; dev quietly lied.
+        "updated_at": _utc_iso(reflection.updated_at),
         "applied_actions": reflection.applied_actions,
-        "applied_at": (
-            reflection.applied_at.isoformat()
-            if reflection.applied_at
-            else None
-        ),
+        "applied_at": _utc_iso(reflection.applied_at),
         "created_at": _utc_iso(reflection.created_at),
     }
 
@@ -345,23 +353,49 @@ def submit(email: str):  # noqa: ARG001
         raw_segments = open_draft.raw_segments
         input_mode = ReflectionInputMode.VOICE
 
-    # Persist the transcript FIRST, before the paid + failure-prone
-    # Claude call. #165 requires every transcript persisted forever;
-    # the original order (analyze → save) discarded the reflection on
-    # any Claude failure — worst case losing a voice memo that already
-    # cost a Whisper transcription. proposed_actions starts empty and
-    # gets attached on analysis success.
-    reflection = save_reflection(
-        transcript=transcript,
-        input_mode=input_mode,
-        proposed={"explicit": [], "suggested": []},
-        audio_duration_seconds=duration,
-        audio_cost_usd=audio_cost,
-        ai_cost_usd=None,
-        raw_segments=raw_segments,  # #237
-        context_files=context_files,  # #328
-        continued_from_id=continued_from_id,  # #334
-    )
+    # #341: the same text arriving twice in quick succession is ONE
+    # reflection, not two. The client now blocks its own double-submits,
+    # but it cannot see the other device: submit from the phone and a
+    # laptop still showing that restored draft will happily submit it
+    # again, minting a second row and a second PAID Claude call.
+    duplicate = find_recent_duplicate(transcript)
+    if duplicate is not None:
+        discard_draft()
+        if duplicate.ai_cost_usd is not None:
+            # Already analyzed. Hand back what we have and charge nothing
+            # — the user gets the result they were asking for either way.
+            logger.info(
+                "Duplicate reflection submit within %ss; returning %s "
+                "unchanged (no second Claude call)",
+                DUPLICATE_WINDOW_SECONDS, duplicate.id,
+            )
+            return jsonify(_serialize(duplicate)), 200
+        # Saved but never analyzed — the Claude call failed last time and
+        # this is a deliberate retry. Analyze onto the SAME row rather
+        # than leaving one dead entry beside one good one.
+        logger.info(
+            "Retry of un-analyzed reflection %s; re-using the row",
+            duplicate.id,
+        )
+        reflection = duplicate
+    else:
+        # Persist the transcript FIRST, before the paid + failure-prone
+        # Claude call. #165 requires every transcript persisted forever;
+        # the original order (analyze → save) discarded the reflection on
+        # any Claude failure — worst case losing a voice memo that already
+        # cost a Whisper transcription. proposed_actions starts empty and
+        # gets attached on analysis success.
+        reflection = save_reflection(
+            transcript=transcript,
+            input_mode=input_mode,
+            proposed={"explicit": [], "suggested": []},
+            audio_duration_seconds=duration,
+            audio_cost_usd=audio_cost,
+            ai_cost_usd=None,
+            raw_segments=raw_segments,  # #237
+            context_files=context_files,  # #328
+            continued_from_id=continued_from_id,  # #334
+        )
 
     # #324: the draft has become a real reflection — retire it. Done
     # HERE, right after the transcript is durably saved and BEFORE the

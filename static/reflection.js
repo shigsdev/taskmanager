@@ -127,6 +127,9 @@
     // ---- runtime state ----
     var current = null;          // last serialized reflection
     var checkedMap = {};         // "bucket:idx" → bool
+    // #341: a submit is in flight. Every one is a PAID Claude call and a
+    // new history row, so a second concurrent one is pure cost.
+    var submitInFlight = false;
     var mediaRecorder = null;
     var mediaStream = null;
     var chunks = [];
@@ -176,7 +179,19 @@
             alert("Write something to reflect on first.");
             return;
         }
-        submitReflection({ json: { text: text } });
+        var payload = { text: text };
+        // #341: send the voice segments we are holding. Dictating and then
+        // finishing from the TYPE tab is a normal thing to do — you switch
+        // over to read what you said before committing — and this path
+        // used to post text alone, so the sitting was filed as `typed` and
+        // its per-segment Whisper trail went missing. #330 made the server
+        // fall back to the DRAFT's segments, which covers most of it, but
+        // the draft is only as current as the last flush; what we hold
+        // here is authoritative.
+        if (rawSegments && rawSegments.length) {
+            payload.raw_segments = rawSegments.slice();
+        }
+        submitReflection({ json: payload });
     });
 
     // #333: analyse WITHOUT ending the reflection. Flushes the draft
@@ -708,6 +723,17 @@
     // ---- submit + analyze ----
 
     async function submitReflection(opts) {
+        // #341: one submit at a time. Every click here starts a PAID
+        // Claude call and creates a history row, so a second one costs
+        // real money and leaves a duplicate the user has to tidy up by
+        // hand — which is exactly what happened on 2026-09-24 (two rows,
+        // identical 291-char transcripts, charged $0.0193 and $0.0197).
+        // The #333 interim button already guards itself this way; the two
+        // submit buttons did not.
+        if (submitInFlight) return;
+        submitInFlight = true;
+        analyzeBtn.disabled = true;
+        if (doneBtn) doneBtn.disabled = true;
         showState("analyzing");
         markStep(stepSave, "running");
         markStep(stepClaude, "pending");
@@ -736,10 +762,18 @@
             // the draft is already gone even though analysis failed.
             // Clearing here stops a pending autosave from re-creating a
             // draft holding text that is now a submitted reflection.
+            // #341: clearing was never enough on its own — see clearDraftUi.
             clearDraftUi();
             showErr("Analysis failed: " + (err.message || err), true);
             loadHistory();
             return;
+        } finally {
+            // #341: released whichever way this went. The error screen's
+            // Try Again routes through resetInput and back to these
+            // buttons, so leaving them disabled would strand the user.
+            submitInFlight = false;
+            analyzeBtn.disabled = false;
+            if (doneBtn) doneBtn.disabled = false;
         }
         markStep(stepSave, "done");
         markStep(stepClaude, "done");
@@ -1525,6 +1559,13 @@
     // the server's, not just the text — see shouldAutosaveDraft.
     var lastSavedSegments = 0;
     var draftSaving = false;
+    // #341: the draft was submitted or discarded, so the text still in the
+    // textarea must NOT be saved back as a new draft. Cleared by a real
+    // keystroke (see the `input` listener), because typing IS the user
+    // starting fresh work — which is what distinguishes "they want a new
+    // draft" from "a background event fired while a retired one was still
+    // on screen".
+    var draftRetired = false;
 
     function setDraftStatus(msg, isError) {
         if (!draftStatus) return;
@@ -1534,6 +1575,8 @@
 
     async function saveDraftNow() {
         if (!textArea) return;
+        // #341: never resurrect a retired draft. See clearDraftUi.
+        if (draftRetired) return;
         var text = textArea.value || "";
         var segCount = rawSegments ? rawSegments.length : 0;
         if (!RH_.shouldAutosaveDraft(
@@ -1591,6 +1634,25 @@
         // buffer is cleared alongside — leaving a stale count would make
         // the next sitting's first segment look already-saved.
         lastSavedSegments = 0;
+        // #341 (2026-09-25): the draft is GONE server-side, and the text
+        // may still be sitting in the (now hidden) textarea. Without this
+        // flag, `lastSavedText = null` above makes
+        // shouldAutosaveDraft(null, text) return TRUE, so the very next
+        // autosave trigger PUTs already-submitted text straight back as a
+        // brand-new draft. No typing is needed to trigger it — a plain
+        // `visibilitychange` (switching tabs, locking the phone) is
+        // enough. That reappearing draft then invites the user to submit
+        // the same reflection a second time, which costs a second Claude
+        // call. It happened twice on 2026-09-24: two rows with identical
+        // 291-char transcripts, both charged, and a live draft still
+        // holding a 4445-char transcript already submitted at 20:17.
+        //
+        // The server deliberately retires the draft BEFORE the Claude
+        // call so the text "exists in exactly one place at every instant
+        // — never two (a stale draft would reappear on the next page load
+        // and invite a duplicate submit)". This flag is the client half of
+        // that invariant, which it was previously breaking.
+        draftRetired = true;
         if (draftTimer) { clearTimeout(draftTimer); draftTimer = null; }
         if (draftBanner) draftBanner.style.display = "none";
         setDraftStatus("");
@@ -1683,7 +1745,15 @@
     window.__reflectionSaveDraftNow = saveDraftNow;
 
     if (textArea) {
-        textArea.addEventListener("input", function () { scheduleDraftSave(); });
+        textArea.addEventListener("input", function () {
+            // #341: a keystroke is the user starting or continuing real
+            // work, so it lifts the retired-draft block. Doing it HERE
+            // rather than in resetInput keeps "Discard draft, then type
+            // something new" working — that path clears the box and never
+            // passes through a reset.
+            draftRetired = false;
+            scheduleDraftSave();
+        });
         // Leaving the tab is the classic "lost it" moment — flush now
         // rather than waiting out the debounce.
         document.addEventListener("visibilitychange", function () {

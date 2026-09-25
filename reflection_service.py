@@ -32,7 +32,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -948,6 +948,53 @@ def save_reflection(
     db.session.add(reflection)
     db.session.commit()
     return reflection
+
+
+# #341 (2026-09-25): how long two byte-identical submissions count as
+# ONE reflection. Covers a double-click, a retry after a visible failure,
+# and the case the client alone cannot: two devices racing, where the
+# phone submits a draft the laptop restored minutes earlier and still
+# holds. Deliberately short — this guards an ACCIDENT, and a window long
+# enough to swallow a deliberate resubmit would be worse than the bug.
+DUPLICATE_WINDOW_SECONDS = 120
+
+
+def find_recent_duplicate(
+    transcript: str, *, within_seconds: int = DUPLICATE_WINDOW_SECONDS,
+) -> Reflection | None:
+    """A saved reflection with this exact text, submitted moments ago.
+
+    Every submit costs a Claude call and mints a history row, so an
+    accidental second one charges the user twice and leaves a duplicate
+    they have to archive by hand. That happened on 2026-09-24: two rows
+    with identical 291-char transcripts, 33 seconds apart, billed
+    $0.0193 and $0.0197.
+
+    Byte-identical rather than fuzzy on purpose. Reflection text is
+    free-form and long; two sittings that genuinely match to the
+    character inside two minutes are the same submission arriving twice,
+    and anything looser risks discarding a real reflection — the one
+    outcome this app must never produce (#165).
+
+    Drafts are excluded: the open draft legitimately holds the same text
+    right up until submit retires it. Soft-deleted rows are excluded too,
+    so re-entering something the user binned actually saves.
+    """
+    text = (transcript or "").strip()
+    if not text:
+        return None
+    cutoff = datetime.now(UTC) - timedelta(seconds=within_seconds)
+    return db.session.scalars(
+        select(Reflection)
+        .where(
+            Reflection.is_draft.is_(False),
+            Reflection.is_active.is_(True),
+            Reflection.transcript == text,
+            Reflection.created_at >= cutoff,
+        )
+        .order_by(Reflection.created_at.desc())
+        .limit(1)
+    ).first()
 
 
 def _normalise_raw_segments(
