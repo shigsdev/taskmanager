@@ -2852,3 +2852,225 @@ test.describe("Reflection - continuing a past reflection (#334)", () => {
         }
     });
 });
+
+test.describe("Reflection - reading several together (#335)", () => {
+    const rows = (page) => page.locator("#reflHistory .reflection-history-item");
+    const boxes = (page) => page.locator(".reflection-history-select");
+
+    // Only the POST is stubbed: selection, the bar, the confirm and the
+    // review render all run for real, and no Claude call is paid for.
+    const stubCombined = async (page, extra) => {
+        await page.route("**/api/reflection/analyze-together", async (route) => {
+            await route.fulfill({
+                status: 201, contentType: "application/json",
+                body: JSON.stringify(Object.assign({
+                    id: "00000000-0000-0000-0000-000000000335",
+                    iso_week: "2026-W39", title: null, input_mode: "typed",
+                    transcript: "Combined analysis of 2 reflections:",
+                    audio_duration_seconds: null, audio_cost_usd: null,
+                    ai_cost_usd: 0.031,
+                    proposed_actions: {
+                        explicit: [{
+                            op: "create", entity: "task",
+                            target: "Draft the 30/60/90",
+                            reason: "It has come up in three sittings running.",
+                        }],
+                        suggested: [],
+                    },
+                    raw_segments: [], context_files: [],
+                    is_archived: false, is_active: true, is_draft: false,
+                    continued_from_id: null, continued_from: null,
+                    synthesis_of: ["a", "b"],
+                    applied_actions: null, applied_at: null, updated_at: null,
+                    created_at: "2026-09-25T09:00:00Z",
+                    combined: true, source_count: 2, shortened: [],
+                }, extra || {})),
+            });
+        });
+    };
+
+    const select = async (page, n) => {
+        for (let i = 0; i < n; i++) await boxes(page).nth(i).click();
+    };
+
+    test.beforeEach(async ({ page }) => {
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await expect(rows(page).first()).toBeVisible({ timeout: 10000 });
+    });
+
+    test("every active row offers a select box, without expanding", async ({ page }) => {
+        // Picking five reflections must not mean five expand clicks, so
+        // the box lives in the summary and is visible while collapsed.
+        expect(await boxes(page).count()).toBeGreaterThan(1);
+        await expect(boxes(page).first()).toBeVisible();
+        await expect(rows(page).first()).not.toHaveAttribute("open", /.*/);
+    });
+
+    test("ticking a box does not open the row", async ({ page }) => {
+        // preventDefault on the summary cancels BOTH default actions, so
+        // the tick is applied by hand — this guards that it still lands
+        // AND that the disclosure stays shut.
+        await boxes(page).first().click();
+        await expect(boxes(page).first()).toBeChecked();
+        await expect(rows(page).first()).not.toHaveAttribute("open", /.*/);
+    });
+
+    test("one selected explains what is missing instead of failing later",
+        async ({ page }) => {
+            await select(page, 1);
+            await expect(page.locator("#reflCombineBar")).toBeVisible();
+            await expect(page.locator("#reflCombineSummary"))
+                .toHaveText(/pick at least one more/);
+            await expect(page.locator("#reflCombineBtn")).toBeDisabled();
+        });
+
+    test("two selected enables the action and names the count", async ({ page }) => {
+        await select(page, 2);
+        await expect(page.locator("#reflCombineBtn")).toBeEnabled();
+        await expect(page.locator("#reflCombineBtn"))
+            .toHaveText("Analyze 2 together");
+    });
+
+    test("the bar is hidden until something is ticked", async ({ page }) => {
+        await expect(page.locator("#reflCombineBar")).toBeHidden();
+        await select(page, 1);
+        await expect(page.locator("#reflCombineBar")).toBeVisible();
+    });
+
+    test("Clear drops the whole selection", async ({ page }) => {
+        await select(page, 2);
+        await page.locator("#reflCombineClear").click();
+        await expect(page.locator("#reflCombineBar")).toBeHidden();
+        await expect(boxes(page).first()).not.toBeChecked();
+    });
+
+    test("the selection survives a history re-render", async ({ page }) => {
+        // Renaming a row reloads the list. A selection built over a long
+        // page that silently emptied itself would be worse than one that
+        // never existed.
+        await select(page, 2);
+        await rows(page).nth(2).evaluate((el) => { el.open = true; });
+        page.once("dialog", (d) => d.accept("Renamed for the test"));
+        await rows(page).nth(2).locator(
+            ".reflection-history-actions button", { hasText: /Name it|Rename/ }
+        ).click();
+        await expect(page.locator("#reflCombineBtn"))
+            .toHaveText("Analyze 2 together", { timeout: 10000 });
+        await expect(boxes(page).first()).toBeChecked();
+    });
+
+    test("the review screen says how far back it read", async ({ page }) => {
+        await stubCombined(page);
+        await select(page, 2);
+        page.once("dialog", (d) => d.accept());
+        await page.locator("#reflCombineBtn").click();
+        await expect(page.locator("#reflStateReview")).toBeVisible({ timeout: 10000 });
+        await expect(page.locator("#reflCombinedNote")).toBeVisible();
+        await expect(page.locator("#reflCombinedNote"))
+            .toHaveText(/Read across 2 reflections, in full/);
+        await expect(page.locator("#reflCombinedNote"))
+            .toHaveText(/nothing changes until you confirm/);
+        await expect(page.locator("#reflApplyBtn")).toBeVisible();
+    });
+
+    test("truncation is surfaced on the review screen", async ({ page }) => {
+        // The feature's promise is full transcripts. If one was cut, the
+        // user must not go on believing otherwise.
+        await stubCombined(page, { shortened: ["2026-09-14 · Week one"] });
+        await select(page, 2);
+        page.once("dialog", (d) => d.accept());
+        await page.locator("#reflCombineBtn").click();
+        await expect(page.locator("#reflCombinedNote"))
+            .toHaveText(/2026-09-14 · Week one/, { timeout: 10000 });
+        await expect(page.locator("#reflCombinedNote")).toHaveText(/shortened/);
+    });
+
+    test("a single reflection's review shows no combined note", async ({ page }) => {
+        // Guards the toggle in the other direction.
+        await page.route("**/api/reflection", async (route, request) => {
+            if (request.method() !== "POST") return route.continue();
+            await route.fulfill({
+                status: 201, contentType: "application/json",
+                body: JSON.stringify({
+                    id: "00000000-0000-0000-0000-000000000336",
+                    iso_week: "2026-W39", title: null, input_mode: "typed",
+                    transcript: "Done.", audio_duration_seconds: null,
+                    audio_cost_usd: null, ai_cost_usd: 0.01,
+                    proposed_actions: { explicit: [], suggested: [] },
+                    raw_segments: [], context_files: [],
+                    is_archived: false, is_active: true, is_draft: false,
+                    synthesis_of: null,
+                }),
+            });
+        });
+        await page.locator("#reflText").fill("Done.");
+        await page.locator("#reflAnalyzeBtn").click();
+        await expect(page.locator("#reflStateReview")).toBeVisible({ timeout: 10000 });
+        await expect(page.locator("#reflCombinedNote")).toBeHidden();
+    });
+
+    test("cancelling the confirm runs nothing", async ({ page }) => {
+        let called = false;
+        await page.route("**/api/reflection/analyze-together", async (route) => {
+            called = true;
+            await route.fulfill({ status: 201, body: "{}" });
+        });
+        await select(page, 2);
+        page.once("dialog", (d) => d.dismiss());
+        await page.locator("#reflCombineBtn").click();
+        await page.waitForTimeout(600);
+        expect(called).toBe(false);
+        await expect(page.locator("#reflStateInput")).toBeVisible();
+    });
+
+    test("a combined row is badged in history", async ({ page }) => {
+        // Without the badge a synthesis reads as a reflection in which
+        // someone typed out a list of dates.
+        await page.route("**/api/reflection", async (route, request) => {
+            if (request.method() !== "GET") return route.continue();
+            await route.fulfill({
+                status: 200, contentType: "application/json",
+                body: JSON.stringify({
+                    reflections: [{
+                        id: "00000000-0000-0000-0000-000000000335",
+                        iso_week: "2026-W39", title: null, input_mode: "typed",
+                        transcript: "Combined analysis of 3 reflections:",
+                        audio_duration_seconds: null, audio_cost_usd: null,
+                        ai_cost_usd: 0.03,
+                        proposed_actions: { explicit: [], suggested: [] },
+                        raw_segments: [], context_files: [],
+                        is_archived: false, is_active: true, is_draft: false,
+                        continued_from_id: null, continued_from: null,
+                        synthesis_of: ["a", "b", "c"],
+                        applied_actions: null, applied_at: null,
+                        updated_at: null, created_at: "2026-09-25T09:00:00Z",
+                    }],
+                }),
+            });
+        });
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(rows(page).first().locator(".reflection-history-badge"))
+            .toHaveText("🔗 Combined analysis of 3 reflections", { timeout: 10000 });
+    });
+
+    test("tap targets and layout hold with the bar shown", async ({ page }) => {
+        await select(page, 2);
+        await expect(page.locator("#reflCombineBar")).toBeVisible();
+        const overflows = await page.evaluate(() =>
+            document.documentElement.scrollWidth > window.innerWidth);
+        expect(overflows).toBe(false);
+
+        if ((page.viewportSize() || {}).width < 700) {
+            // The summary is the real tap target for selecting — the box
+            // itself is deliberately 18px and sits inside it.
+            const sum = await rows(page).first().locator("summary").boundingBox();
+            expect(sum.height).toBeGreaterThanOrEqual(44);
+            const clear = await page.locator("#reflCombineClear").boundingBox();
+            expect(clear.height).toBeGreaterThanOrEqual(44);
+            const btn = await page.locator("#reflCombineBtn").boundingBox();
+            expect(btn.height).toBeGreaterThanOrEqual(44);
+        }
+    });
+});

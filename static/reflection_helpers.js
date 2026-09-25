@@ -620,6 +620,93 @@
             + "). Finish or discard it before continuing a past one.";
     }
 
+    /**
+     * MAX_COMBINED - mirrors reflection_service.MAX_COMBINED (#335).
+     *
+     * Client-side so the bar can say "that's too many" while the user is
+     * still ticking boxes, rather than after a paid round trip. The
+     * server re-checks; this is courtesy, never the gate.
+     */
+    var MAX_COMBINED = 10;
+
+    /**
+     * combinedSelectionText - what the "analyze together" bar says. (#335)
+     *
+     * Three states the user can be in, each needing different words:
+     * one ticked (not yet useful - say what's missing), a workable set
+     * (say what will happen and that it costs), too many (say the limit).
+     * Returning `enabled` alongside the copy keeps the button's state and
+     * its label derived from the same rule.
+     */
+    function combinedSelectionText(count, max) {
+        var cap = typeof max === "number" && max > 0 ? max : MAX_COMBINED;
+        var n = typeof count === "number" && count > 0 ? Math.floor(count) : 0;
+        if (n === 0) return { summary: "", buttonLabel: "", enabled: false };
+        if (n === 1) {
+            return {
+                summary: "1 reflection selected — pick at least one more to "
+                    + "read them together.",
+                buttonLabel: "Analyze together",
+                enabled: false,
+            };
+        }
+        if (n > cap) {
+            return {
+                summary: n + " selected — " + cap + " is the most that can be "
+                    + "read together. The reply length is capped however "
+                    + "much goes in, so more would give you a thinner answer, "
+                    + "not a richer one.",
+                buttonLabel: "Analyze together",
+                enabled: false,
+            };
+        }
+        return {
+            summary: n + " reflections selected.",
+            buttonLabel: "Analyze " + n + " together",
+            enabled: true,
+        };
+    }
+
+    /**
+     * combinedReviewNote - what the review screen says about a synthesis.
+     *
+     * Without it a list of proposals on the review screen looks like it
+     * came from whichever reflection happened to be open, and the user
+     * has no way to tell how far back it looked.
+     */
+    function combinedReviewNote(count, shortened) {
+        var n = typeof count === "number" && count > 0 ? Math.floor(count) : 0;
+        if (!n) return "";
+        var note = n === 1
+            ? "Read across 1 reflection."
+            : "Read across " + n + " reflections, in full.";
+        note += " Applying these works exactly as it does for a single "
+            + "reflection — nothing changes until you confirm.";
+        if (Array.isArray(shortened) && shortened.length) {
+            note += " Note: " + shortened.join(", ")
+                + (shortened.length === 1 ? " was" : " were")
+                + " too long to include in full and got shortened.";
+        }
+        return note;
+    }
+
+    /**
+     * synthesisBadge - marks a combined-analysis row in history. (#335)
+     *
+     * A synthesis row's transcript is a header listing its sources, so
+     * without a badge it reads as a reflection where someone typed a list
+     * of dates. Counted from the stored ids, which the row already
+     * carries — no lookup.
+     */
+    function synthesisBadge(r) {
+        if (!r || typeof r !== "object") return "";
+        var ids = r.synthesis_of;
+        if (!Array.isArray(ids) || !ids.length) return "";
+        return ids.length === 1
+            ? "🔗 Combined analysis of 1 reflection"
+            : "🔗 Combined analysis of " + ids.length + " reflections";
+    }
+
     var api = {
         attachmentLabel: attachmentLabel,
         attachmentSummary: attachmentSummary,
@@ -644,6 +731,10 @@
         continuationNote: continuationNote,
         lineageNote: lineageNote,
         continueBlockedReason: continueBlockedReason,
+        combinedSelectionText: combinedSelectionText,
+        combinedReviewNote: combinedReviewNote,
+        synthesisBadge: synthesisBadge,
+        MAX_COMBINED: MAX_COMBINED,
         AUTO_RELOAD_BLOCKING_STATES: AUTO_RELOAD_BLOCKING_STATES,
     };
 

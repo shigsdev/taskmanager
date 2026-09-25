@@ -101,6 +101,7 @@
     var startOverBtn = document.getElementById("reflStartOverBtn");
     var reviewExit = document.getElementById("reflReviewExit");
     var interimNote = document.getElementById("reflInterimNote");
+    var combinedNote = document.getElementById("reflCombinedNote");  // #335
     var backToWriting = document.getElementById("reflBackToWriting");
 
     // Done refs
@@ -805,6 +806,17 @@
         if (backToWriting) backToWriting.style.display = interim ? "" : "none";
         if (startOverBtn) startOverBtn.style.display = interim ? "none" : "";
 
+        // #335: a combined analysis reaches the same review screen, and
+        // its proposals look identical to one reflection's — so it has to
+        // say how far back it read, and whether anything was shortened.
+        if (combinedNote) {
+            var combinedText = (refl && refl.combined && H.combinedReviewNote)
+                ? H.combinedReviewNote(refl.source_count, refl.shortened)
+                : "";
+            combinedNote.textContent = combinedText;
+            combinedNote.style.display = combinedText ? "" : "none";
+        }
+
         var cost = refl && refl.ai_cost_usd;
         costHintEl.textContent = cost
             ? "Claude analysis cost ~$" + Number(cost).toFixed(4) + "."
@@ -1039,9 +1051,106 @@
 
     var showArchivedCheckbox = document.getElementById("reflShowArchived");
     var recentlyDeletedEl = document.getElementById("reflRecentlyDeleted");
+    // #335: reading several sittings together.
+    var combineBar = document.getElementById("reflCombineBar");
+    var combineSummary = document.getElementById("reflCombineSummary");
+    var combineBtn = document.getElementById("reflCombineBtn");
+    var combineClearBtn = document.getElementById("reflCombineClear");
+    // Selection survives a history re-render (archive, rename,
+    // delete all call loadHistory), so it lives here rather than in
+    // the DOM that gets thrown away.
+    var combineSelected = [];
     var recentlyDeletedSummary = document.getElementById(
         "reflRecentlyDeletedSummary",
     );
+
+    // ---- reading several reflections together (#335) -----------------
+
+    function _combineToggle(id, on) {
+        var at = combineSelected.indexOf(id);
+        if (on && at === -1) combineSelected.push(id);
+        if (!on && at !== -1) combineSelected.splice(at, 1);
+        refreshCombineBar();
+    }
+
+    function _combineClear() {
+        combineSelected.length = 0;
+        var boxes = document.querySelectorAll(".reflection-history-select");
+        Array.prototype.forEach.call(boxes, function (b) { b.checked = false; });
+        refreshCombineBar();
+    }
+
+    /**
+     * The bar's copy and its button state come from ONE helper, so a
+     * disabled button can never sit under a label promising to run.
+     */
+    function refreshCombineBar() {
+        if (!combineBar) return;
+        var state = (RH_ && typeof RH_.combinedSelectionText === "function")
+            ? RH_.combinedSelectionText(combineSelected.length)
+            : { summary: "", buttonLabel: "", enabled: false };
+        if (combineSummary) combineSummary.textContent = state.summary;
+        if (combineBtn) {
+            combineBtn.textContent = state.buttonLabel || "Analyze together";
+            combineBtn.disabled = !state.enabled;
+        }
+        combineBar.style.display = combineSelected.length ? "" : "none";
+    }
+
+    /**
+     * Drop ids that are no longer in the list. Archiving or deleting a
+     * selected row would otherwise leave it silently in the selection,
+     * and the server would refuse the whole set with "one of those is no
+     * longer available" — pointing at something the user cannot see.
+     */
+    function _pruneCombineSelection(list) {
+        var live = {};
+        (list || []).forEach(function (r) { live[r.id] = true; });
+        for (var i = combineSelected.length - 1; i >= 0; i--) {
+            if (!live[combineSelected[i]]) combineSelected.splice(i, 1);
+        }
+        refreshCombineBar();
+    }
+
+    if (combineClearBtn) {
+        combineClearBtn.addEventListener("click", _combineClear);
+    }
+
+    if (combineBtn) {
+        combineBtn.addEventListener("click", async function () {
+            var state = RH_.combinedSelectionText(combineSelected.length);
+            if (!state.enabled) return;
+            var NL = String.fromCharCode(10);
+            // A paid call over potentially weeks of text — make it a
+            // deliberate click and say what it will do.
+            if (!confirm(
+                "Read these " + combineSelected.length
+                + " reflections together?" + NL + NL
+                + "Claude reads all of them in full and proposes changes "
+                + "across the whole set. This costs one Claude call and "
+                + "may take a couple of minutes. The reflections "
+                + "themselves are not changed."
+            )) return;
+            combineBtn.disabled = true;
+            combineBtn.textContent = "Analyzing…";
+            showState("analyzing");
+            var data;
+            try {
+                data = await window.apiFetch("/api/reflection/analyze-together", {
+                    method: "POST",
+                    body: JSON.stringify({ ids: combineSelected.slice() }),
+                });
+            } catch (err) {
+                refreshCombineBar();
+                showErr("Analysis failed: " + (err.message || err), true);
+                return;
+            }
+            _combineClear();
+            current = data;
+            renderReview(data);
+            loadHistory();
+        });
+    }
 
     async function loadHistory() {
         try {
@@ -1077,6 +1186,11 @@
     }
 
     function renderHistory(list) {
+        // #335: drop any selected id that has left the list before
+        // rendering — the checkbox representing it is about to disappear,
+        // and leaving it selected would make the server refuse the whole
+        // set over a row the user can no longer see.
+        _pruneCombineSelection(list);
         historyEl.innerHTML = "";
         if (list.length === 0) {
             historyEl.innerHTML =
@@ -1112,6 +1226,22 @@
         item.dataset.reflectionId = r.id;
 
         var sum = document.createElement("summary");
+
+        // #335: tick to read this sitting together with others. Lives in
+        // the summary so a row can be selected without expanding it —
+        // picking five reflections should not mean five expand clicks.
+        var selectBox = null;
+        if (!deleted) {
+            selectBox = document.createElement("input");
+            selectBox.type = "checkbox";
+            selectBox.className = "reflection-history-select";
+            selectBox.checked = combineSelected.indexOf(r.id) !== -1;
+            selectBox.setAttribute(
+                "aria-label", "Select this reflection for a combined analysis");
+            selectBox.title = "Select to analyze with other reflections";
+            sum.appendChild(selectBox);
+        }
+
         // #339: the name comes from reflectionLabel — a user-given title
         // when there is one, otherwise a generated label that includes
         // the TIME. The old label (week + date + mode) was identical for
@@ -1121,19 +1251,63 @@
         var baseLabel = (RH_ && typeof RH_.reflectionLabel === "function")
             ? RH_.reflectionLabel(r)
             : r.iso_week + " · " + (r.created_at || "").slice(0, 10);
-        sum.textContent = baseLabel + applied + archivedTag;
-        item.appendChild(sum);
+        var nameEl = document.createElement("span");
+        nameEl.className = "reflection-history-name";
+        nameEl.textContent = baseLabel + applied + archivedTag;
+        sum.appendChild(nameEl);
 
         // #334: say where a forked reflection came from. Without this a
         // continuation looks like someone wrote the same opening
         // paragraphs twice on two different days.
+        //
+        // In the SUMMARY rather than the body (where #334 first put it):
+        // a <details> hides its body, so the line only showed once the
+        // row was already expanded — by which point the user is reading
+        // the transcript and no longer wondering why two rows open the
+        // same way. Same reasoning for the #335 badge below.
         var lineage = (RH_ && typeof RH_.lineageNote === "function")
             ? RH_.lineageNote(r) : "";
         if (lineage) {
-            var lineageEl = document.createElement("p");
+            var lineageEl = document.createElement("span");
             lineageEl.className = "reflection-history-lineage";
             lineageEl.textContent = lineage;
-            item.appendChild(lineageEl);
+            sum.appendChild(lineageEl);
+        }
+
+        // #335: a synthesis row's transcript is a header listing the
+        // sittings it read, so without a badge it reads as a reflection
+        // where someone typed out a list of dates.
+        var badge = (RH_ && typeof RH_.synthesisBadge === "function")
+            ? RH_.synthesisBadge(r) : "";
+        if (badge) {
+            item.classList.add("reflection-history-item-synthesis");
+            var badgeEl = document.createElement("span");
+            badgeEl.className = "reflection-history-badge";
+            badgeEl.textContent = badge;
+            sum.appendChild(badgeEl);
+        }
+
+        item.appendChild(sum);
+
+        if (selectBox) {
+            // A click on the checkbox must not also toggle the <details>.
+            //
+            // stopPropagation, NOT preventDefault: a checkbox's tick is
+            // applied by the pre-click activation steps and REVERTED by
+            // the canceled-activation steps when the event is cancelled,
+            // so preventing the default on the summary silently undoes
+            // the tick as well as the disclosure. Measured on 2026-09-25:
+            // preventDefault left the box unchecked; stopping the event
+            // before it reaches the summary leaves the box ticked and the
+            // row shut, which is what this needs.
+            selectBox.addEventListener("click", function (e) {
+                e.stopPropagation();
+            });
+            // `change` rather than reading state inside the click handler,
+            // so keyboard activation (space on a focused box) counts too.
+            selectBox.addEventListener("change", function () {
+                _combineToggle(r.id, selectBox.checked);
+            });
         }
 
         var pre = document.createElement("pre");

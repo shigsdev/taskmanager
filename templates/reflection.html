@@ -265,6 +265,12 @@
             This is a checkpoint — your reflection is still open. Apply
             anything useful, then carry on where you left off.
         </p>
+        {# #335: proposals drawn from several sittings look identical to
+           proposals from one, so the review screen has to say how far
+           back it read - and that applying still changes nothing until
+           confirmed. #}
+        <p class="reflection-combined-note" id="reflCombinedNote"
+           style="display:none" role="status"></p>
         <p class="reflection-cost-hint" id="reflCostHint"></p>
 
         <div class="reflection-buckets" id="reflBuckets"></div>
@@ -368,6 +374,18 @@
                 <input type="checkbox" id="reflShowArchived"> Show archived
             </label>
         </header>
+        {# #335: tick several sittings and read them together. The bar
+           only appears once something is ticked - an always-visible
+           toolbar over an empty selection is noise on every page load.
+           aria-live so the count is announced as boxes are ticked. #}
+        <div class="reflection-combine-bar" id="reflCombineBar"
+             style="display:none">
+            <span id="reflCombineSummary" aria-live="polite"></span>
+            <button type="button" class="btn btn-primary btn-sm"
+                    id="reflCombineBtn">Analyze together</button>
+            <button type="button" class="btn-link"
+                    id="reflCombineClear">Clear</button>
+        </div>
         <div id="reflHistory" class="reflection-history-list">
             <p class="reflection-hint">Loading…</p>
         </div>

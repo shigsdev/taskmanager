@@ -5208,13 +5208,72 @@ table.quality-gates code {
 }
 .reflection-continue-saved:empty { display: none; }
 
-/* The lineage line under a forked history row. Metadata weight — it
-   answers "why does this open the same way as an older one?" and should
-   never compete with the row's own name. */
-.reflection-history-lineage {
-    margin: 2px 0 6px;
+/* #334/#335: a history row's <summary> now carries a select box, the
+   row's name, and (when they apply) a lineage line and a synthesis
+   badge. Wrapping rather than one long line so a named continuation on a
+   phone doesn't push its own title out of view. */
+.reflection-history-item > summary {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+}
+.reflection-history-name { flex: 1 1 auto; min-width: 0; }
+/* The tick box for #335's combined analysis. 18px to match
+   `.task-card .bulk-select-check`, which is the same interaction (tick
+   rows to build a selection) — and NOT stretched to 44px, because the
+   rest of the summary is the disclosure toggle, so a full-width target
+   here would swallow the click that opens the row. The mobile block
+   below bumps it to 22px, the same bump `.checklist-item` gets. */
+.reflection-history-select {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--copper, #b87333);
+}
+/* The lineage line on a forked history row, and the synthesis badge on a
+   combined one. Metadata weight — they answer "why does this open the
+   same way as an older one?" and "what is this row?", and must never
+   compete with the row's own name. */
+.reflection-history-lineage,
+.reflection-history-badge {
+    flex: 0 0 auto;
     font-size: 0.8rem;
+    font-weight: normal;
     color: var(--cream-faint, #8f8675);
+}
+
+/* #335: the bar that appears once reflections are ticked. Sticky at the
+   top of the history list because the boxes being ticked are spread down
+   a long page — a bar that scrolled away would leave the user ticking
+   with no idea how many they have. */
+.reflection-combine-bar {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0 0 12px;
+    padding: 8px 12px;
+    border: 1px solid var(--copper, #b87333);
+    border-radius: var(--radius, 6px);
+    background: var(--slate-200, #221f1c);
+    font-size: 0.9rem;
+}
+.reflection-combine-bar span { flex: 1 1 200px; }
+.reflection-combine-bar .btn[disabled] { opacity: 0.55; cursor: not-allowed; }
+/* A combined analysis read weeks of material, so the review screen says
+   so. Same treatment as the #333 checkpoint note it sits beside. */
+.reflection-combined-note {
+    margin: 0 0 12px;
+    padding: 8px 12px;
+    border-left: 3px solid var(--copper, #b87333);
+    background: var(--slate-200, #221f1c);
+    font-size: 0.9rem;
 }
 
 .reflection-input-actions,
@@ -5498,10 +5557,24 @@ table.quality-gates code {
     .reflection-draft-banner .btn-link,
     /* #334: "Start fresh instead" discards a fork the same way — same
        destructive-tap-target reasoning as the #324 rule above it. */
-    .reflection-continue-banner .btn-link {
+    .reflection-continue-banner .btn-link,
+    /* #335: "Clear" drops a selection the user may have spent a while
+       building, so it gets the same floor. */
+    .reflection-combine-bar .btn-link {
         display: inline-flex;
         align-items: center;
         min-height: 44px;
+    }
+    /* #335: the summary gets the 44px height so the row is comfortable to
+       tap open, and the tick box grows to 22px inside it — the same
+       mobile bump `.checklist-item` gets. Measured at 18px in Phase 6 and
+       it was too small to hit confidently one-handed. */
+    .reflection-history-item > summary {
+        min-height: 44px;
+    }
+    .reflection-history-select {
+        width: 22px;
+        height: 22px;
     }
 }
 
