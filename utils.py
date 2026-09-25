@@ -56,20 +56,38 @@ def local_date_from_dt(dt: datetime | None) -> date | None:
 
     Returns ``None`` when ``dt`` is ``None``.
     """
+    local = local_datetime_from_dt(dt)
+    return local.date() if local is not None else None
+
+
+def local_datetime_from_dt(dt: datetime | None) -> datetime | None:
+    """Return the ``DIGEST_TZ`` *instant* for a stored timestamp.
+
+    The datetime half of ``local_date_from_dt`` above, split out for #340
+    (2026-09-25): a reflection's label needs the user's wall-clock TIME,
+    not just their date, so two sittings on one day can be told apart.
+
+    The naive branch is load-bearing, not merely defensive. SQLite has no
+    timezone type, so SQLAlchemy hands back a NAIVE datetime in local dev
+    while Postgres hands back a tz-aware one in prod — the same column,
+    two shapes. ``models._now()`` always writes UTC, so assuming UTC for a
+    naive value is exactly right, and doing it here is what keeps dev and
+    prod agreeing on what a stored timestamp means.
+
+    Returns ``None`` when ``dt`` is ``None``.
+    """
     if dt is None:
         return None
     try:
         from zoneinfo import ZoneInfo
         tz_name = os.environ.get("DIGEST_TZ", "America/New_York")
-        # Tz-naive timestamps (shouldn't happen with timezone=True columns
-        # but defend anyway) are assumed UTC before conversion.
         if dt.tzinfo is None:
             from datetime import UTC
             dt = dt.replace(tzinfo=UTC)
-        return dt.astimezone(ZoneInfo(tz_name)).date()
+        return dt.astimezone(ZoneInfo(tz_name))
     except Exception:  # noqa: BLE001
-        # ZoneInfo / tzdata unavailable → fall back to server local date.
-        return dt.date()
+        # ZoneInfo / tzdata unavailable → fall back to the value as stored.
+        return dt
 
 
 class ValidationError(Exception):

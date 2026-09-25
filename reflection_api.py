@@ -68,6 +68,7 @@ each reflection row — that store is the record of what rode along.
 from __future__ import annotations
 
 import logging
+from datetime import UTC
 
 from flask import Blueprint, g, jsonify, request
 
@@ -142,10 +143,30 @@ def _lineage(parent) -> dict | None:
         "title": parent.title,
         "iso_week": parent.iso_week,
         "input_mode": parent.input_mode.value,
-        "created_at": (
-            parent.created_at.isoformat() if parent.created_at else None
-        ),
+        "created_at": _utc_iso(parent.created_at),
     }
+
+
+def _utc_iso(dt) -> str | None:
+    """Serialise a stored timestamp with an EXPLICIT offset (#340).
+
+    SQLite has no timezone type, so SQLAlchemy returns a NAIVE datetime
+    in local dev while Postgres returns a tz-aware one in prod — the same
+    column, two shapes, and ``.isoformat()`` faithfully reproduces both.
+    The client then reads them differently: ``new Date("…+00:00")`` is a
+    correct instant, while ``new Date("…")`` with no offset is treated as
+    LOCAL time per ES2015, so the history label rendered UTC-as-local in
+    dev and the right time in prod.
+
+    ``models._now()`` always writes UTC, so stamping a naive value as UTC
+    is not a guess — it restores information SQLite dropped, and makes
+    the two environments agree about what an instant means.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.isoformat()
 
 
 def _serialize(reflection) -> dict:
@@ -208,7 +229,7 @@ def _serialize(reflection) -> dict:
             if reflection.applied_at
             else None
         ),
-        "created_at": reflection.created_at.isoformat(),
+        "created_at": _utc_iso(reflection.created_at),
     }
 
 

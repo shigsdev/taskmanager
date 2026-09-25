@@ -338,6 +338,22 @@ component is added, a data flow changes, or a security boundary shifts.
   is background; this passes the selected transcripts in FULL, each
   fenced with its own dated header so a thought can be attributed to a
   date, up to `MAX_COMBINED_CHARS` (120_000) shared evenly between them.
+  **Naming a sitting (#339, #340)**: `reflection_label()` is the ONE rule
+  — the user's own title when there is one, otherwise the local date and
+  time. #340 consolidated three open-coded copies of it
+  (`recent_reflections_block`, `continuation_block`, and the original),
+  each of which had drifted its own way and each of which named the
+  sitting by its **UTC** date, so a 9pm ET reflection was labelled with
+  the next day and two sittings on one day rendered identically. The
+  local instant comes from `utils.local_datetime_from_dt` (`DIGEST_TZ`,
+  default America/New_York — the same convention `local_today_date` has
+  used since audit fix #128), which also makes the label agree with the
+  history row the client renders in the browser's zone. Relatedly,
+  `_utc_iso()` stamps a naive `created_at` as UTC before serialising:
+  SQLite has no timezone type, so the same column comes back naive in dev
+  and aware in prod, and a bare ISO string is read by `new Date()` as
+  LOCAL time. Resolution is one minute; two sittings inside one minute
+  still collide, and naming one (#339) is the answer there.
   Attachments arrive as the de-duplicated union of the sources'
   `context_files` (the same job description on three sittings must not
   burn the 60k document budget three times). `synthesis_block()`

@@ -50,6 +50,7 @@ from reflection_context_service import (
     context_files_block,
     normalise_context_files,
 )
+from utils import local_datetime_from_dt
 
 logger = logging.getLogger(__name__)
 
@@ -429,13 +430,14 @@ def recent_reflections_block(exclude_id=None, exclude_ids=None) -> str:
             continue
         if len(text) > _RECENT_REFLECTION_CHARS:
             text = text[:_RECENT_REFLECTION_CHARS].rstrip() + "…"
-        when = r.created_at.date().isoformat() if r.created_at else r.iso_week
         # #339: if the user named the sitting, carry the name into the
-        # prompt. It is their own words for what that session was about,
-        # which is far better continuity signal than a date alone.
-        name = (r.title or "").strip()
-        label = f"{when} - {name}" if name else when
-        lines.append(f"[{label}] {text}")
+        # prompt -- it is their own words for what that session was
+        # about, far better continuity signal than a date alone.
+        # #340: via reflection_label rather than open-coded, so this
+        # block gets the user's LOCAL day and time like everywhere else.
+        # It had its own copy of the rule, and so its own copy of the
+        # UTC-date drift.
+        lines.append(f"[{reflection_label(r)}] {text}")
     if not lines:
         return ""
     body = "\n\n".join(lines)
@@ -499,12 +501,11 @@ def continuation_block(parent: Reflection | None) -> str:
     """
     if parent is None:
         return ""
-    when = (
-        parent.created_at.date().isoformat() if parent.created_at
-        else parent.iso_week
-    )
-    name = (parent.title or "").strip()
-    label = f'"{name}" ({when})' if name else when
+    # #340: the third open-coded copy of the label rule, and the third
+    # with the UTC-date drift. All three now go through reflection_label,
+    # which also means a continuation banner and a synthesis header name
+    # the same sitting the same way.
+    label = reflection_label(parent)
     out = [
         # A leading empty element renders as the blank line that separates
         # this block from the milestone line above it.
@@ -535,10 +536,35 @@ def reflection_label(r: Reflection) -> str:
     """How one sitting is named in prompt text and in a synthesis header.
 
     Mirrors the client's ``reflectionLabel``: the user's own name when
-    there is one, otherwise the date. A name is far better signal than a
-    date alone -- it is the user's summary of what that sitting was for.
+    there is one, otherwise when it happened. A name is far better signal
+    than a timestamp -- it is the user's summary of what that sitting was
+    for.
+
+    #340 (2026-09-25) -- the TIME, and the user's timezone. Two things
+    were wrong with naming a sitting by ``created_at.date()``:
+
+    1. Two untitled sittings on one day produced byte-identical labels,
+       so a synthesis header listed ``- 2026-05-17`` twice and the prompt
+       fences could not be told apart. #339 fixed exactly this for the
+       history list by adding a time.
+    2. ``created_at.date()`` is the UTC date. A 9pm ET reflection is
+       01:00 UTC the NEXT day, so the label already named the wrong day
+       and already disagreed with the history row -- no collision needed.
+
+    Both are one fix: render the instant in the user's zone. That is not
+    a new convention -- ``utils.local_today_date`` has answered "what
+    time zone is the user in?" with ``DIGEST_TZ`` (default
+    America/New_York) since audit fix #128, and this uses the same
+    answer. It is also what makes this label AGREE with the history row,
+    which renders the same instant in the browser's zone.
+
+    The remaining asymmetry with the client is deliberate:
+    ``reflectionLabel`` also appends the capture mode, because a history
+    row must never render blank. A prompt fence has no such need, and
+    "typed" tells Claude nothing.
     """
-    when = r.created_at.date().isoformat() if r.created_at else r.iso_week
+    local = local_datetime_from_dt(r.created_at)
+    when = local.strftime("%Y-%m-%d %H:%M") if local else r.iso_week
     name = (r.title or "").strip()
     return f"{when} · {name}" if name else when
 
