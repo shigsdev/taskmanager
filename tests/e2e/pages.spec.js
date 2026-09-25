@@ -2563,3 +2563,292 @@ test.describe("Reflection - checkpoint without ending the session (#333)", () =>
         expect(overflows).toBe(false);
     });
 });
+
+test.describe("Reflection - continuing a past reflection (#334)", () => {
+    // No stubbing: continuing is a pure DB copy with no Claude or Whisper
+    // call, so the real endpoint runs here and these assert real state.
+    const firstRow = (page) =>
+        page.locator("#reflHistory .reflection-history-item").first();
+
+    const clearDraft = (page) => page.evaluate(async () => {
+        await fetch("/api/reflection/draft", {
+            method: "DELETE", credentials: "same-origin",
+        });
+    });
+
+    const continueFirstRow = async (page, { accept = true } = {}) => {
+        await firstRow(page).evaluate((el) => { el.open = true; });
+        page.once("dialog", (d) => (accept ? d.accept() : d.dismiss()));
+        await firstRow(page).locator(
+            ".reflection-history-actions button", { hasText: "Continue" }
+        ).click();
+    };
+
+    test.beforeEach(async ({ page }) => {
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await clearDraft(page);
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(firstRow(page)).toBeVisible({ timeout: 10000 });
+    });
+
+    test.afterEach(async ({ page }) => {
+        await clearDraft(page).catch(() => {});
+    });
+
+    test("every active history row offers Continue", async ({ page }) => {
+        await firstRow(page).evaluate((el) => { el.open = true; });
+        await expect(firstRow(page).locator(
+            ".reflection-history-actions button", { hasText: "Continue" }
+        )).toBeVisible();
+    });
+
+    test("it fills the box with the sitting's own words", async ({ page }) => {
+        const parentText = await firstRow(page).locator(
+            ".reflection-history-transcript"
+        ).textContent();
+        await continueFirstRow(page);
+        await expect(page.locator("#reflText")).not.toHaveValue("", {
+            timeout: 10000,
+        });
+        expect((await page.locator("#reflText").inputValue()).trim())
+            .toBe(parentText.trim());
+    });
+
+    test("the banner names what is being continued and what happens next",
+        async ({ page }) => {
+            await continueFirstRow(page);
+            const banner = page.locator("#reflContinueBanner");
+            await expect(banner).toBeVisible({ timeout: 10000 });
+            // Both halves matter: WHICH sitting, and that finishing writes a
+            // new row rather than overwriting the one that was clicked.
+            await expect(page.locator("#reflContinueText"))
+                .toHaveText(/Continuing /);
+            await expect(page.locator("#reflContinueText"))
+                .toHaveText(/NEW reflection/);
+            await expect(page.locator("#reflContinueText"))
+                .toHaveText(/left exactly as it is/);
+        });
+
+    test("the writing screen is brought back into view", async ({ page }) => {
+        // The button is at the BOTTOM of the page. Filling a textarea the
+        // user cannot see would read as a click that did nothing.
+        await continueFirstRow(page);
+        await expect(page.locator("#reflText")).not.toHaveValue("", {
+            timeout: 10000,
+        });
+        await expect(page.locator("#reflStateInput")).toBeVisible();
+        const inView = await page.locator("#reflText").evaluate((el) => {
+            const r = el.getBoundingClientRect();
+            return r.top < window.innerHeight && r.bottom > 0;
+        });
+        expect(inView).toBe(true);
+    });
+
+    test("the fork is server state, not just DOM", async ({ page }) => {
+        await continueFirstRow(page);
+        await expect(page.locator("#reflContinueBanner")).toBeVisible({
+            timeout: 10000,
+        });
+        const draft = await page.evaluate(async () => {
+            const res = await fetch("/api/reflection/draft", {
+                credentials: "same-origin",
+            });
+            return (await res.json()).draft;
+        });
+        expect(draft.continued_from_id).toBeTruthy();
+        expect(draft.continued_from.id).toBe(draft.continued_from_id);
+
+        // And it survives a reload — the banner is rebuilt from the server.
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator("#reflContinueBanner")).toBeVisible({
+            timeout: 10000,
+        });
+    });
+
+    test("a restored continuation shows ONE banner with ONE way out",
+        async ({ page }) => {
+            // Phase 6, 2026-09-25: on reload both banners rendered — the
+            // #324 "Draft restored" one and this one — stacking two
+            // destructive controls a few pixels apart ("Discard draft" and
+            // "Start fresh instead") that do exactly the same thing. The
+            // continuation banner subsumes the other; this is the guard.
+            await continueFirstRow(page);
+            await expect(page.locator("#reflContinueBanner")).toBeVisible({
+                timeout: 10000,
+            });
+            await page.reload();
+            await page.waitForLoadState("networkidle");
+            await expect(page.locator("#reflContinueBanner")).toBeVisible({
+                timeout: 10000,
+            });
+            await expect(page.locator("#reflDraftBanner")).toBeHidden();
+            // `visible: true` matters: the draft banner's button stays in
+            // the DOM, hidden by its parent, so a bare toHaveCount would
+            // see 2 and fail even when the screen is correct.
+            await expect(page.locator(
+                ".reflection-continue-banner .btn-link, "
+                + ".reflection-draft-banner .btn-link"
+            ).filter({ visible: true })).toHaveCount(1);
+            await expect(page.locator("#reflContinueAbandon")).toBeVisible();
+            await expect(page.locator("#reflDraftDiscard")).toBeHidden();
+            // The reassurance the draft banner used to carry is folded in,
+            // not dropped.
+            await expect(page.locator("#reflContinueSaved"))
+                .toHaveText(/Last saved/);
+        });
+
+    test("a plain draft still gets the draft banner", async ({ page }) => {
+        // Guards the toggle in the other direction: suppressing the draft
+        // banner must depend on the continuation, not happen always.
+        await page.locator("#reflText").fill("An ordinary sitting.");
+        await page.waitForTimeout(1600);
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator("#reflDraftBanner")).toBeVisible({
+            timeout: 10000,
+        });
+        await expect(page.locator("#reflContinueBanner")).toBeHidden();
+    });
+
+    test("the reflection that was continued is untouched", async ({ page }) => {
+        const before = await firstRow(page).locator(
+            ".reflection-history-transcript"
+        ).textContent();
+        const rowsBefore = await page.locator(
+            "#reflHistory .reflection-history-item"
+        ).count();
+        await continueFirstRow(page);
+        await expect(page.locator("#reflContinueBanner")).toBeVisible({
+            timeout: 10000,
+        });
+        // Type MORE, then check the original again: the fork must not be
+        // writing through to the row it came from.
+        await page.locator("#reflText").fill(before + " Plus new thinking.");
+        await page.waitForTimeout(1600);  // outlast the 1200ms autosave debounce
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        expect(await page.locator("#reflHistory .reflection-history-item").count())
+            .toBe(rowsBefore);
+        expect((await firstRow(page).locator(
+            ".reflection-history-transcript"
+        ).textContent()).trim()).toBe(before.trim());
+    });
+
+    test("cancelling the confirm changes nothing", async ({ page }) => {
+        await continueFirstRow(page, { accept: false });
+        await page.waitForTimeout(500);
+        await expect(page.locator("#reflText")).toHaveValue("");
+        await expect(page.locator("#reflContinueBanner")).toBeHidden();
+    });
+
+    test("an in-progress reflection is protected, not overwritten",
+        async ({ page }) => {
+            // Drafts are hard-deleted with no recycle bin, and these
+            // sittings run for hours — a silent clobber here is the worst
+            // thing this feature could do.
+            await page.locator("#reflText").fill("Two hours of thinking.");
+            await page.waitForTimeout(1600);
+            await firstRow(page).evaluate((el) => { el.open = true; });
+            let message = "";
+            page.once("dialog", (d) => { message = d.message(); d.accept(); });
+            await firstRow(page).locator(
+                ".reflection-history-actions button", { hasText: "Continue" }
+            ).click();
+            await page.waitForTimeout(500);
+            expect(message).toMatch(/already have a reflection in progress/);
+            // The refusal must not have taken the text with it.
+            await expect(page.locator("#reflText"))
+                .toHaveValue("Two hours of thinking.");
+            await expect(page.locator("#reflContinueBanner")).toBeHidden();
+        });
+
+    test("Start fresh instead clears the copy and hides the banner",
+        async ({ page }) => {
+            await continueFirstRow(page);
+            await expect(page.locator("#reflContinueBanner")).toBeVisible({
+                timeout: 10000,
+            });
+            const rows = await page.locator(
+                "#reflHistory .reflection-history-item"
+            ).count();
+            page.once("dialog", (d) => d.accept());
+            await page.locator("#reflContinueAbandon").click();
+            await expect(page.locator("#reflText")).toHaveValue("", {
+                timeout: 10000,
+            });
+            await expect(page.locator("#reflContinueBanner")).toBeHidden();
+            // It deleted the COPY. The original is still in history.
+            await page.reload();
+            await page.waitForLoadState("networkidle");
+            expect(await page.locator(
+                "#reflHistory .reflection-history-item"
+            ).count()).toBe(rows);
+        });
+
+    test("a forked row shows what it grew out of", async ({ page }) => {
+        // The lineage line's own rendering, driven from a history payload
+        // carrying `continued_from`. The server side of this is covered by
+        // tests/test_reflection_continue.py; what can only break here is
+        // the helper-to-DOM wiring.
+        await page.route("**/api/reflection", async (route, request) => {
+            if (request.method() !== "GET") return route.continue();
+            await route.fulfill({
+                status: 200, contentType: "application/json",
+                body: JSON.stringify({
+                    reflections: [{
+                        id: "00000000-0000-0000-0000-000000000334",
+                        iso_week: "2026-W39", title: "Week two",
+                        input_mode: "typed", transcript: "Carried on.",
+                        audio_duration_seconds: null, audio_cost_usd: null,
+                        ai_cost_usd: null,
+                        proposed_actions: { explicit: [], suggested: [] },
+                        raw_segments: [], context_files: [],
+                        is_archived: false, is_active: true, is_draft: false,
+                        continued_from_id:
+                            "00000000-0000-0000-0000-000000000333",
+                        continued_from: {
+                            id: "00000000-0000-0000-0000-000000000333",
+                            title: "Week one", iso_week: "2026-W38",
+                            input_mode: "typed",
+                            created_at: "2026-09-21T14:05:00Z",
+                        },
+                        applied_actions: null, applied_at: null,
+                        updated_at: null,
+                        created_at: "2026-09-24T09:00:00Z",
+                    }],
+                }),
+            });
+        });
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(firstRow(page).locator(".reflection-history-lineage"))
+            .toHaveText("↳ continues Week one", { timeout: 10000 });
+    });
+
+    test("tap targets and layout hold with the banner shown", async ({ page }) => {
+        await continueFirstRow(page);
+        await expect(page.locator("#reflContinueBanner")).toBeVisible({
+            timeout: 10000,
+        });
+        const overflows = await page.evaluate(() =>
+            document.documentElement.scrollWidth > window.innerWidth);
+        expect(overflows).toBe(false);
+
+        if ((page.viewportSize() || {}).width < 700) {
+            // "Start fresh instead" is a destructive control tapped
+            // one-handed; .btn-link is inline and renders ~26px without the
+            // mobile inline-flex rule.
+            const abandon = await page.locator("#reflContinueAbandon")
+                .boundingBox();
+            expect(abandon.height).toBeGreaterThanOrEqual(44);
+            await firstRow(page).evaluate((el) => { el.open = true; });
+            const cont = await firstRow(page).locator(
+                ".reflection-history-actions button", { hasText: "Continue" }
+            ).boundingBox();
+            expect(cont.height).toBeGreaterThanOrEqual(44);
+        }
+    });
+});

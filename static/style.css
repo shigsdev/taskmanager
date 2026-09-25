@@ -5177,6 +5177,46 @@ table.quality-gates code {
 }
 .reflection-draft-status-err { color: var(--danger, #c0392b); }
 
+/* #334: continuing a past reflection. Same shape as the draft banner
+   above — it sits directly beside it and two different frames would read
+   as two unrelated features — but copper rather than sage. Sage there
+   means "your words are still here"; this is the rarer, more surprising
+   state (the box holds a PAST sitting's words and finishing will write a
+   new row), so it takes the accent that carries attention elsewhere in
+   the app. */
+.reflection-continue-banner {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0 0 12px;
+    padding: 8px 12px;
+    border: 1px solid var(--copper, #b87333);
+    border-left-width: 3px;
+    border-radius: var(--radius, 6px);
+    background: var(--surface-sunk, rgba(184, 115, 51, 0.08));
+    font-size: 0.9rem;
+}
+/* "Last saved …", folded into the continuation banner from the draft
+   banner so a restored fork shows ONE banner with ONE way out. Metadata
+   weight, and margin-left:auto pushes it to sit beside the control
+   rather than crowding the sentence. */
+.reflection-continue-saved {
+    margin-left: auto;
+    font-size: 0.8rem;
+    color: var(--cream-faint, #8f8675);
+}
+.reflection-continue-saved:empty { display: none; }
+
+/* The lineage line under a forked history row. Metadata weight — it
+   answers "why does this open the same way as an older one?" and should
+   never compete with the row's own name. */
+.reflection-history-lineage {
+    margin: 2px 0 6px;
+    font-size: 0.8rem;
+    color: var(--cream-faint, #8f8675);
+}
+
 .reflection-input-actions,
 .reflection-review-actions,
 .reflection-done-actions,
@@ -5455,7 +5495,10 @@ table.quality-gates code {
        one-handed on a phone — it rendered 26px tall, under the 44px
        tap-target standard. inline-flex so min-height actually applies
        to the inline .btn-link. */
-    .reflection-draft-banner .btn-link {
+    .reflection-draft-banner .btn-link,
+    /* #334: "Start fresh instead" discards a fork the same way — same
+       destructive-tap-target reasoning as the #324 rule above it. */
+    .reflection-continue-banner .btn-link {
         display: inline-flex;
         align-items: center;
         min-height: 44px;

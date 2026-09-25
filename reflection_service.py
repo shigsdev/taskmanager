@@ -182,6 +182,7 @@ concrete changes to their projects, goals, and tasks.
 
 Today's date is {today} (ISO week {iso_week}).
 {milestone}
+{continuation}
 {recent_reflections}
 The user's CURRENT state (only act on these — never invent IDs):
 
@@ -365,7 +366,7 @@ def _milestone_block() -> str:
     return f"\n{line}\n" if line else ""
 
 
-def recent_reflections_block(exclude_id=None) -> str:
+def recent_reflections_block(exclude_id=None, exclude_ids=None) -> str:
     """Prior reflections, newest first, as prompt context (#325).
 
     Turns a series of isolated check-ins into a thread: Claude can see
@@ -373,15 +374,27 @@ def recent_reflections_block(exclude_id=None) -> str:
     follow through. Truncated per-reflection so a long transcript can't
     crowd out the one being analysed. Best-effort — an error here must
     never block the analysis.
+
+    ``exclude_ids`` (#334) drops additional rows. The continuation path
+    uses it for the PARENT reflection: its words are already in the
+    transcript verbatim and in full, so also listing it here would hand
+    Claude the same text twice — once complete, once truncated to
+    ``_RECENT_REFLECTION_CHARS`` — and invite it to read the user's own
+    sentences as a previous week's commitment.
     """
+    skip = set()
+    if exclude_id is not None:
+        skip.add(exclude_id)
+    if exclude_ids:
+        skip.update(i for i in exclude_ids if i is not None)
     try:
-        rows = list_reflections(limit=_RECENT_REFLECTION_COUNT + 1)
+        rows = list_reflections(limit=_RECENT_REFLECTION_COUNT + 1 + len(skip))
     except Exception:  # noqa: BLE001
         logger.exception("recent reflections lookup failed; continuing")
         return ""
     lines = []
     for r in rows:
-        if exclude_id is not None and r.id == exclude_id:
+        if r.id in skip:
             continue
         if len(lines) >= _RECENT_REFLECTION_COUNT:
             break
@@ -409,8 +422,92 @@ def recent_reflections_block(exclude_id=None) -> str:
     )
 
 
+def _applied_action_lines(reflection: Reflection) -> list[str]:
+    """One short line per action the user actually APPLIED from a
+    reflection, for the #334 continuation block.
+
+    Reads the ``applied_actions`` audit record written by
+    ``apply_selected_actions`` — shape ``{"actions": [...], "summary":
+    {...}}``. Only the confirmed actions are listed: a PROPOSED action
+    the user declined is not something to warn Claude off, it is
+    something they chose not to do.
+    """
+    audit = reflection.applied_actions or {}
+    actions = audit.get("actions") if isinstance(audit, dict) else None
+    if not isinstance(actions, list):
+        return []
+    lines = []
+    for a in actions:
+        if not isinstance(a, dict):
+            continue
+        op = str(a.get("op") or "?")
+        entity = str(a.get("entity") or "?")
+        fields = a.get("fields") if isinstance(a.get("fields"), dict) else {}
+        name = fields.get("title") or fields.get("name") or a.get("id") or ""
+        name = str(name).strip()
+        # Keep the prompt tight — this is a reminder, not a record.
+        if len(name) > 120:
+            name = name[:120].rstrip() + "…"
+        lines.append(f"- {op} {entity}: {name}" if name else f"- {op} {entity}")
+        if len(lines) >= 40:
+            break
+    return lines
+
+
+def continuation_block(parent: Reflection | None) -> str:
+    """#334: tell Claude this reflection continues an earlier sitting.
+
+    Two things it must know, neither of which is inferable from the
+    transcript alone:
+
+    1. The leading text is carried over, not written today. Without this
+       the model reads a month-old paragraph as "what the user just
+       said" and dates its proposals wrongly.
+    2. Some of the earlier sitting's actions were already APPLIED. The
+       tasks and goals they created are in the state snapshot below, so
+       re-proposing them would read as a duplicate suggestion.
+
+    This is prompt-level guidance, not a mechanical guarantee — the same
+    honest caveat as the #333 checkpoint flow. The human confirm step
+    remains the real control over what actually gets written.
+    """
+    if parent is None:
+        return ""
+    when = (
+        parent.created_at.date().isoformat() if parent.created_at
+        else parent.iso_week
+    )
+    name = (parent.title or "").strip()
+    label = f'"{name}" ({when})' if name else when
+    out = [
+        # A leading empty element renders as the blank line that separates
+        # this block from the milestone line above it.
+        "",
+        f"THIS REFLECTION CONTINUES AN EARLIER SITTING — {label}.",
+        "That sitting's words open the reflection below verbatim; the new "
+        "thinking follows them. Read the whole thing as ONE train of "
+        "thought and date it to today, not to when the earlier part was "
+        "written.",
+    ]
+    applied = _applied_action_lines(parent)
+    if applied:
+        out.append(
+            "These changes from that sitting were ALREADY APPLIED — they "
+            "exist in the state below, so do NOT propose them again:"
+        )
+        out.extend(applied)
+    else:
+        out.append(
+            "Nothing from that sitting was applied, so its proposals are "
+            "still open."
+        )
+    out.append("")
+    return "\n".join(out)
+
+
 def analyze_reflection(
     transcript: str, exclude_id=None, context_files=None,
+    continued_from=None,
 ) -> dict[str, Any]:
     """Send a reflection transcript to Claude and return proposed actions.
 
@@ -428,6 +525,12 @@ def analyze_reflection(
     They are rendered into a fenced, explicitly-untrusted block — see
     ``reflection_context_service`` and ADR-037 for why a document's
     contents must never be read as instructions.
+
+    ``continued_from`` (#334) is the Reflection this one forked from, if
+    any. It does two things: names the carry-over in the prompt so the
+    older paragraphs aren't read as today's words, and drops that
+    reflection from the "previous reflections" list, where it would
+    otherwise appear a second time in truncated form.
 
     Raises:
         RuntimeError: if ANTHROPIC_API_KEY is missing or the call fails.
@@ -450,7 +553,16 @@ def analyze_reflection(
         # analysed cold — week 4 has no idea what week 1 committed to,
         # and no idea a deadline exists.
         milestone=_milestone_block(),
-        recent_reflections=recent_reflections_block(exclude_id=exclude_id),
+        # #334: names the forked-from sitting and what was already applied
+        # from it. Collapses to "" for an ordinary reflection.
+        continuation=continuation_block(continued_from),
+        recent_reflections=recent_reflections_block(
+            exclude_id=exclude_id,
+            # #334: the parent's full text is already in the transcript.
+            exclude_ids=(
+                [continued_from.id] if continued_from is not None else None
+            ),
+        ),
         # #328: attached documents, fenced and marked as data-not-
         # instructions. Collapses to "" when nothing is attached, so a
         # reflection without files gets byte-identical prompt to before.
@@ -630,6 +742,7 @@ def save_reflection(
     ai_cost_usd: float | None = None,
     raw_segments: list[dict[str, Any]] | None = None,
     context_files: list[dict[str, Any]] | None = None,
+    continued_from_id: uuid.UUID | None = None,
 ) -> Reflection:
     """Persist a reflection + its proposed actions. Transcript is kept
     forever for future reference (the explicit user requirement).
@@ -643,6 +756,10 @@ def save_reflection(
     #328 (2026-09-23): ``context_files`` carries the EXTRACTED TEXT of
     any documents the user attached (never the files themselves). Kept
     with the reflection so a retrospective can see what informed it.
+
+    #334 (2026-09-24): ``continued_from_id`` records that this sitting
+    was forked from an earlier one. The parent row is not touched — that
+    is the whole point of forking rather than re-opening.
     """
     reflection = Reflection(
         iso_week=current_iso_week(),
@@ -653,6 +770,7 @@ def save_reflection(
         ai_cost_usd=ai_cost_usd,
         raw_segments=_normalise_raw_segments(raw_segments),
         context_files=normalise_context_files(context_files),
+        continued_from_id=continued_from_id,
         proposed_actions={
             "explicit": proposed.get("explicit", []),
             "suggested": proposed.get("suggested", []),
@@ -909,6 +1027,113 @@ def discard_draft() -> bool:
     db.session.delete(draft)
     db.session.commit()
     return True
+
+
+# --- Continuing a past reflection (#334) -------------------------------------
+# Reflecting toward a date weeks out is not one sitting. Before this, every
+# submit was terminal: the next sitting opened an empty box and the earlier
+# thinking survived only as a 1200-char snippet in the continuity block.
+#
+# Continuing FORKS. The saved reflection is read, never written: its text,
+# voice segments and attachments seed a NEW draft that points back at it via
+# `continued_from_id`. Re-opening the saved row instead would have been less
+# code and more honest-looking, but it would rewrite history — the record of
+# what the user thought on the 21st would silently become what they thought
+# on the 28th, and both /reflection and the Help page promise that every
+# reflection is kept forever.
+
+
+class DraftAlreadyOpen(RuntimeError):
+    """Raised when continuing would overwrite unsaved work.
+
+    Refusing is the only safe answer. The user's sittings run for hours,
+    so clobbering an open draft could destroy a great deal of thinking,
+    and there is no undo for a draft (they are hard-deleted, by design).
+    Merging the two silently would be worse still: nobody asked for their
+    Tuesday notes to be spliced into a month-old reflection.
+    """
+
+
+def draft_has_content(draft: Reflection | None) -> bool:
+    """Is there anything in this draft worth protecting?
+
+    Text, voice segments or attachments each count. An empty draft is
+    just the autosave loop's footprint — safe to reuse for a fork.
+    """
+    if draft is None:
+        return False
+    return bool(
+        (draft.transcript or "").strip()
+        or (draft.raw_segments or [])
+        or (draft.context_files or [])
+    )
+
+
+def continue_reflection(parent_id: uuid.UUID) -> Reflection | None:
+    """Fork ``parent_id`` into a fresh open draft. Parent is untouched.
+
+    Returns the new draft, or None when there is no continuable
+    reflection with that id (drafts are not continuable — they are
+    already open — and neither are soft-deleted rows).
+
+    Raises:
+        DraftAlreadyOpen: if a draft with content is already open.
+    """
+    parent = get_reflection(parent_id)
+    if parent is None or parent.is_draft or not parent.is_active:
+        return None
+
+    existing = get_open_draft()
+    if draft_has_content(existing):
+        raise DraftAlreadyOpen(
+            "You already have a reflection in progress. Finish or discard "
+            "it before continuing a past one."
+        )
+    if existing is not None:
+        # Empty shell left by the autosave loop — reuse the row rather
+        # than leaving a second draft behind for get_open_draft to
+        # arbitrate between.
+        db.session.delete(existing)
+        db.session.flush()
+
+    draft = Reflection(
+        # The fork belongs to the week it is being written in, not the
+        # parent's week: it is this sitting's reflection.
+        iso_week=current_iso_week(),
+        input_mode=parent.input_mode,
+        transcript=(parent.transcript or "").strip(),
+        # #328: attachments MUST come along. They are the job description
+        # and the 90-day plan the reflection is arguing with; dropping
+        # them would silently shrink the next analysis without saying so.
+        context_files=normalise_context_files(parent.context_files),
+        raw_segments=_carry_over_segments(parent.raw_segments),
+        proposed_actions={"explicit": [], "suggested": []},
+        is_draft=True,
+        continued_from_id=parent.id,
+    )
+    db.session.add(draft)
+    db.session.commit()
+    return draft
+
+
+def _carry_over_segments(
+    segments: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Copy a parent's #237 raw voice segments onto a fork, minus cost.
+
+    The text and timings are the audit value — they are the original
+    spoken words behind the transcript the fork starts from, and without
+    them the fork's transcript would have no provenance at all.
+
+    ``cost_usd`` is deliberately dropped: that Whisper spend is already
+    recorded against the parent row, and carrying the number onto the
+    fork too would double-count it for anyone (or any future feature)
+    totalling what a reflection cost.
+    """
+    out = []
+    for seg in _normalise_raw_segments(segments):
+        out.append({**seg, "cost_usd": None})
+    return out
 
 
 def set_reflection_archived(

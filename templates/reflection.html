@@ -82,6 +82,25 @@
             <p class="utility-result" id="reflMilestoneResult" aria-live="polite"></p>
         </div>
 
+        {# #334: continuing a past reflection. The box below is filled with
+           a PAST sitting's words, which makes this screen indistinguishable
+           from a restored draft — so the banner has to say both what is
+           being continued and that finishing saves a NEW reflection rather
+           than overwriting the one that was clicked. Sits above the draft
+           banner because it is the more surprising of the two states. #}
+        <div class="reflection-continue-banner" id="reflContinueBanner"
+             style="display:none" aria-live="polite">
+            <span id="reflContinueText"></span>
+            {# When a continuation is restored on a later page load the user
+               needs the draft banner's "last saved" reassurance too — but
+               NOT a second banner carrying a second discard control beside
+               this one. So the saved line folds in here and the draft
+               banner stays down. #}
+            <span class="reflection-continue-saved" id="reflContinueSaved"></span>
+            <button type="button" class="btn-link"
+                    id="reflContinueAbandon">Start fresh instead</button>
+        </div>
+
         {# #324: resumable drafts. A reflection written across several
            sittings (and across phone + laptop) needs its in-progress text
            to survive leaving the page, so it autosaves server-side. The

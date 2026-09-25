@@ -535,6 +535,91 @@
         return !!(r && typeof r.title === "string" && r.title.trim());
     }
 
+    /**
+     * continuationNote - the banner shown while writing a continuation.
+     *
+     * #334: continuing FORKS. The text in the box is a past reflection's,
+     * and finishing will save a NEW row. Both facts have to be on screen,
+     * because the screen otherwise looks exactly like a restored draft
+     * and the user would reasonably assume they are editing the original.
+     *
+     * Takes the serialised `continued_from` lineage block (the few fields
+     * reflectionLabel needs), so there is one naming rule, not two.
+     * Returns "" when the draft isn't a continuation, which is also the
+     * signal to keep the banner hidden.
+     */
+    /**
+     * _nameableLabel - reflectionLabel, but only when the row actually
+     * carries something to name it BY.
+     *
+     * reflectionLabel always appends `input_mode` (defaulting to "typed")
+     * so a history row can never render blank. That safety net reads as
+     * nonsense the moment it stands alone: an empty lineage object would
+     * produce the sentence "Continuing typed". Here a missing identity
+     * must collapse to "" so the caller hides the line instead.
+     */
+    function _nameableLabel(r) {
+        if (!r || typeof r !== "object") return "";
+        var named = typeof r.title === "string" && r.title.trim();
+        if (!named && !r.iso_week && !r.created_at) return "";
+        return reflectionLabel(r);
+    }
+
+    function continuationNote(parent) {
+        var label = _nameableLabel(parent);
+        if (!label) return "";
+        return "Continuing " + label
+            + " — its words are below. Finishing saves a NEW reflection; "
+            + "the original is left exactly as it is.";
+    }
+
+    /**
+     * lineageNote - the "grew out of" line under a history row. (#334)
+     *
+     * Without it a forked reflection looks like someone wrote the same
+     * opening paragraphs twice.
+     */
+    function lineageNote(r) {
+        if (!r || typeof r !== "object") return "";
+        var label = _nameableLabel(r.continued_from);
+        return label ? "↳ continues " + label : "";
+    }
+
+    /**
+     * continueBlockedReason - may we fork right now? (#334)
+     *
+     * The server refuses with 409 when a draft holding work is already
+     * open, and refusing is the only safe answer: drafts are hard-deleted
+     * with no recycle bin, and these sittings run for hours. Checking
+     * client-side too means the user reads WHY before a request fires,
+     * rather than after.
+     *
+     * Text, voice segments and attachments each count as work — a file
+     * attached before a word was typed is still something to protect.
+     * Returns null when forking is fine.
+     */
+    function continueBlockedReason(draft) {
+        if (!draft || typeof draft !== "object") return null;
+        var hasText = typeof draft.transcript === "string"
+            && draft.transcript.trim().length > 0;
+        var hasSegments = Array.isArray(draft.raw_segments)
+            && draft.raw_segments.length > 0;
+        var hasFiles = Array.isArray(draft.context_files)
+            && draft.context_files.length > 0;
+        if (!hasText && !hasSegments && !hasFiles) return null;
+        var holding = [];
+        if (hasText) holding.push("text");
+        if (hasSegments) holding.push("recorded audio");
+        if (hasFiles) {
+            holding.push(draft.context_files.length === 1
+                ? "1 attached document"
+                : draft.context_files.length + " attached documents");
+        }
+        return "You already have a reflection in progress ("
+            + holding.join(", ")
+            + "). Finish or discard it before continuing a past one.";
+    }
+
     var api = {
         attachmentLabel: attachmentLabel,
         attachmentSummary: attachmentSummary,
@@ -556,6 +641,9 @@
         blocksAutoReload: blocksAutoReload,
         reflectionLabel: reflectionLabel,
         reflectionIsNamed: reflectionIsNamed,
+        continuationNote: continuationNote,
+        lineageNote: lineageNote,
+        continueBlockedReason: continueBlockedReason,
         AUTO_RELOAD_BLOCKING_STATES: AUTO_RELOAD_BLOCKING_STATES,
     };
 

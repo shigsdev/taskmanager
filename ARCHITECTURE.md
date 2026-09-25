@@ -84,7 +84,9 @@ component is added, a data flow changes, or a security boundary shifts.
   `cancellation_reason` for status=CANCELLED tasks), projects, goals,
   recurring tasks (with `subtasks_snapshot` JSON for #26's clone-on-
   spawn pattern), import log, app_logs, and `reflections` (Weekly
-  Reflection transcripts + AI-proposed action audit trail, 2026-05-16).
+  Reflection transcripts + AI-proposed action audit trail, 2026-05-16;
+  self-referential `continued_from_id` for #334's forked continuations,
+  plus `title`, `is_draft` and `context_files`).
   The `Tier` enum includes
   `INBOX, TODAY, TOMORROW, THIS_WEEK, NEXT_WEEK, BACKLOG, FREEZER`
   (NEXT_WEEK from #23, TOMORROW from #27). The `TaskStatus` enum
@@ -271,6 +273,28 @@ component is added, a data flow changes, or a security boundary shifts.
   data-never-instructions, and its own marker lines are neutralised so
   it cannot close the fence; the load-bearing control remains that
   nothing is applied until the user ticks it in the review step.
+  **Continuing a past reflection (#334)**: `POST
+  /api/reflection/<id>/continue` FORKS — it seeds a NEW draft with the
+  saved sitting's transcript, its #237 voice segments and its #328
+  attachments, sets `continued_from_id` on the draft (which rides onto
+  the submitted row), and **leaves the parent row untouched**. Mutating
+  the saved row was rejected deliberately: it would rewrite what the user
+  thought on a given day, breaking the "kept forever" promise made on
+  both `/reflection` and the Help page, and it would fight rather than
+  compose with the multi-reflection analysis in #335. Carried-over
+  segments have `cost_usd` nulled — that Whisper spend is already booked
+  against the parent. Not `PAID_API`-limited (a pure DB copy: no Whisper,
+  no Claude). 409 if a draft holding text, audio or attachments is
+  already open — refused, never merged, because drafts are hard-deleted
+  with no recycle bin; an EMPTY draft shell is reused instead. 404 for a
+  draft or a soft-deleted row; an archived row is still continuable. At
+  prompt-build time `continuation_block()` names the carry-over so the
+  older paragraphs aren't dated to today, lists what the parent already
+  APPLIED so those actions aren't re-proposed, and the parent is dropped
+  from `recent_reflections_block` — its full text is already in the
+  transcript, so listing it again truncated would hand Claude the same
+  words twice. All three analysis paths (submit, #333 checkpoint, #338
+  re-analyze) pass the lineage.
   **Runway + continuity (#325)**: `milestone_service.py` stores ONE
   milestone ("what you're working toward, and by when") in the
   `AppSetting` key/value store (`reflection_milestone_label` /
@@ -659,6 +683,7 @@ the code.
 /api/reflection/<uuid:reflection_id>/confirm     # POST apply confirmed actions
 /api/reflection/draft/analyze                    # POST #333 — analyse the open draft WITHOUT ending it
 /api/reflection/<uuid:reflection_id>/analyze     # POST #338 — re-run Claude over a saved reflection
+/api/reflection/<uuid:reflection_id>/continue    # POST #334 — FORK a saved reflection into a new draft (text + segments + attachments); parent untouched
 /api/reflection/<uuid:reflection_id>/archive     # POST #238 — hide from default history
 /api/reflection/<uuid:reflection_id>/unarchive   # POST #238 — restore from archive
 /api/reflection/<uuid:reflection_id>/restore     # POST #238 — restore from soft-delete

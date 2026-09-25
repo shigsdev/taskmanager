@@ -1124,6 +1124,18 @@
         sum.textContent = baseLabel + applied + archivedTag;
         item.appendChild(sum);
 
+        // #334: say where a forked reflection came from. Without this a
+        // continuation looks like someone wrote the same opening
+        // paragraphs twice on two different days.
+        var lineage = (RH_ && typeof RH_.lineageNote === "function")
+            ? RH_.lineageNote(r) : "";
+        if (lineage) {
+            var lineageEl = document.createElement("p");
+            lineageEl.className = "reflection-history-lineage";
+            lineageEl.textContent = lineage;
+            item.appendChild(lineageEl);
+        }
+
         var pre = document.createElement("pre");
         pre.className = "reflection-history-transcript";
         pre.textContent = r.transcript || "(no transcript)";
@@ -1223,6 +1235,48 @@
             });
             actions.appendChild(reBtn);
 
+            // #334: pick this sitting back up. Forks rather than re-opens:
+            // the row stays exactly as it is and a new draft starts from
+            // its text, segments and attachments.
+            var contBtn = document.createElement("button");
+            contBtn.type = "button";
+            contBtn.className = "btn btn-sm";
+            contBtn.textContent = "▶ Continue";
+            contBtn.title = "Start a new reflection from this one. This "
+                + "reflection is not changed.";
+            contBtn.addEventListener("click", async function () {
+                var NL = String.fromCharCode(10);
+                // Check the open draft BEFORE asking, so a refusal explains
+                // itself instead of arriving as a failed request. The server
+                // re-checks and 409s — this is courtesy, not the gate.
+                var blocked = null;
+                try {
+                    var d = await window.apiFetch("/api/reflection/draft");
+                    blocked = (RH_ && typeof RH_.continueBlockedReason === "function")
+                        ? RH_.continueBlockedReason(d && d.draft) : null;
+                } catch (e) { /* let the server decide */ }
+                if (blocked) { alert(blocked); return; }
+                if (!confirm("Continue this reflection?" + NL + NL
+                    + "Its text, recordings and attached documents are "
+                    + "copied into a new reflection. This one is kept "
+                    + "exactly as it is.")) return;
+                contBtn.disabled = true;
+                var data;
+                try {
+                    data = await window.apiFetch(
+                        "/api/reflection/" + r.id + "/continue",
+                        { method: "POST" },
+                    );
+                } catch (err) {
+                    contBtn.disabled = false;
+                    alert("Couldn't continue: " + (err.message || err));
+                    return;
+                }
+                contBtn.disabled = false;
+                _adoptContinuedDraft(data && data.draft);
+            });
+            actions.appendChild(contBtn);
+
             var delBtn = document.createElement("button");
             delBtn.type = "button";
             delBtn.className = "btn btn-sm btn-cancel";
@@ -1268,6 +1322,11 @@
     var draftBannerText = document.getElementById("reflDraftBannerText");
     var draftDiscardBtn = document.getElementById("reflDraftDiscard");
     var draftStatus = document.getElementById("reflDraftStatus");
+    // #334: continuing a past reflection.
+    var continueBanner = document.getElementById("reflContinueBanner");
+    var continueText = document.getElementById("reflContinueText");
+    var continueSaved = document.getElementById("reflContinueSaved");
+    var continueAbandonBtn = document.getElementById("reflContinueAbandon");
     var DRAFT_DEBOUNCE_MS = 1200;
     var draftTimer = null;
     var lastSavedText = null;   // null = "we've never saved"
@@ -1327,6 +1386,74 @@
         // list must not keep advertising files the server no longer has.
         renderAttachments([]);
         setCtxStatus("");
+        // #334: the fork went with the draft. Leaving "Continuing X" on
+        // screen would claim a lineage the server no longer holds.
+        showContinuation(null);
+    }
+
+    /**
+     * #334: show (or hide) the "you are continuing X" banner.
+     *
+     * Called with the draft's `continued_from` lineage block, or null.
+     * The copy lives in the Jest-tested helper — what matters here is
+     * that a non-continuation ALWAYS hides the banner, because the same
+     * screen is reused for a plain draft.
+     */
+    function showContinuation(parent, savedAt) {
+        if (!continueBanner) return;
+        var note = (RH_ && typeof RH_.continuationNote === "function")
+            ? RH_.continuationNote(parent) : "";
+        if (continueText) continueText.textContent = note;
+        if (continueSaved) {
+            // Folded in from the draft banner rather than shown beside it:
+            // two banners meant two destructive controls a few pixels apart
+            // ("Discard draft" and "Start fresh instead") doing the same
+            // thing. Caught in Phase 6, 2026-09-25.
+            var when = (note && savedAt && RH_ && RH_.formatSavedAt)
+                ? RH_.formatSavedAt(savedAt, Date.now()) : "";
+            continueSaved.textContent = when ? "Last saved " + when : "";
+        }
+        continueBanner.style.display = note ? "" : "none";
+    }
+
+    function continuationShown() {
+        return !!(continueBanner && continueBanner.style.display !== "none");
+    }
+
+    /**
+     * #334: move the freshly-forked draft onto the writing screen.
+     *
+     * The Continue button lives at the BOTTOM of the page, in the history
+     * list. Filling the textarea without going back up to it would look
+     * like the click did nothing — so this also scrolls to the box and
+     * drops the caret at the END of the carried-over text, which is where
+     * the user is about to type.
+     */
+    function _adoptContinuedDraft(draft) {
+        if (!draft || !textArea) return;
+        showState("input");
+        selectMode("type");
+        textArea.value = draft.transcript || "";
+        lastSavedText = draft.transcript || "";
+        rawSegments.length = 0;
+        if (Array.isArray(draft.raw_segments)) {
+            draft.raw_segments.forEach(function (s) { rawSegments.push(s); });
+        }
+        renderAttachments(draft.context_files);
+        showContinuation(draft.continued_from);
+        // A fresh fork has never been edited, so the draft banner's
+        // "last saved" line would be noise next to the continuation one.
+        if (draftBanner) draftBanner.style.display = "none";
+        setDraftStatus("");
+        textArea.scrollIntoView({ behavior: "smooth", block: "center" });
+        try {
+            textArea.focus();
+            var end = textArea.value.length;
+            textArea.setSelectionRange(end, end);
+            // focus() scrolls the caret into view inside the textarea; for
+            // a long carry-over that means the bottom, which is right.
+            textArea.scrollTop = textArea.scrollHeight;
+        } catch (e) { /* focus is a nicety, never a failure */ }
     }
 
     // Exposed so the submit path can stop a pending autosave from
@@ -1357,6 +1484,25 @@
         });
     }
 
+    if (continueAbandonBtn) {
+        // #334: backing out of a fork. Deliberately worded as "start fresh
+        // instead" rather than "discard": what gets deleted is the COPY,
+        // and the confirm says so — a user who read this as deleting the
+        // reflection they just clicked would rightly not press it.
+        continueAbandonBtn.addEventListener("click", async function () {
+            if (!confirm("Start a fresh reflection instead? This clears the "
+                + "copied text. The reflection you were continuing is not "
+                + "touched.")) return;
+            if (draftTimer) { clearTimeout(draftTimer); draftTimer = null; }
+            try {
+                await window.apiFetch("/api/reflection/draft", { method: "DELETE" });
+            } catch (e) { /* fall through — clear locally regardless */ }
+            if (textArea) textArea.value = "";
+            rawSegments.length = 0;
+            clearDraftUi();
+        });
+    }
+
     async function restoreDraft() {
         if (!textArea) return;
         var data;
@@ -1373,6 +1519,12 @@
         // the user has already started typing in this tab, because the
         // server would otherwise send it to Claude invisibly.
         renderAttachments(draft.context_files);
+        // #334: lineage is server truth for the same reason, and restores
+        // unconditionally. Deliberately BEFORE the early returns below: a
+        // fork whose copied text the user has since cleared is still a
+        // fork — submit will record it as one — so the banner has to say
+        // so rather than going quiet and making the link a surprise.
+        showContinuation(draft.continued_from, draft.updated_at);
         var hasFiles = Array.isArray(draft.context_files)
             && draft.context_files.length > 0;
         if (!draft.transcript && !hasFiles) return;
@@ -1385,7 +1537,10 @@
             rawSegments.length = 0;
             draft.raw_segments.forEach(function (s) { rawSegments.push(s); });
         }
-        if (draftBanner && draftBannerText) {
+        // A continuation already says "your words are here" AND offers the
+        // way out, so the draft banner would only add a second discard
+        // button beside it.
+        if (draftBanner && draftBannerText && !continuationShown()) {
             var when = RH_.formatSavedAt(draft.updated_at, Date.now());
             draftBannerText.textContent = when
                 ? "Draft restored — last saved " + when

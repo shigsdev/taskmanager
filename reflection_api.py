@@ -15,6 +15,10 @@ Endpoints:
     DELETE /api/reflection/attachment/<id>       — #328: detach one
     POST   /api/reflection/<id>/confirm          — apply the user-selected
         actions; returns an apply summary
+    POST   /api/reflection/<id>/continue         — #334: FORK a saved
+        reflection into a new draft (its text, voice segments and attached
+        documents); the parent row is never modified. 409 if a draft
+        holding work is already open. Free — no Whisper, no Claude.
     POST   /api/reflection/<id>/archive          — #238: hide from default
         history list (toggleable; "Show archived" surfaces it again)
     POST   /api/reflection/<id>/unarchive        — #238: restore from archive
@@ -65,9 +69,11 @@ from reflection_context_service import (
     total_chars,
 )
 from reflection_service import (
+    DraftAlreadyOpen,
     analyze_reflection,
     apply_selected_actions,
     attach_analysis,
+    continue_reflection,
     discard_draft,
     get_open_draft,
     get_reflection,
@@ -87,6 +93,28 @@ from voice_service import (
 logger = logging.getLogger(__name__)
 
 bp = Blueprint("reflection_api", __name__, url_prefix="/api/reflection")
+
+
+def _lineage(parent) -> dict | None:
+    """#334: the minimum a client needs to NAME the forked-from sitting.
+
+    Exactly the fields `reflection_helpers.reflectionLabel()` reads, so
+    the label rule lives in one place instead of being reimplemented for
+    the lineage line. Deliberately NOT the transcript — a parent can be
+    tens of thousands of characters and it would ride along on every
+    history row and every draft autosave response.
+    """
+    if parent is None:
+        return None
+    return {
+        "id": str(parent.id),
+        "title": parent.title,
+        "iso_week": parent.iso_week,
+        "input_mode": parent.input_mode.value,
+        "created_at": (
+            parent.created_at.isoformat() if parent.created_at else None
+        ),
+    }
 
 
 def _serialize(reflection) -> dict:
@@ -118,6 +146,17 @@ def _serialize(reflection) -> dict:
         "is_active": bool(reflection.is_active),
         # #324: unsubmitted draft (no analysis yet, hidden from history).
         "is_draft": bool(reflection.is_draft),
+        # #334: lineage. The id alone would force the client to hunt for
+        # the parent in whatever list it happens to hold (and fail when
+        # the parent is archived and filtered out), so the few fields
+        # `reflectionLabel()` needs travel with it. Eager-loaded via the
+        # model's joined relationship, so a whole history page costs one
+        # statement — see the measurement note on Reflection.continued_from.
+        "continued_from_id": (
+            str(reflection.continued_from_id)
+            if reflection.continued_from_id else None
+        ),
+        "continued_from": _lineage(reflection.continued_from),
         # #328: attached context documents. METADATA ONLY — the extracted
         # text can be tens of thousands of characters, the UI never
         # renders it, and it would ride along on every draft autosave
@@ -219,6 +258,12 @@ def submit(email: str):  # noqa: ARG001
     context_files = normalise_context_files(
         open_draft.context_files if open_draft else []
     )
+    # #334: if this sitting was forked from a past reflection, the lineage
+    # lives on the draft. Read it here for the same reason as the
+    # attachments above — `discard_draft()` below is a hard delete, so
+    # anything still only on the draft is gone a few lines from now.
+    continued_from_id = open_draft.continued_from_id if open_draft else None
+    continued_from = open_draft.continued_from if open_draft else None
 
     # Persist the transcript FIRST, before the paid + failure-prone
     # Claude call. #165 requires every transcript persisted forever;
@@ -235,6 +280,7 @@ def submit(email: str):  # noqa: ARG001
         ai_cost_usd=None,
         raw_segments=raw_segments,  # #237
         context_files=context_files,  # #328
+        continued_from_id=continued_from_id,  # #334
     )
 
     # #324: the draft has become a real reflection — retire it. Done
@@ -257,6 +303,9 @@ def submit(email: str):  # noqa: ARG001
             transcript,
             exclude_id=reflection.id,
             context_files=context_files,
+            # #334: names the carried-over sitting and keeps it out of the
+            # continuity list, where its text would appear a second time.
+            continued_from=continued_from,
         )
     except RuntimeError as e:
         logger.warning(
@@ -666,6 +715,10 @@ def analyze_draft(email: str):  # noqa: ARG001
             draft.transcript,
             exclude_id=draft.id,
             context_files=context_files,
+            # #334: a checkpoint on a CONTINUED reflection still needs to
+            # say what was carried over — otherwise the interim pass reads
+            # the parent's paragraphs as today's words.
+            continued_from=draft.continued_from,
         )
     except RuntimeError as e:
         logger.warning("Interim analysis failed (draft %s kept): %s", draft.id, e)
@@ -750,6 +803,7 @@ def reanalyze(email: str, reflection_id):  # noqa: ARG001
             reflection.transcript,
             exclude_id=reflection.id,
             context_files=context_files,
+            continued_from=reflection.continued_from,  # #334
         )
     except RuntimeError as e:
         logger.warning("Re-analysis failed for reflection %s: %s", reflection.id, e)
@@ -767,6 +821,44 @@ def reanalyze(email: str, reflection_id):  # noqa: ARG001
         ai_cost_usd=analysis["ai_cost_usd"],
     )
     return jsonify(_serialize(reflection))
+
+
+@bp.post("/<uuid:reflection_id>/continue")
+@login_required
+def continue_past(email: str, reflection_id):  # noqa: ARG001
+    """Continue a past reflection by FORKING it into a new draft (#334).
+
+    Reflecting toward a date weeks out spans many sittings, and every
+    submit used to be terminal: the next sitting started from an empty
+    box, with the earlier thinking reachable only as the 1200-char
+    snippet the continuity block carries.
+
+    This seeds a NEW draft from the saved sitting — its text, its voice
+    segments and (critically) its attached documents — and links back via
+    ``continued_from_id``. **The saved reflection is not modified.** The
+    alternative, re-opening and appending to the original row, was
+    rejected deliberately: it would rewrite what the user thought on a
+    given day, and both this page and the Help page promise every
+    reflection is kept forever.
+
+    Not rate-limited under ``PAID_API``: this is a pure DB copy. No
+    Whisper, no Claude — the cost arrives later, when the user analyses.
+
+    Status codes:
+      200 — forked; body is ``{"draft": {...}}``
+      404 — no such reflection, or it is a draft / soft-deleted
+      409 — a draft with content is already open (refused, never merged)
+    """
+    try:
+        draft = continue_reflection(reflection_id)
+    except DraftAlreadyOpen as e:
+        return jsonify({"error": str(e)}), 409
+    if draft is None:
+        return jsonify({"error": "Reflection not found"}), 404
+    logger.info(
+        "reflection %s continued as draft %s", reflection_id, draft.id
+    )
+    return jsonify({"draft": _serialize(draft)}), 200
 
 
 @bp.post("/<uuid:reflection_id>/archive")

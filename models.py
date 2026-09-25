@@ -559,6 +559,35 @@ class Reflection(db.Model):
     is_draft: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, index=True,
     )
+    # #334 (2026-09-24): continuing a past reflection FORKS rather than
+    # mutates. Re-opening a saved sitting seeds a NEW draft with its
+    # text, voice segments and attachments and points this column at the
+    # original, which is left exactly as it was. The alternative --
+    # re-opening the saved row and appending to it -- would have broken
+    # the "every reflection is kept forever" promise the /reflection page
+    # and the Help page both make: the record of what the user thought on
+    # a given day would be silently overwritten by what they thought a
+    # week later. Forking keeps the history honest and composes with the
+    # multi-reflection analysis in #335.
+    #
+    # ``ondelete="SET NULL"`` because a soft-deleted parent can still be
+    # hard-removed one day; losing the lineage is acceptable, a
+    # ForeignKeyViolation on an unrelated delete is not (same reasoning as
+    # ``Task.parent_id``).
+    continued_from_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("reflections.id", ondelete="SET NULL"), nullable=True
+    )
+    # Eager-loaded, because the API serialises the parent's label on every
+    # row and the history list is the common read. `joined` and not
+    # `selectin`: measured on 2026-09-24, selectin on a SELF-referential
+    # many-to-one degrades to one `WHERE id = ?` per row (6 statements for
+    # a 5-row page whose parents were archived and so off-page), while
+    # joined folds the parent into the same statement - one query, always.
+    # SQLAlchemy stops at depth 1 without `join_depth`, so a long chain of
+    # continuations does not cascade into a self-join per link.
+    continued_from: Mapped[Reflection | None] = relationship(
+        remote_side="Reflection.id", lazy="joined", join_depth=1,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now
