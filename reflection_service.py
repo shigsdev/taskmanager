@@ -183,6 +183,7 @@ concrete changes to their projects, goals, and tasks.
 Today's date is {today} (ISO week {iso_week}).
 {milestone}
 {continuation}
+{synthesis}
 {recent_reflections}
 The user's CURRENT state (only act on these — never invent IDs):
 
@@ -354,6 +355,21 @@ def _extract_action_object(text: str) -> dict[str, Any]:
 _RECENT_REFLECTION_COUNT = 3
 _RECENT_REFLECTION_CHARS = 1200
 
+# --- Combined analysis budgets (#335) ---------------------------------------
+# A synthesis feeds FULL transcripts, not the 1200-char continuity snippet --
+# seeing a snippet of each sitting is exactly the limitation this feature
+# exists to remove. That makes the input genuinely large, so it needs its own
+# ceilings.
+#
+# MAX_COMBINED: more than ten sittings at once stops being a look-back and
+# starts being the whole archive; the response is still capped at
+# `max_tokens=4096` however much goes in, so a hundred-sitting request would
+# just produce a thinner answer at a higher price.
+MAX_COMBINED = 10
+# ~30k tokens of transcript, which leaves comfortable room alongside the 60k
+# characters of attached documents #328 already allows and the state snapshot.
+MAX_COMBINED_CHARS = 120_000
+
 
 def _milestone_block() -> str:
     """The runway line, wrapped for the prompt. Empty when unset."""
@@ -388,13 +404,23 @@ def recent_reflections_block(exclude_id=None, exclude_ids=None) -> str:
     if exclude_ids:
         skip.update(i for i in exclude_ids if i is not None)
     try:
-        rows = list_reflections(limit=_RECENT_REFLECTION_COUNT + 1 + len(skip))
+        # Over-fetch: skipped ids and #335 synthesis rows both drop out
+        # below, and stopping at exactly three rows would let a couple of
+        # look-backs push every real sitting out of the continuity block.
+        rows = list_reflections(
+            limit=_RECENT_REFLECTION_COUNT * 4 + len(skip)
+        )
     except Exception:  # noqa: BLE001
         logger.exception("recent reflections lookup failed; continuing")
         return ""
     lines = []
     for r in rows:
         if r.id in skip:
+            continue
+        # #335: a synthesis row's transcript is a one-line header naming
+        # the sittings it read. As continuity that is noise -- it carries
+        # none of the thinking, and it would displace a real reflection.
+        if r.synthesis_of:
             continue
         if len(lines) >= _RECENT_REFLECTION_COUNT:
             break
@@ -505,9 +531,114 @@ def continuation_block(parent: Reflection | None) -> str:
     return "\n".join(out)
 
 
+def reflection_label(r: Reflection) -> str:
+    """How one sitting is named in prompt text and in a synthesis header.
+
+    Mirrors the client's ``reflectionLabel``: the user's own name when
+    there is one, otherwise the date. A name is far better signal than a
+    date alone -- it is the user's summary of what that sitting was for.
+    """
+    when = r.created_at.date().isoformat() if r.created_at else r.iso_week
+    name = (r.title or "").strip()
+    return f"{when} · {name}" if name else when
+
+
+def combined_transcript(sources: list[Reflection]) -> tuple[str, list[str]]:
+    """Concatenate several sittings into one prompt body, newest LAST.
+
+    Chronological order matters: the model is being asked what changed
+    and what went quiet, and that only reads correctly forwards.
+
+    Returns ``(text, shortened_labels)``. Each sitting is fenced with its
+    own dated header so the model can attribute a thought to a date --
+    without that a synthesis is one undifferentiated wall of text and
+    "you said this three weeks ago and again last week" becomes
+    unsayable.
+
+    The whole point of this feature is that transcripts arrive in FULL
+    rather than as the 1200-char continuity snippet, so truncation here
+    is a last resort against ``MAX_COMBINED_CHARS``. When it does happen
+    the affected sittings are named in the returned list and reported to
+    the user -- silently handing Claude half a reflection and presenting
+    the result as a complete look-back would be the worst outcome.
+    """
+    ordered = sorted(sources, key=lambda r: (r.created_at or datetime.min))
+    budget = MAX_COMBINED_CHARS
+    per = max(1, budget // max(1, len(ordered)))
+    parts: list[str] = []
+    shortened: list[str] = []
+    for i, r in enumerate(ordered, start=1):
+        text = (r.transcript or "").strip()
+        if not text:
+            continue
+        # An equal share each, so one enormous sitting cannot starve the
+        # rest. Anything unspent by a short sitting is handed on below.
+        allowance = max(per, budget - (len(ordered) - i) * per)
+        if len(text) > allowance:
+            text = text[:allowance].rstrip() + "…"
+            shortened.append(reflection_label(r))
+        budget -= len(text)
+        parts.append(
+            f"=== Sitting {i} of {len(ordered)} — {reflection_label(r)} ===\n"
+            f"{text}"
+        )
+    return "\n\n".join(parts), shortened
+
+
+def synthesis_block(
+    sources: list[Reflection], shortened: list[str] | None = None,
+) -> str:
+    """#335: tell Claude it is reading several sittings at once.
+
+    Without this the combined text reads as one very long weekly
+    reflection, and the model answers the wrong question -- it proposes
+    an action per paragraph instead of naming what recurs and what
+    quietly stalled, which is the only reason to read them together.
+
+    Actions already APPLIED across the selected sittings are listed for
+    the same reason as in ``continuation_block``: they exist in the state
+    snapshot below, so re-proposing them reads as a duplicate.
+    """
+    if not sources:
+        return ""
+    ordered = sorted(sources, key=lambda r: (r.created_at or datetime.min))
+    first = reflection_label(ordered[0])
+    last = reflection_label(ordered[-1])
+    span = first if len(ordered) == 1 else f"{first} to {last}"
+    out = [
+        "",
+        f"THIS IS A LOOK BACK ACROSS {len(ordered)} REFLECTIONS — {span}.",
+        "They are separate sittings, each fenced and dated below, read "
+        "together on purpose. This is NOT a new weekly reflection: answer "
+        "the question the user is really asking by selecting them, which "
+        "is what has been building up across these sittings.",
+        "So: name what RECURS, what they committed to and then stopped "
+        "mentioning, and where they have drifted from what they said they "
+        "would do. Prefer a few well-grounded proposals over one per "
+        "sitting, and ground each in the dates it came from.",
+    ]
+    applied: list[str] = []
+    for r in ordered:
+        applied.extend(_applied_action_lines(r))
+    if applied:
+        out.append(
+            "These changes were ALREADY APPLIED from these sittings — "
+            "they exist in the state below, so do NOT propose them again:"
+        )
+        out.extend(applied[:60])
+    if shortened:
+        out.append(
+            "NOTE: these sittings were too long to include in full and are "
+            "cut short: " + ", ".join(shortened) + ". Do not treat their "
+            "endings as the user's final word."
+        )
+    out.append("")
+    return "\n".join(out)
+
+
 def analyze_reflection(
     transcript: str, exclude_id=None, context_files=None,
-    continued_from=None,
+    continued_from=None, synthesis_sources=None, shortened=None,
 ) -> dict[str, Any]:
     """Send a reflection transcript to Claude and return proposed actions.
 
@@ -525,6 +656,12 @@ def analyze_reflection(
     They are rendered into a fenced, explicitly-untrusted block — see
     ``reflection_context_service`` and ADR-037 for why a document's
     contents must never be read as instructions.
+
+    ``synthesis_sources`` (#335) are the reflections a COMBINED analysis
+    is reading together. They reframe the prompt (look back across, don't
+    react to) and drop out of the continuity list, where their text would
+    otherwise appear a second time in truncated form. ``shortened`` names
+    any whose transcript had to be cut to fit the budget.
 
     ``continued_from`` (#334) is the Reflection this one forked from, if
     any. It does two things: names the carry-over in the prompt so the
@@ -556,11 +693,17 @@ def analyze_reflection(
         # #334: names the forked-from sitting and what was already applied
         # from it. Collapses to "" for an ordinary reflection.
         continuation=continuation_block(continued_from),
+        # #335: reframes the task when several sittings are read at once.
+        # Collapses to "" for a single reflection.
+        synthesis=synthesis_block(synthesis_sources or [], shortened),
         recent_reflections=recent_reflections_block(
             exclude_id=exclude_id,
-            # #334: the parent's full text is already in the transcript.
+            # #334/#335: these rows' full text is already in the
+            # transcript, so listing them again truncated would hand
+            # Claude the same words twice.
             exclude_ids=(
-                [continued_from.id] if continued_from is not None else None
+                ([continued_from.id] if continued_from is not None else [])
+                + [r.id for r in (synthesis_sources or [])]
             ),
         ),
         # #328: attached documents, fenced and marked as data-not-
@@ -1133,6 +1276,172 @@ def _carry_over_segments(
     out = []
     for seg in _normalise_raw_segments(segments):
         out.append({**seg, "cost_usd": None})
+    return out
+
+
+# --- Reading several reflections together (#335) -----------------------------
+# One sitting can say what happened this week. It cannot say "you have now
+# mentioned the settlement handover three weeks running and still have no
+# task for it" -- that question only has an answer across sittings, and it is
+# the question a five-week run-up to a start date actually needs answered.
+#
+# The continuity block (#325) already carries the previous three
+# reflections, but truncated to `_RECENT_REFLECTION_CHARS` each, which is
+# background, not material to reason over. A combined analysis passes the
+# selected transcripts in FULL.
+#
+# Like #334 this creates a NEW row and touches none of the sources. The row
+# is a record that on some day the user looked back across those sittings;
+# its own `transcript` is a short header naming them, because the words
+# themselves already live on the rows it points at.
+
+
+class CombinedSelectionError(ValueError):
+    """The chosen set cannot be analysed together, with a reason to show.
+
+    Carries user-facing text: every one of these is something the person
+    can fix by changing their selection, so the message is the whole
+    remedy.
+    """
+
+
+def resolve_combined_sources(ids) -> list[Reflection]:
+    """Turn a list of ids into the reflections to read together.
+
+    Raises:
+        CombinedSelectionError: too few, too many, or not analysable.
+    """
+    if not isinstance(ids, list):
+        raise CombinedSelectionError("Pick the reflections to analyze together.")
+    # De-duplicate while keeping the caller's order stable for the error
+    # message; a repeated id is a client bug, not a user's intent to
+    # weight one sitting twice.
+    seen: set[uuid.UUID] = set()
+    parsed: list[uuid.UUID] = []
+    for raw in ids:
+        rid = _parse_uuid(raw)
+        if rid is None:
+            raise CombinedSelectionError("That isn't a reflection I can read.")
+        if rid not in seen:
+            seen.add(rid)
+            parsed.append(rid)
+
+    if len(parsed) < 2:
+        raise CombinedSelectionError(
+            "Pick at least two reflections. Analyzing one on its own is "
+            "what the Analyze button on that row already does."
+        )
+    if len(parsed) > MAX_COMBINED:
+        raise CombinedSelectionError(
+            f"That's {len(parsed)} reflections — {MAX_COMBINED} is the most "
+            "that can be read together. The answer gets thinner, not "
+            "richer, past that: the reply length is capped however much "
+            "goes in."
+        )
+
+    sources = []
+    for rid in parsed:
+        r = get_reflection(rid)
+        # A draft is still being written and a soft-deleted row is in the
+        # recycle bin; neither is something to read back.
+        if r is None or r.is_draft or not r.is_active:
+            raise CombinedSelectionError(
+                "One of those reflections is no longer available. Refresh "
+                "the page and pick again."
+            )
+        sources.append(r)
+
+    if not any((r.transcript or "").strip() for r in sources):
+        raise CombinedSelectionError("Those reflections have no text to read.")
+    return sources
+
+
+def merged_context_files(sources: list[Reflection]) -> list[dict[str, Any]]:
+    """The union of the sources' attached documents, de-duplicated.
+
+    The same job description attached to three sittings must reach the
+    prompt ONCE -- three copies would burn the 60k budget on one document
+    and crowd out the others. Keyed on the attachment id, falling back to
+    filename + length for rows written before ids existed.
+    """
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for r in sources:
+        for f in normalise_context_files(r.context_files):
+            key = str(f.get("id") or "") or (
+                f"{f.get('filename')}:{len(f.get('text') or '')}"
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(f)
+    return out
+
+
+def synthesis_header(
+    sources: list[Reflection], shortened: list[str] | None = None,
+) -> str:
+    """The synthesis row's OWN transcript: a header naming its sources.
+
+    Not the combined text. That would duplicate tens of thousands of
+    characters already stored on the rows this one points at, and would
+    render as a wall of repeated words in the history list. What the row
+    needs to say is what it IS, and it has to say that without a lookup
+    so the history view stays one query.
+    """
+    ordered = sorted(sources, key=lambda r: (r.created_at or datetime.min))
+    lines = [f"Combined analysis of {len(ordered)} reflections:"]
+    lines.extend(f"- {reflection_label(r)}" for r in ordered)
+    if shortened:
+        lines.append(
+            "(shortened to fit the analysis budget: " + ", ".join(shortened) + ")"
+        )
+    return "\n".join(lines)
+
+
+def create_synthesis(sources: list[Reflection], shortened=None) -> Reflection:
+    """Persist the row a combined analysis will hang its proposals on.
+
+    A row is needed at all because ``confirm`` applies actions BY
+    reflection id -- proposals with nowhere to live could not be applied.
+    Making it a real row rather than a scratch record also means the
+    look-back is itself kept, which is the same promise every other
+    reflection gets.
+
+    ``input_mode`` is TYPED because nobody dictated this row; it is
+    assembled, and claiming VOICE would put a false entry in the history
+    label.
+    """
+    synthesis = Reflection(
+        iso_week=current_iso_week(),
+        input_mode=ReflectionInputMode.TYPED,
+        transcript=synthesis_header(sources, shortened),
+        context_files=[],
+        raw_segments=[],
+        proposed_actions={"explicit": [], "suggested": []},
+        synthesis_of=[str(r.id) for r in sources],
+    )
+    db.session.add(synthesis)
+    db.session.commit()
+    return synthesis
+
+
+def synthesis_sources_of(reflection: Reflection) -> list[Reflection]:
+    """Re-resolve a stored synthesis' sources, skipping any now gone.
+
+    Used by the #338 re-analyze path so re-running a synthesis reads the
+    sittings again rather than its own one-line header. Missing sources
+    are dropped rather than raising: a look-back over the four that
+    remain is more useful than an error about the fifth.
+    """
+    out = []
+    for raw in reflection.synthesis_of or []:
+        rid = _parse_uuid(raw)
+        if rid is None:
+            continue
+        r = get_reflection(rid)
+        if r is not None and not r.is_draft:
+            out.append(r)
     return out
 
 

@@ -86,7 +86,8 @@ component is added, a data flow changes, or a security boundary shifts.
   spawn pattern), import log, app_logs, and `reflections` (Weekly
   Reflection transcripts + AI-proposed action audit trail, 2026-05-16;
   self-referential `continued_from_id` for #334's forked continuations,
-  plus `title`, `is_draft` and `context_files`).
+  `synthesis_of` for #335's combined analyses, plus `title`, `is_draft`
+  and `context_files`).
   The `Tier` enum includes
   `INBOX, TODAY, TOMORROW, THIS_WEEK, NEXT_WEEK, BACKLOG, FREEZER`
   (NEXT_WEEK from #23, TOMORROW from #27). The `TaskStatus` enum
@@ -295,6 +296,26 @@ component is added, a data flow changes, or a security boundary shifts.
   transcript, so listing it again truncated would hand Claude the same
   words twice. All three analysis paths (submit, #333 checkpoint, #338
   re-analyze) pass the lineage.
+  **Reading several reflections together (#335)**: `POST
+  /api/reflection/analyze-together` takes `{"ids": [...]}` (2 to
+  `MAX_COMBINED` = 10) and answers the question a single sitting cannot
+  — what recurs, what was committed to and went quiet, where the user
+  has drifted. The continuity block above carries the previous three
+  reflections truncated to `_RECENT_REFLECTION_CHARS` (1200) each, which
+  is background; this passes the selected transcripts in FULL, each
+  fenced with its own dated header so a thought can be attributed to a
+  date, up to `MAX_COMBINED_CHARS` (120_000) shared evenly between them.
+  Attachments arrive as the de-duplicated union of the sources'
+  `context_files` (the same job description on three sittings must not
+  burn the 60k document budget three times). `synthesis_block()`
+  reframes the prompt as a look-back and lists what those sittings
+  already APPLIED. Sources are dropped from `recent_reflections_block`,
+  as are synthesis rows generally — a synthesis' own transcript is a
+  one-line header naming its sources (`reflections.synthesis_of` holds
+  the ids), so as continuity it is noise that would displace a real
+  sitting. The row exists because `confirm` applies actions BY
+  reflection id; the sources are never modified. #338 re-analyze detects
+  `synthesis_of` and re-reads the sittings rather than the header.
   **Runway + continuity (#325)**: `milestone_service.py` stores ONE
   milestone ("what you're working toward, and by when") in the
   `AppSetting` key/value store (`reflection_milestone_label` /
@@ -683,6 +704,7 @@ the code.
 /api/reflection/<uuid:reflection_id>/confirm     # POST apply confirmed actions
 /api/reflection/draft/analyze                    # POST #333 — analyse the open draft WITHOUT ending it
 /api/reflection/<uuid:reflection_id>/analyze     # POST #338 — re-run Claude over a saved reflection
+/api/reflection/analyze-together                 # POST #335 — read SEVERAL past reflections in one analysis; full transcripts + the de-duplicated union of their documents; new synthesis row, sources untouched
 /api/reflection/<uuid:reflection_id>/continue    # POST #334 — FORK a saved reflection into a new draft (text + segments + attachments); parent untouched
 /api/reflection/<uuid:reflection_id>/archive     # POST #238 — hide from default history
 /api/reflection/<uuid:reflection_id>/unarchive   # POST #238 — restore from archive

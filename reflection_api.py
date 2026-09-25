@@ -15,6 +15,10 @@ Endpoints:
     DELETE /api/reflection/attachment/<id>       — #328: detach one
     POST   /api/reflection/<id>/confirm          — apply the user-selected
         actions; returns an apply summary
+    POST   /api/reflection/analyze-together      — #335: read several past
+        reflections in ONE analysis. Full transcripts (not the 1200-char
+        continuity snippet) plus the de-duplicated union of their attached
+        documents; creates a new synthesis row, sources untouched.
     POST   /api/reflection/<id>/continue         — #334: FORK a saved
         reflection into a new draft (its text, voice segments and attached
         documents); the parent row is never modified. 409 if a draft
@@ -69,19 +73,25 @@ from reflection_context_service import (
     total_chars,
 )
 from reflection_service import (
+    CombinedSelectionError,
     DraftAlreadyOpen,
     analyze_reflection,
     apply_selected_actions,
     attach_analysis,
+    combined_transcript,
     continue_reflection,
+    create_synthesis,
     discard_draft,
     get_open_draft,
     get_reflection,
     list_reflections,
+    merged_context_files,
     reset_applied_state,
+    resolve_combined_sources,
     save_draft,
     save_reflection,
     set_reflection_title,
+    synthesis_sources_of,
 )
 from utils import validate_json_body, validate_upload
 from voice_service import (
@@ -157,6 +167,11 @@ def _serialize(reflection) -> dict:
             if reflection.continued_from_id else None
         ),
         "continued_from": _lineage(reflection.continued_from),
+        # #335: the ids this row is a combined analysis of, or null. Ids
+        # only -- the sittings are already NAMED in this row's own
+        # transcript, so resolving each one here would add a query per
+        # history row to render text the client already has.
+        "synthesis_of": list(reflection.synthesis_of or []) or None,
         # #328: attached context documents. METADATA ONLY — the extracted
         # text can be tens of thousands of characters, the UI never
         # renders it, and it would ride along on every draft autosave
@@ -790,6 +805,13 @@ def reanalyze(email: str, reflection_id):  # noqa: ARG001
     Any previous ``proposed_actions`` are replaced: the user is asking
     for a fresh read of the same words, and keeping a stale failed-run
     remnant alongside would make the review screen ambiguous.
+
+    #335: a SYNTHESIS row is re-analysed by re-reading the sittings it
+    was built from, not its own transcript — that is a one-line header
+    naming them, and running Claude over it would produce a confident
+    analysis of a list of dates. Sources that have since gone are simply
+    dropped; a look-back over the four that remain beats an error about
+    the fifth.
     """
     reflection = get_reflection(reflection_id)
     if reflection is None:
@@ -797,13 +819,23 @@ def reanalyze(email: str, reflection_id):  # noqa: ARG001
     if not (reflection.transcript or "").strip():
         return jsonify({"error": "That reflection has no transcript to analyze."}), 422
 
-    context_files = normalise_context_files(reflection.context_files)
+    sources = synthesis_sources_of(reflection)  # [] for an ordinary row
+    shortened: list[str] = []
+    if sources:
+        transcript, shortened = combined_transcript(sources)
+        context_files = merged_context_files(sources)
+    else:
+        transcript = reflection.transcript
+        context_files = normalise_context_files(reflection.context_files)
+
     try:
         analysis = analyze_reflection(
-            reflection.transcript,
+            transcript,
             exclude_id=reflection.id,
             context_files=context_files,
             continued_from=reflection.continued_from,  # #334
+            synthesis_sources=sources or None,  # #335
+            shortened=shortened,
         )
     except RuntimeError as e:
         logger.warning("Re-analysis failed for reflection %s: %s", reflection.id, e)
@@ -821,6 +853,97 @@ def reanalyze(email: str, reflection_id):  # noqa: ARG001
         ai_cost_usd=analysis["ai_cost_usd"],
     )
     return jsonify(_serialize(reflection))
+
+
+@bp.post("/analyze-together")
+@login_required
+@limiter.limit(PAID_API)  # paid: one Claude call over several transcripts
+@validate_json_body
+def analyze_together(email: str):  # noqa: ARG001
+    """Read several past reflections in ONE analysis (#335).
+
+    A single sitting can say what happened that week. It cannot answer
+    "you have mentioned the handover three weeks running and still have
+    no task for it" — that only has an answer across sittings, and it is
+    the question a multi-week run-up to a start date actually needs.
+
+    The continuity block (#325) already carries the previous three
+    reflections, but truncated to 1200 characters each: background, not
+    material to reason over. This passes the selected transcripts in
+    FULL, plus the de-duplicated union of their attached documents, and
+    reframes the prompt as a look-back rather than a new week's entry.
+
+    Like #334 it creates a NEW row and modifies none of the sources. The
+    row exists because ``confirm`` applies actions BY reflection id, so
+    proposals need somewhere to live — and because the look-back is
+    itself worth keeping. Its own transcript is a short header naming the
+    sittings; their words stay on the rows they belong to.
+
+    Body: ``{"ids": ["<uuid>", ...]}`` — 2 to MAX_COMBINED of them.
+
+    Status codes:
+      201 — analysed; body is the new row plus ``combined: true``
+      422 — bad selection (too few/many, unknown id), or Claude failed
+            AFTER the row was saved (``saved: true``, re-analyzable)
+    """
+    ids = g.json_body.get("ids")
+    try:
+        sources = resolve_combined_sources(ids)
+    except CombinedSelectionError as e:
+        return jsonify({"error": str(e)}), 422
+
+    transcript, shortened = combined_transcript(sources)
+    context_files = merged_context_files(sources)
+
+    # Persist BEFORE the paid call, same order and same reason as
+    # ``submit``: a timeout must not throw away a row the user can
+    # re-analyze from their history (#338).
+    synthesis = create_synthesis(sources, shortened)
+
+    try:
+        analysis = analyze_reflection(
+            transcript,
+            exclude_id=synthesis.id,
+            context_files=context_files,
+            synthesis_sources=sources,
+            shortened=shortened,
+        )
+    except RuntimeError as e:
+        logger.warning(
+            "Combined analysis failed (synthesis %s saved): %s",
+            synthesis.id, e,
+        )
+        return jsonify({
+            "error": f"Analysis failed: {e}",
+            "reflection_id": str(synthesis.id),
+            "saved": True,
+        }), 422
+    except Exception:
+        logger.exception(
+            "Combined analysis crashed (synthesis %s saved)", synthesis.id,
+        )
+        return jsonify({
+            "error": "Analysis failed (unexpected)",
+            "reflection_id": str(synthesis.id),
+            "saved": True,
+        }), 500
+
+    synthesis = attach_analysis(
+        synthesis,
+        proposed={
+            "explicit": analysis["explicit"],
+            "suggested": analysis["suggested"],
+        },
+        ai_cost_usd=analysis["ai_cost_usd"],
+    )
+    payload = _serialize(synthesis)
+    # Tells the review screen to say what it is reading, and how many
+    # sittings went in — a proposal list with no such framing looks like
+    # it came from whichever reflection was open.
+    payload["combined"] = True
+    payload["source_count"] = len(sources)
+    payload["shortened"] = shortened
+    return jsonify(payload), 201
 
 
 @bp.post("/<uuid:reflection_id>/continue")

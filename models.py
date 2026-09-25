@@ -588,6 +588,25 @@ class Reflection(db.Model):
     continued_from: Mapped[Reflection | None] = relationship(
         remote_side="Reflection.id", lazy="joined", join_depth=1,
     )
+    # #335 (2026-09-25): the ids this row is a COMBINED analysis of.
+    # NULL/empty for an ordinary reflection.
+    #
+    # Deliberately a JSON list and NOT a second FK alongside
+    # continued_from_id, because the two relationships mean different
+    # things. `continued_from_id` is a WRITING relationship: the parent's
+    # words flow into this row and it has exactly one parent. This is a
+    # READING relationship: no text flows, the row is a record that on
+    # some day the user looked back across N sittings at once. Folding
+    # both into one column would make "what is this row" ambiguous.
+    #
+    # The row's own `transcript` is a short human-readable header naming
+    # the sources; the FULL text of each source goes to Claude at prompt
+    # time and is not copied here -- it already lives on those rows, and
+    # duplicating tens of thousands of characters per synthesis would
+    # bloat both the table and the history view.
+    synthesis_of: Mapped[list | None] = mapped_column(
+        JSONType, nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now
