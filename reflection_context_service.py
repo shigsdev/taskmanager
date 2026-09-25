@@ -24,6 +24,12 @@ are dropped when the request ends:
 Attachments land on the OPEN DRAFT first (#324), so a file added from
 the phone on Monday is still attached from the laptop on Thursday.
 
+#336 adds a SECOND home for the same extracted text: a document marked
+always-attached lives in ``global_context_files`` (see
+``global_context_service``) and rides along with every reflection instead
+of one. The extraction, truncation, fencing and budget rules here are
+shared by both — only where the text is filed differs.
+
 TRUST BOUNDARY (ADR-037)
 ------------------------
 This is the first path that feeds a FILE's contents into a prompt whose
@@ -403,8 +409,9 @@ def check_capacity(existing, incoming_chars: int | None = None) -> str | None:
     current = normalise_context_files(existing)
     if len(current) >= MAX_FILES:
         return (
-            f"You can attach up to {MAX_FILES} files to one reflection. "
-            "Remove one first."
+            f"You can have up to {MAX_FILES} context files at once, "
+            "counting the ones attached to every reflection. Remove one "
+            "first."
         )
     if incoming_chars is None:
         return None
@@ -412,8 +419,9 @@ def check_capacity(existing, incoming_chars: int | None = None) -> str | None:
     if used + incoming_chars > MAX_TOTAL_CHARS:
         return (
             "That would exceed the total context budget "
-            f"({MAX_TOTAL_CHARS:,} characters across all attachments; "
-            f"{used:,} already used). Remove a file or attach a shorter one."
+            f"({MAX_TOTAL_CHARS:,} characters across all attachments, "
+            f"always-attached ones included; {used:,} already used). "
+            "Remove a file or attach a shorter one."
         )
     return None
 

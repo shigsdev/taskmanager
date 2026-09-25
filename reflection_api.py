@@ -13,6 +13,15 @@ Endpoints:
         Extracted to text in memory; the file itself is never stored.
         The text lands on the open draft and rides onto the reflection.
     DELETE /api/reflection/attachment/<id>       — #328: detach one
+    GET    /api/reflection/global-context        — #336: list the documents
+        attached to EVERY reflection
+    POST   /api/reflection/global-context        — #336: upload one (same
+        extraction path as /attachment; only the filing differs)
+    POST   /api/reflection/attachment/<id>/make-global
+                                                 — #336: MOVE one of this
+        reflection's attachments into the global store. Free — the text
+        already exists, so no extraction and no paid call.
+    DELETE /api/reflection/global-context/<id>   — #336: stop one riding along
     POST   /api/reflection/<id>/confirm          — apply the user-selected
         actions; returns an apply summary
     POST   /api/reflection/analyze-together      — #335: read several past
@@ -49,6 +58,12 @@ dropped when the request ends. Only the extracted TEXT is persisted.
 Because that text is untrusted input feeding a prompt that can propose
 deletes, it is fenced and marked data-not-instructions — see
 ``reflection_context_service`` and ADR-037.
+
+#336 adds a SECOND store for the same extracted text: documents marked
+always-attached live in ``global_context_files`` and are merged into
+every analysis. The two share ONE budget, so marking something global
+buys no extra room in the prompt. A global document is NOT copied onto
+each reflection row — that store is the record of what rode along.
 """
 from __future__ import annotations
 
@@ -57,6 +72,12 @@ import logging
 from flask import Blueprint, g, jsonify, request
 
 from auth import login_required
+from global_context_service import (
+    add_global_file,
+    list_global_files,
+    merged_context_files,
+    remove_global_file,
+)
 from milestone_service import clear_milestone, get_milestone, set_milestone
 from models import ReflectionInputMode
 from rate_limit import PAID_API, limiter
@@ -85,7 +106,7 @@ from reflection_service import (
     get_open_draft,
     get_reflection,
     list_reflections,
-    merged_context_files,
+    merged_source_files,
     reset_applied_state,
     resolve_combined_sources,
     save_draft,
@@ -273,6 +294,12 @@ def submit(email: str):  # noqa: ARG001
     context_files = normalise_context_files(
         open_draft.context_files if open_draft else []
     )
+    # #336: always-attached documents ride along with the ANALYSIS but are
+    # deliberately NOT copied onto the row. They live in their own store,
+    # which is the record of what was attached; duplicating tens of
+    # thousands of characters onto every sitting is exactly the cost that
+    # feature exists to remove.
+    analysis_files = merged_context_files(context_files)
     # #334: if this sitting was forked from a past reflection, the lineage
     # lives on the draft. Read it here for the same reason as the
     # attachments above — `discard_draft()` below is a hard delete, so
@@ -317,7 +344,7 @@ def submit(email: str):  # noqa: ARG001
         analysis = analyze_reflection(
             transcript,
             exclude_id=reflection.id,
-            context_files=context_files,
+            context_files=analysis_files,  # #336: session + always-attached
             # #334: names the carried-over sitting and keeps it out of the
             # continuity list, where its text would appear a second time.
             continued_from=continued_from,
@@ -533,9 +560,36 @@ def delete_draft(email: str):  # noqa: ARG001
 
 def _attachment_payload(draft) -> dict:
     files = normalise_context_files(draft.context_files if draft else [])
+    # #336: the budget counters report the MERGED total, because that is
+    # the number that decides whether the next upload is refused. Showing
+    # only this reflection's share would let the user watch a counter sit
+    # at 12,000 / 60,000 and still be turned away.
+    merged = merged_context_files(files)
     return {
         "context_files": public_view(files),
-        "total_chars": total_chars(files),
+        "global_files": public_view(list_global_files()),
+        "total_chars": total_chars(merged),
+        "session_chars": total_chars(files),
+        "file_count": len(merged),
+        "max_total_chars": MAX_TOTAL_CHARS,
+        "max_files": MAX_FILES,
+    }
+
+
+def _global_payload() -> dict:
+    """The always-attached list, with the same shared-budget counters.
+
+    Separate from :func:`_attachment_payload` because the global routes
+    have no draft to report on, but it carries the same totals so both
+    panels can show one honest budget rather than two half-truths.
+    """
+    draft = get_open_draft()
+    session_files = normalise_context_files(draft.context_files if draft else [])
+    merged = merged_context_files(session_files)
+    return {
+        "files": public_view(list_global_files()),
+        "total_chars": total_chars(merged),
+        "file_count": len(merged),
         "max_total_chars": MAX_TOTAL_CHARS,
         "max_files": MAX_FILES,
     }
@@ -570,7 +624,11 @@ def add_attachment(email: str):  # noqa: ARG001
     # whose text we would immediately discard.
     draft = get_open_draft()
     existing = normalise_context_files(draft.context_files if draft else [])
-    full = check_capacity(existing)
+    # #336: capacity is measured across BOTH stores. The prompt ceiling
+    # doesn't care which one a document came from, so checking only this
+    # reflection's share would let a sixth file through and blow the
+    # budget at analysis time, when it is too late to say so.
+    full = check_capacity(merged_context_files(existing))
     if full:
         return jsonify({"error": full}), 422
 
@@ -587,7 +645,9 @@ def add_attachment(email: str):  # noqa: ARG001
         logger.exception("reflection attachment extraction crashed")
         return jsonify({"error": "Couldn't read that file."}), 500
 
-    capacity_error = check_capacity(existing, attachment["chars"])
+    capacity_error = check_capacity(
+        merged_context_files(existing), attachment["chars"],
+    )
     if capacity_error:
         return jsonify({"error": capacity_error}), 422
 
@@ -601,6 +661,125 @@ def add_attachment(email: str):  # noqa: ARG001
         k: v for k, v in attachment.items() if k != "text"
     }
     return jsonify(payload), 201
+
+
+# --- Always-attached documents (#336) ---------------------------------------
+# #328 files a document against the open DRAFT, so it follows one
+# reflection and retires with it. Reflecting toward a fixed date across
+# many sittings then means re-uploading the same job description and the
+# same 90-day plan every time. A document marked always-attached lives in
+# its own table and rides along with every analysis.
+#
+# The two stores share ONE budget: marking something global must not
+# quietly buy extra room in the prompt.
+
+
+@bp.get("/global-context")
+@login_required
+def list_global_context(email: str):  # noqa: ARG001
+    """Every always-attached document. Metadata only — never the text."""
+    return jsonify(_global_payload())
+
+
+@bp.post("/global-context")
+@login_required
+@limiter.limit(PAID_API)  # paid: image uploads hit Google Vision OCR
+def add_global_context(email: str):  # noqa: ARG001
+    """Upload a document that should ride along with EVERY reflection.
+
+    Same extraction, validation and truncation path as the per-session
+    route above — only where the extracted text is filed differs. The
+    FILE itself is still never stored (#328 / ADR-037).
+
+    Capacity is checked against the MERGED list (globals + whatever is on
+    the open draft), because the prompt ceiling doesn't care which store
+    a document came from.
+    """
+    file_bytes, _ct, err = validate_upload(
+        request,
+        field_name="file",
+        max_bytes=MAX_UPLOAD_BYTES,
+        allowed_extensions=ALLOWED_EXTENSIONS,
+    )
+    if err:
+        return jsonify(err[0]), err[1]
+    filename = request.files["file"].filename or ""
+
+    draft = get_open_draft()
+    merged = merged_context_files(draft.context_files if draft else [])
+    # File-count check first — a sixth document is refused before paying
+    # Google Vision to OCR an image whose text we would then discard.
+    full = check_capacity(merged)
+    if full:
+        return jsonify({"error": full}), 422
+
+    try:
+        attachment = build_attachment(filename, file_bytes)
+    except ContextExtractionError as e:
+        logger.info(
+            "global context file rejected (%d bytes): %s", len(file_bytes), e,
+        )
+        return jsonify({"error": str(e)}), e.status
+    except Exception:
+        logger.exception("global context extraction crashed")
+        return jsonify({"error": "Couldn't read that file."}), 500
+
+    capacity_error = check_capacity(merged, attachment["chars"])
+    if capacity_error:
+        return jsonify({"error": capacity_error}), 422
+
+    record = add_global_file(attachment)
+    payload = _global_payload()
+    payload["attachment"] = {k: v for k, v in record.items() if k != "text"}
+    return jsonify(payload), 201
+
+
+@bp.post("/attachment/<attachment_id>/make-global")
+@login_required
+def make_attachment_global(email: str, attachment_id: str):  # noqa: ARG001
+    """MOVE one of this reflection's attachments into the global store.
+
+    The natural moment to decide a document is permanent is after having
+    attached it once — "I'll want this every week" is a thought that
+    arrives second, not first. Re-uploading to change its filing would be
+    a second Vision call for bytes the server already turned into text.
+
+    A move, not a copy: leaving it in both stores would show the user the
+    same document twice and, but for the de-duplication in
+    ``merged_context_files``, charge the shared budget twice.
+
+    Free — the text already exists, so no extraction and no paid call.
+    """
+    draft = get_open_draft()
+    if draft is None:
+        return jsonify({"error": "No reflection in progress."}), 404
+    existing = normalise_context_files(draft.context_files)
+    match = next((f for f in existing if f["id"] == attachment_id), None)
+    if match is None:
+        return jsonify({"error": "That attachment is no longer here."}), 404
+
+    record = add_global_file(match)
+    draft = save_draft(
+        transcript=draft.transcript or "",
+        raw_segments=draft.raw_segments,
+        context_files=[f for f in existing if f["id"] != attachment_id],
+    )
+    payload = _attachment_payload(draft)
+    payload["global"] = _global_payload()["files"]
+    payload["moved"] = {k: v for k, v in record.items() if k != "text"}
+    return jsonify(payload), 200
+
+
+@bp.delete("/global-context/<file_id>")
+@login_required
+def delete_global_context(email: str, file_id: str):  # noqa: ARG001
+    """Stop a document riding along with every reflection. Idempotent.
+
+    A hard delete. Reflections it already informed are untouched — they
+    keep their own transcripts and their own attachments.
+    """
+    remove_global_file(file_id)
+    return jsonify(_global_payload()), 200
 
 
 @bp.delete("/attachment/<attachment_id>")
@@ -724,7 +903,10 @@ def analyze_draft(email: str):  # noqa: ARG001
     if not (draft.transcript or "").strip():
         return jsonify({"error": "Write or say something first."}), 422
 
-    context_files = normalise_context_files(draft.context_files)
+    # #336: always-attached documents come along here too — a checkpoint
+    # reading less than the final analysis would propose against a
+    # different picture and quietly confuse the comparison.
+    context_files = merged_context_files(draft.context_files)
     try:
         analysis = analyze_reflection(
             draft.transcript,
@@ -823,10 +1005,10 @@ def reanalyze(email: str, reflection_id):  # noqa: ARG001
     shortened: list[str] = []
     if sources:
         transcript, shortened = combined_transcript(sources)
-        context_files = merged_context_files(sources)
+        context_files = merged_context_files(merged_source_files(sources))
     else:
         transcript = reflection.transcript
-        context_files = normalise_context_files(reflection.context_files)
+        context_files = merged_context_files(reflection.context_files)
 
     try:
         analysis = analyze_reflection(
@@ -893,7 +1075,8 @@ def analyze_together(email: str):  # noqa: ARG001
         return jsonify({"error": str(e)}), 422
 
     transcript, shortened = combined_transcript(sources)
-    context_files = merged_context_files(sources)
+    # #336: the always-attached store on top of the union across sources.
+    context_files = merged_context_files(merged_source_files(sources))
 
     # Persist BEFORE the paid call, same order and same reason as
     # ``submit``: a timeout must not throw away a row the user can

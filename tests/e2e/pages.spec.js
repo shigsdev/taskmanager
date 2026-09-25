@@ -3074,3 +3074,185 @@ test.describe("Reflection - reading several together (#335)", () => {
         }
     });
 });
+
+test.describe("Reflection - files attached to every reflection (#336)", () => {
+    const sessionItems = (page) =>
+        page.locator("#reflContextList .reflection-context-item");
+    const globalItems = (page) =>
+        page.locator("#reflGlobalList .reflection-context-item");
+
+    const attach = async (page, name, body) => {
+        await page.locator("#reflContextInput").setInputFiles({
+            name: name, mimeType: "text/plain",
+            buffer: Buffer.from(body || "Reference material for the plan."),
+        });
+        await expect(sessionItems(page).filter({ hasText: name }))
+            .toHaveCount(1, { timeout: 15000 });
+    };
+
+    const keepForever = async (page, name) => {
+        await sessionItems(page).filter({ hasText: name })
+            .locator("button", { hasText: "Keep for every reflection" }).click();
+        await expect(globalItems(page).filter({ hasText: name }))
+            .toHaveCount(1, { timeout: 15000 });
+    };
+
+    const wipe = (page) => page.evaluate(async () => {
+        await fetch("/api/reflection/draft", {
+            method: "DELETE", credentials: "same-origin",
+        });
+        const res = await fetch("/api/reflection/global-context", {
+            credentials: "same-origin",
+        });
+        for (const f of (await res.json()).files) {
+            await fetch("/api/reflection/global-context/" + f.id, {
+                method: "DELETE", credentials: "same-origin",
+            });
+        }
+    });
+
+    test.beforeEach(async ({ page }) => {
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await wipe(page);
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+    });
+
+    test.afterEach(async ({ page }) => {
+        await wipe(page).catch(() => {});
+    });
+
+    test("the always-attached section stays hidden until there is one",
+        async ({ page }) => {
+            // An always-empty "Attached to every reflection" heading is a
+            // permanent question with no answer.
+            await expect(page.locator("#reflGlobalContext")).toBeHidden();
+            await attach(page, "plan.txt");
+            await expect(page.locator("#reflGlobalContext")).toBeHidden();
+            await keepForever(page, "plan.txt");
+            await expect(page.locator("#reflGlobalContext")).toBeVisible();
+        });
+
+    test("Keep for every reflection MOVES the file", async ({ page }) => {
+        // Leaving it in both lists would show the same document twice.
+        await attach(page, "plan.txt");
+        await expect(sessionItems(page)).toHaveCount(1);
+        await keepForever(page, "plan.txt");
+        await expect(sessionItems(page)).toHaveCount(0);
+        await expect(globalItems(page)).toHaveCount(1);
+    });
+
+    test("an always-attached file has no Keep control of its own",
+        async ({ page }) => {
+            await attach(page, "plan.txt");
+            await keepForever(page, "plan.txt");
+            await expect(globalItems(page).first().locator(
+                "button", { hasText: "Keep for every reflection" }
+            )).toHaveCount(0);
+            await expect(globalItems(page).first().locator(
+                "button", { hasText: "Remove" }
+            )).toBeVisible();
+        });
+
+    test("it is server state, surviving a reload", async ({ page }) => {
+        await attach(page, "plan.txt");
+        await keepForever(page, "plan.txt");
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(globalItems(page)).toHaveCount(1, { timeout: 10000 });
+        await expect(page.locator("#reflGlobalContext")).toBeVisible();
+    });
+
+    test("it survives discarding the draft", async ({ page }) => {
+        // The global store is not part of the draft and must not go with
+        // it when the draft is thrown away.
+        await attach(page, "plan.txt");
+        await keepForever(page, "plan.txt");
+        await page.locator("#reflText").fill("Some words.");
+        await page.waitForTimeout(1600);
+        // The Discard control lives on the draft banner, which only
+        // appears once a draft is RESTORED — typing alone doesn't raise
+        // it, so reload to get into the state the user would be in.
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator("#reflDraftBanner")).toBeVisible({
+            timeout: 10000,
+        });
+        page.once("dialog", (d) => d.accept());
+        await page.locator("#reflDraftDiscard").click();
+        await expect(page.locator("#reflText")).toHaveValue("", { timeout: 10000 });
+        await expect(globalItems(page)).toHaveCount(1);
+    });
+
+    test("the budget counter reports BOTH lists", async ({ page }) => {
+        // A counter reading "1 of 5" while the server refuses the next
+        // upload would be the worst of both.
+        await attach(page, "plan.txt", "A".repeat(200));
+        await keepForever(page, "plan.txt");
+        await attach(page, "notes.txt", "B".repeat(100));
+        await expect(page.locator("#reflContextSummary"))
+            .toHaveText(/2 of 5 files/, { timeout: 10000 });
+        await expect(page.locator("#reflContextSummary")).toHaveText(/300 of/);
+    });
+
+    test("the counter shows with an always-attached file and no draft",
+        async ({ page }) => {
+            // Phase 6, 2026-09-25: the two lists load independently, so
+            // with a global file and no draft renderAttachments never
+            // ran and the panel listed a document under a BLANK counter —
+            // the one place the shared budget is supposed to be legible.
+            await attach(page, "plan.txt", "A".repeat(200));
+            await keepForever(page, "plan.txt");
+            await page.reload();
+            await page.waitForLoadState("networkidle");
+            await expect(globalItems(page)).toHaveCount(1, { timeout: 10000 });
+            await expect(sessionItems(page)).toHaveCount(0);
+            await expect(page.locator("#reflContextSummary"))
+                .toHaveText(/1 of 5 file · 200 of 60,000/);
+        });
+
+    test("removing an always-attached file asks first and updates the count",
+        async ({ page }) => {
+            await attach(page, "plan.txt", "A".repeat(200));
+            await keepForever(page, "plan.txt");
+            await expect(page.locator("#reflContextSummary"))
+                .toHaveText(/1 of 5 file/, { timeout: 10000 });
+            page.once("dialog", (d) => d.accept());
+            await globalItems(page).first().locator(
+                "button", { hasText: "Remove" }).click();
+            await expect(page.locator("#reflGlobalContext"))
+                .toBeHidden({ timeout: 10000 });
+            await expect(page.locator("#reflContextSummary")).toHaveText("");
+        });
+
+    test("cancelling the remove keeps the file", async ({ page }) => {
+        await attach(page, "plan.txt");
+        await keepForever(page, "plan.txt");
+        page.once("dialog", (d) => d.dismiss());
+        await globalItems(page).first().locator(
+            "button", { hasText: "Remove" }).click();
+        await page.waitForTimeout(500);
+        await expect(globalItems(page)).toHaveCount(1);
+    });
+
+    test("tap targets and layout hold with both lists shown",
+        async ({ page }) => {
+            await attach(page, "plan.txt");
+            await keepForever(page, "plan.txt");
+            await attach(page, "notes.txt");
+            const overflows = await page.evaluate(() =>
+                document.documentElement.scrollWidth > window.innerWidth);
+            expect(overflows).toBe(false);
+
+            if ((page.viewportSize() || {}).width < 700) {
+                const keep = await sessionItems(page).first().locator(
+                    "button", { hasText: "Keep for every reflection" }
+                ).boundingBox();
+                expect(keep.height).toBeGreaterThanOrEqual(44);
+                const rm = await globalItems(page).first().locator(
+                    "button", { hasText: "Remove" }).boundingBox();
+                expect(rm.height).toBeGreaterThanOrEqual(44);
+            }
+        });
+});

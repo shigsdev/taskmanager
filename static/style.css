@@ -6279,8 +6279,38 @@ table.quality-gates code {
     color: var(--text-muted, #9a9a9a);
     font-variant-numeric: tabular-nums;
 }
-.reflection-context-remove {
+.reflection-context-remove,
+/* #336: "Keep for every reflection" sits beside Remove on a session
+   attachment. Link weight, not a button: it is an occasional filing
+   decision, not the row's primary action. */
+.reflection-context-keep {
     flex: 0 0 auto;
+}
+
+/* #336: the always-attached list. Copper down the left edge rather than
+   the sage used for per-reflection attachments above, so which list a
+   document is in is legible without reading either heading. */
+.reflection-context-global {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--rule, #3a3531);
+}
+.reflection-context-global-head {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 6px;
+}
+.reflection-context-global-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+.reflection-context-global-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted, #9a9a9a);
+}
+.reflection-context-global .reflection-context-item {
+    border-left-color: var(--copper, #b87333);
 }
 .reflection-context-summary {
     margin: 8px 0 0;
@@ -6305,7 +6335,9 @@ table.quality-gates code {
 @media (max-width: 600px) {
     /* Tapped one-handed — both controls meet the 44px target. */
     .reflection-context-add,
-    .reflection-context-remove {
+    .reflection-context-remove,
+    /* #336: same one-handed reasoning for the filing control. */
+    .reflection-context-keep {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -6313,5 +6345,10 @@ table.quality-gates code {
     }
     .reflection-context-add {
         width: 100%;
+    }
+    /* #336: two controls per row now. Wrapping keeps the filename
+       readable instead of crushing it between them. */
+    .reflection-context-item {
+        flex-wrap: wrap;
     }
 }

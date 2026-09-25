@@ -503,9 +503,9 @@ class TestReAnalyzingASynthesis:
 
 
 class TestServiceUnits:
-    def test_merged_context_files_dedupes_by_id(self, app):
+    def test_merged_source_files_dedupes_by_id(self, app):
         from models import Reflection, ReflectionInputMode
-        from reflection_service import merged_context_files
+        from reflection_service import merged_source_files
 
         def _r(files):
             return Reflection(
@@ -519,7 +519,7 @@ class TestServiceUnits:
                "source_chars": 4, "truncated": False}
         other = dict(doc, id="d2", filename="other.txt")
         with app.app_context():
-            out = merged_context_files([_r([doc]), _r([doc, other])])
+            out = merged_source_files([_r([doc]), _r([doc, other])])
         assert [f["id"] for f in out] == ["d1", "d2"]
 
     def test_synthesis_header_lists_every_source(self, app):

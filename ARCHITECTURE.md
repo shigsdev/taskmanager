@@ -82,7 +82,8 @@ component is added, a data flow changes, or a security boundary shifts.
 - **PostgreSQL** — Railway-managed. Stores tasks (with optional `url`,
   self-referential `parent_id` for one-level subtasks, and optional
   `cancellation_reason` for status=CANCELLED tasks), projects, goals,
-  recurring tasks (with `subtasks_snapshot` JSON for #26's clone-on-
+  `global_context_files` (#336 — reference documents attached to every
+  reflection), recurring tasks (with `subtasks_snapshot` JSON for #26's clone-on-
   spawn pattern), import log, app_logs, and `reflections` (Weekly
   Reflection transcripts + AI-proposed action audit trail, 2026-05-16;
   self-referential `continued_from_id` for #334's forked continuations,
@@ -274,6 +275,26 @@ component is added, a data flow changes, or a security boundary shifts.
   data-never-instructions, and its own marker lines are neutralised so
   it cannot close the fence; the load-bearing control remains that
   nothing is applied until the user ticks it in the review step.
+  **Always-attached documents (#336)**: the same extracted text, filed
+  against the user rather than one sitting. `global_context_files` holds
+  documents that ride along with EVERY analysis — the job description and
+  the 90-day plan don't change week to week, and re-uploading them each
+  sitting was the cost #328 left behind. `global_context_service.py` owns
+  the store; `merged_context_files()` folds it into a reflection's own
+  attachments, de-duplicated on filename + text length (the two stores
+  mint ids independently, so the same document in both is two ids for one
+  file). Merged into ALL FOUR analysis paths — submit, the #333
+  checkpoint, #338 re-analyze, #335 combined. The two stores share ONE
+  budget (`MAX_FILES`, `MAX_TOTAL_CHARS`): every capacity check is handed
+  the merged list, so marking a document global buys no extra prompt room.
+  `POST /api/reflection/attachment/<id>/make-global` MOVES a session
+  attachment into the store rather than copying — free, since the text
+  already exists, so no second Vision call. A global document is
+  deliberately **not** copied onto each reflection row: the store is the
+  record of what rode along, and duplicating tens of thousands of
+  characters per sitting is the cost being removed. Trust boundary
+  unchanged (ADR-037): file never stored, text fenced and labelled
+  data-not-instructions, human confirm remains the real control.
   **Continuing a past reflection (#334)**: `POST
   /api/reflection/<id>/continue` FORKS — it seeds a NEW draft with the
   saved sitting's transcript, its #237 voice segments and its #328
@@ -704,6 +725,9 @@ the code.
 /api/reflection/<uuid:reflection_id>/confirm     # POST apply confirmed actions
 /api/reflection/draft/analyze                    # POST #333 — analyse the open draft WITHOUT ending it
 /api/reflection/<uuid:reflection_id>/analyze     # POST #338 — re-run Claude over a saved reflection
+/api/reflection/global-context                   # GET list / POST upload a document attached to EVERY reflection — #336; shares the #328 budget, file never stored
+/api/reflection/global-context/<file_id>         # DELETE stop one riding along — #336
+/api/reflection/attachment/<attachment_id>/make-global  # POST #336 — MOVE this reflection's attachment into the global store (free; the text already exists)
 /api/reflection/analyze-together                 # POST #335 — read SEVERAL past reflections in one analysis; full transcripts + the de-duplicated union of their documents; new synthesis row, sources untouched
 /api/reflection/<uuid:reflection_id>/continue    # POST #334 — FORK a saved reflection into a new draft (text + segments + attachments); parent untouched
 /api/reflection/<uuid:reflection_id>/archive     # POST #238 — hide from default history

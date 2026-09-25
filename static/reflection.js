@@ -1558,7 +1558,11 @@
         // #328: every caller of this is a "the draft is gone" moment —
         // submitted, or discarded. The attachments went with it, so the
         // list must not keep advertising files the server no longer has.
-        renderAttachments([]);
+        //
+        // #336: SESSION attachments only. The always-attached list is not
+        // part of the draft, so submitting or discarding a reflection
+        // must leave it exactly where it is.
+        renderAttachments([], { global_files: globalFiles });
         setCtxStatus("");
         // #334: the fork went with the draft. Leaving "Continuing X" on
         // screen would claim a lineage the server no longer holds.
@@ -1750,9 +1754,117 @@
         ctxStatus.classList.toggle("reflection-context-status-err", !!isError);
     }
 
-    function buildAttachmentRow(f) {
+    // ---- always-attached documents (#336) ----------------------------
+    // Reference material filed against the USER rather than one sitting:
+    // the job description and the 90-day plan don't change week to week,
+    // and re-uploading them every time was the cost #328 left behind.
+    // They share one budget with per-reflection attachments, so the
+    // counters above describe both stores.
+
+    var globalWrap = document.getElementById("reflGlobalContext");
+    var globalList = document.getElementById("reflGlobalList");
+    var globalFiles = [];
+    // This reflection's own attachments, cached so the shared budget
+    // line can be recomputed when EITHER list changes.
+    var sessionFiles = [];
+
+    function renderGlobalFiles(files) {
+        globalFiles = Array.isArray(files) ? files : [];
+        if (!globalList || !globalWrap) return;
+        globalList.replaceChildren();
+        globalFiles.forEach(function (f) {
+            var row = buildAttachmentRow(f, "global");
+            if (row) globalList.appendChild(row);
+        });
+        // Hidden entirely when empty: an always-empty "Attached to every
+        // reflection" heading is a permanent question with no answer.
+        globalWrap.style.display = globalFiles.length ? "" : "none";
+        refreshBudgetLine();
+    }
+
+    /**
+     * The one budget line, computed from BOTH lists.
+     *
+     * Driven from here rather than only from renderAttachments because
+     * the two lists load independently: with an always-attached file and
+     * no draft, renderAttachments never runs, and Phase 6 (2026-09-25)
+     * found the panel listing a global document under a blank counter —
+     * the one place the shared budget is supposed to be legible.
+     */
+    function refreshBudgetLine() {
+        if (!ctxSummary) return;
+        ctxSummary.textContent = RH_.attachmentSummary(
+            sessionFiles.concat(globalFiles), CTX_MAX_FILES, CTX_MAX_CHARS,
+        );
+    }
+
+    async function makeAttachmentGlobal(id, name) {
+        if (ctxBusy) return;
+        ctxBusy = true;
+        setCtxStatus("Keeping " + name + " for every reflection…");
+        try {
+            var data = await window.apiFetch(
+                "/api/reflection/attachment/" + encodeURIComponent(id)
+                + "/make-global",
+                { method: "POST" },
+            );
+            renderAttachments(data && data.context_files, data);
+            setCtxStatus(name + " is now attached to every reflection.");
+        } catch (e) {
+            setCtxStatus("Couldn't do that: " + (e.message || e), true);
+        } finally {
+            ctxBusy = false;
+        }
+    }
+
+    async function removeGlobalFile(id, name) {
+        if (ctxBusy) return;
+        if (!confirm("Stop attaching " + name + " to every reflection?"
+            + String.fromCharCode(10) + String.fromCharCode(10)
+            + "Reflections you have already written keep their own "
+            + "attachments and are not changed.")) return;
+        ctxBusy = true;
+        setCtxStatus("Removing " + name + "…");
+        try {
+            var data = await window.apiFetch(
+                "/api/reflection/global-context/" + encodeURIComponent(id),
+                { method: "DELETE" },
+            );
+            renderGlobalFiles(data && data.files);
+            // The session list is unchanged, but its budget line is not.
+            await refreshAttachmentPanel();
+            setCtxStatus(name + " is no longer attached to every reflection.");
+        } catch (e) {
+            setCtxStatus("Couldn't remove that: " + (e.message || e), true);
+        } finally {
+            ctxBusy = false;
+        }
+    }
+
+    /** Re-read the draft so the shared budget line reflects the change. */
+    async function refreshAttachmentPanel() {
+        try {
+            var d = await window.apiFetch("/api/reflection/draft");
+            var draft = d && d.draft;
+            renderAttachments(draft ? draft.context_files : [], {
+                global_files: globalFiles,
+                max_files: CTX_MAX_FILES,
+                max_total_chars: CTX_MAX_CHARS,
+            });
+        } catch (e) { /* the list on screen is still usable */ }
+    }
+
+    async function loadGlobalFiles() {
+        try {
+            var data = await window.apiFetch("/api/reflection/global-context");
+            renderGlobalFiles(data && data.files);
+        } catch (e) { /* quiet on load — never a scary error for a bonus */ }
+    }
+
+    function buildAttachmentRow(f, scope) {
         var label = RH_.attachmentLabel(f);
         if (!label || !label.name) return null;
+        var isGlobal = scope === "global";
 
         var li = document.createElement("li");
         li.className = "reflection-context-item";
@@ -1771,13 +1883,31 @@
         }
         li.appendChild(text);
 
+        // #336: the moment a document turns out to be permanent is
+        // AFTER attaching it once - "I will want this every week" is a
+        // second thought, not a first. Offering it here saves a second
+        // upload of bytes the server already turned into text.
+        if (!isGlobal) {
+            var keep = document.createElement("button");
+            keep.type = "button";
+            keep.className = "btn-link reflection-context-keep";
+            keep.textContent = "Keep for every reflection";
+            keep.setAttribute("aria-label",
+                "Attach " + label.name + " to every reflection");
+            keep.addEventListener("click", function () {
+                makeAttachmentGlobal(f.id, label.name);
+            });
+            li.appendChild(keep);
+        }
+
         var remove = document.createElement("button");
         remove.type = "button";
         remove.className = "btn-link reflection-context-remove";
         remove.textContent = "Remove";
         remove.setAttribute("aria-label", "Remove " + label.name);
         remove.addEventListener("click", function () {
-            removeAttachment(f.id, label.name);
+            if (isGlobal) removeGlobalFile(f.id, label.name);
+            else removeAttachment(f.id, label.name);
         });
         li.appendChild(remove);
         return li;
@@ -1786,23 +1916,26 @@
     function renderAttachments(files, meta) {
         if (!ctxList) return;
         var list = Array.isArray(files) ? files : [];
+        sessionFiles = list;
         ctxList.replaceChildren();
         list.forEach(function (f) {
-            var row = buildAttachmentRow(f);
+            var row = buildAttachmentRow(f, "session");
             if (row) ctxList.appendChild(row);
         });
 
         var maxFiles = (meta && meta.max_files) || CTX_MAX_FILES;
-        var maxChars = (meta && meta.max_total_chars) || CTX_MAX_CHARS;
-        if (ctxSummary) {
-            ctxSummary.textContent = RH_.attachmentSummary(
-                list, maxFiles, maxChars,
-            );
+        if (meta && Array.isArray(meta.global_files)) {
+            renderGlobalFiles(meta.global_files);
         }
+        // #336: the counter describes BOTH stores, because that is what
+        // decides whether the next upload is refused. A summary reading
+        // "1 of 5" while the server refuses the next file would be the
+        // worst of both.
+        refreshBudgetLine();
         // A <label> can't be disabled, but a disabled input makes the
         // label inert — browsers won't open the picker for it. The class
         // is what makes that visible rather than mysterious.
-        var full = list.length >= maxFiles;
+        var full = (list.length + globalFiles.length) >= maxFiles;
         if (ctxInput) ctxInput.disabled = full;
         if (ctxAddBtn) {
             ctxAddBtn.classList.toggle("reflection-context-add-disabled", full);
@@ -2077,6 +2210,7 @@
     showState("input");
     loadHistory();
     restoreDraft();
+    loadGlobalFiles();  // #336: documents attached to every reflection
     loadMilestone();
     loadLastReflection();
     offerRecoveredAudio();

@@ -613,6 +613,59 @@ class Reflection(db.Model):
     )
 
 
+class GlobalContextFile(db.Model):
+    """#336 (2026-09-25): a reference document attached to EVERY reflection.
+
+    #328 attaches documents to the open DRAFT, so they follow one
+    reflection and retire with it. For a run-up to a fixed date that
+    means re-uploading the same job description and the same 90-day plan
+    at every sitting -- the documents that matter most are exactly the
+    ones that never change.
+
+    A row here rides along with every analysis automatically. Per-session
+    attachments are unchanged and still live on
+    ``Reflection.context_files``; the two are merged at prompt-build time
+    and share one budget, so marking something global does not quietly
+    buy extra room.
+
+    Deliberately its own table rather than a JSON blob in ``AppSetting``:
+    that column is ``String(500)`` and one extracted document can be
+    20,000 characters.
+
+    **A global document is NOT copied onto each reflection row.** This
+    table is the record of what was riding along. Copying would duplicate
+    tens of thousands of characters per sitting, which is the cost this
+    feature exists to avoid -- the trade being that a reflection's stored
+    ``context_files`` shows only what was attached to it specifically.
+
+    Same posture as #328 and ADR-037: the uploaded FILE is decoded in
+    memory and its bytes dropped -- only the extracted text is stored --
+    and that text is untrusted input on a prompt path that can propose
+    deletes, so it stays fenced and labelled data-not-instructions.
+    """
+
+    __tablename__ = "global_context_files"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Extractor that read it: pdf / docx / xlsx / txt / md / image.
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Extracted text. The FILE itself is never stored (#328 / ADR-037).
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    # Length of the stored text, and of the original before any
+    # truncation, so the UI can say "shortened from 84,312" rather than
+    # letting the user believe Claude read the whole thing.
+    chars: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    source_chars: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    truncated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
+
+
 class AppSetting(db.Model):
     """Tiny generic key/value store for runtime config that needs to
     survive a redeploy without touching env vars.

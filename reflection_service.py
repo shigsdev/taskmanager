@@ -1356,8 +1356,14 @@ def resolve_combined_sources(ids) -> list[Reflection]:
     return sources
 
 
-def merged_context_files(sources: list[Reflection]) -> list[dict[str, Any]]:
-    """The union of the sources' attached documents, de-duplicated.
+def merged_source_files(sources: list[Reflection]) -> list[dict[str, Any]]:
+    """The union of the SOURCE REFLECTIONS' attached documents, de-duped.
+
+    Named apart from ``global_context_service.merged_context_files``,
+    which merges the always-attached store into ONE reflection's files.
+    Both de-duplicate documents, but they take different inputs and
+    answer different questions; one name for both invited a silent
+    mix-up at the call site.
 
     The same job description attached to three sittings must reach the
     prompt ONCE -- three copies would burn the 60k budget on one document

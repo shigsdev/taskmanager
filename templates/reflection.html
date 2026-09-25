@@ -136,6 +136,28 @@
                        accept=".pdf,.docx,.xlsx,.txt,.md,.png,.jpg,.jpeg,.webp">
             </div>
             <ul class="reflection-context-list" id="reflContextList"></ul>
+
+            {# #336: documents that ride along with EVERY reflection. A
+               separate list rather than a flag on each row, because the
+               question "what does Claude always see?" should be readable
+               at a glance instead of assembled from badges. Hidden until
+               there is one, so the panel stays quiet for anyone who has
+               never used the feature. #}
+            <div class="reflection-context-global" id="reflGlobalContext"
+                 style="display:none">
+                <div class="reflection-context-global-head">
+                    <span class="reflection-context-global-title">
+                        Attached to every reflection
+                    </span>
+                    <span class="reflection-context-global-hint">
+                        Claude reads these alongside every reflection, so
+                        you don't re-upload them each sitting. They share
+                        the same budget as the files above.
+                    </span>
+                </div>
+                <ul class="reflection-context-list" id="reflGlobalList"></ul>
+            </div>
+
             <p class="reflection-context-summary" id="reflContextSummary"></p>
             <p class="reflection-context-status" id="reflContextStatus"
                aria-live="polite"></p>

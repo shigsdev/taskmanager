@@ -204,6 +204,26 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "applied_at":             {"desc": "When the confirmed actions were applied", "notes": "NULL until you confirm"},
         },
     },
+    "global_context_files": {
+        "blurb": (
+            "Reference documents attached to EVERY reflection (#336), "
+            "rather than to one sitting. #328 files a document against "
+            "the open draft, so it retires with that reflection — which "
+            "means re-uploading the same job description and the same "
+            "90-day plan at every sitting. A row here rides along with "
+            "every analysis automatically. The uploaded FILE is never "
+            "stored: it is decoded to text in memory and the bytes are "
+            "dropped, exactly as for a per-session attachment."
+        ),
+        "columns": {
+            "filename":     {"desc": "The document's name, as you uploaded it", "notes": "Sanitised; shown in the always-attached list"},
+            "kind":         {"desc": "Which extractor read it", "notes": "pdf / docx / xlsx / txt / md / image (Vision OCR)"},
+            "text":         {"desc": "The extracted text — the only part kept", "notes": "The file itself never reaches server disk or this database (ADR-037). This text is untrusted input on a prompt path that can propose deletes, so it is fenced and labelled data-not-instructions, and nothing is applied without your confirmation."},
+            "chars":        {"desc": "Length of the stored text", "notes": "Counts against the shared 60,000-character budget alongside per-reflection attachments — marking a document global buys no extra room"},
+            "source_chars": {"desc": "Length before any truncation", "notes": "Lets the list say \"shortened from 84,312\" rather than letting you believe the whole document was read"},
+            "truncated":    {"desc": "Whether it was too long and got cut", "notes": "Stated out loud in the UI; silently analysing the first third would be a worse failure than refusing it"},
+        },
+    },
     "app_settings": {
         "blurb": (
             "Tiny generic key/value store for runtime configuration "
