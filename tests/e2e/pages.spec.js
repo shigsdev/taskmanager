@@ -3256,3 +3256,173 @@ test.describe("Reflection - files attached to every reflection (#336)", () => {
             }
         });
 });
+
+test.describe("Reflection - the draft keeps the last voice segment (#330)", () => {
+    // Drives a REAL MediaRecorder against Chromium's fake capture device
+    // (FAKE_MEDIA_ARGS in playwright.config.js) and inspects the actual
+    // autosave PUT bodies. The bug was a two-line ORDERING mistake -
+    // rawSegments.push() ran AFTER the flush that snapshots it - so
+    // nothing short of watching the real request could catch it. Whisper
+    // itself is stubbed: the assertion is about what we SEND, and a real
+    // transcription would cost money and return different words each run.
+    const SEG_ONE = "first spoken chunk on the phone";
+    const SEG_TWO = "second spoken chunk still on the phone";
+
+    const stubWhisper = async (page, texts) => {
+        let n = 0;
+        await page.route("**/api/reflection/transcribe-segment", async (route) => {
+            const transcript = texts[Math.min(n, texts.length - 1)];
+            n += 1;
+            await route.fulfill({
+                status: 200, contentType: "application/json",
+                body: JSON.stringify({
+                    transcript,
+                    duration_seconds: 11.5,
+                    cost_usd: 0.0012,
+                }),
+            });
+        });
+    };
+
+    // Every draft PUT body, in order, as parsed JSON.
+    const watchDraftPuts = (page) => {
+        const puts = [];
+        page.on("request", (req) => {
+            if (req.method() !== "PUT") return;
+            if (!req.url().includes("/api/reflection/draft")) return;
+            try { puts.push(JSON.parse(req.postData() || "{}")); }
+            catch (e) { puts.push({ unparseable: true }); }
+        });
+        return puts;
+    };
+
+    const readDraft = (page) => page.evaluate(async () => {
+        const res = await fetch("/api/reflection/draft",
+                                { credentials: "same-origin" });
+        return (await res.json()).draft;
+    });
+
+    const segmentCount = async (page) => {
+        const d = await readDraft(page);
+        return d && Array.isArray(d.raw_segments) ? d.raw_segments.length : 0;
+    };
+
+    // `endState` is the panel that should be showing once the segment has
+    // been transcribed: paused normally, but IDLE when the very first
+    // segment came back silent (there is nothing to resume from yet).
+    const recordOneSegment = async (page, startId, endState) => {
+        await page.locator("#" + startId).click();
+        await expect(page.locator("#reflVoiceRecording"))
+            .toBeVisible({ timeout: 20000 });
+        // Give the recorder real audio to hand over; a zero-length blob is
+        // not the shape the upload path sees in practice.
+        await page.waitForTimeout(1200);
+        await page.locator("#reflPauseBtn").click();
+        await expect(page.locator(endState || "#reflVoicePaused"))
+            .toBeVisible({ timeout: 20000 });
+    };
+
+    test.beforeEach(async ({ page, context }) => {
+        await context.grantPermissions(["microphone"]);
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.evaluate(async () => {
+            await fetch("/api/reflection/draft", {
+                method: "DELETE", credentials: "same-origin",
+            });
+        });
+        // RELOAD after the delete, not before. Deleting server-side while
+        // the page is already up leaves the client holding the restored
+        // draft's segments in memory, and the next dictated segment lands
+        // on top of them - which showed up here as three segments where
+        // the test expected two. (afterEach can lose its delete to the
+        // context teardown, so a leftover draft is not hypothetical.)
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+    });
+
+    test.afterEach(async ({ page }) => {
+        await page.evaluate(async () => {
+            await fetch("/api/reflection/draft", {
+                method: "DELETE", credentials: "same-origin",
+            });
+        }).catch(() => {});
+    });
+
+    test("the flush carrying a segment's TEXT carries the segment", async ({ page }) => {
+        await stubWhisper(page, [SEG_ONE]);
+        const puts = watchDraftPuts(page);
+        await page.locator("#reflTabVoice").click();
+        await recordOneSegment(page, "reflRecordBtn");
+
+        await expect.poll(
+            () => puts.filter((b) => (b.text || "").includes(SEG_ONE)).length,
+            { timeout: 15000 },
+        ).toBeGreaterThan(0);
+
+        // THE assertion. Pre-fix this PUT carried the new text with the
+        // PREVIOUS (empty) segment list, so the draft was one behind from
+        // the very first segment.
+        const carrying = puts.filter((b) => (b.text || "").includes(SEG_ONE));
+        const withSeg = carrying.filter(
+            (b) => Array.isArray(b.raw_segments) && b.raw_segments.length >= 1);
+        expect(withSeg.length).toBeGreaterThan(0);
+        expect(withSeg[0].raw_segments[0].text).toBe(SEG_ONE);
+        // The costed telemetry is the point of the trail, not just words.
+        expect(withSeg[0].raw_segments[0].cost_usd).toBe(0.0012);
+        expect(withSeg[0].raw_segments[0].duration_seconds).toBe(11.5);
+    });
+
+    test("the SERVER ends up holding both segments", async ({ page }) => {
+        // What the second device actually reads. The PUT assertion above
+        // could pass while the server still disagreed.
+        await stubWhisper(page, [SEG_ONE, SEG_TWO]);
+        await page.locator("#reflTabVoice").click();
+        await recordOneSegment(page, "reflRecordBtn");
+        await recordOneSegment(page, "reflResumeBtn");
+
+        await expect.poll(() => segmentCount(page), { timeout: 20000 }).toBe(2);
+
+        const draft = await readDraft(page);
+        expect(draft.raw_segments.map((s) => s.text))
+            .toEqual([SEG_ONE, SEG_TWO]);
+        // And it is filed as voice-captured, so the resumed sitting reads
+        // as what it was.
+        expect(draft.input_mode).toBe("voice");
+    });
+
+    test("editing the dictated text does not erase the segments", async ({ page }) => {
+        // The server half of #330: save_draft used to assign raw_segments
+        // unconditionally, so a text-only autosave wiped the whole trail.
+        await stubWhisper(page, [SEG_ONE]);
+        await page.locator("#reflTabVoice").click();
+        await recordOneSegment(page, "reflRecordBtn");
+        await expect.poll(() => segmentCount(page), { timeout: 15000 }).toBe(1);
+
+        // A text-only PUT, exactly what a second device sends when its
+        // restore bailed because something was already in the box.
+        await page.evaluate(async () => {
+            await fetch("/api/reflection/draft", {
+                method: "PUT", credentials: "same-origin",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: "tidied up on the laptop" }),
+            });
+        });
+        const draft = await readDraft(page);
+        expect(draft.transcript).toBe("tidied up on the laptop");
+        expect(draft.raw_segments.map((s) => s.text)).toEqual([SEG_ONE]);
+    });
+
+    test("a silent segment adds nothing to the trail", async ({ page }) => {
+        // Whisper heard no words. The push must not run either, or the
+        // draft grows a segment with empty text and a real cost attached.
+        await stubWhisper(page, [""]);
+        await page.locator("#reflTabVoice").click();
+        // Back to IDLE, not paused: with no words yet there is nothing to
+        // resume from, so the page offers Start again.
+        await recordOneSegment(page, "reflRecordBtn", "#reflVoiceIdle");
+        await expect(page.locator("#reflVoiceStatus"))
+            .toContainText("silent", { timeout: 15000 });
+        expect(await segmentCount(page)).toBe(0);
+    });
+});

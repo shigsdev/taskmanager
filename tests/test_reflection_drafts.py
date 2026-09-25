@@ -251,3 +251,181 @@ class TestDraftValidationAndAuth:
             lambda: client.delete("/api/reflection/draft"),
         ):
             assert call().status_code in (302, 401, 403)
+
+
+class TestRawSegmentsSurviveATextOnlySave:
+    """#330: a text-only autosave must not erase the Whisper audit trail.
+
+    ``save_draft`` used to assign ``draft.raw_segments`` unconditionally,
+    so a PUT carrying only ``text`` wiped the per-segment record
+    (verbatim Whisper output, duration, cost). Found while fixing the
+    client-side ordering half of #330 — and strictly worse than it, since
+    it loses every segment rather than the last one.
+
+    The path is real, not theoretical: dictate on the phone, open the
+    reflection on the laptop with something already in the textarea, and
+    the client's restore deliberately bails rather than clobber what you
+    were typing — leaving its segment buffer empty. The next keystroke's
+    autosave then sends text alone.
+    """
+
+    _SEGS = [
+        {"text": "first spoken chunk", "duration_seconds": 12.5,
+         "cost_usd": 0.0012, "recorded_at": "2026-09-25T09:00:00Z"},
+        {"text": "second spoken chunk", "duration_seconds": 8.0,
+         "cost_usd": 0.0008, "recorded_at": "2026-09-25T09:02:00Z"},
+    ]
+
+    def _put(self, client, body):
+        resp = client.put("/api/reflection/draft", json=body)
+        assert resp.status_code == 200
+        return resp.get_json()["draft"]
+
+    def test_text_only_autosave_keeps_the_segments(
+        self, app, client, monkeypatch,
+    ):
+        _bypass_auth(monkeypatch)
+        self._put(client, {"text": "two chunks so far",
+                           "raw_segments": self._SEGS})
+        # The wipe: an edit typed after dictating, sending text alone.
+        after = self._put(client, {"text": "two chunks so far plus typing"})
+        assert [s["text"] for s in after["raw_segments"]] == [
+            "first spoken chunk", "second spoken chunk",
+        ]
+        # The costed telemetry is the whole point of the trail — a
+        # surviving list of bare strings would still be a loss.
+        assert after["raw_segments"][0]["cost_usd"] == 0.0012
+        assert after["raw_segments"][1]["duration_seconds"] == 8.0
+
+    def test_survives_repeated_text_only_saves(
+        self, app, client, monkeypatch,
+    ):
+        """The autosave fires on every keystroke burst, not once."""
+        _bypass_auth(monkeypatch)
+        self._put(client, {"text": "spoken", "raw_segments": self._SEGS})
+        for i in range(5):
+            self._put(client, {"text": f"spoken, edit {i}"})
+        draft = client.get("/api/reflection/draft").get_json()["draft"]
+        assert len(draft["raw_segments"]) == 2
+
+    def test_input_mode_stays_voice_across_a_text_only_save(
+        self, app, client, monkeypatch,
+    ):
+        """Editing dictated text must not re-file the sitting as typed."""
+        _bypass_auth(monkeypatch)
+        self._put(client, {"text": "spoken", "raw_segments": self._SEGS})
+        after = self._put(client, {"text": "spoken, then edited"})
+        assert after["input_mode"] == "voice"
+
+    def test_an_explicit_empty_list_still_clears(
+        self, app, client, monkeypatch,
+    ):
+        """UNSET means unchanged; ``[]`` means clear. Keep the escape hatch."""
+        _bypass_auth(monkeypatch)
+        self._put(client, {"text": "spoken", "raw_segments": self._SEGS})
+        after = self._put(client, {"text": "spoken", "raw_segments": []})
+        assert after["raw_segments"] == []
+
+    def test_a_later_save_can_still_grow_the_list(
+        self, app, client, monkeypatch,
+    ):
+        """The client-side half of #330: segment 3 lands and is sent."""
+        _bypass_auth(monkeypatch)
+        self._put(client, {"text": "spoken", "raw_segments": self._SEGS})
+        third = {"text": "third spoken chunk", "duration_seconds": 4.0,
+                 "cost_usd": 0.0004, "recorded_at": "2026-09-25T09:05:00Z"}
+        after = self._put(client, {
+            "text": "spoken more", "raw_segments": [*self._SEGS, third],
+        })
+        assert [s["text"] for s in after["raw_segments"]] == [
+            "first spoken chunk", "second spoken chunk", "third spoken chunk",
+        ]
+
+    def test_submitting_without_segments_falls_back_to_the_draft(
+        self, app, client, monkeypatch,
+    ):
+        """The end-to-end consequence: what lands in history.
+
+        This is the assertion the user would actually notice — the
+        reflection they keep forever either carries its audit trail or
+        doesn't. The submit POST here sends NO raw_segments, which is
+        exactly what the second device sends when its restore bailed:
+        the draft holds the segments, the client's buffer doesn't.
+        """
+        _bypass_auth(monkeypatch)
+        self._put(client, {"text": "spoken", "raw_segments": self._SEGS})
+        self._put(client, {"text": "spoken, tidied up on the laptop"})
+        with patch(
+            "reflection_api.analyze_reflection", return_value=_NO_ANALYSIS,
+        ):
+            resp = client.post(
+                "/api/reflection",
+                json={"text": "spoken, tidied up on the laptop"},
+            )
+        assert resp.status_code == 201
+        saved = db.session.scalars(
+            select(Reflection).where(Reflection.is_draft.is_(False))
+        ).all()
+        assert len(saved) == 1
+        assert [s["text"] for s in (saved[0].raw_segments or [])] == [
+            "first spoken chunk", "second spoken chunk",
+        ]
+        assert saved[0].transcript == "spoken, tidied up on the laptop"
+        # And the sitting is still filed as voice-captured, since it was.
+        assert saved[0].input_mode.value == "voice"
+
+    def test_the_clients_live_buffer_wins_over_the_draft(
+        self, app, client, monkeypatch,
+    ):
+        """The fallback must not override a client that IS ahead.
+
+        The normal path: the draft's last flush got 2 segments through, a
+        third landed, and Done posts all 3 directly. Preferring the draft
+        here would silently drop the newest segment — the very bug #330
+        set out to fix, reintroduced from the other side.
+        """
+        _bypass_auth(monkeypatch)
+        self._put(client, {"text": "spoken", "raw_segments": self._SEGS})
+        third = {"text": "third spoken chunk", "duration_seconds": 4.0,
+                 "cost_usd": 0.0004, "recorded_at": "2026-09-25T09:05:00Z"}
+        with patch(
+            "reflection_api.analyze_reflection", return_value=_NO_ANALYSIS,
+        ):
+            resp = client.post("/api/reflection", json={
+                "text": "spoken three times",
+                "raw_segments": [*self._SEGS, third],
+            })
+        assert resp.status_code == 201
+        saved = db.session.scalars(
+            select(Reflection).where(Reflection.is_draft.is_(False))
+        ).all()
+        assert [s["text"] for s in (saved[0].raw_segments or [])] == [
+            "first spoken chunk", "second spoken chunk", "third spoken chunk",
+        ]
+
+    def test_a_typed_submit_with_no_draft_segments_stays_typed(
+        self, app, client, monkeypatch,
+    ):
+        """The fallback must not invent a voice sitting out of nothing."""
+        _bypass_auth(monkeypatch)
+        self._put(client, {"text": "just typing"})
+        with patch(
+            "reflection_api.analyze_reflection", return_value=_NO_ANALYSIS,
+        ):
+            resp = client.post("/api/reflection", json={"text": "just typing"})
+        assert resp.status_code == 201
+        saved = db.session.scalars(
+            select(Reflection).where(Reflection.is_draft.is_(False))
+        ).all()
+        assert (saved[0].raw_segments or []) == []
+        assert saved[0].input_mode.value == "typed"
+
+    def test_a_typed_only_draft_is_unaffected(
+        self, app, client, monkeypatch,
+    ):
+        """No segments were ever sent, so there is nothing to preserve."""
+        _bypass_auth(monkeypatch)
+        self._put(client, {"text": "just typing"})
+        after = self._put(client, {"text": "just typing, more"})
+        assert after["raw_segments"] == []
+        assert after["input_mode"] == "typed"

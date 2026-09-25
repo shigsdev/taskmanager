@@ -250,6 +250,18 @@ component is added, a data flow changes, or a security boundary shifts.
   exactly one place at every instant — never zero (lost reflection),
   never two (a stale draft reappearing and inviting a duplicate
   submit).
+  On `PUT /api/reflection/draft`, `raw_segments` is
+  UNSET-means-UNCHANGED (#330), matching `context_files` — the autosave
+  fires on every keystroke burst and sends only the textarea, so
+  treating its silence as "no segments" erased the per-segment Whisper
+  audit trail (verbatim text, duration, cost) on the first edit after
+  dictating. Send `[]` to clear it deliberately. The submit path falls
+  back to the draft's segments when the client sends none, for the same
+  reason it reads `context_files` and lineage off the draft before
+  `discard_draft()` hard-deletes it. Client-side, the segment buffer is
+  appended BEFORE the flush that snapshots it, and the save decision
+  compares segment COUNTS as well as text so any future drift is
+  repaired by the next save rather than persisting for the sitting.
   **Context files (#328)**: a reflection can carry reference documents
   so the analysis reasons against more than the user's words — a job
   description, a 30/60/90 plan, a skills matrix, a photo of a

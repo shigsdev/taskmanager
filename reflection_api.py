@@ -306,6 +306,23 @@ def submit(email: str):  # noqa: ARG001
     # anything still only on the draft is gone a few lines from now.
     continued_from_id = open_draft.continued_from_id if open_draft else None
     continued_from = open_draft.continued_from if open_draft else None
+    # #330: and the same for the per-segment Whisper audit trail. The
+    # client's live buffer WINS when it holds anything — it can be ahead of
+    # the last flush — but its silence must mean "use what the draft has",
+    # not "throw it away". Without this, a reflection resumed on a second
+    # device where the client's restore bailed out (it refuses to clobber
+    # text you were already typing, so its buffer stays empty) submits with
+    # no segments, and `discard_draft()` below takes the real ones with it.
+    # Gated on the JSON path: a one-shot audio upload is its own recording
+    # and has no relationship to segments sitting on the draft.
+    if (
+        audio_file is None
+        and not raw_segments
+        and open_draft
+        and open_draft.raw_segments
+    ):
+        raw_segments = open_draft.raw_segments
+        input_mode = ReflectionInputMode.VOICE
 
     # Persist the transcript FIRST, before the paid + failure-prone
     # Claude call. #165 requires every transcript persisted forever;
@@ -521,6 +538,10 @@ def put_draft(email: str):  # noqa: ARG001
     open draft. An empty ``text`` is allowed on purpose — the user
     clearing the box is a state worth saving, and rejecting it would
     strand the client's autosave loop.
+
+    Omitting ``raw_segments`` leaves the stored ones UNCHANGED (#330) —
+    a text-only autosave must never erase the per-segment Whisper audit
+    trail. Send ``[]`` to clear it deliberately.
     """
     data = g.json_body
     text = data.get("text")

@@ -1126,10 +1126,25 @@ def save_draft(
     and sends only the textarea; treating its silence as "no
     attachments" would delete a document the user attached minutes
     earlier. Pass ``[]`` explicitly to clear them.
+
+    ``raw_segments`` is UNSET-means-UNCHANGED for exactly the same reason
+    (#330, 2026-09-25). It used to be assigned unconditionally, so any
+    text-only autosave ERASED the per-segment Whisper audit trail. That
+    is reachable, not theoretical: resume a dictated draft on a second
+    device while something is already in the textarea and the client's
+    restore bails out (it refuses to clobber what you were typing), so
+    its segment buffer stays empty — then the first keystroke's PUT sends
+    text alone and the segments recorded on the first device are gone.
+    Same shape on one device via Try Again after a failed interim
+    analysis, which empties the buffer while the draft stays live. Pass
+    ``[]`` explicitly to clear them.
     """
     draft = get_open_draft()
     text = (transcript or "").strip()
-    segments = _normalise_raw_segments(raw_segments)
+    segments = (
+        None if raw_segments is None
+        else _normalise_raw_segments(raw_segments)
+    )
     if draft is None:
         draft = Reflection(
             iso_week=current_iso_week(),
@@ -1138,7 +1153,7 @@ def save_draft(
                 else ReflectionInputMode.TYPED
             ),
             transcript=text,
-            raw_segments=segments,
+            raw_segments=(segments or []),
             context_files=normalise_context_files(context_files),
             proposed_actions={"explicit": [], "suggested": []},
             is_draft=True,
@@ -1146,7 +1161,8 @@ def save_draft(
         db.session.add(draft)
     else:
         draft.transcript = text
-        draft.raw_segments = segments
+        if segments is not None:
+            draft.raw_segments = segments
         if context_files is not None:
             draft.context_files = normalise_context_files(context_files)
         if segments:

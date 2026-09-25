@@ -51,6 +51,67 @@ describe("shouldAutosaveDraft", () => {
     });
 });
 
+describe("shouldAutosaveDraft — the voice audit trail (#330)", () => {
+    // Why these exist: judging a save on TEXT ALONE is what made #330
+    // unrepairable. A draft that was one segment behind stayed behind for
+    // the rest of the sitting, because the visibilitychange safety net
+    // asked "did the text change?", got no, and returned false.
+    test("a segment landing with IDENTICAL text still saves", () => {
+        // The repair path. The server holds 1 segment, we hold 2, and the
+        // words are byte-identical (the user had already typed them).
+        expect(shouldAutosaveDraft("same words", "same words", 1, 2)).toBe(true);
+    });
+
+    test("no drift means no save, exactly as before", () => {
+        expect(shouldAutosaveDraft("same words", "same words", 2, 2)).toBe(false);
+    });
+
+    test("a shrink does NOT save", () => {
+        // A shrink means the draft was reset; both counters move together
+        // there. Saving on it would PUT a shorter list over a longer one.
+        expect(shouldAutosaveDraft("same words", "same words", 3, 1)).toBe(false);
+    });
+
+    test("counts may be the arrays themselves, not just numbers", () => {
+        // The caller holds an array; making it pass .length is one more
+        // place to get it wrong.
+        const seg = (n) => Array.from({ length: n }, (_, i) => ({ text: "s" + i }));
+        expect(shouldAutosaveDraft("t", "t", seg(1), seg(2))).toBe(true);
+        expect(shouldAutosaveDraft("t", "t", seg(2), seg(2))).toBe(false);
+    });
+
+    test("omitting the counts keeps the #324 text-only rule intact", () => {
+        // Every pre-#330 caller passes two arguments. None of them may
+        // change behaviour.
+        expect(shouldAutosaveDraft("hello", "hello")).toBe(false);
+        expect(shouldAutosaveDraft("hello", "hello world")).toBe(true);
+        expect(shouldAutosaveDraft(null, "")).toBe(false);
+        expect(shouldAutosaveDraft("notes", "")).toBe(true);
+    });
+
+    test("junk counts can neither manufacture nor suppress a save", () => {
+        // A drifted count must never be the reason an empty box creates a
+        // phantom draft, nor the reason a real text edit is skipped.
+        [null, undefined, NaN, -1, "2", {}, () => 2].forEach((bad) => {
+            expect(shouldAutosaveDraft(null, "", bad, bad)).toBe(false);
+            expect(shouldAutosaveDraft("a", "b", bad, bad)).toBe(true);
+            expect(shouldAutosaveDraft("a", "a", bad, bad)).toBe(false);
+        });
+    });
+
+    test("a segment drift on a never-saved EMPTY box is still a no-op", () => {
+        // Guards the ordering inside the helper: the empty-nothing-to-erase
+        // rule has to win, or a stray count creates a draft from nothing.
+        expect(shouldAutosaveDraft(null, "", 0, 3)).toBe(false);
+        expect(shouldAutosaveDraft("", "   ", 0, 3)).toBe(false);
+    });
+
+    test("text change AND segment growth together save once", () => {
+        // The normal voice path: a segment lands, appending its words.
+        expect(shouldAutosaveDraft("one", "one two", 1, 2)).toBe(true);
+    });
+});
+
 describe("formatSavedAt", () => {
     const NOW = Date.parse("2026-09-22T12:00:00Z");
     const at = (iso) => formatSavedAt(iso, NOW);

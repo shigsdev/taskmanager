@@ -174,13 +174,39 @@
      * Note the deliberate asymmetry: clearing a draft that HAD text is a
      * real edit and must save (the user meant to erase it), but ""
      * when nothing was ever saved is a no-op.
+     *
+     * #330 (2026-09-25) — the segment counts. Text is not the whole of a
+     * draft: `raw_segments` carries the verbatim Whisper output, its
+     * duration and its cost, and that can grow while the text stays
+     * byte-identical (a segment landing whose words the user had already
+     * typed, or a flush that raced an in-flight save). Judging on text
+     * alone is what made #330 UNREPAIRABLE — the visibilitychange
+     * safety net looked at the text, saw no change, and returned false,
+     * so a draft that was one segment behind stayed one segment behind
+     * for the rest of the sitting. Comparing what the server HAS against
+     * what we HOLD turns an ordering-dependent invariant into a
+     * state-compared one: any future path that appends a segment without
+     * flushing is still repaired by the next save opportunity.
+     *
+     * Both counts are optional; omit them and the rule is exactly the
+     * #324 text comparison. GROWTH only — a shrink means the draft was
+     * reset, and both counters move together there.
      */
-    function shouldAutosaveDraft(lastSaved, current) {
+    function shouldAutosaveDraft(lastSaved, current, savedSegments, segments) {
         var cur = typeof current === "string" ? current : "";
         var prev = typeof lastSaved === "string" ? lastSaved : "";
-        if (cur === prev) return false;          // nothing changed
         if (!cur.trim() && !prev) return false;  // empty, nothing to erase
-        return true;
+        if (cur !== prev) return true;           // the text itself changed
+        return _segmentCount(segments) > _segmentCount(savedSegments);
+    }
+
+    /** #330: a count from either a number or the array itself. Anything
+     *  unusable reads as 0, so a junk argument can never manufacture a
+     *  save (or suppress one) on its own. */
+    function _segmentCount(v) {
+        if (typeof v === "number" && isFinite(v) && v > 0) return Math.floor(v);
+        if (Array.isArray(v)) return v.length;
+        return 0;
     }
 
     /**

@@ -511,6 +511,32 @@
             showVoiceSubState(hasSegmentText ? "paused" : "idle");
             return;
         }
+        // #237 (2026-05-26): buffer the raw Whisper output for this
+        // segment so we can ship the full audit-trail to the server on
+        // Done. The textarea below is the (possibly edited) form the
+        // user will eventually submit; this is the verbatim Whisper
+        // output the user MIGHT edit between segments. Both are
+        // persisted (Reflection.transcript vs Reflection.raw_segments).
+        //
+        // #330 (2026-09-25): this push MUST come BEFORE the draft flush
+        // below. saveDraftNow snapshots `rawSegments.slice()`
+        // synchronously, before its first await — so while this ran
+        // after the flush call, every PUT carried the new TEXT with the
+        // PREVIOUS segment list, leaving the stored audit trail exactly
+        // one segment behind. Invisible in one sitting (the Done POST
+        // sends the live array), but a reflection RESUMED on another
+        // device repopulates rawSegments from that short draft and loses
+        // the last segment recorded before the switch.
+        rawSegments.push({
+            text: seg,
+            duration_seconds: (data && typeof data.duration_seconds === "number")
+                ? data.duration_seconds
+                : null,
+            cost_usd: (data && typeof data.cost_usd === "number")
+                ? data.cost_usd
+                : null,
+            recorded_at: new Date().toISOString(),
+        });
         var H_ = window.reflectionHelpers || {};
         if (typeof H_.appendTranscriptSegment === "function") {
             textArea.value = H_.appendTranscriptSegment(textArea.value, seg);
@@ -526,22 +552,6 @@
                 ? textArea.value + " " : "") + seg;
         }
         hasSegmentText = true;
-        // #237 (2026-05-26): buffer the raw Whisper output for this
-        // segment so we can ship the full audit-trail to the server on
-        // Done. The textarea above is the (possibly edited) form the
-        // user will eventually submit; this is the verbatim Whisper
-        // output the user MIGHT edit between segments. Both are
-        // persisted (Reflection.transcript vs Reflection.raw_segments).
-        rawSegments.push({
-            text: seg,
-            duration_seconds: (data && typeof data.duration_seconds === "number")
-                ? data.duration_seconds
-                : null,
-            cost_usd: (data && typeof data.cost_usd === "number")
-                ? data.cost_usd
-                : null,
-            recorded_at: new Date().toISOString(),
-        });
         var wc = seg.split(/\s+/).filter(Boolean).length;
         // #326: if the pause was FORCED (clock or size), say why — being
         // cut off mid-thought with no explanation is the worst version
@@ -1028,6 +1038,12 @@
         // session's raw segments into the next submit — confusingly
         // attaching old voice transcripts to a fresh typed reflection.
         rawSegments = [];
+        // #330: the counter describes how many of the segments WE HOLD the
+        // server already has. We now hold none, so it is zero. (Reaching
+        // here with the draft still live — the interim-analysis failure
+        // path — no longer costs the stored segments either: save_draft
+        // treats an omitted raw_segments as UNCHANGED, not as empty.)
+        lastSavedSegments = 0;
         // #328: the submitted reflection took its attachments with it;
         // a fresh one starts with none.
         renderAttachments([]);
@@ -1504,6 +1520,10 @@
     var DRAFT_DEBOUNCE_MS = 1200;
     var draftTimer = null;
     var lastSavedText = null;   // null = "we've never saved"
+    // #330: how many raw voice segments the SERVER holds. Paired with
+    // lastSavedText so the save decision compares our whole state against
+    // the server's, not just the text — see shouldAutosaveDraft.
+    var lastSavedSegments = 0;
     var draftSaving = false;
 
     function setDraftStatus(msg, isError) {
@@ -1515,21 +1535,35 @@
     async function saveDraftNow() {
         if (!textArea) return;
         var text = textArea.value || "";
-        if (!RH_.shouldAutosaveDraft(lastSavedText, text)) return;
-        if (draftSaving) return;  // a save is in flight; the trailing
-                                  // debounce will catch any newer text
+        var segCount = rawSegments ? rawSegments.length : 0;
+        if (!RH_.shouldAutosaveDraft(
+            lastSavedText, text, lastSavedSegments, segCount
+        )) return;
+        if (draftSaving) {
+            // A save is in flight. #330: the original comment here claimed
+            // "the trailing debounce will catch any newer text", but
+            // nothing scheduled one — so a segment landing inside the
+            // ~100ms window of an in-flight PUT was dropped until the user
+            // typed again. Schedule the trailing save for real.
+            scheduleDraftSave(400);
+            return;
+        }
         draftSaving = true;
         setDraftStatus("Saving…");
         try {
             var body = { text: text };
-            if (rawSegments && rawSegments.length) {
-                body.raw_segments = rawSegments.slice();
+            if (segCount) {
+                body.raw_segments = rawSegments.slice(0, segCount);
             }
             await window.apiFetch("/api/reflection/draft", {
                 method: "PUT",
                 body: JSON.stringify(body),
             });
             lastSavedText = text;
+            // Only what this PUT actually carried. A segment that landed
+            // during the await is NOT on the server, and marking it saved
+            // would reintroduce #330 by a different door.
+            lastSavedSegments = segCount;
             setDraftStatus("Draft saved");
         } catch (e) {
             // Never destructive: the text is still in the textarea. Say
@@ -1552,6 +1586,11 @@
 
     function clearDraftUi() {
         lastSavedText = null;
+        // #330: the server no longer holds ANY segments for this draft.
+        // Every caller here has just submitted or deleted it, and the
+        // buffer is cleared alongside — leaving a stale count would make
+        // the next sitting's first segment look already-saved.
+        lastSavedSegments = 0;
         if (draftTimer) { clearTimeout(draftTimer); draftTimer = null; }
         if (draftBanner) draftBanner.style.display = "none";
         setDraftStatus("");
@@ -1617,6 +1656,9 @@
         if (Array.isArray(draft.raw_segments)) {
             draft.raw_segments.forEach(function (s) { rawSegments.push(s); });
         }
+        // #330: these came FROM the server's copy of the fork, so it
+        // already has them — anything beyond this is genuinely unsaved.
+        lastSavedSegments = rawSegments.length;
         renderAttachments(draft.context_files);
         showContinuation(draft.continued_from);
         // A fresh fork has never been edited, so the draft banner's
@@ -1715,6 +1757,12 @@
             rawSegments.length = 0;
             draft.raw_segments.forEach(function (s) { rawSegments.push(s); });
         }
+        // #330: the restored segments are the server's own — it is not
+        // behind on any of them. This is also the line that makes the
+        // OTHER-DEVICE case self-healing: resume on the laptop, dictate
+        // one more segment, and the flush now sends 3-of-3 rather than
+        // re-sending 2 and dropping the third.
+        lastSavedSegments = rawSegments.length;
         // A continuation already says "your words are here" AND offers the
         // way out, so the draft banner would only add a second discard
         // button beside it.
