@@ -725,6 +725,24 @@ def _normalise_raw_segments(
     return out
 
 
+def reset_applied_state(reflection: Reflection) -> Reflection:
+    """Clear the applied audit fields so this row can be applied again.
+
+    Used by the #333 interim-analysis path. `confirm` refuses a second
+    apply with 409 once `applied_at` is set, which is right for a
+    finished reflection (applying twice would duplicate everything) but
+    wrong for a draft being analysed repeatedly through a long session:
+    each pass is a NEW set of proposals over more text.
+
+    Only ever called on a draft. A submitted reflection keeps its
+    one-shot guarantee.
+    """
+    reflection.applied_actions = None
+    reflection.applied_at = None
+    db.session.commit()
+    return reflection
+
+
 def set_reflection_title(reflection_id, title: str | None) -> Reflection | None:
     """Name (or un-name) a reflection sitting (#339).
 

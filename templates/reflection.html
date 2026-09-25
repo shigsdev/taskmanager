@@ -127,8 +127,18 @@
             <textarea id="reflText" rows="10" maxlength="20000"
                 placeholder="This week I shipped the backup feature but the auth refresh slipped. I want to drop the old CSV importer — nobody uses it. Next week is mostly about the calendar redesign…"></textarea>
             <div class="reflection-input-actions">
+                {# #333: two ways out of the writing state. "Finish" is the
+                   one-way door it always was (commits the reflection,
+                   retires the draft); "Analyze so far" is a checkpoint —
+                   same Claude call, but the draft survives and you come
+                   back to it. Labelled as a pair so the difference is the
+                   first thing read, not a tooltip. #}
                 <button class="btn btn-primary" id="reflAnalyzeBtn" type="button">
-                    Analyze with Claude
+                    Finish &amp; analyze
+                </button>
+                <button class="btn btn-sm" id="reflInterimBtn" type="button"
+                        title="See what Claude proposes so far. Your reflection stays open.">
+                    Analyze so far
                 </button>
                 {# #324: autosave status. aria-live so it's announced,
                    polite so it doesn't interrupt dictation. #}
@@ -229,6 +239,13 @@
     <!-- State 3: Review proposed actions -->
     <section class="reflection-state" id="reflStateReview" style="display:none">
         <h2>Review Proposed Changes</h2>
+        {# #333: a checkpoint review has to say so, or the user assumes
+           the reflection ended and starts a new one. #}
+        <p class="reflection-interim-note" id="reflInterimNote" style="display:none"
+           role="status">
+            This is a checkpoint — your reflection is still open. Apply
+            anything useful, then carry on where you left off.
+        </p>
         <p class="reflection-cost-hint" id="reflCostHint"></p>
 
         <div class="reflection-buckets" id="reflBuckets"></div>
@@ -255,6 +272,10 @@
             <button class="btn btn-sm" id="reflFocusBtn" type="button"
                     title="Seed next week's Focus slots from this reflection">
                 ✨ Use as Next Week's Focus
+            </button>
+            <button class="btn btn-primary" id="reflBackToWriting" type="button"
+                    style="display:none">
+                ← Back to writing
             </button>
             <a href="{{ url_for('index') }}" class="btn btn-sm"
                id="reflReviewExit">Go to Tasks</a>

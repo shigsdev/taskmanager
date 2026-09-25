@@ -5238,6 +5238,18 @@ table.quality-gates code {
     border-radius: 6px;
     font-size: 0.9rem;
 }
+/* #333: "this is a checkpoint, not the end". Reads as reassurance, so
+   it uses the accent rule rather than the danger colour - the user's
+   worry here is that analysing ended their session. */
+.reflection-interim-note {
+    margin: 0 0 12px;
+    padding: 10px 14px;
+    border-left: 3px solid var(--accent);
+    background: var(--surface-sunk, #f5f5f5);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.95rem;
+}
 .reflection-cost-hint { color: var(--text-muted); font-size: 0.85rem; }
 .reflection-empty { font-style: italic; color: var(--text-muted); }
 .reflection-buckets {

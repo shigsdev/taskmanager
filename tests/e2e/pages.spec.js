@@ -2429,3 +2429,137 @@ test.describe("Reflection - naming a sitting (#339)", () => {
         expect(await firstRow(page).locator("summary").textContent()).toBe(before);
     });
 });
+
+test.describe("Reflection - checkpoint without ending the session (#333)", () => {
+    // Intercepts only the interim POST so the real renderReview path runs
+    // for free; every other reflection request goes to the server.
+    const stubInterim = async (page, explicit) => {
+        await page.route("**/api/reflection/draft/analyze", async (route) => {
+            await route.fulfill({
+                status: 200, contentType: "application/json",
+                body: JSON.stringify({
+                    id: "00000000-0000-0000-0000-000000000333",
+                    iso_week: "2026-W39", title: null, input_mode: "typed",
+                    transcript: "Half a thought.", audio_duration_seconds: null,
+                    audio_cost_usd: null, ai_cost_usd: 0.0042,
+                    proposed_actions: { explicit: explicit || [], suggested: [] },
+                    raw_segments: [], context_files: [],
+                    is_archived: false, is_active: true, interim: true,
+                }),
+            });
+        });
+    };
+
+    const SOMETHING = [{
+        op: "create", entity: "task", target: "Draft the 30/60/90",
+        reason: "You said you wanted one before day one.",
+    }];
+
+    test.beforeEach(async ({ page }) => {
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.evaluate(async () => {
+            await fetch("/api/reflection/draft", {
+                method: "DELETE", credentials: "same-origin",
+            });
+        });
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+    });
+
+    test.afterEach(async ({ page }) => {
+        await page.evaluate(async () => {
+            await fetch("/api/reflection/draft", {
+                method: "DELETE", credentials: "same-origin",
+            });
+        }).catch(() => {});
+    });
+
+    test("both ways out of writing are offered, and labelled apart",
+        async ({ page }) => {
+            await expect(page.locator("#reflAnalyzeBtn")).toHaveText(/Finish/);
+            await expect(page.locator("#reflInterimBtn")).toHaveText(/Analyze so far/);
+        });
+
+    test("a checkpoint says it is a checkpoint and offers a way back",
+        async ({ page }) => {
+            await stubInterim(page, SOMETHING);
+            await page.locator("#reflText").fill("Half a thought.");
+            await page.locator("#reflInterimBtn").click();
+            await expect(page.locator("#reflStateReview")).toBeVisible({ timeout: 10000 });
+
+            await expect(page.locator("#reflInterimNote")).toBeVisible();
+            await expect(page.locator("#reflBackToWriting")).toBeVisible();
+            // Start Over would wipe the box the user is still filling.
+            await expect(page.locator("#reflStartOverBtn")).toBeHidden();
+            await expect(page.locator("#reflApplyBtn")).toBeVisible();
+        });
+
+    test("Back to writing returns the text untouched", async ({ page }) => {
+        // The fear this addresses: that analysing threw the session away.
+        await stubInterim(page, SOMETHING);
+        await page.locator("#reflText").fill("Hours of irreplaceable thinking.");
+        await page.locator("#reflInterimBtn").click();
+        await expect(page.locator("#reflStateReview")).toBeVisible({ timeout: 10000 });
+        await page.locator("#reflBackToWriting").click();
+        await expect(page.locator("#reflStateInput")).toBeVisible();
+        await expect(page.locator("#reflText"))
+            .toHaveValue("Hours of irreplaceable thinking.");
+    });
+
+    test("you can checkpoint again after adding more", async ({ page }) => {
+        await stubInterim(page, SOMETHING);
+        await page.locator("#reflText").fill("First hour.");
+        await page.locator("#reflInterimBtn").click();
+        await expect(page.locator("#reflStateReview")).toBeVisible({ timeout: 10000 });
+        await page.locator("#reflBackToWriting").click();
+        await page.locator("#reflText").fill("First hour. Second hour.");
+        await page.locator("#reflInterimBtn").click();
+        await expect(page.locator("#reflInterimNote")).toBeVisible({ timeout: 10000 });
+        await page.locator("#reflBackToWriting").click();
+        await expect(page.locator("#reflText")).toHaveValue("First hour. Second hour.");
+    });
+
+    test("an empty checkpoint is refused client-side", async ({ page }) => {
+        page.once("dialog", (d) => d.accept());
+        await page.locator("#reflInterimBtn").click();
+        await expect(page.locator("#reflStateInput")).toBeVisible();
+    });
+
+    test("a final review keeps Start Over and shows no checkpoint note",
+        async ({ page }) => {
+            // Guards the toggle in both directions: the interim controls
+            // must not leak into a finished review.
+            await page.route("**/api/reflection", async (route, request) => {
+                if (request.method() !== "POST") return route.continue();
+                await route.fulfill({
+                    status: 201, contentType: "application/json",
+                    body: JSON.stringify({
+                        id: "00000000-0000-0000-0000-000000000334",
+                        iso_week: "2026-W39", title: null, input_mode: "typed",
+                        transcript: "Done.", audio_duration_seconds: null,
+                        audio_cost_usd: null, ai_cost_usd: 0.01,
+                        proposed_actions: { explicit: SOMETHING, suggested: [] },
+                        raw_segments: [], context_files: [],
+                        is_archived: false, is_active: true,
+                    }),
+                });
+            });
+            await page.locator("#reflText").fill("Done.");
+            await page.locator("#reflAnalyzeBtn").click();
+            await expect(page.locator("#reflStateReview")).toBeVisible({ timeout: 10000 });
+            await expect(page.locator("#reflInterimNote")).toBeHidden();
+            await expect(page.locator("#reflBackToWriting")).toBeHidden();
+            await expect(page.locator("#reflStartOverBtn")).toBeVisible();
+        });
+
+    test("no horizontal overflow with the checkpoint note shown", async ({ page }) => {
+        await stubInterim(page, SOMETHING);
+        await page.locator("#reflText").fill("Checking the layout.");
+        await page.locator("#reflInterimBtn").click();
+        await expect(page.locator("#reflInterimNote")).toBeVisible({ timeout: 10000 });
+        const overflows = await page.evaluate(() =>
+            document.documentElement.scrollWidth > window.innerWidth);
+        expect(overflows).toBe(false);
+    });
+});

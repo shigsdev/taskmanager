@@ -72,6 +72,7 @@ from reflection_service import (
     get_open_draft,
     get_reflection,
     list_reflections,
+    reset_applied_state,
     save_draft,
     save_reflection,
     set_reflection_title,
@@ -629,6 +630,64 @@ def list_all(email: str):  # noqa: ARG001
 
 
 # #238 (2026-05-26): archive + soft-delete endpoints.
+
+
+@bp.post("/draft/analyze")
+@login_required
+@limiter.limit(PAID_API)  # paid: a full Claude analysis per click
+def analyze_draft(email: str):  # noqa: ARG001
+    """Analyse the OPEN DRAFT without ending the reflection (#333).
+
+    `submit` is a one-way door: it commits a Reflection row, hard-deletes
+    the draft and leaves the user on the review screen with no way back
+    into the same session. A user reflecting for hours wants proposals
+    PART WAY through — review, apply some, keep dictating.
+
+    So this analyses the draft in place. Nothing is committed as a
+    finished reflection, the draft (text, raw_segments, attachments)
+    survives untouched, and the proposals land on the draft row so the
+    existing confirm endpoint can apply them by draft id.
+
+    A fresh pass SUPERSEDES the previous one: `applied_at` /
+    `applied_actions` are cleared so the user can apply again after
+    adding more. Anything applied in an earlier pass already exists as
+    real rows and stays undoable through the recycle bin — the draft's
+    audit fields are session scaffolding, not the ledger.
+    """
+    draft = get_open_draft()
+    if draft is None:
+        return jsonify({"error": "No reflection in progress."}), 404
+    if not (draft.transcript or "").strip():
+        return jsonify({"error": "Write or say something first."}), 422
+
+    context_files = normalise_context_files(draft.context_files)
+    try:
+        analysis = analyze_reflection(
+            draft.transcript,
+            exclude_id=draft.id,
+            context_files=context_files,
+        )
+    except RuntimeError as e:
+        logger.warning("Interim analysis failed (draft %s kept): %s", draft.id, e)
+        return jsonify({"error": f"Analysis failed: {e}", "saved": True}), 422
+    except Exception:
+        logger.exception("Interim analysis crashed (draft %s kept)", draft.id)
+        return jsonify({"error": "Analysis failed (unexpected)", "saved": True}), 500
+
+    draft = attach_analysis(
+        draft,
+        proposed={
+            "explicit": analysis["explicit"],
+            "suggested": analysis["suggested"],
+        },
+        ai_cost_usd=analysis["ai_cost_usd"],
+    )
+    reset_applied_state(draft)
+    payload = _serialize(draft)
+    # Tells the client this review is a checkpoint, not the end: the
+    # review screen then offers "Back to writing" instead of Start Over.
+    payload["interim"] = True
+    return jsonify(payload)
 
 
 @bp.patch("/<uuid:reflection_id>")

@@ -657,6 +657,7 @@ the code.
 /api/reflection/milestone                        # GET resolved runway / PUT set (label or goal_id + target_date) / DELETE clear — #325; feeds the /reflection header AND the Claude prompt
 /api/reflection/<uuid:reflection_id>             # GET one (history detail), DELETE soft-delete (#238)
 /api/reflection/<uuid:reflection_id>/confirm     # POST apply confirmed actions
+/api/reflection/draft/analyze                    # POST #333 — analyse the open draft WITHOUT ending it
 /api/reflection/<uuid:reflection_id>/analyze     # POST #338 — re-run Claude over a saved reflection
 /api/reflection/<uuid:reflection_id>/archive     # POST #238 — hide from default history
 /api/reflection/<uuid:reflection_id>/unarchive   # POST #238 — restore from archive

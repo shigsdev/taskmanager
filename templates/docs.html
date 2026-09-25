@@ -827,6 +827,26 @@ https://example.com/foo
                 <li>If Claude proposes nothing, the review screen says so
                     and only the two exits remain.</li>
             </ul>
+            <h3>Checkpointing a long reflection</h3>
+            <ul>
+                <li><strong>Analyze so far</strong> asks Claude what it
+                    would propose right now <em>without</em> ending the
+                    reflection. You get the normal review screen, marked
+                    as a checkpoint, and <strong>← Back to writing</strong>
+                    returns you to your text exactly as you left it.</li>
+                <li><strong>Finish &amp; analyze</strong> is the one-way
+                    door: it saves the reflection to your history and
+                    closes the session.</li>
+                <li>You can checkpoint as many times as you like, and
+                    apply from each one. Each checkpoint costs a Claude
+                    call, and each is a fresh read of everything written
+                    so far — so a proposal you already applied should
+                    not come back, but check the list rather than
+                    assuming.</li>
+                <li>Anything you apply at a checkpoint is real
+                    immediately, and undoable from the recycle bin like
+                    any other reflection change.</li>
+            </ul>
             <h3>Naming a reflection</h3>
             <ul>
                 <li>Every past reflection shows a generated label — ISO

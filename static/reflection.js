@@ -100,6 +100,8 @@
     var focusBtn = document.getElementById("reflFocusBtn");
     var startOverBtn = document.getElementById("reflStartOverBtn");
     var reviewExit = document.getElementById("reflReviewExit");
+    var interimNote = document.getElementById("reflInterimNote");
+    var backToWriting = document.getElementById("reflBackToWriting");
 
     // Done refs
     var doneMessage = document.getElementById("reflDoneMessage");
@@ -175,6 +177,50 @@
         }
         submitReflection({ json: { text: text } });
     });
+
+    // #333: analyse WITHOUT ending the reflection. Flushes the draft
+    // first so the server analyses what is actually on screen, not the
+    // text as of the last debounce.
+    var interimBtn = document.getElementById("reflInterimBtn");
+    if (interimBtn) {
+        interimBtn.addEventListener("click", async function () {
+            var text = (textArea.value || "").trim();
+            if (!text) {
+                alert("Write something to reflect on first.");
+                return;
+            }
+            interimBtn.disabled = true;
+            showState("analyzing");
+            markStep(stepSave, "done");
+            markStep(stepClaude, "running");
+            try {
+                await saveDraftNow();
+            } catch (e) { /* the analyze call below surfaces any real problem */ }
+            var data;
+            try {
+                data = await window.apiFetch("/api/reflection/draft/analyze",
+                                             { method: "POST" });
+            } catch (err) {
+                markStep(stepClaude, "fail");
+                // Deliberately NOT clearDraftUi(): unlike submit, nothing
+                // was retired server-side, so the draft is still live.
+                showErr("Analysis failed: " + (err.message || err), true);
+                return;
+            } finally {
+                interimBtn.disabled = false;
+            }
+            markStep(stepClaude, "done");
+            current = data;
+            renderReview(data);
+        });
+    }
+
+    if (backToWriting) {
+        backToWriting.addEventListener("click", function () {
+            // The draft was never retired, so this is purely a view change.
+            showState("input");
+        });
+    }
 
     // ---- voice submit (#232 — pause/resume + append-to-textarea) ----
     //
@@ -750,6 +796,14 @@
             });
             bucketsEl.appendChild(section);
         });
+
+        // #333: a checkpoint review keeps the draft open, so it offers
+        // "Back to writing" and hides Start Over — which would clear the
+        // box the user is still filling. A final review is unchanged.
+        var interim = !!(refl && refl.interim);
+        if (interimNote) interimNote.style.display = interim ? "" : "none";
+        if (backToWriting) backToWriting.style.display = interim ? "" : "none";
+        if (startOverBtn) startOverBtn.style.display = interim ? "none" : "";
 
         var cost = refl && refl.ai_cost_usd;
         costHintEl.textContent = cost
