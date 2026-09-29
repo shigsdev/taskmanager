@@ -177,9 +177,13 @@ def _utc_iso(dt) -> str | None:
     return dt.isoformat()
 
 
-def _serialize(reflection) -> dict:
+def _serialize(reflection, *, retried: bool = False) -> dict:
+    """#342: ``retried`` is response-only, never stored. It says THIS
+    analysis needed a second, larger call because the first ran out of
+    room — a fact about the call, not about the reflection, so the row
+    stays clean and a later re-read does not claim it happened again."""
     proposed = reflection.proposed_actions or {}
-    return {
+    out = {
         "id": str(reflection.id),
         "iso_week": reflection.iso_week,
         # #339: NULL means unnamed; the client falls back to a generated
@@ -239,6 +243,9 @@ def _serialize(reflection) -> dict:
         "applied_at": _utc_iso(reflection.applied_at),
         "created_at": _utc_iso(reflection.created_at),
     }
+    if retried:
+        out["retried"] = True
+    return out
 
 
 @bp.post("")
@@ -451,7 +458,9 @@ def submit(email: str):  # noqa: ARG001
         ai_cost_usd=analysis["ai_cost_usd"],
     )
 
-    return jsonify(_serialize(reflection)), 201
+    return jsonify(
+        _serialize(reflection, retried=bool(analysis.get("retried")))
+    ), 201
 
 
 @bp.post("/transcribe-segment")
@@ -1009,7 +1018,7 @@ def analyze_draft(email: str):  # noqa: ARG001
         ai_cost_usd=analysis["ai_cost_usd"],
     )
     reset_applied_state(draft)
-    payload = _serialize(draft)
+    payload = _serialize(draft, retried=bool(analysis.get("retried")))
     # Tells the client this review is a checkpoint, not the end: the
     # review screen then offers "Back to writing" instead of Start Over.
     payload["interim"] = True
@@ -1110,7 +1119,9 @@ def reanalyze(email: str, reflection_id):  # noqa: ARG001
         },
         ai_cost_usd=analysis["ai_cost_usd"],
     )
-    return jsonify(_serialize(reflection))
+    return jsonify(
+        _serialize(reflection, retried=bool(analysis.get("retried")))
+    )
 
 
 @bp.post("/analyze-together")
@@ -1195,7 +1206,7 @@ def analyze_together(email: str):  # noqa: ARG001
         },
         ai_cost_usd=analysis["ai_cost_usd"],
     )
-    payload = _serialize(synthesis)
+    payload = _serialize(synthesis, retried=bool(analysis.get("retried")))
     # Tells the review screen to say what it is reading, and how many
     # sittings went in — a proposal list with no such framing looks like
     # it came from whichever reflection was open.

@@ -712,6 +712,14 @@ https://example.com/foo
                     Claude call, so a Claude hiccup never loses what you
                     wrote — it shows up in the history list to re-analyze
                     later.</li>
+                <li>A very long reflection can run past the limit on how
+                    much Claude writes back in one go. When that happens
+                    it's <strong>retried automatically with more room</strong>,
+                    and the review screen says so — the cost shown covers
+                    both calls. If it still doesn't fit, you get a plain
+                    "the analysis was too long to finish" rather than a
+                    blank result. <strong>&ldquo;Claude didn't propose any
+                    changes&rdquo; now only ever means exactly that.</strong></li>
                 <li>Sending the same reflection twice doesn't cost twice.
                     The button is disabled while an analysis is running,
                     and if the identical text arrives again within a
