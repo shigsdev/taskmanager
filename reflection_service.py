@@ -265,8 +265,33 @@ Reflection:
 # with ~44k chars of documents attached to a multi-hour reflection.
 _ANALYSIS_TIMEOUT_SEC = 180
 
+# #342 (2026-09-29): how much room the model gets to write its actions.
+#
+# This was a flat 4096 and a 12,687-char reflection with 44k chars of
+# attached documents hit it: the reply was cut off mid-JSON, the tolerant
+# parser turned unparseable into empty buckets, and the screen told the
+# user "your week sounds aligned with your current plan already". A
+# failure presented as a positive result, for $0.1224.
+#
+# max_tokens is a CEILING, not a reservation -- billing is on tokens
+# actually written -- so raising the first attempt costs nothing on a
+# normal reflection and removes almost every truncation. The retry then
+# fires only when the model has told us, via stop_reason, that it wanted
+# more room, which is the one case where spending a second call is
+# justified. Its timeout is longer because a genuinely larger answer
+# takes proportionally longer to stream.
+_ANALYSIS_MAX_TOKENS = 8192
+_ANALYSIS_MAX_TOKENS_RETRY = 16384
+_ANALYSIS_TIMEOUT_SEC_RETRY = 300
 
-def _call_claude(api_key: str, prompt: str) -> dict[str, Any]:
+
+def _call_claude(
+    api_key: str,
+    prompt: str,
+    *,
+    max_tokens: int = _ANALYSIS_MAX_TOKENS,
+    timeout_sec: int = _ANALYSIS_TIMEOUT_SEC,
+) -> dict[str, Any]:
     """Make the Claude call. Separated for testability (tests patch this).
 
     Calls ``claude_client.call_claude`` directly rather than going via
@@ -279,10 +304,28 @@ def _call_claude(api_key: str, prompt: str) -> dict[str, Any]:
     return call_claude(
         api_key=api_key,
         prompt=prompt,
-        max_tokens=4096,
+        max_tokens=max_tokens,
         model=SONNET,
-        timeout_sec=_ANALYSIS_TIMEOUT_SEC,
+        timeout_sec=timeout_sec,
     )
+
+
+def _was_truncated(data: dict[str, Any] | None) -> bool:
+    """Did the model run out of room mid-answer? (#342)
+
+    The Anthropic API says so outright with ``stop_reason: "max_tokens"``.
+    ``call_claude`` has always returned the whole response, and nothing in
+    this codebase read that field -- so the one unambiguous signal that an
+    analysis was incomplete was being thrown away, and the truncated JSON
+    it produced was indistinguishable from "nothing to propose".
+    """
+    return isinstance(data, dict) and data.get("stop_reason") == "max_tokens"
+
+
+def _reply_text(data: dict[str, Any] | None) -> str:
+    content = (data or {}).get("content") or [{}]
+    first = content[0] if isinstance(content, list) and content else {}
+    return (first or {}).get("text", "") if isinstance(first, dict) else ""
 
 
 def _claude_cost_usd(usage: dict[str, Any] | None) -> float | None:
@@ -298,12 +341,18 @@ def _claude_cost_usd(usage: dict[str, Any] | None) -> float | None:
     )
 
 
-def _extract_action_object(text: str) -> dict[str, Any]:
+def _extract_action_object(text: str) -> dict[str, Any] | None:
     """Pull the ``{"explicit": [...], "suggested": [...]}`` object out of
     Claude's reply. Mirrors scan_service's tolerant parsing — direct
-    parse, then markdown fence, then brace-bound fallback. Returns
-    empty buckets on any failure rather than raising (a format blip
-    becomes "no proposals", not a 500).
+    parse, then markdown fence, then brace-bound fallback.
+
+    Returns ``None`` when NOTHING could be parsed (#342). It used to
+    return empty buckets there, which made "the reply was unreadable"
+    and "there is nothing to propose" the same value — so a cut-off
+    analysis reached the user as "your week sounds aligned with your
+    current plan already". A parsed object with no actions in it is
+    still a real answer and still returns empty buckets; only an
+    unreadable reply is None.
     """
     text = (text or "").strip()
 
@@ -346,7 +395,7 @@ def _extract_action_object(text: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             pass
 
-    return {"explicit": [], "suggested": []}
+    return None
 
 
 # #325: how many past reflections Claude sees, and how much of each.
@@ -752,17 +801,71 @@ def analyze_reflection(
     )
 
     data = _call_claude(api_key, prompt)
-    content = data.get("content", [{}])[0].get("text", "")
-    raw = _extract_action_object(content)
-    cost = _claude_cost_usd(data.get("usage"))
+    raw = _extract_action_object(_reply_text(data))
+    cost = _claude_cost_usd(data.get("usage")) or 0.0
+    retried = False
+
+    # #342: the model told us it ran out of room. Give it more and ask
+    # once more -- but ONLY for truncation, because that is the single
+    # case where a bigger ceiling is known to be the fix. An unreadable
+    # reply that was NOT cut off would just cost a second call to fail
+    # the same way, so it goes straight to the honest error below.
+    if _was_truncated(data):
+        # nosemgrep: the credential-leak rule fires on the word "token",
+        # which here means an LLM output token, not a secret. The three
+        # values logged are two module constants and a string LENGTH --
+        # never the prompt itself, which carries the user's reflection and
+        # their attached documents.
+        logger.warning(  # nosemgrep
+            "Reflection analysis hit the %s-token ceiling (prompt %s chars); "
+            "retrying once at %s",
+            _ANALYSIS_MAX_TOKENS, len(prompt), _ANALYSIS_MAX_TOKENS_RETRY,
+        )
+        retried = True
+        data = _call_claude(
+            api_key, prompt,
+            max_tokens=_ANALYSIS_MAX_TOKENS_RETRY,
+            timeout_sec=_ANALYSIS_TIMEOUT_SEC_RETRY,
+        )
+        raw = _extract_action_object(_reply_text(data))
+        # Both attempts were paid for; report the real spend.
+        cost += _claude_cost_usd(data.get("usage")) or 0.0
+        if _was_truncated(data):
+            logger.error(
+                "Reflection analysis truncated even at %s tokens "
+                "(prompt %s chars) -- refusing to report it as 'no changes'",
+                _ANALYSIS_MAX_TOKENS_RETRY, len(prompt),
+            )
+            raise RuntimeError(
+                "the analysis was too long to finish, even on a second "
+                "attempt with more room. Your reflection is saved. Try "
+                "re-analyzing, or detach a document to shorten it."
+            )
+
+    if raw is None:
+        # Reached only when the reply was NOT truncated and still could
+        # not be read. Never silently becomes "no proposals" again.
+        logger.error(
+            "Reflection analysis reply could not be parsed "
+            "(stop_reason=%s, %s chars of reply, prompt %s chars)",
+            (data or {}).get("stop_reason"), len(_reply_text(data)),
+            len(prompt),
+        )
+        raise RuntimeError(
+            "Claude's reply could not be read. Your reflection is saved "
+            "-- try re-analyzing it."
+        )
 
     return {
         "explicit": normalize_actions(raw.get("explicit", []),
                                       snapshot, "explicit"),
         "suggested": normalize_actions(raw.get("suggested", []),
                                        snapshot, "suggested"),
-        "ai_cost_usd": cost,
+        "ai_cost_usd": cost or None,
         "snapshot": snapshot,
+        # #342: surfaced so the review screen can say the first pass ran
+        # out of room, rather than silently costing twice.
+        "retried": retried,
     }
 
 

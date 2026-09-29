@@ -220,7 +220,7 @@
                 markStep(stepClaude, "fail");
                 // Deliberately NOT clearDraftUi(): unlike submit, nothing
                 // was retired server-side, so the draft is still live.
-                showErr("Analysis failed: " + (err.message || err), true);
+                showErr(analysisErrorText(err), true);
                 return;
             } finally {
                 interimBtn.disabled = false;
@@ -764,7 +764,7 @@
             // draft holding text that is now a submitted reflection.
             // #341: clearing was never enough on its own — see clearDraftUi.
             clearDraftUi();
-            showErr("Analysis failed: " + (err.message || err), true);
+            showErr(analysisErrorText(err), true);
             loadHistory();
             return;
         } finally {
@@ -781,6 +781,20 @@
         current = data;
         renderReview(data);
         loadHistory();
+    }
+
+    /**
+     * #342: label the failure ONCE.
+     *
+     * The server already sends "Analysis failed: <reason>", and all four
+     * call sites prepended the same words again — which nobody noticed
+     * while the reason was a bare exception string, and which reads as
+     * "Analysis failed: Analysis failed: the analysis was too long to
+     * finish…" now that the reason is a sentence written for the user.
+     */
+    function analysisErrorText(err) {
+        var m = (err && err.message) ? String(err.message) : String(err);
+        return /^analysis failed/i.test(m) ? m : "Analysis failed: " + m;
     }
 
     function markStep(el, st) {
@@ -862,9 +876,19 @@
         }
 
         var cost = refl && refl.ai_cost_usd;
-        costHintEl.textContent = cost
+        // #342: say so when the first pass ran out of room. The cost
+        // shown already covers BOTH calls, so leaving it unexplained
+        // would look like an unexplained jump in price.
+        var retried = !!(refl && refl.retried);
+        var costText = cost
             ? "Claude analysis cost ~$" + Number(cost).toFixed(4) + "."
             : "";
+        if (retried) {
+            costText = "Your reflection was long, so the first pass ran out "
+                + "of room — it was retried automatically with more. "
+                + (costText ? costText + " (both calls)" : "");
+        }
+        costHintEl.textContent = costText;
         transcriptEl.textContent = (refl && refl.transcript) || "(no transcript)";
         updateApplyLabel();
         showState("review");
@@ -1192,7 +1216,7 @@
                 });
             } catch (err) {
                 refreshCombineBar();
-                showErr("Analysis failed: " + (err.message || err), true);
+                showErr(analysisErrorText(err), true);
                 return;
             }
             _combineClear();
@@ -1450,7 +1474,7 @@
                 } catch (err) {
                     reBtn.disabled = false;
                     reBtn.textContent = "↻ Re-analyze";
-                    showErr("Analysis failed: " + (err.message || err), true);
+                    showErr(analysisErrorText(err), true);
                     return;
                 }
                 current = data;

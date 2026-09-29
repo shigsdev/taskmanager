@@ -304,6 +304,28 @@ component is added, a data flow changes, or a security boundary shifts.
   `DELETE /api/reflection/attachment/<attachment_id>` detaches one.
   Budgets: 5 files, 20k characters each, 60k total — truncation is
   reported to the user rather than applied silently.
+  **A cut-off analysis is never "no changes" (#342)**: the analysis asks
+  Claude for a JSON action list, and that reply has a token ceiling. On
+  2026-09-29 a 12,687-char reflection with 44k chars of attached PDFs hit
+  the old flat `max_tokens=4096`; the truncated JSON would not parse,
+  `_extract_action_object` turned any parse failure into empty buckets,
+  and the screen reported "your week sounds aligned with your current
+  plan already" for a $0.1224 call. A failure rendered as a positive
+  result. The API says so outright with `stop_reason: "max_tokens"`, and
+  nothing in the codebase read that field. Now: `_was_truncated()` checks
+  it; the first attempt gets `_ANALYSIS_MAX_TOKENS` (8192 — a ceiling, not
+  a reservation, so raising it costs nothing on a normal reflection); a
+  truncated reply is retried ONCE at `_ANALYSIS_MAX_TOKENS_RETRY` (16384)
+  with a longer timeout, because more room is the one fix that addresses
+  that specific failure; both calls are billed so both are summed into
+  `ai_cost_usd`, and the review screen says the retry happened rather than
+  letting the price jump unexplained. Still truncated, or unreadable
+  without having been truncated, now RAISES — landing on the existing
+  "saved, analysis failed" 422, so the transcript survives (#165) and the
+  user can re-analyze. `_extract_action_object` returns `None` for
+  unreadable and empty buckets only for a reply that genuinely proposed
+  nothing; those were the same value before, which is what made the
+  incident possible.
   **Trust boundary (ADR-037)**: this is the first path that feeds a
   FILE's contents into a prompt whose output includes `delete` actions.
   Document text is fenced in BEGIN/END markers, labelled

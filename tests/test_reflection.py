@@ -129,13 +129,19 @@ class TestExtractActionObject:
             "suggested": [],
         }
 
-    def test_garbage_returns_empty_buckets(self):
+    def test_garbage_returns_none_not_empty_buckets(self):
+        """#342: this test used to assert the bug.
+
+        Returning empty buckets for an unreadable reply made "we could
+        not parse this" identical to "there is nothing to propose" — and
+        on 2026-09-29 that put "your week sounds aligned with your
+        current plan already" on screen after a $0.1224 analysis whose
+        reply had been cut off mid-JSON. Unreadable is now None, and the
+        caller raises rather than inventing a reassuring result.
+        """
         from reflection_service import _extract_action_object
 
-        assert _extract_action_object("not json at all") == {
-            "explicit": [],
-            "suggested": [],
-        }
+        assert _extract_action_object("not json at all") is None
 
     def test_missing_keys_coerce_to_lists(self):
         from reflection_service import _extract_action_object
