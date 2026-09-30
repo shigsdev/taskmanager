@@ -48,6 +48,12 @@ async function projectsInit() {
     projectsSetupFilters();
     projectsSetupDetailPanel();
     projectsSetupBulk();  // #90 (PR35)
+    // #344: document-level so the finger can leave the task line and
+    // still be tracked. Both bail immediately unless a drag is live, so
+    // ordinary scrolling is untouched.
+    document.addEventListener("touchmove", onProjectsTouchMove,
+                              { passive: false });
+    document.addEventListener("touchend", onProjectsTouchEnd);
 }
 
 async function projectsLoad() {
@@ -269,10 +275,148 @@ function onCardDragEnd(e) {
     _dragSrcId = null;
 }
 
+// --- #344: drag a task from one project card to another ----------------------
+//
+// The board already had a project-card reorder drag (#62 / #275) whose
+// dragover+drop live on the LIST. A task drag has to coexist with it:
+//
+//   * the task <li> sits inside a draggable card, so its dragstart MUST
+//     stopPropagation or onCardDragStart hijacks it and the board thinks
+//     you are reordering projects;
+//   * _dragSrcId stays null during a task drag, so onListDragOver bails
+//     and never preventDefaults — the list is not a task drop target;
+//   * the card's drop stopPropagations, so onListDrop never fires a
+//     pointless /api/projects/reorder POST off the unchanged DOM order.
+//
+// Dropping works on a COLLAPSED card: the target is the whole card, so
+// you never have to expand a project just to drag something into it.
+
+let _dragTask = null;   // the Task being dragged, or null
+
+function _projectsTaskById(id) {
+    if (!id) return null;
+    for (const pid of Object.keys(projectTasksById)) {
+        const hit = (projectTasksById[pid] || []).find((t) => t.id === id);
+        if (hit) return hit;
+    }
+    return null;
+}
+
+function _projectsById(id) {
+    return projectsData.find((p) => p.id === id) || null;
+}
+
+// A refused drop is otherwise indistinguishable from "drag-and-drop is
+// broken", so say why. Cleared on the next drag.
+function projectsDragStatus(msg) {
+    const el = document.getElementById("projectsDragStatus");
+    if (!el) return;
+    if (!msg) {
+        el.textContent = "";
+        el.hidden = true;
+        return;
+    }
+    el.textContent = msg;
+    el.hidden = false;
+}
+
+const _DROP_REFUSAL_TEXT = {
+    "type-mismatch": (task, project) =>
+        `${PROJECT_TYPE_LABELS[task.type] || task.type} tasks can only go on ` +
+        `${PROJECT_TYPE_LABELS[task.type] || task.type} projects — ` +
+        `"${project.name}" is ${PROJECT_TYPE_LABELS[project.type] || project.type}.`,
+    "archived-project": (task, project) =>
+        `"${project.name}" is archived — restore it before moving tasks in.`,
+};
+
+function _decide(task, project) {
+    const h = window.projectTaskDragHelpers;
+    if (!h) return { allowed: false, reason: "no-task", goalWillChange: false };
+    return h.projectTaskDropDecision(task, project);
+}
+
+function onTaskDragStart(e) {
+    // CRITICAL — see the note above. Without this the card's own
+    // dragstart fires too and _dragSrcId gets set to the project id.
+    e.stopPropagation();
+    const id = e.currentTarget.dataset.taskId;
+    _dragTask = _projectsTaskById(id);
+    _dragSrcId = null;                 // this is not a project-card drag
+    e.currentTarget.classList.add("dragging");
+    projectsDragStatus("");
+    if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", id || "");
+    }
+}
+
+function onTaskDragEnd(e) {
+    e.stopPropagation();
+    e.currentTarget.classList.remove("dragging");
+    _dragTask = null;
+    _projectsClearDropMarks();
+}
+
+function _projectsClearDropMarks() {
+    document.querySelectorAll(".project-card-drop-ok, .project-card-drop-no")
+        .forEach((el) => {
+            el.classList.remove("project-card-drop-ok");
+            el.classList.remove("project-card-drop-no");
+        });
+}
+
+function onCardTaskDragOver(e) {
+    if (!_dragTask) return;            // a project-card reorder, not ours
+    const card = e.currentTarget;
+    const d = _decide(_dragTask, _projectsById(card.dataset.projectId));
+    if (d.allowed) {
+        // preventDefault is what actually makes this a drop target.
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+        card.classList.add("project-card-drop-ok");
+    } else if (d.reason !== "same-project") {
+        // No preventDefault: the browser shows the no-drop cursor for
+        // free, and the class paints the refusal.
+        card.classList.add("project-card-drop-no");
+    }
+}
+
+function onCardTaskDragLeave(e) {
+    if (!_dragTask) return;
+    const card = e.currentTarget;
+    // dragleave also fires when the cursor crosses into a CHILD of the
+    // card; ignore those or the highlight flickers away mid-hover.
+    if (e.relatedTarget && card.contains(e.relatedTarget)) return;
+    card.classList.remove("project-card-drop-ok");
+    card.classList.remove("project-card-drop-no");
+}
+
+async function onCardTaskDrop(e) {
+    if (!_dragTask) return;
+    e.preventDefault();
+    e.stopPropagation();               // keep onListDrop out of this
+    const card = e.currentTarget;
+    _projectsClearDropMarks();
+    const task = _dragTask;
+    const project = _projectsById(card.dataset.projectId);
+    _dragTask = null;
+    await _projectsApplyTaskMove(task, project);
+}
+
 function projectCardEl(project) {
     const card = document.createElement("div");
     card.className = "goal-card project-card";
     if (!project.is_active) card.classList.add("goal-inactive");
+    // #344: every card is a task drop target — including archived ones,
+    // which need the id so the drop can be REFUSED out loud instead of
+    // silently doing nothing. Separate from `dataset.id`, which
+    // projectsRender sets only on active cards and which the #275
+    // reorder uses as its "this card participates" marker.
+    card.dataset.projectId = project.id;
+    card.addEventListener("dragover", onCardTaskDragOver);
+    card.addEventListener("dragleave", onCardTaskDragLeave);
+    card.addEventListener("drop", onCardTaskDrop);
     // #90 (PR35): in bulk mode, click toggles selection (no detail panel).
     card.addEventListener("click", (e) => {
         if (projectsBulkMode) {
@@ -395,6 +539,18 @@ function projectCardEl(project) {
             li.textContent = t.title;
             li.title = t.title;
             li.addEventListener("click", (e) => e.stopPropagation());
+            // #344 (2026-09-30): the task line is the drag source for
+            // moving a task to another project. Archived tasks stay put
+            // — dragging one into another project would pad that
+            // project's total with something already finished.
+            if (t.status !== "archived") {
+                li.draggable = true;
+                li.dataset.taskId = t.id;
+                li.addEventListener("dragstart", onTaskDragStart);
+                li.addEventListener("dragend", onTaskDragEnd);
+                li.addEventListener("touchstart", onTaskTouchStart,
+                                    { passive: true });
+            }
             ul.appendChild(li);
         }
         listWrap.appendChild(ul);
@@ -782,3 +938,141 @@ function projectsSetupBulk() {
 // --- Boot --------------------------------------------------------------------
 
 document.addEventListener("DOMContentLoaded", projectsInit);
+
+// Shared by the mouse drop and the touch end — one PATCH, one set of
+// messages, so the two input paths cannot drift apart.
+async function _projectsApplyTaskMove(task, project) {
+    const d = _decide(task, project);
+    if (!d.allowed) {
+        const explain = _DROP_REFUSAL_TEXT[d.reason];
+        if (explain && project) projectsDragStatus(explain(task, project));
+        else projectsDragStatus("");
+        return;
+    }
+    try {
+        await apiFetch(`/api/tasks/${task.id}`, {
+            method: "PATCH",
+            body: JSON.stringify(
+                window.projectTaskDragHelpers.projectTaskMovePayload(project.id),
+            ),
+        });
+        await projectsLoad();          // projectsLoad() re-renders
+        // The goal cascade (#77) changes a field the user never touched,
+        // so it gets said out loud rather than discovered later.
+        projectsDragStatus(
+            d.goalWillChange
+                ? `Moved "${task.title}" to ${project.name}. Its goal now ` +
+                  `follows that project.`
+                : `Moved "${task.title}" to ${project.name}.`,
+        );
+    } catch (err) {
+        console.error("Task move failed:", err);
+        alert("Could not move the task: " + err.message);
+    }
+}
+
+// --- #344 mobile: long-press, then drag --------------------------------------
+//
+// HTML5 drag-and-drop does not fire from a finger — no dragstart, no
+// dragover, no drop — so touch needs its own path or this feature simply
+// would not exist on the phone. The board's existing long-press drag
+// (app.js) is welded to tier lists and is not reusable, but the GESTURE
+// is deliberately identical (500ms hold + a haptic tick) so the two
+// screens feel the same in the hand.
+
+let _touchDrag = null;        // { li, task, startY }
+let _touchLongPress = null;
+let _touchStart = { x: 0, y: 0 };
+
+function _projectsTouchTargets() {
+    return Array.from(
+        document.querySelectorAll(".project-card[data-project-id]"),
+    ).map((el) => ({
+        id: el.dataset.projectId, rect: el.getBoundingClientRect(), el: el,
+    }));
+}
+
+function onTaskTouchStart(e) {
+    const li = e.currentTarget;
+    const t = e.touches[0];
+    if (!t) return;
+    _touchStart = { x: t.clientX, y: t.clientY };
+    _touchLongPress = setTimeout(function () {
+        _touchLongPress = null;
+        const task = _projectsTaskById(li.dataset.taskId);
+        if (!task) return;
+        // Read the stored coords, not the Touch object — it may be
+        // recycled by the time this fires.
+        _touchDrag = { li: li, task: task, startY: _touchStart.y };
+        _dragTask = task;          // share the decision path with the mouse
+        li.classList.add("dragging");
+        if (navigator.vibrate) navigator.vibrate(50);
+        projectsDragStatus(`Moving "${task.title}" — drop it on a project.`);
+    }, 500);
+}
+
+function onProjectsTouchMove(e) {
+    if (_touchLongPress) {
+        // Same 10px jitter tolerance as the board: a hold that drifts is
+        // still a hold, but a scroll is not a drag.
+        const t = e.touches[0];
+        if (!t) return;
+        const dx = t.clientX - _touchStart.x;
+        const dy = t.clientY - _touchStart.y;
+        if (Math.sqrt(dx * dx + dy * dy) > 10) {
+            clearTimeout(_touchLongPress);
+            _touchLongPress = null;
+        }
+        return;
+    }
+    if (!_touchDrag) return;
+    e.preventDefault();            // stop the page scrolling under the drag
+    const t = e.touches[0];
+    if (!t) return;
+    _touchDrag.li.style.transform =
+        "translateY(" + (t.clientY - _touchDrag.startY) + "px)";
+    _touchDrag.li.style.zIndex = "9999";
+    _projectsClearDropMarks();
+    const targets = _projectsTouchTargets();
+    const id = window.projectTaskDragHelpers.projectCardIdUnderPoint(
+        targets, t.clientX, t.clientY);
+    if (!id) return;
+    const target = targets.find((x) => x.id === id);
+    if (!target) return;
+    const d = _decide(_touchDrag.task, _projectsById(id));
+    if (d.allowed) target.el.classList.add("project-card-drop-ok");
+    else if (d.reason !== "same-project") {
+        target.el.classList.add("project-card-drop-no");
+    }
+}
+
+async function onProjectsTouchEnd(e) {
+    if (_touchLongPress) {
+        clearTimeout(_touchLongPress);
+        _touchLongPress = null;
+    }
+    if (!_touchDrag) return;
+    const li = _touchDrag.li;
+    const task = _touchDrag.task;
+    li.style.transform = "";
+    li.style.zIndex = "";
+    li.classList.remove("dragging");
+    // `touches` is empty at touchend — the release point is in
+    // changedTouches.
+    const t = (e.changedTouches && e.changedTouches[0]) || null;
+    _touchDrag = null;
+    _dragTask = null;
+    _projectsClearDropMarks();
+    if (!t) {
+        projectsDragStatus("");
+        return;
+    }
+    const id = window.projectTaskDragHelpers.projectCardIdUnderPoint(
+        _projectsTouchTargets(), t.clientX, t.clientY);
+    const project = id ? _projectsById(id) : null;
+    if (!project) {
+        projectsDragStatus("Dropped outside a project — nothing moved.");
+        return;
+    }
+    await _projectsApplyTaskMove(task, project);
+}

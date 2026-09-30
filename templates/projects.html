@@ -41,6 +41,13 @@
         <button class="btn btn-sm" id="projectsBulkToggle" type="button">Select</button>
     </div>
 
+    {# #344: a polite live region for task-drag outcomes. Announces both
+       the move AND the refusal — a refused drop is otherwise silent,
+       which reads as "drag-and-drop is broken" rather than "not
+       allowed". role=status so it reaches screen readers too. #}
+    <p class="projects-drag-status" id="projectsDragStatus" role="status"
+       aria-live="polite" hidden></p>
+
     <div id="projectsBoard"></div>
 
     {# #90 bulk-action toolbar (sticky bottom, hidden until toggled). #}
@@ -171,6 +178,7 @@
     <script src="{{ url_for('static', filename='voice_input.js') }}"></script>
     <script src="{{ url_for('static', filename='filter_helpers.js') }}"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='project_task_drag_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='projects.js') }}"></script>
 <script src="{{ url_for('static', filename='parse_capture.js') }}"></script>
 <script src="{{ url_for('static', filename='capture.js') }}"></script>

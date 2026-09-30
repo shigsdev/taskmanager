@@ -470,6 +470,29 @@ component is added, a data flow changes, or a security boundary shifts.
   Backed by the existing `projects_api.py` (no new endpoints). Single
   soft-delete action exposed as Archive ⇄ Unarchive (DELETE endpoint
   is identical to PATCH `is_active=false`).
+- **Task drag between project cards** (#344, 2026-09-30): each project
+  card already listed its tasks inline (#95/PR33, collapsed past
+  `PROJECT_TASKS_INLINE_LIMIT = 5`); those lines are now drag sources
+  and every card is a drop target, PATCHing `project_id` on
+  `/api/tasks/<id>`. No new endpoint. Three interactions had to be kept
+  apart on one screen:
+  - the task `<li>` sits inside a `draggable` project card, so its
+    `dragstart` **stopPropagation**s or `onCardDragStart` hijacks it and
+    the board believes you are reordering projects;
+  - the #275 reorder `dragover`/`drop` live on the enclosing
+    `.project-drop-list`. `onListDragOver` bails while `_dragSrcId` is
+    null (it is, during a task drag) so the list never becomes a drop
+    target, and the card's `drop` **stopPropagation**s so `onListDrop`
+    cannot fire a spurious `/api/projects/reorder`;
+  - touch has no HTML5 drag at all, so `/projects` carries its own
+    long-press path (500 ms + haptic, mirroring the board's gesture in
+    `app.js`) that hit-tests card rects by hand on `touchmove`.
+  Decision logic is pure in `static/project_task_drag_helpers.js`
+  (dual-export, Jest-tested): the **type gate** — a task may only land on
+  a project of its own type, matching the detail panel's project
+  dropdown — and the reported **goal cascade**, since
+  `task_service.update_task` overwrites the task's goal with the
+  destination project's when that project has one (#77).
 - **Task cancellation** (#25, ADR-012): `TaskStatus.CANCELLED` is
   distinct from ARCHIVED (completed) so users can drop tasks honestly
   without inflating completion stats. Optional `cancellation_reason`

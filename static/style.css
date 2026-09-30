@@ -1970,6 +1970,78 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     text-decoration: underline;
 }
 
+/* #344: a task line you can drag to another project.
+   The affordance has to be VISIBLE, not just functional — the old line
+   looked like a static label, so nobody would think to drag it. A grip
+   glyph plus a grab cursor is the hint; the hover lift confirms it. */
+.project-card-task[draggable="true"] {
+    cursor: grab;
+    padding-left: 18px;
+    position: relative;
+    /* Let a long-press start a drag instead of selecting the text. */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+.project-card-task[draggable="true"]::before {
+    content: "⠿";
+    position: absolute;
+    left: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted, #999);
+    font-size: 0.75rem;
+    line-height: 1;
+}
+.project-card-task[draggable="true"]:hover {
+    background: var(--surface, #fff);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.project-card-task[draggable="true"]:active {
+    cursor: grabbing;
+}
+.project-card-task.dragging {
+    opacity: 0.45;
+}
+
+/* Drop feedback on the destination card. Green accepts, red refuses —
+   a refused drop that looked identical to an accepted one was the
+   failure mode worth designing against. */
+.project-card.project-card-drop-ok {
+    outline: 2px dashed var(--success, #16a34a);
+    outline-offset: 2px;
+    background: color-mix(in srgb, var(--success, #16a34a) 8%, transparent);
+}
+.project-card.project-card-drop-no {
+    outline: 2px dashed var(--danger, #dc2626);
+    outline-offset: 2px;
+    cursor: not-allowed;
+}
+
+/* The live region that narrates a move or explains a refusal. */
+.projects-drag-status {
+    margin: 0 0 10px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: var(--surface-sunk, #f7f7f7);
+    border-left: 3px solid var(--accent, #2563eb);
+    font-size: 0.85rem;
+    color: var(--text, #222);
+}
+
+/* On a touch screen the grip is the whole gesture target, so give the
+   line a real tap height. 0.8rem text in 2px of padding is ~19px —
+   fine for a label, not for something you press and hold. */
+@media (max-width: 767px) {
+    .project-card-task[draggable="true"] {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        padding-top: 4px;
+        padding-bottom: 4px;
+    }
+}
+
 /* === #95 (PR33): full task list in the project side panel === */
 .project-task-list-wrap {
     margin-top: 12px;

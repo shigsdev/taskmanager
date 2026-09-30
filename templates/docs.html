@@ -2054,14 +2054,46 @@ Skip this line (too short)</pre>
                 ranking; Work and Personal are independent).
             </p>
 
+            <h3>Drag a task to another project</h3>
+            <p>
+                Each project card lists its tasks. Grab one by the
+                <span aria-hidden="true">&#10303;</span> handle and drop it on
+                another project card to reassign it &mdash; no need to open
+                the task. On a phone, <strong>press and hold for half a
+                second</strong> first (the same long-press the main board
+                uses), then drag; the phone gives a short buzz when the drag
+                starts.
+            </p>
+            <ul>
+                <li><strong>Work stays with Work, Personal with Personal.</strong>
+                    A card of the other type refuses the drop and tells you
+                    why. This matches the Project dropdown in the task
+                    panel, which only ever lists projects of the task's own
+                    type.</li>
+                <li><strong>You can drop on a collapsed card.</strong> Cards
+                    showing &ldquo;Show all (N)&rdquo; still accept a task
+                    without expanding them first.</li>
+                <li><strong>Finished tasks stay put.</strong> Only tasks that
+                    are still active can be dragged.</li>
+                <li><strong>Archived projects refuse the drop</strong> &mdash;
+                    restore the project first.</li>
+                <li>A line above the board confirms the move, or explains the
+                    refusal. If the destination project has a linked goal, the
+                    message says so, because the move changes the task's goal
+                    too (see below).</li>
+            </ul>
+
             <h3>Goal cascade onto linked tasks</h3>
             <p>
                 When you save a task with a <code>project_id</code>,
                 the server cascades the project's <code>goal_id</code>
-                onto the task automatically. This includes clearing:
-                if the project's goal is null, the task's goal is set
-                to null too. An explicit <code>goal_id</code> in the
-                same save wins over the cascade.
+                onto the task automatically &mdash; including when you
+                move the task by dragging it onto another project card.
+                If the project has <em>no</em> linked goal, the task keeps
+                whatever goal it already had. The task's goal is only
+                cleared when you remove its project entirely. An explicit
+                <code>goal_id</code> in the same save wins over the
+                cascade.
             </p>
         </section>
 

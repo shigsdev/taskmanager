@@ -3762,3 +3762,390 @@ test.describe("Calendar - 2 / 4 / 8-week outlook (#345)", () => {
         expect(overflows).toBe(false);
     });
 });
+
+test.describe("Projects - drag a task to another project (#344)", () => {
+    // Every test here asserts the PERSISTED project_id, never just that a
+    // handler fired or a class appeared. #347 was filed the day before
+    // this was written precisely because a test that watched the shape of
+    // a request passed while the request was failing.
+
+    const taskLi = (page, id) =>
+        page.locator(`.project-card-task[data-task-id="${id}"]`);
+    const card = (page, id) =>
+        page.locator(`.project-card[data-project-id="${id}"]`);
+
+    // Drag via a real DataTransfer: page.dragAndDrop does not fire this
+    // app's dragstart listener style (same note as the #267 calendar test).
+    const dragTaskToCard = (page, taskId, projectId) =>
+        page.evaluate(({ t, p }) => {
+            const li = document.querySelector(
+                `.project-card-task[data-task-id="${t}"]`);
+            const dest = document.querySelector(
+                `.project-card[data-project-id="${p}"]`);
+            const dt = new DataTransfer();
+            li.dispatchEvent(new DragEvent("dragstart",
+                { dataTransfer: dt, bubbles: true }));
+            dest.dispatchEvent(new DragEvent("dragover",
+                { dataTransfer: dt, bubbles: true, cancelable: true }));
+            const marked = {
+                ok: dest.classList.contains("project-card-drop-ok"),
+                no: dest.classList.contains("project-card-drop-no"),
+            };
+            dest.dispatchEvent(new DragEvent("drop",
+                { dataTransfer: dt, bubbles: true, cancelable: true }));
+            return marked;
+        }, { t: taskId, p: projectId });
+
+    async function projectsByType(request) {
+        const r = await request.get("/api/projects?is_active=all");
+        const all = await r.json();
+        const active = all.filter((p) => p.is_active);
+        return {
+            work: active.filter((p) => p.type === "work"),
+            personal: active.filter((p) => p.type === "personal"),
+        };
+    }
+
+    test("a task dropped on another project card actually moves", async ({
+        page, request,
+    }) => {
+        const { work } = await projectsByType(request);
+        expect(work.length).toBeGreaterThanOrEqual(2);
+        const [from, to] = work;
+
+        const created = await request.post("/api/tasks", {
+            data: { title: `E2E move ${Date.now()}`, type: "work",
+                    tier: "inbox", project_id: from.id },
+        });
+        expect(created.ok()).toBe(true);
+        const task = await created.json();
+
+        try {
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expect(taskLi(page, task.id)).toHaveCount(1, { timeout: 10000 });
+
+            const marks = await dragTaskToCard(page, task.id, to.id);
+            expect(marks.ok).toBe(true);        // the card advertised the drop
+            expect(marks.no).toBe(false);
+
+            await expect.poll(async () => {
+                const r = await request.get(`/api/tasks/${task.id}`);
+                return (await r.json()).project_id;
+            }, { timeout: 10000 }).toBe(to.id);
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("a work task is REFUSED by a personal project, and says why", async ({
+        page, request,
+    }) => {
+        // The task detail panel only ever offers same-type projects
+        // (app.js taskDetailPopulateProjects). Drag is a second door onto
+        // the same field; if it did not honour the same rule it would be
+        // the hole the picker closed. A silent refusal reads as "drag is
+        // broken", so the message is part of the contract.
+        const { work, personal } = await projectsByType(request);
+        expect(work.length).toBeGreaterThanOrEqual(1);
+        expect(personal.length).toBeGreaterThanOrEqual(1);
+
+        const created = await request.post("/api/tasks", {
+            data: { title: `E2E refuse ${Date.now()}`, type: "work",
+                    tier: "inbox", project_id: work[0].id },
+        });
+        const task = await created.json();
+
+        try {
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expect(taskLi(page, task.id)).toHaveCount(1, { timeout: 10000 });
+
+            const marks = await dragTaskToCard(page, task.id, personal[0].id);
+            expect(marks.no).toBe(true);
+            expect(marks.ok).toBe(false);
+
+            const status = page.locator("#projectsDragStatus");
+            await expect(status).toBeVisible();
+            await expect(status).toContainText(/can only go on/i);
+            await expect(status).toContainText(personal[0].name);
+
+            // And nothing moved. Waiting first so a late PATCH would lose.
+            await page.waitForTimeout(700);
+            const after = await (await request.get(`/api/tasks/${task.id}`)).json();
+            expect(after.project_id).toBe(work[0].id);
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("the drop does NOT also fire the #275 project reorder", async ({
+        page, request,
+    }) => {
+        // The card sits inside the reorder drop-list. Without
+        // stopPropagation the task drop bubbles into onListDrop, which
+        // POSTs /api/projects/reorder built from the unchanged DOM order —
+        // a pointless write plus a re-render racing ours.
+        const { work } = await projectsByType(request);
+        const [from, to] = work;
+        const created = await request.post("/api/tasks", {
+            data: { title: `E2E norerender ${Date.now()}`, type: "work",
+                    tier: "inbox", project_id: from.id },
+        });
+        const task = await created.json();
+
+        try {
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expect(taskLi(page, task.id)).toHaveCount(1, { timeout: 10000 });
+
+            const reorders = [];
+            page.on("request", (r) => {
+                if (r.url().includes("/api/projects/reorder")) reorders.push(r.url());
+            });
+
+            await dragTaskToCard(page, task.id, to.id);
+            await expect.poll(async () => {
+                const r = await request.get(`/api/tasks/${task.id}`);
+                return (await r.json()).project_id;
+            }, { timeout: 10000 }).toBe(to.id);
+
+            expect(reorders).toEqual([]);
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("dragging a task does not hijack the card's own reorder drag", async ({
+        page, request,
+    }) => {
+        // The task <li> lives inside a draggable card. Without
+        // stopPropagation on the li's dragstart, onCardDragStart also runs
+        // and the board believes you are reordering PROJECTS.
+        const { work } = await projectsByType(request);
+        const created = await request.post("/api/tasks", {
+            data: { title: `E2E hijack ${Date.now()}`, type: "work",
+                    tier: "inbox", project_id: work[0].id },
+        });
+        const task = await created.json();
+
+        try {
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expect(taskLi(page, task.id)).toHaveCount(1, { timeout: 10000 });
+
+            const state = await page.evaluate((t) => {
+                const li = document.querySelector(
+                    `.project-card-task[data-task-id="${t}"]`);
+                const parentCard = li.closest(".project-card");
+                const dt = new DataTransfer();
+                li.dispatchEvent(new DragEvent("dragstart",
+                    { dataTransfer: dt, bubbles: true }));
+                const out = {
+                    liDragging: li.classList.contains("dragging"),
+                    cardDragging: parentCard.classList.contains("dragging"),
+                };
+                li.dispatchEvent(new DragEvent("dragend",
+                    { dataTransfer: dt, bubbles: true }));
+                return out;
+            }, task.id);
+
+            expect(state.liDragging).toBe(true);
+            expect(state.cardDragging).toBe(false);
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("a card with collapsed tasks still accepts a drop", async ({
+        page, request,
+    }) => {
+        // The user's decision: "dropping onto a COLLAPSED card still moves
+        // the item, so you never have to expand just to drag." The drop
+        // target is the whole card, so this holds — pinned here because it
+        // would be easy to later move the handler onto the task list and
+        // silently break it.
+        const { work } = await projectsByType(request);
+        const [from, to] = work;
+
+        // Push the destination past the inline limit so it renders the
+        // "Show all (N)" collapse.
+        const filler = [];
+        for (let i = 0; i < 6; i++) {
+            const r = await request.post("/api/tasks", {
+                data: { title: `E2E filler ${i} ${Date.now()}`, type: "work",
+                        tier: "inbox", project_id: to.id },
+            });
+            filler.push((await r.json()).id);
+        }
+        const created = await request.post("/api/tasks", {
+            data: { title: `E2E collapsed ${Date.now()}`, type: "work",
+                    tier: "inbox", project_id: from.id },
+        });
+        const task = await created.json();
+
+        try {
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expect(taskLi(page, task.id)).toHaveCount(1, { timeout: 10000 });
+
+            // The destination really is collapsed: some of its task lines
+            // are hidden and a toggle is offered.
+            const hidden = await card(page, to.id).evaluate((el) =>
+                [...el.querySelectorAll(".project-card-task")]
+                    .filter((li) => getComputedStyle(li).display === "none").length);
+            expect(hidden).toBeGreaterThan(0);
+            await expect(card(page, to.id).locator(".project-card-toggle"))
+                .toBeVisible();
+
+            // Drop WITHOUT expanding it.
+            await dragTaskToCard(page, task.id, to.id);
+            await expect.poll(async () => {
+                const r = await request.get(`/api/tasks/${task.id}`);
+                return (await r.json()).project_id;
+            }, { timeout: 10000 }).toBe(to.id);
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+            for (const id of filler) await request.delete(`/api/tasks/${id}`);
+        }
+    });
+
+    test("the task line advertises that it can be dragged", async ({ page }) => {
+        // Discoverability, not just function: before #344 these lines
+        // looked like static labels, so nothing suggested dragging them.
+        await page.goto("/projects?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const li = page.locator('.project-card-task[draggable="true"]').first();
+        await expect(li).toBeVisible({ timeout: 10000 });
+        const look = await li.evaluate((el) => ({
+            cursor: getComputedStyle(el).cursor,
+            grip: getComputedStyle(el, "::before").content,
+        }));
+        expect(look.cursor).toBe("grab");
+        expect(look.grip).toContain("⠿");   // the braille grip glyph
+    });
+
+    // --- the touch path -----------------------------------------------------
+    // HTML5 drag-and-drop does not fire from a finger, so /projects has a
+    // separate long-press path. Without these, the feature could be green
+    // on desktop and simply absent on the phone — which is where a lot of
+    // this board actually gets used.
+
+    test("long-press then drag moves the task on touch", async ({
+        page, request,
+    }) => {
+        const { work } = await projectsByType(request);
+        const [from, to] = work;
+        const created = await request.post("/api/tasks", {
+            data: { title: `E2E touch ${Date.now()}`, type: "work",
+                    tier: "inbox", project_id: from.id },
+        });
+        const task = await created.json();
+
+        try {
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expect(taskLi(page, task.id)).toHaveCount(1, { timeout: 10000 });
+
+            const started = await page.evaluate(async ({ t, p }) => {
+                const fire = (el, type, x, y, released) => {
+                    const touch = new Touch({
+                        identifier: 1, target: el, clientX: x, clientY: y,
+                    });
+                    el.dispatchEvent(new TouchEvent(type, {
+                        bubbles: true, cancelable: true,
+                        touches: released ? [] : [touch],
+                        targetTouches: released ? [] : [touch],
+                        changedTouches: [touch],
+                    }));
+                };
+                const li = document.querySelector(
+                    `.project-card-task[data-task-id="${t}"]`);
+                const dest = document.querySelector(
+                    `.project-card[data-project-id="${p}"]`);
+                dest.scrollIntoView({ block: "center" });
+                await new Promise((r) => setTimeout(r, 200));
+                const r0 = li.getBoundingClientRect();
+                fire(li, "touchstart", r0.left + 20, r0.top + 10, false);
+                await new Promise((r) => setTimeout(r, 650));  // past the 500ms hold
+                const dragging = li.classList.contains("dragging");
+                const rd = dest.getBoundingClientRect();
+                const cx = rd.left + rd.width / 2;
+                const cy = rd.top + rd.height / 2;
+                fire(document, "touchmove", cx, cy, false);
+                const marked = dest.classList.contains("project-card-drop-ok");
+                fire(document, "touchend", cx, cy, true);
+                return { dragging, marked };
+            }, { t: task.id, p: to.id });
+
+            expect(started.dragging).toBe(true);
+            expect(started.marked).toBe(true);
+
+            await expect.poll(async () => {
+                const r = await request.get(`/api/tasks/${task.id}`);
+                return (await r.json()).project_id;
+            }, { timeout: 10000 }).toBe(to.id);
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("a tap and a scroll are not drags", async ({ page }) => {
+        // The two ways the touch path could ruin ordinary phone use:
+        // tapping a task line, and scrolling the board with a finger that
+        // happens to start on one.
+        await page.goto("/projects?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator('.project-card-task[draggable="true"]').first())
+            .toBeVisible({ timeout: 10000 });
+
+        const out = await page.evaluate(async () => {
+            const fire = (el, type, x, y, released) => {
+                const touch = new Touch({
+                    identifier: 1, target: el, clientX: x, clientY: y,
+                });
+                el.dispatchEvent(new TouchEvent(type, {
+                    bubbles: true, cancelable: true,
+                    touches: released ? [] : [touch],
+                    targetTouches: released ? [] : [touch],
+                    changedTouches: [touch],
+                }));
+            };
+            const li = document.querySelector(".project-card-task[data-task-id]");
+            const r = li.getBoundingClientRect();
+            const x = r.left + 20;
+            const y = r.top + 10;
+
+            // A quick tap, released well inside the hold window.
+            fire(li, "touchstart", x, y, false);
+            await new Promise((s) => setTimeout(s, 120));
+            fire(document, "touchend", x, y, true);
+            await new Promise((s) => setTimeout(s, 600));
+            const afterTap = li.classList.contains("dragging");
+
+            // A scroll: moved far enough, soon enough, to be a scroll.
+            fire(li, "touchstart", x, y, false);
+            await new Promise((s) => setTimeout(s, 100));
+            fire(document, "touchmove", x, y + 40, false);
+            await new Promise((s) => setTimeout(s, 600));
+            const afterScroll = li.classList.contains("dragging");
+            fire(document, "touchend", x, y + 40, true);
+
+            // A few px of drift during the hold is still a hold — a
+            // zero-tolerance cancel would make the gesture unusable.
+            fire(li, "touchstart", x, y, false);
+            await new Promise((s) => setTimeout(s, 100));
+            fire(document, "touchmove", x + 3, y + 4, false);
+            await new Promise((s) => setTimeout(s, 600));
+            const afterJitter = li.classList.contains("dragging");
+            fire(document, "touchend", x + 3, y + 4, true);
+            await new Promise((s) => setTimeout(s, 200));
+
+            return { afterTap, afterScroll, afterJitter };
+        });
+
+        expect(out.afterTap).toBe(false);
+        expect(out.afterScroll).toBe(false);
+        expect(out.afterJitter).toBe(true);
+    });
+});
