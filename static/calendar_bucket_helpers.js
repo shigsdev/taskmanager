@@ -188,14 +188,68 @@ function reorderTierWithCell(tierOrderedIds, cellNewOrder) {
     });
 }
 
+
+/**
+ * #345 (2026-09-29): how many weeks the grid shows.
+ *
+ * Lives in this module rather than a new file on purpose: a new static
+ * asset drags in `sw.js` APP_SHELL and `health.EXPECTED_STATIC_FILES`
+ * (see the CLAUDE.md cascade table) for perhaps forty lines of pure
+ * logic, and this is already the calendar's pure-logic home.
+ */
+var CALENDAR_WEEK_OPTIONS = [2, 4, 8];
+
+/**
+ * Coerce a stored / user-supplied week count to one we actually offer.
+ *
+ * The value round-trips through localStorage, which returns strings and
+ * can hold anything a previous version (or a curious user) left there —
+ * so "4" must work, and 3, 0, "lots", null and undefined must all fall
+ * back rather than render a grid with a nonsense number of rows.
+ * Defaults to 2, which is what /calendar showed before this feature and
+ * so is the least surprising thing for an existing user to land on.
+ */
+function normaliseCalendarWeeks(value) {
+    var n = typeof value === "string" ? parseInt(value, 10) : value;
+    return CALENDAR_WEEK_OPTIONS.indexOf(n) === -1 ? 2 : n;
+}
+
+/**
+ * The INCLUSIVE last day of a `weeks`-long window starting at `startIso`.
+ *
+ * Used for the recurring-previews fetch, whose window has to widen with
+ * the grid — otherwise a 4- or 8-week outlook shows real tasks in the
+ * later weeks but silently omits the recurring ones, which reads as
+ * "nothing is scheduled" for weeks that are in fact busy.
+ *
+ * Pure date arithmetic on the ISO string so it is testable without a
+ * clock, and UTC-anchored so a DST boundary inside the window cannot
+ * shift the end date by a day.
+ */
+function calendarRangeEndIso(startIso, weeks) {
+    // Shape-check rather than count the pieces: "not-a-date" also splits
+    // into three parts, and coercing those gave `NaN-NaN-NaN` — i.e. the
+    // exact malformed `?end=` this guard exists to prevent.
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(startIso || ""));
+    if (!m) return startIso;
+    var start = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+    var days = normaliseCalendarWeeks(weeks) * 7 - 1;
+    var end = new Date(start + days * 86400000);
+    var m = String(end.getUTCMonth() + 1).padStart(2, "0");
+    var d = String(end.getUTCDate()).padStart(2, "0");
+    return end.getUTCFullYear() + "-" + m + "-" + d;
+}
+
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         bucketTasks, calendarReorderIds, reorderTierWithCell,
-        groupUnscheduledByTier,
+        groupUnscheduledByTier, CALENDAR_WEEK_OPTIONS,
+        normaliseCalendarWeeks, calendarRangeEndIso,
     };
 } else if (typeof window !== "undefined") {
     window.calendarBucketHelpers = {
         bucketTasks, calendarReorderIds, reorderTierWithCell,
-        groupUnscheduledByTier,
+        groupUnscheduledByTier, CALENDAR_WEEK_OPTIONS,
+        normaliseCalendarWeeks, calendarRangeEndIso,
     };
 }

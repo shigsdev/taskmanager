@@ -687,7 +687,20 @@ time is in the future today. See ADR-033 for the full design.
 - `/completed` — full-page completed view (#29)
 - `/goals` — goals page
 - `/projects` — projects CRUD page (#24)
-- `/calendar` — 2-week Mon-Sun drag-drop calendar (#73 + #218 — was Mon-Sat) — drop tasks on a day to set due_date
+- `/calendar` — Mon-Sun drag-drop calendar (#73 + #218 — was Mon-Sat) — drop tasks on a day to set due_date.
+  #345 made the length a choice: 2 / 4 / 8 weeks (14 / 28 / 56 cells), the
+  buttons built from `CALENDAR_WEEK_OPTIONS` so the option list has one
+  source of truth, and the choice kept in `localStorage` (a viewing
+  preference, and one that should be allowed to differ between phone and
+  laptop). Two things had to move with it: the recurring-previews fetch
+  window, which was a fixed 12 days and would otherwise have shown real
+  tasks in the later weeks with every recurring one silently missing; and
+  `recurring_api.MAX_PREVIEW_RANGE_DAYS`, raised 31 → 70, because an
+  8-week window is 56 days and the old cap 400'd it. The grid also stopped
+  advancing days with `+ 86400000` — adding fixed milliseconds is not
+  adding a day, so a window spanning a DST change rendered one date twice
+  and skipped the next (56 cells, 55 distinct dates). `_addDays()` builds
+  from (year, month, day + n) instead
 - `/utilities` — admin-style one-shot data cleanups (#222) — OAuth-gated UI for the backfills previously only triggerable via curl + admin token
 - `/recurring` — recurring template list with multi-select bulk-edit toolbar (#63)
 - `/review` — weekly review swipe + #12 triage-suggestions panel above the review card (heuristic-based stale-task hints from `triage_service.py`, served by `GET /api/triage/suggestions`)

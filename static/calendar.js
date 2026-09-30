@@ -26,6 +26,26 @@
             && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
     }
 
+    /**
+     * #345: add N calendar days to a local date, DST-safely.
+     *
+     * The grid used `date.getTime() + n * 86400000`. Adding fixed
+     * milliseconds is NOT adding a day: when the clocks go back, 24h
+     * after midnight is 23:00 the SAME local date, so the grid rendered
+     * one date twice and skipped the next. Invisible on the old 2-week
+     * window, which rarely spanned a changeover — and immediately
+     * visible on an 8-week one, which from late September crosses
+     * 2026-11-01. Caught by the contiguity assertion in pages.spec.js:
+     * 56 cells held only 55 distinct dates.
+     *
+     * Constructing from (year, month, day + n) lets the Date normalise
+     * the calendar arithmetic itself, which is the operation actually
+     * wanted.
+     */
+    function _addDays(date, n) {
+        return new Date(date.getFullYear(), date.getMonth(), date.getDate() + n);
+    }
+
     function _isoDate(d) {
         const y = d.getFullYear();
         const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -64,15 +84,95 @@
     // only reliable signal.
     let _dragSourceDate = null;
 
+    // #345 (2026-09-29): how many weeks the grid shows. Persisted so the
+    // choice survives a reload — an outlook you have to re-pick every
+    // visit is not an outlook. Stored per-browser rather than on the
+    // server: it is a viewing preference, not data, and it should be
+    // allowed to differ between the phone (2 weeks fits) and the laptop.
+    const _WEEKS_KEY = "calendarWeeks";
+
+    function _storedWeeks() {
+        const H = window.calendarBucketHelpers;
+        let raw = null;
+        try {
+            raw = window.localStorage.getItem(_WEEKS_KEY);
+        } catch (e) {
+            // Private mode / blocked storage — fall through to the default.
+        }
+        return H.normaliseCalendarWeeks(raw);
+    }
+
+    function _storeWeeks(weeks) {
+        try {
+            window.localStorage.setItem(_WEEKS_KEY, String(weeks));
+        } catch (e) {
+            // Non-fatal: the grid still renders, it just won't be
+            // remembered. Never worth breaking the page over.
+        }
+    }
+
+    /**
+     * #345: the 2 / 4 / 8-week switch.
+     *
+     * Rendered from JS rather than sitting in the template so the option
+     * list has ONE source of truth (CALENDAR_WEEK_OPTIONS) — a hardcoded
+     * set of buttons in calendar.html would silently drift from the
+     * helper that validates the stored value.
+     *
+     * Built with createElement/textContent per the house rule; nothing
+     * here is ever assembled as an HTML string.
+     */
+    function _renderRangeSwitch(weeks) {
+        const host = document.getElementById("calendarRange");
+        if (!host) return;
+        const H = window.calendarBucketHelpers;
+        host.replaceChildren();
+
+        const label = document.createElement("span");
+        label.className = "calendar-range-label";
+        label.textContent = "Outlook";
+        host.appendChild(label);
+
+        const group = document.createElement("div");
+        group.className = "calendar-range-group";
+        group.setAttribute("role", "group");
+        group.setAttribute("aria-label", "Calendar outlook length");
+
+        H.CALENDAR_WEEK_OPTIONS.forEach(function (n) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "calendar-range-btn";
+            btn.dataset.weeks = String(n);
+            btn.textContent = n + " weeks";
+            const isOn = n === weeks;
+            btn.classList.toggle("active", isOn);
+            // aria-pressed rather than aria-current: these are toggle
+            // buttons, not navigation.
+            btn.setAttribute("aria-pressed", isOn ? "true" : "false");
+            btn.addEventListener("click", function () {
+                if (n === _storedWeeks()) return;   // already showing it
+                _storeWeeks(n);
+                renderCalendar();
+            });
+            group.appendChild(btn);
+        });
+        host.appendChild(group);
+    }
+
     async function renderCalendar() {
         const myGen = ++_renderGeneration;
         const grid = document.getElementById("calendarGrid");
         if (!grid) return;
 
+        // #345: read once per render so the whole pass — previews window,
+        // row loop, and the switch's pressed state — agrees on one value.
+        const weeks = _storedWeeks();
+        _renderRangeSwitch(weeks);
+
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const daysSinceMonday = (today.getDay() + 6) % 7;
-        const thisMonday = new Date(today.getTime() - daysSinceMonday * 86400000);
+        const thisMonday = _addDays(today, -daysSinceMonday);
         const todayIso = _isoDate(today);
 
         // Pre-fetch all active tasks so we can list them per day.
@@ -91,7 +191,13 @@
         // matching the main board's preview treatment (#32).
         let previews = [];
         const startIso = _isoDate(thisMonday);
-        const endIso = _isoDate(new Date(thisMonday.getTime() + 12 * 86400000));
+        // #345: widen with the grid. A fixed 12-day window on a 4- or
+        // 8-week outlook would show real tasks in the later weeks while
+        // silently omitting the recurring ones — which reads as "nothing
+        // is scheduled" for weeks that are in fact busy.
+        const endIso = window.calendarBucketHelpers.calendarRangeEndIso(
+            startIso, weeks,
+        );
         try {
             previews = await window.apiFetch(
                 `/api/recurring/previews?start=${startIso}&end=${endIso}`
@@ -112,7 +218,7 @@
         // pure logic and live in static/calendar_bucket_helpers.js so
         // Jest can exercise them directly (per CLAUDE.md anti-pattern
         // #3 — don't string-match source; exercise the path).
-        const tomorrowIso = _isoDate(new Date(today.getTime() + 86400000));
+        const tomorrowIso = _isoDate(_addDays(today, 1));
         const { byDate, unscheduled } = window.calendarBucketHelpers.bucketTasks(
             tasks, todayIso, tomorrowIso,
         );
@@ -138,12 +244,12 @@
 
         // #218: 2 weeks × 7 days (Mon-Sun) = 14 cells. Render as 2 rows.
         // Was 12 cells (Mon-Sat per #72) — see header comment.
-        for (let week = 0; week < 2; week++) {
+        for (let week = 0; week < weeks; week++) {
             const row = document.createElement("div");
             row.className = "calendar-row";
             for (let dow = 0; dow < 7; dow++) {
                 const offset = week * 7 + dow;
-                const d = new Date(thisMonday.getTime() + offset * 86400000);
+                const d = _addDays(thisMonday, offset);
                 const iso = _isoDate(d);
                 const cell = document.createElement("div");
                 cell.className = "calendar-cell";

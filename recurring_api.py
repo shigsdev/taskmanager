@@ -37,6 +37,11 @@ from recurring_service import (
 )
 from utils import validate_json_body
 
+# #345: the widest window /calendar can ask for (8 weeks = 56 days),
+# plus headroom. Kept as a named constant so the route, its error
+# message and the tests all agree.
+MAX_PREVIEW_RANGE_DAYS = 70
+
 bp = Blueprint("recurring_api", __name__, url_prefix="/api/recurring")
 
 
@@ -245,8 +250,19 @@ def previews(email: str):  # noqa: ARG001
     except ValueError:
         return jsonify({"error": "start/end must be YYYY-MM-DD"}), 400
 
-    # Cap range to 31 days so nobody requests a year-long sweep.
-    if (end_d - start_d).days > 31:
-        return jsonify({"error": "range cannot exceed 31 days"}), 400
+    # Cap the range so nobody requests a year-long sweep. Raised from 31
+    # to 70 days for #345 (2026-09-29): /calendar gained a 4- and 8-week
+    # outlook, and an 8-week window is 56 days — the old cap 400'd, so
+    # the longer grids silently showed real tasks with every recurring
+    # preview missing. 70 leaves headroom for the 8-week window plus a
+    # partial week either side without inviting a sweep of the year.
+    #
+    # The work is O(days x active templates), and the previews are
+    # computed in memory with no writes — 56 days across a handful of
+    # templates is a few hundred rows.
+    if (end_d - start_d).days > MAX_PREVIEW_RANGE_DAYS:
+        return jsonify({
+            "error": f"range cannot exceed {MAX_PREVIEW_RANGE_DAYS} days",
+        }), 400
 
     return jsonify(compute_previews_in_range(start=start_d, end=end_d))

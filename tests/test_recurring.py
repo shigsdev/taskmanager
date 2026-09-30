@@ -1451,6 +1451,48 @@ class TestPreviewsEndpoint:
         )
         assert resp.status_code == 400
 
+    def test_an_eight_week_window_is_accepted(self, authed_client):
+        """#345: /calendar's 8-week outlook asks for 56 days.
+
+        The cap was 31, so the longest grid 400'd and rendered every real
+        task with every recurring preview silently missing — a busy week
+        six weeks out looked empty. Caught in Phase 6, not by the
+        Playwright test, which only checked that the request URL had
+        widened and not that the server accepted it.
+        """
+        resp = authed_client.get(
+            "/api/recurring/previews?start=2026-09-28&end=2026-11-22"
+        )
+        assert resp.status_code == 200, resp.get_json()
+
+    def test_the_cap_still_bites_just_further_out(self, authed_client):
+        """Raised, not removed — a year-long sweep is still refused."""
+        from datetime import date, timedelta
+
+        from recurring_api import MAX_PREVIEW_RANGE_DAYS
+
+        start = date(2026, 1, 1)
+        ok = start + timedelta(days=MAX_PREVIEW_RANGE_DAYS)
+        too_far = start + timedelta(days=MAX_PREVIEW_RANGE_DAYS + 1)
+        assert authed_client.get(
+            f"/api/recurring/previews?start={start}&end={ok}"
+        ).status_code == 200
+        assert authed_client.get(
+            f"/api/recurring/previews?start={start}&end={too_far}"
+        ).status_code == 400
+
+    def test_the_cap_covers_what_the_calendar_can_ask_for(self):
+        """The constant and the widest grid must not drift apart.
+
+        calendar.js offers 8 weeks; if someone later adds a 12-week
+        option without raising this, the longest grid breaks the same
+        silent way.
+        """
+        from recurring_api import MAX_PREVIEW_RANGE_DAYS
+
+        widest_calendar_window_days = 8 * 7
+        assert widest_calendar_window_days <= MAX_PREVIEW_RANGE_DAYS
+
     def test_daily_template_fires_every_day(self, authed_client, app):
         with app.app_context():
             _make_recurring(

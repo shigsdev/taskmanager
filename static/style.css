@@ -442,6 +442,41 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     font-size: 0.85rem;
     margin-bottom: 16px;
 }
+/* === #345 (2026-09-29): 2 / 4 / 8-week outlook switch === */
+.calendar-range {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+.calendar-range-label {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+.calendar-range-group { display: flex; gap: 6px; }
+.calendar-range-btn {
+    /* 44px tall so it clears the tap floor on mobile without needing a
+       separate rule — this control is as useful on the phone as on the
+       laptop, and it is the first thing a thumb reaches for. */
+    min-height: 44px;
+    padding: 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface-sunk);
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+.calendar-range-btn:hover { border-color: var(--copper); color: var(--text); }
+.calendar-range-btn.active {
+    border-color: var(--copper);
+    color: var(--copper);
+    background: rgba(184, 115, 51, 0.12);
+}
 .calendar-grid {
     display: flex;
     flex-direction: column;

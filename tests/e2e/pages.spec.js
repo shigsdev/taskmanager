@@ -3593,3 +3593,172 @@ test.describe("Reflection - a submitted reflection never comes back as a draft (
         expect(posts).toBe(1);
     });
 });
+
+test.describe("Calendar - 2 / 4 / 8-week outlook (#345)", () => {
+    const cells = (page) => page.locator(".calendar-cell");
+    const rangeBtn = (page, n) =>
+        page.locator(`.calendar-range-btn[data-weeks="${n}"]`);
+
+    const clearStoredRange = (page) => page.evaluate(() => {
+        try { window.localStorage.removeItem("calendarWeeks"); } catch (e) { /* blocked */ }
+    });
+
+    test.beforeEach(async ({ page }) => {
+        await page.goto("/calendar?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await clearStoredRange(page);
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(cells(page).first()).toBeVisible({ timeout: 10000 });
+    });
+
+    test("defaults to 2 weeks - 14 cells, as before #345", async ({ page }) => {
+        // The pre-existing behaviour. An existing user must not find
+        // their calendar silently three times longer after a deploy.
+        await expect(cells(page)).toHaveCount(14);
+        await expect(rangeBtn(page, 2)).toHaveAttribute("aria-pressed", "true");
+    });
+
+    test("4 weeks renders 28 cells, 8 weeks renders 56", async ({ page }) => {
+        await rangeBtn(page, 4).click();
+        await expect(cells(page)).toHaveCount(28, { timeout: 10000 });
+        await rangeBtn(page, 8).click();
+        await expect(cells(page)).toHaveCount(56, { timeout: 10000 });
+        await rangeBtn(page, 2).click();
+        await expect(cells(page)).toHaveCount(14, { timeout: 10000 });
+    });
+
+    test("every rendered day is distinct and contiguous", async ({ page }) => {
+        // Guards the loop arithmetic: an off-by-one in the offset would
+        // repeat or skip a day, which on a 56-cell grid is easy to miss
+        // by eye. (#219 shipped a real double-render bug of this shape.)
+        await rangeBtn(page, 8).click();
+        await expect(cells(page)).toHaveCount(56, { timeout: 10000 });
+        const dates = await cells(page).evaluateAll(
+            (els) => els.map((e) => e.dataset.date));
+        expect(new Set(dates).size).toBe(56);
+        for (let i = 1; i < dates.length; i++) {
+            const prev = new Date(dates[i - 1] + "T00:00:00Z").getTime();
+            const cur = new Date(dates[i] + "T00:00:00Z").getTime();
+            expect(cur - prev).toBe(86400000);
+        }
+        // Mon-Sun rows: the first cell is a Monday, the last a Sunday.
+        expect(new Date(dates[0] + "T00:00:00Z").getUTCDay()).toBe(1);
+        expect(new Date(dates[55] + "T00:00:00Z").getUTCDay()).toBe(0);
+    });
+
+    test("the choice survives a reload", async ({ page }) => {
+        // An outlook you have to re-pick every visit is not an outlook.
+        await rangeBtn(page, 8).click();
+        await expect(cells(page)).toHaveCount(56, { timeout: 10000 });
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(cells(page)).toHaveCount(56, { timeout: 10000 });
+        await expect(rangeBtn(page, 8)).toHaveAttribute("aria-pressed", "true");
+    });
+
+    test("a junk stored value falls back instead of breaking the grid", async ({ page }) => {
+        await page.evaluate(() => {
+            window.localStorage.setItem("calendarWeeks", "lots");
+        });
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(cells(page)).toHaveCount(14, { timeout: 10000 });
+    });
+
+    test("the recurring-previews fetch widens with the grid", async ({ page }) => {
+        // The failure this prevents: real tasks show in week 6 but the
+        // recurring ones silently do not, so a busy week reads as empty.
+        const windows = [];
+        const statuses = [];
+        await page.route("**/api/recurring/previews**", async (route, request) => {
+            const u = new URL(request.url());
+            windows.push({ start: u.searchParams.get("start"),
+                           end: u.searchParams.get("end") });
+            const res = await route.fetch();
+            statuses.push(res.status());
+            await route.fulfill({ response: res });
+        });
+        await rangeBtn(page, 8).click();
+        await expect(cells(page)).toHaveCount(56, { timeout: 10000 });
+        const last = windows[windows.length - 1];
+        expect(last).toBeTruthy();
+        const span = (new Date(last.end + "T00:00:00Z")
+                      - new Date(last.start + "T00:00:00Z")) / 86400000;
+        expect(span).toBe(55);   // inclusive: 56 days
+
+        // And it must actually SUCCEED. The first version of this test
+        // checked only that the URL widened, which it did -- while the
+        // server 400'd the request ("range cannot exceed 31 days") and
+        // the 8-week grid showed every real task with every recurring
+        // preview silently missing. Asserting the shape of a request is
+        // not asserting the feature works.
+        expect(statuses.length).toBeGreaterThan(0);
+        expect(statuses.every((c) => c === 200)).toBe(true);
+    });
+
+    test("a task dropped on a week-7 cell actually lands on that date", async ({
+        page, request,
+    }) => {
+        // The real risk in #345: the drop handlers are attached per cell
+        // inside the render loop, so a cell that only exists because the
+        // grid got longer must reschedule exactly like a week-1 cell.
+        // Asserting the persisted due_date is the only way to know the
+        // handler ran — a click affordance proves nothing about the drop.
+        const created = await request.post("/api/tasks", {
+            data: { title: `E2E outlook DnD ${Date.now()}`, type: "work",
+                    tier: "inbox" },
+        });
+        expect(created.ok()).toBe(true);
+        const task = await created.json();
+
+        try {
+            await rangeBtn(page, 8).click();
+            await expect(cells(page)).toHaveCount(56, { timeout: 10000 });
+
+            // Cell 50 is in week 8 — unreachable before this feature.
+            const farDate = await cells(page).nth(50).getAttribute("data-date");
+            expect(farDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+            const li = page.locator(
+                `#calendarUnscheduled li[data-task-id="${task.id}"]`);
+            await expect(li).toBeVisible({ timeout: 10000 });
+
+            // Same programmatic DataTransfer dance the #267 cross-cell test
+            // uses — page.dragAndDrop doesn't fire this app's dragstart.
+            await page.evaluate((args) => {
+                const src = document.querySelector(
+                    `#calendarUnscheduled li[data-task-id="${args.tid}"]`);
+                const cell = document.querySelector(
+                    `.calendar-cell[data-date="${args.farDate}"]`);
+                const dt = new DataTransfer();
+                dt.setData("text/plain", args.tid);
+                src.dispatchEvent(new DragEvent("dragstart",
+                    { dataTransfer: dt, bubbles: true }));
+                cell.dispatchEvent(new DragEvent("dragover",
+                    { dataTransfer: dt, bubbles: true, cancelable: true }));
+                cell.dispatchEvent(new DragEvent("drop",
+                    { dataTransfer: dt, bubbles: true, cancelable: true }));
+            }, { tid: task.id, farDate });
+
+            await expect.poll(async () => {
+                const r = await request.get(`/api/tasks/${task.id}`);
+                return (await r.json()).due_date;
+            }, { timeout: 10000 }).toBe(farDate);
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("the switch clears the tap floor and does not overflow", async ({ page }) => {
+        for (const n of [2, 4, 8]) {
+            const box = await rangeBtn(page, n).boundingBox();
+            expect(box.height).toBeGreaterThanOrEqual(44);
+        }
+        await rangeBtn(page, 8).click();
+        await expect(cells(page)).toHaveCount(56, { timeout: 10000 });
+        const overflows = await page.evaluate(() =>
+            document.documentElement.scrollWidth > window.innerWidth);
+        expect(overflows).toBe(false);
+    });
+});

@@ -25,6 +25,9 @@
         no specific day. Drop a scheduled task there to clear its date;
         drop an unscheduled task on a day to schedule it.
     </p>
+    {# #345: the outlook switch. Populated by calendar.js from
+       CALENDAR_WEEK_OPTIONS so the options have one source of truth. #}
+    <div class="calendar-range" id="calendarRange"></div>
     <div class="calendar-layout">
         <div class="calendar-grid" id="calendarGrid"></div>
         <aside class="calendar-unscheduled" id="calendarUnscheduled"></aside>

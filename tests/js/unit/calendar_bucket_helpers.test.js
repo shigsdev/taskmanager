@@ -407,3 +407,77 @@ describe("groupUnscheduledByTier (#292)", () => {
         });
     });
 });
+
+describe("normaliseCalendarWeeks — #345 outlook length", () => {
+    const { normaliseCalendarWeeks, CALENDAR_WEEK_OPTIONS } =
+        require("../../../static/calendar_bucket_helpers");
+
+    test("the three offered lengths pass through", () => {
+        expect(normaliseCalendarWeeks(2)).toBe(2);
+        expect(normaliseCalendarWeeks(4)).toBe(4);
+        expect(normaliseCalendarWeeks(8)).toBe(8);
+    });
+
+    test("localStorage hands back STRINGS, and they must work", () => {
+        // The whole reason this helper exists: getItem never returns a
+        // number, so a naive === 4 comparison would silently reset the
+        // user's choice to the default on every single page load.
+        expect(normaliseCalendarWeeks("4")).toBe(4);
+        expect(normaliseCalendarWeeks("8")).toBe(8);
+    });
+
+    test("anything we don't offer falls back to 2", () => {
+        // 2 is what /calendar showed before #345, so it is the least
+        // surprising thing for an existing user to land on.
+        [3, 0, -4, 52, 2.5, "lots", "", null, undefined, {}, []]
+            .forEach((bad) => expect(normaliseCalendarWeeks(bad)).toBe(2));
+    });
+
+    test("the offered set is what the switch renders from", () => {
+        // calendar.js builds its buttons from this array, so a drift
+        // here would put a button on screen the helper then rejects.
+        expect(CALENDAR_WEEK_OPTIONS).toEqual([2, 4, 8]);
+        CALENDAR_WEEK_OPTIONS.forEach((n) =>
+            expect(normaliseCalendarWeeks(n)).toBe(n));
+    });
+});
+
+describe("calendarRangeEndIso — #345 previews window", () => {
+    const { calendarRangeEndIso } =
+        require("../../../static/calendar_bucket_helpers");
+
+    test("the window is INCLUSIVE of its last day", () => {
+        // Mon 2026-09-28 + 2 weeks ends on Sun 2026-10-11, not the 12th.
+        expect(calendarRangeEndIso("2026-09-28", 2)).toBe("2026-10-11");
+        expect(calendarRangeEndIso("2026-09-28", 4)).toBe("2026-10-25");
+        expect(calendarRangeEndIso("2026-09-28", 8)).toBe("2026-11-22");
+    });
+
+    test("every window ends on a Sunday", () => {
+        // The grid is Mon-Sun rows; an end date mid-week would mean the
+        // last row's recurring previews were cut off partway across.
+        [2, 4, 8].forEach((w) => {
+            const end = new Date(calendarRangeEndIso("2026-09-28", w) + "T00:00:00Z");
+            expect(end.getUTCDay()).toBe(0);
+        });
+    });
+
+    test("it crosses a month and a DST boundary without slipping a day", () => {
+        // US DST ends 2026-11-01. UTC-anchored arithmetic must not let
+        // that shift the end date, which is why the helper avoids local
+        // Date construction entirely.
+        expect(calendarRangeEndIso("2026-10-26", 2)).toBe("2026-11-08");
+        expect(calendarRangeEndIso("2026-12-28", 2)).toBe("2027-01-10");
+    });
+
+    test("an unusable week count uses the default window, not a broken one", () => {
+        expect(calendarRangeEndIso("2026-09-28", "nonsense")).toBe("2026-10-11");
+    });
+
+    test("a malformed start date is returned unchanged rather than NaN", () => {
+        // Better a no-op fetch window than `?start=&end=NaN-NaN-NaN`.
+        expect(calendarRangeEndIso("", 4)).toBe("");
+        expect(calendarRangeEndIso("not-a-date", 4)).toBe("not-a-date");
+        expect(calendarRangeEndIso(null, 4)).toBe(null);
+    });
+});
