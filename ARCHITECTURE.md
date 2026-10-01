@@ -514,18 +514,49 @@ component is added, a data flow changes, or a security boundary shifts.
     unreachable by drag and goal-less projects never appear on the
     page. The sentinel is non-empty on purpose: the shared hit-test
     skips falsy ids, so `""` would make the zone untouchable on mobile.
-  - **No task cascade, and the progress bars do not move.**
-    `project_service.update_project` sets `goal_id` and stops —
-    deliberately, per the principle recorded in `delete_project` ("the
-    goal is independent intent") — while `goal_service.
-    goal_progress_batch` counts tasks by `Task.goal_id` alone and
-    never traverses Project → Goal. A move therefore leaves the
-    project's tasks counting toward their old goal, so the UI counts
-    them and says so rather than letting it look broken.
+  - **The tasks cascade with it** — see #350 below. As first shipped,
+    #343 did *not* re-point them and the UI explained why; that was a
+    gap, not a design, and was corrected the same week.
   Decision logic is pure in `static/goal_project_drag_helpers.js`
   (dual-export, Jest-tested). The card hit-test geometry is **shared**
   with #344 via `projectTaskDragHelpers.cardIdUnderPoint` rather than
   duplicated.
+- **Project goal cascades to its tasks** (#350, 2026-10-01):
+  `project_service.update_project` now re-points `Task.goal_id` for
+  every task on the project whenever the project's own `goal_id`
+  changes. This closes a long-standing asymmetry rather than adding a
+  behaviour:
+  - #77 settled the rule by explicit user scoping decision, quoted in
+    `scripts/backfill_task_goal_from_project.py` — *"always overwrite +
+    go back and update any missing ... all task←project←goal links are
+    consistent"*. `update_task` honoured it from the start;
+    `update_project` never did, so the invariant held when you edited
+    the TASK and broke silently when you edited the PROJECT.
+  - The repo already shipped **two tools to repair the resulting
+    drift** — that backfill script and
+    `POST /api/debug/backfill-task-goal-from-project`. A standing
+    repair tool for a drift is the drift being a bug.
+  - `delete_project`'s *"the goal is independent intent"* comment
+    covers **deletion only**, where nulling a task's goal because its
+    project vanished would be data loss. It does not extend to a
+    project being moved. Archiving a project still leaves task goals
+    alone; that behaviour is unchanged and pinned by a test.
+  - **Unassigning clears** the tasks' goals, by explicit user decision
+    against the recommendation — and the better argument: PR24's
+    "silent data loss" finding was about a goal changed *incidentally*
+    while setting a project, whereas clearing a project's goal is a
+    direct statement about that goal. The backfill already took the
+    same line (`new_goal_id = proj.goal_id  # may be None`).
+  - Only fires on an **actual change** to `goal_id`, because the
+    `/projects` detail panel sends the field on every save — recolouring
+    a project must not rewrite its task rows. A deliberate full re-sync
+    is what the backfill endpoint is for. No status filter, matching
+    the backfill: a completed task left behind would make the goal's
+    own completed-count wrong.
+  - Because the clear is destructive and has no undo, `/goals` confirms
+    first with an exact count, fetched with `status=all` — `/api/tasks`
+    returns ACTIVE only by default, which would understate the blast
+    radius in precisely that direction.
 - **Task cancellation** (#25, ADR-012): `TaskStatus.CANCELLED` is
   distinct from ARCHIVED (completed) so users can drop tasks honestly
   without inflating completion stats. Optional `cancellation_reason`

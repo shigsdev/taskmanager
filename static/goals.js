@@ -41,7 +41,6 @@ let goalTasks = {};  // goal_id -> [task, ...]
 const _GOALS_NO_GOAL = "__no_goal__";
 let goalProjects = {};            // goal_id | sentinel -> [project, ...]
 let goalProjectsById = {};        // project_id -> project
-let projectTasksByProject = {};   // project_id -> [task, ...]
 // Which project lists are open. Held outside the DOM so an expansion
 // survives the full re-render that follows every move.
 const _goalsExpanded = new Set();
@@ -85,21 +84,11 @@ async function goalsLoad() {
     // invisible on this page and impossible to drag anywhere.
     goalProjectsById = {};
     goalProjects = {};
-    projectTasksByProject = {};
     for (const p of projects) {
         goalProjectsById[p.id] = p;
         const key = p.goal_id || _GOALS_NO_GOAL;
         if (!goalProjects[key]) goalProjects[key] = [];
         goalProjects[key].push(p);
-    }
-    // Keyed by project so a move can report how many of its tasks keep
-    // counting toward a different goal (see goalProjectMoveSideEffects).
-    for (const task of tasks) {
-        if (!task.project_id) continue;
-        if (!projectTasksByProject[task.project_id]) {
-            projectTasksByProject[task.project_id] = [];
-        }
-        projectTasksByProject[task.project_id].push(task);
     }
     // Update inbox badge
     const inboxCount = tasks.filter((t) => t.tier === "inbox").length;
@@ -722,32 +711,50 @@ async function _goalsApplyProjectMove(project, goal) {
         return;
     }
     const h = window.goalProjectDragHelpers;
-    const side = h.goalProjectMoveSideEffects(
-        projectTasksByProject[project.id] || [], d.newGoalId);
 
     try {
+        // #350: the server re-points every task on this project, with no
+        // status filter. `/api/tasks` returns only ACTIVE by default, so
+        // the board's own map would undercount — ask for the real set
+        // before quoting a number the user is about to act on.
+        const owned = await apiFetch(
+            `/api/tasks?status=all&project_id=${encodeURIComponent(project.id)}`);
+        const n = h.goalProjectCascadeCount(owned, d.newGoalId);
+
+        // Clearing is the destructive direction and has no undo, so it
+        // asks first. Moving between goals is a re-point and is cheap to
+        // reverse, so it does not.
+        if (d.unassign && n > 0) {
+            const ok = confirm(
+                `Take "${project.name}" out of its goal?\n\n` +
+                `${n === 1 ? "1 task" : n + " tasks"} on this project ` +
+                `${n === 1 ? "has" : "have"} their goal set from it, and ` +
+                `${n === 1 ? "it" : "they"} will be cleared too. ` +
+                `This cannot be undone.`,
+            );
+            if (!ok) {
+                goalsDragStatus(`Left "${project.name}" where it was.`);
+                return;
+            }
+        }
+
         await apiFetch(`/api/projects/${project.id}`, {
             method: "PATCH",
             body: JSON.stringify(h.goalProjectMovePayload(d.newGoalId)),
         });
         await goalsLoad();             // goalsLoad() re-renders
 
+        // The tasks move with the project now, so the progress bars DO
+        // change — the message says what happened to them rather than
+        // explaining why nothing did.
         let msg = d.unassign
             ? `Moved "${project.name}" out of its goal.`
             : `Moved "${project.name}" to "${goal.title}".`;
-        // The progress bars will NOT have moved, and that is correct
-        // rather than broken: goal progress counts tasks by their own
-        // goal_id (goal_service.goal_progress_batch) and moving a
-        // project deliberately does not re-point them —
-        // project_service.delete_project records the principle as "the
-        // goal is independent intent". Silence here would read as a bug.
-        if (side.countedElsewhere > 0) {
-            const n = side.countedElsewhere;
-            msg += n === 1
-                ? " 1 of its tasks still counts toward a different goal, so" +
-                  " the progress bars have not changed."
-                : ` ${n} of its tasks still count toward a different goal,` +
-                  ` so the progress bars have not changed.`;
+        if (n > 0) {
+            const tasks = n === 1 ? "1 task" : `${n} tasks`;
+            msg += d.unassign
+                ? ` Cleared the goal on ${tasks}.`
+                : ` ${tasks} moved with it.`;
         }
         goalsDragStatus(msg);
     } catch (err) {

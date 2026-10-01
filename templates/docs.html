@@ -2085,15 +2085,30 @@ Skip this line (too short)</pre>
 
             <h3>Goal cascade onto linked tasks</h3>
             <p>
-                When you save a task with a <code>project_id</code>,
-                the server cascades the project's <code>goal_id</code>
-                onto the task automatically &mdash; including when you
-                move the task by dragging it onto another project card.
-                If the project has <em>no</em> linked goal, the task keeps
-                whatever goal it already had. The task's goal is only
-                cleared when you remove its project entirely. An explicit
-                <code>goal_id</code> in the same save wins over the
-                cascade.
+                A task's goal follows its project's goal. The cascade runs
+                from both ends:
+            </p>
+            <ul>
+                <li><strong>Saving a task with a project</strong> copies that
+                    project's goal onto the task &mdash; including when you
+                    drag the task onto another project card. If the project
+                    has <em>no</em> goal, the task keeps whatever goal it had,
+                    because the goal isn't what you were changing. An explicit
+                    goal in the same save wins over the cascade.</li>
+                <li><strong>Changing a project's goal</strong> re-points every
+                    task in that project, whether you do it from the project
+                    panel, from bulk edit, or by dragging the project between
+                    goal cards on <a href="{{ url_for('goals_page') }}">/goals</a>.
+                    Clearing a project's goal clears its tasks' goals too
+                    &mdash; there the goal <em>is</em> what you're changing, so
+                    it carries through. That one cannot be undone, so the drag
+                    asks first.</li>
+            </ul>
+            <p>
+                Removing a task's project entirely also clears its goal.
+                <em>Archiving</em> a project does not: the project goes away,
+                but you haven't said anything about the goal, so its tasks
+                keep theirs.
             </p>
         </section>
 
@@ -2129,13 +2144,12 @@ Skip this line (too short)</pre>
                 ratio.
             </p>
             <p>
-                A task usually gets that goal from its project, because
-                saving a task with a project copies the project's goal onto
-                it (see <a href="#projects-feature">Projects</a> for the
-                cascade rule). But the count reads the task's goal, not its
-                project's — so a task can sit under a project filed on one
-                goal while counting toward another. That is what makes the
-                note below matter.
+                A task gets that goal from its project: saving a task with a
+                project copies the project's goal onto it, and moving a
+                project to another goal moves its tasks with it (see
+                <a href="#projects-feature">Projects</a> for the cascade
+                rule). You can set a task's goal by hand, but the next time
+                its project's goal changes, that will win.
             </p>
 
             <h3>Drag a project to another goal</h3>
@@ -2162,27 +2176,24 @@ Skip this line (too short)</pre>
                 <li><strong>&ldquo;No goal&rdquo; is a real drop zone.</strong>
                     It sits at the bottom of the page, lists every project
                     that has no goal, and accepts a drop to take a project
-                    back out of one. Dragging is reversible.</li>
+                    back out of one. Dragging it onto a goal again re-files
+                    it, and its tasks follow.</li>
                 <li><strong>Archived projects are not shown here</strong> and
                     cannot be dragged — manage them on
                     <a href="{{ url_for('projects_page') }}">/projects</a>.</li>
             </ul>
             <p>
-                <strong>The progress bars will not move</strong>, and that is
-                deliberate rather than a bug. Moving a project changes the
-                project's goal and nothing else — it does not re-point the
-                goals of the tasks inside it, because a task's goal is
-                treated as your own intent rather than something the project
-                owns. Since the bars count each task's own goal, those tasks
-                keep counting toward the goal they were already on. When a
-                move leaves tasks behind like that, the confirmation line
-                above the board tells you how many.
+                <strong>The project's tasks come with it.</strong> Moving a
+                project re-points the goal on every task inside it, so both
+                progress bars update to match. The line above the board says
+                how many tasks moved.
             </p>
             <p>
-                To move the tasks too, set their goal yourself in the task
-                panel. Re-saving a task will not pick the new goal up on its
-                own: the panel sends the goal field along with the project,
-                and an explicit goal always wins over the cascade.
+                <strong>Dropping a project on &ldquo;No goal&rdquo; also
+                clears its tasks' goals</strong>, and that cannot be undone —
+                so that direction asks first and tells you how many tasks it
+                will affect. Moving between goals does not ask, because
+                dragging it somewhere else puts everything right again.
             </p>
         </section>
 

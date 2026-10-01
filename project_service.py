@@ -215,7 +215,43 @@ def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
             project.priority = _parse_enum(ProjectPriority, data["priority"], "priority")
 
     if "goal_id" in data:
-        project.goal_id = _parse_uuid(data["goal_id"], "goal_id")
+        new_goal_id = _parse_uuid(data["goal_id"], "goal_id")
+        # #350 (2026-10-01): cascade the goal onto this project's tasks.
+        #
+        # #77 settled the rule with an explicit user scoping decision,
+        # quoted in scripts/backfill_task_goal_from_project.py: "always
+        # overwrite + go back and update any missing ... all
+        # task<-project<-goal links are consistent". `update_task` has
+        # honoured it since; THIS function never did, so the invariant
+        # held when you edited the task and broke silently when you
+        # edited the project. That is why the repo ships two tools to
+        # repair the drift after the fact (that script, and
+        # /api/debug/backfill-task-goal-from-project) — a repair tool
+        # for a drift is the drift being a bug. #343 made it easy to
+        # cause by turning a detail-panel edit into a drag.
+        #
+        # Nulling on unassign is deliberate and is NOT the PR24
+        # "silent data loss" case. PR24 was about assigning a task to a
+        # project that happens to have no goal — there the goal is
+        # incidental, so overwriting it destroys an unrelated choice.
+        # Clearing a project's goal is a direct statement ABOUT that
+        # goal, so cascading honours the intent. The backfill takes the
+        # same line (`new_goal_id = proj.goal_id  # may be None`).
+        #
+        # Only on an actual change: the /projects detail panel sends
+        # goal_id on every save, so recolouring a project must not
+        # quietly rewrite its tasks. A deliberate full re-sync is what
+        # the backfill endpoint is for.
+        #
+        # No status filter, matching the backfill — a completed task
+        # left behind would make the goal's own completed-count wrong.
+        if new_goal_id != project.goal_id:
+            project.goal_id = new_goal_id
+            # Bulk update so we don't pull every Task into the session;
+            # there can be hundreds linked to a single project.
+            Task.query.filter_by(project_id=project.id).update(
+                {"goal_id": new_goal_id}, synchronize_session=False
+            )
 
     if "is_active" in data:
         if not isinstance(data["is_active"], bool):

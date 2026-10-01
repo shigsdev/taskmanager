@@ -38,16 +38,23 @@
  *   one-way. `undefined` stays an error, so an accidental omission
  *   cannot start silently wiping `goal_id`.
  *
- *   NO TASK CASCADE, AND THE BARS DO NOT MOVE — `update_project`
- *   (project_service.py:217) sets `project.goal_id` and stops.
- *   Deliberately: `delete_project` documents the principle as "the goal
- *   is independent intent". But `goal_progress_batch`
- *   (goal_service.py:197) counts tasks by `Task.goal_id` alone and
- *   never traverses Project -> Goal, so after a move the project sits
- *   under its new goal while its tasks keep counting toward the old
- *   one and neither progress bar changes. That is a real user-visible
- *   consequence of a correct design, so it is counted here and said
- *   out loud by the caller.
+ *   THE TASKS COME WITH IT (#350) — `update_project` cascades the new
+ *   goal onto every task on the project. This was NOT true when #343
+ *   shipped, and the gap was mine: I read `delete_project`'s "the goal
+ *   is independent intent" as the governing principle when it only
+ *   covers DELETION, where nulling a task's goal because its project
+ *   vanished would be data loss. The actual rule is #77's recorded
+ *   user decision — "always overwrite + go back and update any
+ *   missing" — which `update_task` had honoured all along while
+ *   `update_project` had not. Two repair tools existed for the
+ *   resulting drift, which is the drift being a bug.
+ *
+ *   Unassigning CLEARS the tasks' goals, by the user's call. That is
+ *   not the PR24 "silent data loss" case: PR24 was about assigning a
+ *   task to a project that incidentally has no goal, where the goal is
+ *   not what you were touching. Clearing a project's goal is a direct
+ *   statement about that goal. Because it is destructive and has no
+ *   undo, the caller confirms first with an exact count.
  */
 "use strict";
 
@@ -105,46 +112,41 @@ function goalProjectMovePayload(goalId) {
 }
 
 /**
- * What the move does NOT do, counted so the caller can say it.
+ * How many of the project's tasks the server will re-point, so the
+ * caller can say it — and, when the destination is "no goal", warn
+ * BEFORE doing it.
  *
- * `tasks` is the moved project's tasks. Returns
- * `{ countedElsewhere, unlinked }`:
+ * `tasks` must be EVERY task on the project, not just the active ones:
+ * `update_project` cascades with no status filter (matching the
+ * backfill), while `/api/tasks` returns only ACTIVE by default. Counting
+ * the default list would understate the blast radius in exactly the
+ * destructive direction, so the caller fetches `status=all` first.
  *
- *   countedElsewhere — tasks whose own `goal_id` is set and is not the
- *   destination. These keep counting toward that other goal's progress
- *   bar while the project sits under the new one.
- *
- *   unlinked — tasks with no goal at all, which count toward nothing.
- *
- * Cancelled and deleted tasks are excluded to match
- * `goal_progress_batch`, which drops DELETED entirely and excludes
- * CANCELLED from both numerator and denominator. Counting them would
- * overstate what the user actually sees on the bars.
+ * Returns the count of tasks whose goal will change. When the move is
+ * an unassign, every one of those is a goal being CLEARED, which is the
+ * number worth confirming against.
  */
-function goalProjectMoveSideEffects(tasks, newGoalId) {
-    var out = { countedElsewhere: 0, unlinked: 0 };
-    if (!tasks || !tasks.length) return out;
+function goalProjectCascadeCount(tasks, newGoalId) {
+    if (!tasks || !tasks.length) return 0;
     var dest = newGoalId || null;
+    var n = 0;
     for (var i = 0; i < tasks.length; i++) {
         var t = tasks[i];
         if (!t) continue;
-        if (t.status !== "active" && t.status !== "archived") continue;
-        var g = t.goal_id || null;
-        if (!g) out.unlinked += 1;
-        else if (g !== dest) out.countedElsewhere += 1;
+        if ((t.goal_id || null) !== dest) n += 1;
     }
-    return out;
+    return n;
 }
 
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         goalProjectDropDecision, goalProjectMovePayload,
-        goalProjectMoveSideEffects,
+        goalProjectCascadeCount,
     };
 } else if (typeof window !== "undefined") {
     window.goalProjectDragHelpers = {
         goalProjectDropDecision: goalProjectDropDecision,
         goalProjectMovePayload: goalProjectMovePayload,
-        goalProjectMoveSideEffects: goalProjectMoveSideEffects,
+        goalProjectCascadeCount: goalProjectCascadeCount,
     };
 }

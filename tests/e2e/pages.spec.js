@@ -4395,23 +4395,21 @@ test.describe("Goals - drag a project to another goal (#343)", () => {
         }
     });
 
-    test("a move says so when the progress bars will NOT move", async ({
+    test("a move takes the project's tasks with it (#350)", async ({
         page, request,
     }) => {
-        // goal_progress_batch counts tasks by Task.goal_id alone and never
-        // traverses Project -> Goal, and update_project deliberately does
-        // not re-point a project's tasks ("the goal is independent
-        // intent"). So the project lands under the new goal while its
-        // tasks keep counting toward the old one and neither bar changes.
-        // Silence here would read as a bug, so the move narrates it.
+        // #343 shipped without this and said so in the UI; that was a
+        // gap, not a design. #77's recorded decision is "always
+        // overwrite", update_task had honoured it all along, and the
+        // repo shipped two tools to repair the drift update_project
+        // caused. The bars move now because the tasks do.
         const goals = await activeGoals(request);
         const [from, to] = goals;
         const project = await makeProject(request, from.id);
 
-        // A task on this project, pinned to the OLD goal.
         const taskRes = await request.post("/api/tasks", {
             data: {
-                title: `E2E stranded ${Date.now()}`, type: "work",
+                title: `E2E cascade ${Date.now()}`, type: "work",
                 tier: "inbox", project_id: project.id, goal_id: from.id,
             },
         });
@@ -4428,16 +4426,127 @@ test.describe("Goals - drag a project to another goal (#343)", () => {
             await expect.poll(() => goalIdOf(request, project.id),
                               { timeout: 10000 }).toBe(to.id);
 
+            // The task followed.
+            await expect.poll(async () => {
+                const r = await request.get(`/api/tasks/${task.id}`);
+                return (await r.json()).goal_id;
+            }, { timeout: 10000 }).toBe(to.id);
+
             const status = page.locator("#goalsDragStatus");
             await expect(status).toBeVisible();
-            await expect(status).toContainText(/still counts? toward a different goal/i);
-            await expect(status).toContainText(/progress bars have not changed/i);
-
-            // And the claim is true: the task was NOT re-pointed.
-            const after = await (await request.get(`/api/tasks/${task.id}`)).json();
-            expect(after.goal_id).toBe(from.id);
+            await expect(status).toContainText(/1 task moved with it/i);
         } finally {
             await request.delete(`/api/tasks/${task.id}`);
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+
+    test("clearing a goal asks first, and cancelling changes nothing", async ({
+        page, request,
+    }) => {
+        // Unassigning is the destructive direction: it clears the goal on
+        // every task of the project with no undo. Moving between goals is
+        // a re-point and is cheap to reverse, so only this direction
+        // confirms.
+        const goals = await activeGoals(request);
+        const project = await makeProject(request, goals[0].id);
+        const taskRes = await request.post("/api/tasks", {
+            data: {
+                title: `E2E confirm ${Date.now()}`, type: "work",
+                tier: "inbox", project_id: project.id, goal_id: goals[0].id,
+            },
+        });
+        const task = await taskRes.json();
+
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expandAll(page);
+            await expect(chip(page, project.id)).toHaveCount(1, { timeout: 10000 });
+
+            const seen = [];
+            page.on("dialog", async (d) => {
+                seen.push(d.message());
+                await d.dismiss();          // say No
+            });
+
+            await dragProjectTo(page, project.id, ".goals-unassigned-zone");
+            await page.waitForTimeout(800);  // a late PATCH would lose
+
+            expect(seen.length).toBe(1);
+            expect(seen[0]).toMatch(/1 task/i);
+            expect(seen[0]).toMatch(/cannot be undone/i);
+
+            // Nothing moved, and nothing was cleared.
+            expect(await goalIdOf(request, project.id)).toBe(goals[0].id);
+            const after = await (await request.get(`/api/tasks/${task.id}`)).json();
+            expect(after.goal_id).toBe(goals[0].id);
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+
+    test("accepting the confirm clears the tasks' goals too", async ({
+        page, request,
+    }) => {
+        const goals = await activeGoals(request);
+        const project = await makeProject(request, goals[0].id);
+        const taskRes = await request.post("/api/tasks", {
+            data: {
+                title: `E2E clear ${Date.now()}`, type: "work",
+                tier: "inbox", project_id: project.id, goal_id: goals[0].id,
+            },
+        });
+        const task = await taskRes.json();
+
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expandAll(page);
+            await expect(chip(page, project.id)).toHaveCount(1, { timeout: 10000 });
+
+            page.on("dialog", (d) => d.accept());
+
+            await dragProjectTo(page, project.id, ".goals-unassigned-zone");
+            await expect.poll(() => goalIdOf(request, project.id),
+                              { timeout: 10000 }).toBeNull();
+
+            await expect.poll(async () => {
+                const r = await request.get(`/api/tasks/${task.id}`);
+                return (await r.json()).goal_id;
+            }, { timeout: 10000 }).toBeNull();
+
+            await expect(page.locator("#goalsDragStatus"))
+                .toContainText(/cleared the goal on 1 task/i);
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+
+    test("a project with no goal-linked tasks does not nag", async ({
+        page, request,
+    }) => {
+        // The confirm is for data loss, not ceremony. Nothing to clear,
+        // nothing to ask.
+        const goals = await activeGoals(request);
+        const project = await makeProject(request, goals[0].id);
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expandAll(page);
+            await expect(chip(page, project.id)).toHaveCount(1, { timeout: 10000 });
+
+            const seen = [];
+            page.on("dialog", async (d) => { seen.push(d.message()); await d.accept(); });
+
+            await dragProjectTo(page, project.id, ".goals-unassigned-zone");
+            await expect.poll(() => goalIdOf(request, project.id),
+                              { timeout: 10000 }).toBeNull();
+
+            expect(seen).toEqual([]);
+        } finally {
             await request.delete(`/api/projects/${project.id}`);
         }
     });

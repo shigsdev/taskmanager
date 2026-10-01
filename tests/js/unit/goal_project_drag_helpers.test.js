@@ -25,23 +25,28 @@
  *    the "No goal" zone, and it is the only way to drag a project back
  *    OUT of a goal. Without it the feature is one-way.
  *
- * 3. NO TASK CASCADE. `update_project` (project_service.py:217) sets
- *    `project.goal_id` and stops — it does not touch the tasks. That
- *    is deliberate: `delete_project` documents the principle as "the
- *    goal is independent intent". But `goal_progress_batch`
- *    (goal_service.py:197) counts tasks by `Task.goal_id` ALONE and
- *    never traverses Project -> Goal, so after a move the project sits
- *    under the new goal while its tasks still count toward the old
- *    one. The progress bars do not move. That is a real user-visible
- *    consequence of a correct design, so it gets counted and said out
- *    loud rather than left to be discovered.
+ * 3. THE TASKS CASCADE WITH IT (#350). `update_project` re-points
+ *    every task on the project. When #343 shipped it did not, and that
+ *    was a gap rather than a design: #77's recorded user decision is
+ *    "always overwrite + go back and update any missing" (quoted in
+ *    scripts/backfill_task_goal_from_project.py), `update_task` had
+ *    honoured it all along, and the repo shipped TWO tools to repair
+ *    the resulting drift. `delete_project`'s "the goal is independent
+ *    intent" covers deletion only — where nulling a task's goal because
+ *    its project vanished would be data loss — and does not extend to
+ *    a project being moved.
+ *
+ *    The count matters because `/api/tasks` returns ACTIVE only by
+ *    default while the server cascades with no status filter, so the
+ *    caller must pass the `status=all` set or it will understate the
+ *    blast radius in exactly the direction that clears data.
  */
 "use strict";
 
 const {
     goalProjectDropDecision,
     goalProjectMovePayload,
-    goalProjectMoveSideEffects,
+    goalProjectCascadeCount,
 } = require("../../../static/goal_project_drag_helpers");
 
 const goalA = { id: "g1", title: "Land the DTCC role", category: "work", is_active: true };
@@ -210,55 +215,68 @@ describe("the unassign zone — without it the drag is one-way", () => {
     });
 });
 
-// --- The consequence nobody asked about: progress bars don't move ----------
+// --- The cascade count: what the move WILL do -----------------------------
 
-describe("goalProjectMoveSideEffects — what the move does NOT do", () => {
+describe("goalProjectCascadeCount — the number the user acts on", () => {
+    // Deliberately includes an archived and a cancelled task: the server
+    // cascades with no status filter, so counting only active ones would
+    // under-report a clear. These are the rows /api/tasks hides by
+    // default, which is the whole reason the caller asks for status=all.
     const tasks = [
         { id: "t1", status: "active", goal_id: "g1" },
         { id: "t2", status: "archived", goal_id: "g1" },
         { id: "t3", status: "active", goal_id: null },
-        { id: "t4", status: "active", goal_id: "g2" },
+        { id: "t4", status: "cancelled", goal_id: "g2" },
     ];
 
-    test("counts tasks that will keep counting toward another goal", () => {
-        // Moving to g2: t1 + t2 still point at g1, so g1's progress bar
-        // keeps counting them while the project sits under g2.
-        const s = goalProjectMoveSideEffects(tasks, "g2");
-        expect(s.countedElsewhere).toBe(2);
+    test("counts every task whose goal will change", () => {
+        // Moving to g2: t1, t2 (g1 -> g2) and t3 (null -> g2) change.
+        // t4 is already on g2.
+        expect(goalProjectCascadeCount(tasks, "g2")).toBe(3);
     });
 
-    test("counts tasks that count toward no goal at all", () => {
-        expect(goalProjectMoveSideEffects(tasks, "g2").unlinked).toBe(1);
+    test("a task already on the destination is not counted", () => {
+        // Moving to g1: only t3 (null) and t4 (g2) change.
+        expect(goalProjectCascadeCount(tasks, "g1")).toBe(2);
     });
 
-    test("a task already on the destination goal is not a side effect", () => {
-        const s = goalProjectMoveSideEffects(tasks, "g1");
-        expect(s.countedElsewhere).toBe(1);   // only t4 (g2)
+    test("unassigning counts every task that HAS a goal — the ones cleared", () => {
+        expect(goalProjectCascadeCount(tasks, null)).toBe(3);   // t1, t2, t4
     });
 
-    test("cancelled and deleted tasks are excluded, matching goal_progress", () => {
-        // goal_progress_batch excludes CANCELLED from both numerator and
-        // denominator and filters DELETED out entirely, so counting them
-        // here would overstate what the user sees on the bars.
-        const withNoise = tasks.concat([
-            { id: "t5", status: "cancelled", goal_id: "g1" },
-            { id: "t6", status: "deleted", goal_id: "g1" },
-        ]);
-        expect(goalProjectMoveSideEffects(withNoise, "g2").countedElsewhere).toBe(2);
+    test("archived and cancelled tasks ARE counted", () => {
+        // The server does not filter by status, so neither does this. A
+        // completed task left behind would make the goal's own
+        // completed-count wrong.
+        const hidden = [
+            { id: "a", status: "archived", goal_id: "g1" },
+            { id: "c", status: "cancelled", goal_id: "g1" },
+        ];
+        expect(goalProjectCascadeCount(hidden, null)).toBe(2);
     });
 
-    test("unassigning counts every goal-linked task as elsewhere", () => {
-        const s = goalProjectMoveSideEffects(tasks, null);
-        expect(s.countedElsewhere).toBe(3);   // t1, t2, t4
-        expect(s.unlinked).toBe(1);
+    test("nothing to change is zero, so no confirm is raised", () => {
+        const aligned = [
+            { id: "t1", status: "active", goal_id: "g2" },
+            { id: "t2", status: "active", goal_id: "g2" },
+        ];
+        expect(goalProjectCascadeCount(aligned, "g2")).toBe(0);
     });
 
-    test("no tasks is zero, not a crash", () => {
-        expect(goalProjectMoveSideEffects([], "g2"))
-            .toEqual({ countedElsewhere: 0, unlinked: 0 });
-        expect(goalProjectMoveSideEffects(null, "g2"))
-            .toEqual({ countedElsewhere: 0, unlinked: 0 });
-        expect(goalProjectMoveSideEffects(undefined, null))
-            .toEqual({ countedElsewhere: 0, unlinked: 0 });
+    test("a project with no tasks is zero, not a crash", () => {
+        expect(goalProjectCascadeCount([], "g2")).toBe(0);
+        expect(goalProjectCascadeCount(null, "g2")).toBe(0);
+        expect(goalProjectCascadeCount(undefined, null)).toBe(0);
+    });
+
+    test("undefined and empty-string goals are treated as no goal", () => {
+        // A task carrying goal_id: "" must not read as a real goal and
+        // inflate the count the confirm quotes.
+        const odd = [
+            { id: "t1", status: "active" },
+            { id: "t2", status: "active", goal_id: "" },
+        ];
+        expect(goalProjectCascadeCount(odd, null)).toBe(0);
+        expect(goalProjectCascadeCount(odd, "g1")).toBe(2);
     });
 });

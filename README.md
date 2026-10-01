@@ -19,9 +19,9 @@ work and personal life, with a regulated (air-gapped) work environment.
   BAU) with priority ranking, progress tracking, and linked tasks. Each card
   also lists its linked projects behind a collapsed `Projects (N)` toggle, and
   a project can be **dragged between goal cards** (or onto the `No goal` zone
-  to unfile it) — any project type may sit under any goal category. Progress
-  counts each task's own goal, so moving a project does not move the bars; the
-  move says so when it leaves tasks behind
+  to unfile it) — any project type may sit under any goal category. Moving a
+  project takes its tasks' goals with it, so both progress bars update;
+  unfiling clears them, cannot be undone, and asks first
 - **Projects** — task grouping with auto-color by type (Work blue / Personal green),
   goal linkage that cascades onto linked tasks, `priority` + `priority_order` with
   drag-to-reorder within type group, **drag a task from one project card to
