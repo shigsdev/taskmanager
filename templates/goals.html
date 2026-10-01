@@ -52,6 +52,11 @@
         <button class="btn" id="addGoalBtn">+ New Goal</button>
     </div>
 
+    <!-- #343: narrates a project move, or explains a refused drop.
+         A refusal that looks identical to a broken feature is the
+         failure mode worth designing against. -->
+    <p class="goals-drag-status" id="goalsDragStatus" role="status" aria-live="polite" hidden></p>
+
     <div id="goalsBoard"></div>
 </div>
 
@@ -157,6 +162,12 @@
     <script src="{{ url_for('static', filename='voice_input.js') }}"></script>
     <script src="{{ url_for('static', filename='filter_helpers.js') }}"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
+<!-- #343 drag. project_task_drag_helpers is loaded for its card
+     hit-test geometry (exported here under the card-agnostic name
+     `cardIdUnderPoint`), which #343 shares with #344 rather than
+     keeping a second copy of the same rect math. -->
+<script src="{{ url_for('static', filename='project_task_drag_helpers.js') }}"></script>
+<script src="{{ url_for('static', filename='goal_project_drag_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='goals.js') }}"></script>
 <script src="{{ url_for('static', filename='parse_capture.js') }}"></script>
 <script src="{{ url_for('static', filename='capture.js') }}"></script>

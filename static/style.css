@@ -2018,7 +2018,107 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     cursor: not-allowed;
 }
 
-/* The live region that narrates a move or explains a refusal. */
+/* --- #343: projects under a goal card, draggable between goals ---------- */
+
+.goal-card-projects {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border, #eee);
+}
+.goal-card-projects-toggle {
+    background: none;
+    border: none;
+    color: var(--accent, #2563eb);
+    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 2px 0;
+    text-align: left;
+}
+.goal-card-project-list {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+/* An author `display` beats the UA stylesheet's `[hidden]{display:none}`,
+   so without this the collapsed list renders anyway — `list.hidden` is
+   true and the chips are still on screen. Caught in Phase 6; no unit
+   test would have seen it, since the property really was set. */
+.goal-card-project-list[hidden] {
+    display: none;
+}
+.goal-card-project {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    padding: 3px 6px 3px 18px;
+    position: relative;
+    background: var(--surface-sunk, #f7f7f7);
+    border-radius: 3px;
+    cursor: grab;
+    /* Let a long-press start a drag instead of selecting the text. */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+.goal-card-project::before {
+    content: "⠿";
+    position: absolute;
+    left: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted, #999);
+    font-size: 0.75rem;
+    line-height: 1;
+}
+.goal-card-project:hover {
+    background: var(--surface, #fff);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.goal-card-project:active {
+    cursor: grabbing;
+}
+.goal-card-project.dragging {
+    opacity: 0.45;
+}
+.goal-card-project-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+}
+.goal-card-project-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Drop feedback on the destination goal card. Green accepts, red
+   refuses — a refused drop that looked identical to an accepted one is
+   the failure mode worth designing against. */
+.goal-card.goal-card-drop-ok {
+    outline: 2px dashed var(--success, #16a34a);
+    outline-offset: 2px;
+    background: color-mix(in srgb, var(--success, #16a34a) 8%, transparent);
+}
+.goal-card.goal-card-drop-no {
+    outline: 2px dashed var(--danger, #dc2626);
+    outline-offset: 2px;
+    cursor: not-allowed;
+}
+
+/* The "No goal" holding area. Dashed so it reads as a drop zone rather
+   than as a goal you could open. */
+.goals-unassigned-zone {
+    border-style: dashed;
+    cursor: default;
+}
+
+/* The live region that narrates a project move or explains a refusal. */
+.goals-drag-status,
 .projects-drag-status {
     margin: 0 0 10px;
     padding: 8px 12px;
@@ -2039,6 +2139,16 @@ input[type="time"]::-webkit-calendar-picker-indicator {
         align-items: center;
         padding-top: 4px;
         padding-bottom: 4px;
+    }
+    /* #343: same rule for the project chips on a goal card, and for
+       the toggle that reveals them — both are press targets. */
+    .goal-card-project {
+        min-height: 44px;
+        padding-top: 4px;
+        padding-bottom: 4px;
+    }
+    .goal-card-projects-toggle {
+        min-height: 44px;
     }
 }
 

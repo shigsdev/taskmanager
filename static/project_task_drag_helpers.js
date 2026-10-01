@@ -105,15 +105,23 @@ function projectCardIdUnderPoint(targets, x, y) {
     return hit;
 }
 
+// `cardIdUnderPoint` is the same function under a card-agnostic name.
+// #343 reuses this geometry for goal cards on /goals rather than
+// growing a second copy of the hit-test, but calling something named
+// `projectCardIdUnderPoint` from the goals page would read as a
+// mistake. Both names are exported; the project-specific one stays so
+// #344's call sites and tests are untouched.
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         projectTaskDropDecision, projectTaskMovePayload,
         projectCardIdUnderPoint,
+        cardIdUnderPoint: projectCardIdUnderPoint,
     };
 } else if (typeof window !== "undefined") {
     window.projectTaskDragHelpers = {
         projectTaskDropDecision: projectTaskDropDecision,
         projectTaskMovePayload: projectTaskMovePayload,
         projectCardIdUnderPoint: projectCardIdUnderPoint,
+        cardIdUnderPoint: projectCardIdUnderPoint,
     };
 }

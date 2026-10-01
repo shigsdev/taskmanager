@@ -4149,3 +4149,515 @@ test.describe("Projects - drag a task to another project (#344)", () => {
         expect(out.afterJitter).toBe(true);
     });
 });
+
+test.describe("Goals - drag a project to another goal (#343)", () => {
+    // Every test asserts the PERSISTED goal_id, never that a handler fired
+    // or a class appeared. #347 exists because a test that watched the
+    // shape of a request passed while the request was failing.
+    //
+    // Test projects are created and soft-deleted (DELETE /api/projects is
+    // an archive, not a purge). Archived projects do not render on /goals
+    // — goals.js fetches active only — so they cannot leak into a later
+    // run's fixtures.
+
+    const chip = (page, id) =>
+        page.locator(`.goal-card-project[data-project-id="${id}"]`);
+    const goalCard = (page, id) =>
+        page.locator(`.goal-card[data-goal-id="${id}"]`);
+    const zone = (page) => page.locator(".goals-unassigned-zone");
+
+    async function activeGoals(request) {
+        const r = await request.get("/api/goals");
+        return (await r.json()).filter((g) => g.is_active);
+    }
+
+    async function makeProject(request, goalId) {
+        const r = await request.post("/api/projects", {
+            data: {
+                name: `E2E drag ${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                type: "work",
+                goal_id: goalId,
+            },
+        });
+        expect(r.ok()).toBe(true);
+        return await r.json();
+    }
+
+    const goalIdOf = async (request, projectId) =>
+        (await (await request.get(`/api/projects/${projectId}`)).json()).goal_id;
+
+    // Open every collapsed project list. The lists start collapsed by
+    // design, so a test that wants to GRAB a chip has to expand first —
+    // dropping onto a collapsed card is a separate test below.
+    async function expandAll(page) {
+        await page.evaluate(() => {
+            document.querySelectorAll(".goal-card-projects-toggle").forEach((t) => {
+                if (t.getAttribute("aria-expanded") === "false") t.click();
+            });
+        });
+    }
+
+    // Drag via a real DataTransfer: page.dragAndDrop does not fire this
+    // app's dragstart listener style (same note as the #344/#267 tests).
+    // `destSelector` is the card OR the no-goal zone.
+    const dragProjectTo = (page, projectId, destSelector) =>
+        page.evaluate(({ p, sel }) => {
+            const li = document.querySelector(
+                `.goal-card-project[data-project-id="${p}"]`);
+            const dest = document.querySelector(sel);
+            const dt = new DataTransfer();
+            li.dispatchEvent(new DragEvent("dragstart",
+                { dataTransfer: dt, bubbles: true }));
+            const over = new DragEvent("dragover",
+                { dataTransfer: dt, bubbles: true, cancelable: true });
+            dest.dispatchEvent(over);
+            const marked = {
+                ok: dest.classList.contains("goal-card-drop-ok"),
+                no: dest.classList.contains("goal-card-drop-no"),
+                accepted: over.defaultPrevented,
+            };
+            dest.dispatchEvent(new DragEvent("drop",
+                { dataTransfer: dt, bubbles: true, cancelable: true }));
+            return marked;
+        }, { p: projectId, sel: destSelector });
+
+    test("a project dropped on another goal card actually moves", async ({
+        page, request,
+    }) => {
+        const goals = await activeGoals(request);
+        expect(goals.length).toBeGreaterThanOrEqual(2);
+        const [from, to] = goals;
+        const project = await makeProject(request, from.id);
+
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expandAll(page);
+            await expect(chip(page, project.id)).toHaveCount(1, { timeout: 10000 });
+
+            const marks = await dragProjectTo(
+                page, project.id, `.goal-card[data-goal-id="${to.id}"]`);
+            expect(marks.ok).toBe(true);        // the card advertised the drop
+            expect(marks.no).toBe(false);
+            expect(marks.accepted).toBe(true);
+
+            await expect.poll(() => goalIdOf(request, project.id),
+                              { timeout: 10000 }).toBe(to.id);
+        } finally {
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+
+    test("a COLLAPSED goal card still accepts a drop", async ({
+        page, request,
+    }) => {
+        // The recorded decision: "collapsed by default showing a count,
+        // click to expand; dropping onto a COLLAPSED card still moves the
+        // item, so you never have to expand just to drag." The drop target
+        // is the whole card, which is what makes that true — pinned here
+        // because moving the handler onto the project list would silently
+        // break it and look like a styling change.
+        const goals = await activeGoals(request);
+        const [from, to] = goals;
+        const project = await makeProject(request, from.id);
+        // Give the destination a project of its own so it renders a
+        // collapsible list rather than the "No projects linked" branch.
+        const sibling = await makeProject(request, to.id);
+
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            // Expand ONLY the source card; the destination stays shut.
+            await page.locator(`.goal-card[data-goal-id="${from.id}"] `
+                               + `.goal-card-projects-toggle`).click();
+            await expect(chip(page, project.id)).toBeVisible({ timeout: 10000 });
+
+            // The destination really is collapsed.
+            const destState = await goalCard(page, to.id).evaluate((el) => ({
+                hidden: el.querySelector(".goal-card-project-list").hidden,
+                visibleChips: [...el.querySelectorAll(".goal-card-project")]
+                    .filter((c) => c.offsetParent !== null).length,
+                expanded: el.querySelector(".goal-card-projects-toggle")
+                    .getAttribute("aria-expanded"),
+            }));
+            expect(destState.hidden).toBe(true);
+            expect(destState.visibleChips).toBe(0);
+            expect(destState.expanded).toBe("false");
+
+            // Drop WITHOUT expanding it.
+            const marks = await dragProjectTo(
+                page, project.id, `.goal-card[data-goal-id="${to.id}"]`);
+            expect(marks.ok).toBe(true);
+
+            await expect.poll(() => goalIdOf(request, project.id),
+                              { timeout: 10000 }).toBe(to.id);
+        } finally {
+            await request.delete(`/api/projects/${project.id}`);
+            await request.delete(`/api/projects/${sibling.id}`);
+        }
+    });
+
+    test("the No-goal zone drags a project back OUT of its goal", async ({
+        page, request,
+    }) => {
+        // Without this zone the interaction is one-way: a project could be
+        // filed under a goal and never unfiled, and a goal-less project
+        // would never appear on this page at all.
+        const goals = await activeGoals(request);
+        const project = await makeProject(request, goals[0].id);
+
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expandAll(page);
+            await expect(chip(page, project.id)).toHaveCount(1, { timeout: 10000 });
+
+            const marks = await dragProjectTo(
+                page, project.id, ".goals-unassigned-zone");
+            expect(marks.ok).toBe(true);
+
+            await expect.poll(() => goalIdOf(request, project.id),
+                              { timeout: 10000 }).toBeNull();
+
+            // And it is now listed in the zone, not orphaned off-screen.
+            await expect(zone(page).locator(
+                `.goal-card-project[data-project-id="${project.id}"]`))
+                .toHaveCount(1, { timeout: 10000 });
+        } finally {
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+
+    test("a project of ANY type may be dropped on a goal of any category",
+         async ({ page, request }) => {
+        // The inverse of #344's type gate, and the reason this test
+        // exists. populateGoalDropdown (projects.js) offers every active
+        // goal for any project with no type filter, and bulk-edit agrees.
+        // A gate here would make drag STRICTER than the picker — the same
+        // inconsistency #344 closed, pointing the other way. The enums are
+        // not parallel either, so there is no pairing to enforce.
+        const goals = await activeGoals(request);
+        const nonWork = goals.find((g) => g.category !== "work");
+        test.skip(!nonWork, "seed has no non-work goal to cross to");
+
+        const project = await makeProject(request, null);   // type: work
+
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expandAll(page);
+            await expect(chip(page, project.id)).toHaveCount(1, { timeout: 10000 });
+
+            const marks = await dragProjectTo(
+                page, project.id, `.goal-card[data-goal-id="${nonWork.id}"]`);
+            expect(marks.ok).toBe(true);
+            expect(marks.no).toBe(false);
+
+            await expect.poll(() => goalIdOf(request, project.id),
+                              { timeout: 10000 }).toBe(nonWork.id);
+        } finally {
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+
+    test("dropping on the goal it already has is a silent no-op", async ({
+        page, request,
+    }) => {
+        // Not a refusal to paint red — the user has not done anything
+        // wrong. No drop target, no highlight, no PATCH.
+        const goals = await activeGoals(request);
+        const project = await makeProject(request, goals[0].id);
+
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expandAll(page);
+            await expect(chip(page, project.id)).toHaveCount(1, { timeout: 10000 });
+
+            const patches = [];
+            page.on("request", (r) => {
+                if (r.method() === "PATCH" && r.url().includes("/api/projects/")) {
+                    patches.push(r.url());
+                }
+            });
+
+            const marks = await dragProjectTo(
+                page, project.id, `.goal-card[data-goal-id="${goals[0].id}"]`);
+            expect(marks.ok).toBe(false);
+            expect(marks.no).toBe(false);       // no red mark either
+            expect(marks.accepted).toBe(false);
+
+            await page.waitForTimeout(700);     // a late PATCH would lose
+            expect(patches).toEqual([]);
+            expect(await goalIdOf(request, project.id)).toBe(goals[0].id);
+        } finally {
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+
+    test("a move says so when the progress bars will NOT move", async ({
+        page, request,
+    }) => {
+        // goal_progress_batch counts tasks by Task.goal_id alone and never
+        // traverses Project -> Goal, and update_project deliberately does
+        // not re-point a project's tasks ("the goal is independent
+        // intent"). So the project lands under the new goal while its
+        // tasks keep counting toward the old one and neither bar changes.
+        // Silence here would read as a bug, so the move narrates it.
+        const goals = await activeGoals(request);
+        const [from, to] = goals;
+        const project = await makeProject(request, from.id);
+
+        // A task on this project, pinned to the OLD goal.
+        const taskRes = await request.post("/api/tasks", {
+            data: {
+                title: `E2E stranded ${Date.now()}`, type: "work",
+                tier: "inbox", project_id: project.id, goal_id: from.id,
+            },
+        });
+        const task = await taskRes.json();
+
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expandAll(page);
+            await expect(chip(page, project.id)).toHaveCount(1, { timeout: 10000 });
+
+            await dragProjectTo(page, project.id,
+                                `.goal-card[data-goal-id="${to.id}"]`);
+            await expect.poll(() => goalIdOf(request, project.id),
+                              { timeout: 10000 }).toBe(to.id);
+
+            const status = page.locator("#goalsDragStatus");
+            await expect(status).toBeVisible();
+            await expect(status).toContainText(/still counts? toward a different goal/i);
+            await expect(status).toContainText(/progress bars have not changed/i);
+
+            // And the claim is true: the task was NOT re-pointed.
+            const after = await (await request.get(`/api/tasks/${task.id}`)).json();
+            expect(after.goal_id).toBe(from.id);
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+
+    test("the project chip advertises that it can be dragged", async ({
+        page, request,
+    }) => {
+        // Discoverability, not just function: a chip that looks like a
+        // static label tells nobody it can be moved.
+        const goals = await activeGoals(request);
+        const project = await makeProject(request, goals[0].id);
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expandAll(page);
+            const li = chip(page, project.id);
+            await expect(li).toBeVisible({ timeout: 10000 });
+            const look = await li.evaluate((el) => ({
+                cursor: getComputedStyle(el).cursor,
+                grip: getComputedStyle(el, "::before").content,
+                draggable: el.draggable,
+            }));
+            expect(look.cursor).toBe("grab");
+            expect(look.grip).toContain("⠿");   // the braille grip glyph
+            expect(look.draggable).toBe(true);
+        } finally {
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+
+    test("a collapsed card shows its project COUNT", async ({ page, request }) => {
+        // The count is what makes collapsing acceptable — without it a
+        // collapsed goal looks like a goal with no projects.
+        const goals = await activeGoals(request);
+        const project = await makeProject(request, goals[0].id);
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const toggle = goalCard(page, goals[0].id)
+                .locator(".goal-card-projects-toggle");
+            await expect(toggle).toBeVisible({ timeout: 10000 });
+            await expect(toggle).toHaveText(/Projects \(\d+\)/);
+            await expect(toggle).toHaveAttribute("aria-expanded", "false");
+        } finally {
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+
+    // --- the touch path -----------------------------------------------------
+    // HTML5 drag-and-drop does not fire from a finger, so /goals has its
+    // own long-press path. Without these the feature could be green on
+    // desktop and simply absent on the phone.
+
+    test("long-press then drag moves the project on touch", async ({
+        page, request,
+    }) => {
+        const goals = await activeGoals(request);
+        const [from, to] = goals;
+        const project = await makeProject(request, from.id);
+
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expandAll(page);
+            await expect(chip(page, project.id)).toHaveCount(1, { timeout: 10000 });
+
+            const started = await page.evaluate(async ({ p, g }) => {
+                const fire = (el, type, x, y, released) => {
+                    const touch = new Touch({
+                        identifier: 1, target: el, clientX: x, clientY: y,
+                    });
+                    el.dispatchEvent(new TouchEvent(type, {
+                        bubbles: true, cancelable: true,
+                        touches: released ? [] : [touch],
+                        targetTouches: released ? [] : [touch],
+                        changedTouches: [touch],
+                    }));
+                };
+                const li = document.querySelector(
+                    `.goal-card-project[data-project-id="${p}"]`);
+                const dest = document.querySelector(
+                    `.goal-card[data-goal-id="${g}"]`);
+                dest.scrollIntoView({ block: "center" });
+                await new Promise((r) => setTimeout(r, 200));
+                const r0 = li.getBoundingClientRect();
+                fire(li, "touchstart", r0.left + 20, r0.top + 10, false);
+                await new Promise((r) => setTimeout(r, 650));  // past the 500ms hold
+                const dragging = li.classList.contains("dragging");
+                const rd = dest.getBoundingClientRect();
+                const cx = rd.left + rd.width / 2;
+                const cy = rd.top + rd.height / 2;
+                fire(document, "touchmove", cx, cy, false);
+                const marked = dest.classList.contains("goal-card-drop-ok");
+                fire(document, "touchend", cx, cy, true);
+                return { dragging, marked };
+            }, { p: project.id, g: to.id });
+
+            expect(started.dragging).toBe(true);
+            expect(started.marked).toBe(true);
+
+            await expect.poll(() => goalIdOf(request, project.id),
+                              { timeout: 10000 }).toBe(to.id);
+        } finally {
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+
+    test("a touch drop does not also open the goal detail panel", async ({
+        page, request,
+    }) => {
+        // The goal card's click opens the editor, and a touchend
+        // synthesises a click. Without preventDefault the user would drop
+        // a project and get an edit form over the result.
+        const goals = await activeGoals(request);
+        const [from, to] = goals;
+        const project = await makeProject(request, from.id);
+
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expandAll(page);
+            await expect(chip(page, project.id)).toHaveCount(1, { timeout: 10000 });
+
+            await page.evaluate(async ({ p, g }) => {
+                const fire = (el, type, x, y, released) => {
+                    const touch = new Touch({
+                        identifier: 1, target: el, clientX: x, clientY: y,
+                    });
+                    el.dispatchEvent(new TouchEvent(type, {
+                        bubbles: true, cancelable: true,
+                        touches: released ? [] : [touch],
+                        targetTouches: released ? [] : [touch],
+                        changedTouches: [touch],
+                    }));
+                };
+                const li = document.querySelector(
+                    `.goal-card-project[data-project-id="${p}"]`);
+                const dest = document.querySelector(
+                    `.goal-card[data-goal-id="${g}"]`);
+                dest.scrollIntoView({ block: "center" });
+                await new Promise((r) => setTimeout(r, 200));
+                const r0 = li.getBoundingClientRect();
+                fire(li, "touchstart", r0.left + 20, r0.top + 10, false);
+                await new Promise((r) => setTimeout(r, 650));
+                const rd = dest.getBoundingClientRect();
+                fire(document, "touchmove", rd.left + rd.width / 2,
+                     rd.top + rd.height / 2, false);
+                fire(document, "touchend", rd.left + rd.width / 2,
+                     rd.top + rd.height / 2, true);
+            }, { p: project.id, g: to.id });
+
+            await expect.poll(() => goalIdOf(request, project.id),
+                              { timeout: 10000 }).toBe(to.id);
+            await expect(page.locator("#goalDetailOverlay")).toBeHidden();
+        } finally {
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+
+    test("a tap and a scroll are not drags", async ({ page, request }) => {
+        // The two ways the touch path could ruin ordinary phone use:
+        // tapping a chip, and scrolling the board with a finger that
+        // happens to start on one.
+        const goals = await activeGoals(request);
+        const project = await makeProject(request, goals[0].id);
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expandAll(page);
+            await expect(chip(page, project.id)).toBeVisible({ timeout: 10000 });
+
+            const out = await page.evaluate(async (p) => {
+                const fire = (el, type, x, y, released) => {
+                    const touch = new Touch({
+                        identifier: 1, target: el, clientX: x, clientY: y,
+                    });
+                    el.dispatchEvent(new TouchEvent(type, {
+                        bubbles: true, cancelable: true,
+                        touches: released ? [] : [touch],
+                        targetTouches: released ? [] : [touch],
+                        changedTouches: [touch],
+                    }));
+                };
+                const li = document.querySelector(
+                    `.goal-card-project[data-project-id="${p}"]`);
+                const r = li.getBoundingClientRect();
+                const x = r.left + 20;
+                const y = r.top + 10;
+
+                // A quick tap, released well inside the hold window.
+                fire(li, "touchstart", x, y, false);
+                await new Promise((s) => setTimeout(s, 120));
+                fire(document, "touchend", x, y, true);
+                await new Promise((s) => setTimeout(s, 500));
+                const afterTap = li.classList.contains("dragging");
+
+                // A scroll: moved well past the 10px jitter tolerance.
+                fire(li, "touchstart", x, y, false);
+                fire(document, "touchmove", x, y + 60, false);
+                await new Promise((s) => setTimeout(s, 650));
+                const afterScroll = li.classList.contains("dragging");
+                fire(document, "touchend", x, y + 60, true);
+                await new Promise((s) => setTimeout(s, 200));
+
+                // A few px of jitter during a hold is still a hold.
+                fire(li, "touchstart", x, y, false);
+                fire(document, "touchmove", x + 3, y + 4, false);
+                await new Promise((s) => setTimeout(s, 650));
+                const afterJitter = li.classList.contains("dragging");
+                fire(document, "touchend", x + 3, y + 4, true);
+                await new Promise((s) => setTimeout(s, 200));
+
+                return { afterTap, afterScroll, afterJitter };
+            }, project.id);
+
+            expect(out.afterTap).toBe(false);
+            expect(out.afterScroll).toBe(false);
+            expect(out.afterJitter).toBe(true);
+        } finally {
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+});

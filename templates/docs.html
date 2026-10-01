@@ -2123,11 +2123,66 @@ Skip this line (too short)</pre>
 
             <h3>Progress</h3>
             <p>
-                Each goal card shows a progress bar driven by the
-                count of completed vs. total active tasks linked to
-                it (directly or via a linked project — see
-                <a href="#projects-feature">Projects</a> for the
-                cascade rule).
+                Each goal card shows a progress bar driven by the count of
+                completed vs. total active tasks whose <em>own</em> goal is
+                this one. Cancelled tasks are left out of both halves of the
+                ratio.
+            </p>
+            <p>
+                A task usually gets that goal from its project, because
+                saving a task with a project copies the project's goal onto
+                it (see <a href="#projects-feature">Projects</a> for the
+                cascade rule). But the count reads the task's goal, not its
+                project's — so a task can sit under a project filed on one
+                goal while counting toward another. That is what makes the
+                note below matter.
+            </p>
+
+            <h3>Drag a project to another goal</h3>
+            <p>
+                Each goal card lists its projects behind a
+                <strong>Projects (N)</strong> toggle, collapsed by default so
+                the board stays scannable. Click it to expand, then grab a
+                project by the <span aria-hidden="true">&#10303;</span> handle
+                and drop it on another goal card. On a phone,
+                <strong>press and hold for half a second</strong> first (the
+                same long-press the board and /projects use), then drag.
+            </p>
+            <ul>
+                <li><strong>You can drop on a collapsed card.</strong> The
+                    whole card is the target, so you never have to expand a
+                    goal just to file something under it.</li>
+                <li><strong>Any project fits any goal.</strong> Unlike tasks
+                    and projects — where Work stays with Work — there is no
+                    type rule here. A Work project can serve a Health goal.
+                    This matches the Linked goal dropdown on
+                    <a href="{{ url_for('projects_page') }}">/projects</a>,
+                    which offers every active goal whatever the project's
+                    type.</li>
+                <li><strong>&ldquo;No goal&rdquo; is a real drop zone.</strong>
+                    It sits at the bottom of the page, lists every project
+                    that has no goal, and accepts a drop to take a project
+                    back out of one. Dragging is reversible.</li>
+                <li><strong>Archived projects are not shown here</strong> and
+                    cannot be dragged — manage them on
+                    <a href="{{ url_for('projects_page') }}">/projects</a>.</li>
+            </ul>
+            <p>
+                <strong>The progress bars will not move</strong>, and that is
+                deliberate rather than a bug. Moving a project changes the
+                project's goal and nothing else — it does not re-point the
+                goals of the tasks inside it, because a task's goal is
+                treated as your own intent rather than something the project
+                owns. Since the bars count each task's own goal, those tasks
+                keep counting toward the goal they were already on. When a
+                move leaves tasks behind like that, the confirmation line
+                above the board tells you how many.
+            </p>
+            <p>
+                To move the tasks too, set their goal yourself in the task
+                panel. Re-saving a task will not pick the new goal up on its
+                own: the panel sends the goal field along with the project,
+                and an explicit goal always wins over the cascade.
             </p>
         </section>
 

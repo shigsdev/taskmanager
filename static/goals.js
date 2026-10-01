@@ -35,22 +35,71 @@ const STATUS_LABELS = {
 let goalsData = [];
 let goalTasks = {};  // goal_id -> [task, ...]
 
+// #343 state. `goalProjects` is keyed by goal id, with goal-less
+// projects under the sentinel so one map covers both the goal cards and
+// the "No goal" zone.
+const _GOALS_NO_GOAL = "__no_goal__";
+let goalProjects = {};            // goal_id | sentinel -> [project, ...]
+let goalProjectsById = {};        // project_id -> project
+let projectTasksByProject = {};   // project_id -> [task, ...]
+// Which project lists are open. Held outside the DOM so an expansion
+// survives the full re-render that follows every move.
+const _goalsExpanded = new Set();
+
 async function goalsInit() {
     await goalsLoad();
     goalsSetupFilters();
     goalsSetupDetailPanel();
     goalsUpdateInboxBadge();
+    // #343 touch drag. Registered on the document, not the chip: a
+    // finger that leaves the element still has to be tracked.
+    // touchmove must be non-passive because it preventDefaults to stop
+    // the page scrolling under the drag.
+    document.addEventListener("touchmove", onGoalsTouchMove,
+                              { passive: false });
+    document.addEventListener("touchend", onGoalsTouchEnd);
 }
 
 async function goalsLoad() {
     goalsData = await apiFetch("/api/goals?is_active=all");
-    const tasks = await apiFetch("/api/tasks");
+    // #343 added the projects fetch. Run it alongside tasks rather than
+    // making the page wait for a third serial round-trip.
+    //
+    // Active projects only: an archived project sitting under a goal is
+    // noise, and /projects is where archived ones are managed (#24).
+    const [tasks, projects] = await Promise.all([
+        apiFetch("/api/tasks"),
+        apiFetch("/api/projects"),
+    ]);
     goalTasks = {};
     for (const task of tasks) {
         if (task.goal_id) {
             if (!goalTasks[task.goal_id]) goalTasks[task.goal_id] = [];
             goalTasks[task.goal_id].push(task);
         }
+    }
+
+    // #343: projects bucketed by their goal, plus the goal-less bucket
+    // under the _GOALS_NO_GOAL sentinel — that bucket is what the "No
+    // goal" zone renders, and without it a goal-less project would be
+    // invisible on this page and impossible to drag anywhere.
+    goalProjectsById = {};
+    goalProjects = {};
+    projectTasksByProject = {};
+    for (const p of projects) {
+        goalProjectsById[p.id] = p;
+        const key = p.goal_id || _GOALS_NO_GOAL;
+        if (!goalProjects[key]) goalProjects[key] = [];
+        goalProjects[key].push(p);
+    }
+    // Keyed by project so a move can report how many of its tasks keep
+    // counting toward a different goal (see goalProjectMoveSideEffects).
+    for (const task of tasks) {
+        if (!task.project_id) continue;
+        if (!projectTasksByProject[task.project_id]) {
+            projectTasksByProject[task.project_id] = [];
+        }
+        projectTasksByProject[task.project_id].push(task);
     }
     // Update inbox badge
     const inboxCount = tasks.filter((t) => t.tier === "inbox").length;
@@ -98,6 +147,15 @@ function goalsRender() {
     if (filtered.length === 0) {
         board.innerHTML = '<p class="empty-goals">No goals match the current filters.</p>';
     }
+
+    // #343: the "No goal" zone, rendered last so it reads as a holding
+    // area rather than a sixth category. It is appended AFTER the
+    // empty-state branch above on purpose — that branch replaces the
+    // board's contents, and the zone has to survive it. With no zone
+    // there is nothing to drag a project out TO, and a goal-less
+    // project never appears on this page at all, so the obvious first
+    // move ("file this project under a goal") would be impossible.
+    board.appendChild(goalsUnassignedZoneEl());
 }
 
 function goalsFiltered() {
@@ -123,6 +181,15 @@ function goalCardEl(goal) {
     card.className = "goal-card";
     if (!goal.is_active) card.classList.add("goal-inactive");
     card.addEventListener("click", () => goalDetailOpen(goal));
+
+    // #343: the whole CARD is the project drop target, not the project
+    // list inside it. That is what makes the recorded decision work —
+    // a collapsed card still accepts a drop, so you never have to
+    // expand a goal just to file something under it.
+    card.dataset.goalId = goal.id;
+    card.addEventListener("dragover", onGoalCardDragOver);
+    card.addEventListener("dragleave", onGoalCardDragLeave);
+    card.addEventListener("drop", onGoalCardDrop);
 
     // Top row: badges
     const badges = document.createElement("div");
@@ -190,6 +257,9 @@ function goalCardEl(goal) {
     }
 
     card.appendChild(progressRow);
+
+    // #343: linked projects, collapsed behind a count by default.
+    card.appendChild(goalProjectListEl(_goalsProjectsFor(goal.id), goal.id));
 
     return card;
 }
@@ -369,3 +439,426 @@ function goalsUpdateInboxBadge() {
 // --- Boot --------------------------------------------------------------------
 
 document.addEventListener("DOMContentLoaded", goalsInit);
+
+// --- #343: drag a project from one goal to another ---------------------------
+//
+// Decision logic is pure in static/goal_project_drag_helpers.js; this is
+// the DOM wiring only. Three things about this screen are worth knowing
+// before changing any of it:
+//
+//   * the goal CARD carries the click handler that opens the detail
+//     panel, so everything interactive added inside it has to
+//     stopPropagation or clicking a project chip edits the goal;
+//   * the card, not the project list, is the drop target — a collapsed
+//     card accepts a drop, which is the whole point of the recorded
+//     "collapsed count, expand to drag" decision;
+//   * the "No goal" zone is a first-class target carrying the
+//     _GOALS_NO_GOAL sentinel. A non-empty sentinel rather than "" is
+//     deliberate: the shared hit-test skips falsy ids, so an
+//     empty-string dataset value would make the zone untouchable on
+//     mobile.
+
+const DEFAULT_GOAL_PROJECT_COLOR = "#3b82f6";
+
+function _goalsProjectsFor(goalId) {
+    return goalProjects[goalId || _GOALS_NO_GOAL] || [];
+}
+
+function _goalsProjectById(id) {
+    return goalProjectsById[id] || null;
+}
+
+// Resolves a drop-target element to what the decision helper expects:
+// a goal object, `null` for the No-goal zone, or `undefined` for "not
+// a drop target". The three-way return is load-bearing — the helper
+// treats null as unassign and undefined as a bug.
+function _goalsTargetForId(id) {
+    if (!id) return undefined;
+    if (id === _GOALS_NO_GOAL) return null;
+    return goalsData.find((g) => g.id === id) || undefined;
+}
+
+function _goalsTargetForEl(el) {
+    if (!el || !el.dataset) return undefined;
+    return _goalsTargetForId(el.dataset.goalId);
+}
+
+// A refused drop is otherwise indistinguishable from "drag-and-drop is
+// broken", so say why. Cleared on the next drag.
+function goalsDragStatus(msg) {
+    const el = document.getElementById("goalsDragStatus");
+    if (!el) return;
+    if (!msg) {
+        el.textContent = "";
+        el.hidden = true;
+        return;
+    }
+    el.textContent = msg;
+    el.hidden = false;
+}
+
+const _GOAL_DROP_REFUSAL_TEXT = {
+    "archived-project": (project) =>
+        `"${project.name}" is archived — restore it on the Projects page ` +
+        `before filing it under a goal.`,
+    "archived-goal": (project, goal) =>
+        `"${goal.title}" is archived — restore it before moving projects in.`,
+};
+
+function _goalDecide(project, goal) {
+    const h = window.goalProjectDragHelpers;
+    if (!h) {
+        return {
+            allowed: false, reason: "no-project",
+            newGoalId: null, unassign: false,
+        };
+    }
+    return h.goalProjectDropDecision(project, goal);
+}
+
+// The collapsible project list. Shared by the goal cards and the "No
+// goal" zone so the two cannot drift apart.
+function goalProjectListEl(projects, key) {
+    const wrap = document.createElement("div");
+    wrap.className = "goal-card-projects";
+
+    if (projects.length === 0) {
+        const none = document.createElement("span");
+        none.className = "progress-label muted";
+        none.textContent = key === _GOALS_NO_GOAL
+            ? "Every project is filed under a goal."
+            : "No projects linked";
+        wrap.appendChild(none);
+        return wrap;
+    }
+
+    const list = document.createElement("ul");
+    list.className = "goal-card-project-list";
+    list.id = "goalProjectList-" + key;
+
+    for (const p of projects) {
+        const li = document.createElement("li");
+        li.className = "goal-card-project";
+        li.dataset.projectId = p.id;
+        li.title = p.name;
+
+        const dot = document.createElement("span");
+        dot.className = "goal-card-project-dot";
+        // Assigned through the CSSOM, not an inline style string: an
+        // invalid value is simply dropped, and the server validates the
+        // field to hex anyway (project_service._parse_color).
+        dot.style.background = p.color || DEFAULT_GOAL_PROJECT_COLOR;
+        li.appendChild(dot);
+
+        const name = document.createElement("span");
+        name.className = "goal-card-project-name";
+        name.textContent = p.name;
+        li.appendChild(name);
+
+        // Without this, clicking a chip opens the GOAL editor.
+        li.addEventListener("click", (e) => e.stopPropagation());
+
+        li.draggable = true;
+        li.addEventListener("dragstart", onGoalProjectDragStart);
+        li.addEventListener("dragend", onGoalProjectDragEnd);
+        li.addEventListener("touchstart", onGoalProjectTouchStart,
+                            { passive: true });
+
+        list.appendChild(li);
+    }
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "goal-card-projects-toggle";
+    toggle.setAttribute("aria-controls", list.id);
+
+    const setOpen = (open) => {
+        list.hidden = !open;
+        toggle.textContent = (open ? "▾ " : "▸ ") + `Projects (${projects.length})`;
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    };
+
+    toggle.addEventListener("click", (e) => {
+        e.stopPropagation();           // don't open the goal detail panel
+        const open = list.hidden;
+        if (open) _goalsExpanded.add(key);
+        else _goalsExpanded.delete(key);
+        setOpen(open);
+    });
+
+    setOpen(_goalsExpanded.has(key));
+
+    wrap.appendChild(toggle);
+    wrap.appendChild(list);
+    return wrap;
+}
+
+function goalsUnassignedZoneEl() {
+    const projects = _goalsProjectsFor(_GOALS_NO_GOAL);
+
+    const section = document.createElement("div");
+    section.className = "goals-category-section goals-unassigned-section";
+
+    const header = document.createElement("h2");
+    header.className = "goals-category-header";
+    // Trailing space is load-bearing: the category headers above get
+    // theirs from the literal in their template string, and without it
+    // this one renders as "No goal2".
+    header.textContent = "No goal ";
+    const count = document.createElement("span");
+    count.className = "tier-count";
+    count.textContent = projects.length;
+    header.appendChild(count);
+    section.appendChild(header);
+
+    // Styled as a card so it is visibly a drop target, but with no
+    // click handler — there is no "unassigned goal" to open.
+    const zone = document.createElement("div");
+    zone.className = "goal-card goals-unassigned-zone";
+    zone.dataset.goalId = _GOALS_NO_GOAL;
+    zone.addEventListener("dragover", onGoalCardDragOver);
+    zone.addEventListener("dragleave", onGoalCardDragLeave);
+    zone.addEventListener("drop", onGoalCardDrop);
+
+    const hint = document.createElement("div");
+    hint.className = "goal-actions-preview";
+    hint.textContent = "Drop a project here to remove it from its goal.";
+    zone.appendChild(hint);
+
+    zone.appendChild(goalProjectListEl(projects, _GOALS_NO_GOAL));
+    section.appendChild(zone);
+    return section;
+}
+
+// --- Mouse drag --------------------------------------------------------------
+
+let _dragProject = null;
+
+function onGoalProjectDragStart(e) {
+    // The chip sits inside the goal card; stop the event here so no
+    // ancestor handler can mistake this for something else.
+    e.stopPropagation();
+    const id = e.currentTarget.dataset.projectId;
+    _dragProject = _goalsProjectById(id);
+    e.currentTarget.classList.add("dragging");
+    goalsDragStatus("");
+    if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", id || "");
+    }
+}
+
+function onGoalProjectDragEnd(e) {
+    e.stopPropagation();
+    e.currentTarget.classList.remove("dragging");
+    _dragProject = null;
+    _goalsClearDropMarks();
+}
+
+function _goalsClearDropMarks() {
+    document.querySelectorAll(".goal-card-drop-ok, .goal-card-drop-no")
+        .forEach((el) => {
+            el.classList.remove("goal-card-drop-ok");
+            el.classList.remove("goal-card-drop-no");
+        });
+}
+
+// A no-op drop (the card it came from, or No-goal for a project that
+// already has none) gets no red outline — refusing something the user
+// has not actually done wrong is just noise.
+function _goalsIsNoOp(reason) {
+    return reason === "same-goal" || reason === "already-unassigned";
+}
+
+function onGoalCardDragOver(e) {
+    if (!_dragProject) return;
+    const el = e.currentTarget;
+    const target = _goalsTargetForEl(el);
+    if (target === undefined) return;
+    const d = _goalDecide(_dragProject, target);
+    if (d.allowed) {
+        // preventDefault is what actually makes this a drop target.
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+        el.classList.add("goal-card-drop-ok");
+    } else if (!_goalsIsNoOp(d.reason)) {
+        // No preventDefault: the browser shows the no-drop cursor for
+        // free, and the class paints the refusal.
+        el.classList.add("goal-card-drop-no");
+    }
+}
+
+function onGoalCardDragLeave(e) {
+    if (!_dragProject) return;
+    const el = e.currentTarget;
+    // dragleave also fires when the cursor crosses into a CHILD of the
+    // card; ignore those or the highlight flickers away mid-hover.
+    if (e.relatedTarget && el.contains(e.relatedTarget)) return;
+    el.classList.remove("goal-card-drop-ok");
+    el.classList.remove("goal-card-drop-no");
+}
+
+async function onGoalCardDrop(e) {
+    if (!_dragProject) return;
+    const el = e.currentTarget;
+    const target = _goalsTargetForEl(el);
+    if (target === undefined) return;
+    e.preventDefault();
+    e.stopPropagation();
+    _goalsClearDropMarks();
+    const project = _dragProject;
+    _dragProject = null;
+    await _goalsApplyProjectMove(project, target);
+}
+
+// Shared by the mouse drop and the touch end — one PATCH, one set of
+// messages, so the two input paths cannot drift apart.
+async function _goalsApplyProjectMove(project, goal) {
+    const d = _goalDecide(project, goal);
+    if (!d.allowed) {
+        const explain = _GOAL_DROP_REFUSAL_TEXT[d.reason];
+        goalsDragStatus(explain ? explain(project, goal) : "");
+        return;
+    }
+    const h = window.goalProjectDragHelpers;
+    const side = h.goalProjectMoveSideEffects(
+        projectTasksByProject[project.id] || [], d.newGoalId);
+
+    try {
+        await apiFetch(`/api/projects/${project.id}`, {
+            method: "PATCH",
+            body: JSON.stringify(h.goalProjectMovePayload(d.newGoalId)),
+        });
+        await goalsLoad();             // goalsLoad() re-renders
+
+        let msg = d.unassign
+            ? `Moved "${project.name}" out of its goal.`
+            : `Moved "${project.name}" to "${goal.title}".`;
+        // The progress bars will NOT have moved, and that is correct
+        // rather than broken: goal progress counts tasks by their own
+        // goal_id (goal_service.goal_progress_batch) and moving a
+        // project deliberately does not re-point them —
+        // project_service.delete_project records the principle as "the
+        // goal is independent intent". Silence here would read as a bug.
+        if (side.countedElsewhere > 0) {
+            const n = side.countedElsewhere;
+            msg += n === 1
+                ? " 1 of its tasks still counts toward a different goal, so" +
+                  " the progress bars have not changed."
+                : ` ${n} of its tasks still count toward a different goal,` +
+                  ` so the progress bars have not changed.`;
+        }
+        goalsDragStatus(msg);
+    } catch (err) {
+        console.error("Project move failed:", err);
+        alert("Could not move the project: " + err.message);
+    }
+}
+
+// --- #343 mobile: long-press, then drag --------------------------------------
+//
+// HTML5 drag-and-drop does not fire from a finger — no dragstart, no
+// dragover, no drop — so touch needs its own path or this feature simply
+// would not exist on the phone. The GESTURE is deliberately identical to
+// the board's and to /projects' (500ms hold + a haptic tick) so all
+// three screens feel the same in the hand.
+
+let _goalTouchDrag = null;      // { li, project, startY }
+let _goalTouchLongPress = null;
+let _goalTouchStart = { x: 0, y: 0 };
+
+function _goalsTouchTargets() {
+    return Array.from(document.querySelectorAll("[data-goal-id]")).map((el) => ({
+        id: el.dataset.goalId, rect: el.getBoundingClientRect(), el: el,
+    }));
+}
+
+function onGoalProjectTouchStart(e) {
+    const li = e.currentTarget;
+    const t = e.touches[0];
+    if (!t) return;
+    _goalTouchStart = { x: t.clientX, y: t.clientY };
+    _goalTouchLongPress = setTimeout(function () {
+        _goalTouchLongPress = null;
+        const project = _goalsProjectById(li.dataset.projectId);
+        if (!project) return;
+        // Read the stored coords, not the Touch object — it may be
+        // recycled by the time this fires.
+        _goalTouchDrag = { li: li, project: project, startY: _goalTouchStart.y };
+        _dragProject = project;        // share the decision path with the mouse
+        li.classList.add("dragging");
+        if (navigator.vibrate) navigator.vibrate(50);
+        goalsDragStatus(`Moving "${project.name}" — drop it on a goal.`);
+    }, 500);
+}
+
+function onGoalsTouchMove(e) {
+    if (_goalTouchLongPress) {
+        // Same 10px jitter tolerance as the board: a hold that drifts is
+        // still a hold, but a scroll is not a drag.
+        const t = e.touches[0];
+        if (!t) return;
+        const dx = t.clientX - _goalTouchStart.x;
+        const dy = t.clientY - _goalTouchStart.y;
+        if (Math.sqrt(dx * dx + dy * dy) > 10) {
+            clearTimeout(_goalTouchLongPress);
+            _goalTouchLongPress = null;
+        }
+        return;
+    }
+    if (!_goalTouchDrag) return;
+    e.preventDefault();               // stop the page scrolling under the drag
+    const t = e.touches[0];
+    if (!t) return;
+    _goalTouchDrag.li.style.transform =
+        "translateY(" + (t.clientY - _goalTouchDrag.startY) + "px)";
+    _goalTouchDrag.li.style.zIndex = "9999";
+    _goalsClearDropMarks();
+    const targets = _goalsTouchTargets();
+    const id = window.projectTaskDragHelpers.cardIdUnderPoint(
+        targets, t.clientX, t.clientY);
+    if (!id) return;
+    const target = targets.find((x) => x.id === id);
+    if (!target) return;
+    const d = _goalDecide(_goalTouchDrag.project, _goalsTargetForId(id));
+    if (d.allowed) target.el.classList.add("goal-card-drop-ok");
+    else if (!_goalsIsNoOp(d.reason)) {
+        target.el.classList.add("goal-card-drop-no");
+    }
+}
+
+async function onGoalsTouchEnd(e) {
+    if (_goalTouchLongPress) {
+        clearTimeout(_goalTouchLongPress);
+        _goalTouchLongPress = null;
+    }
+    if (!_goalTouchDrag) return;
+    const li = _goalTouchDrag.li;
+    const project = _goalTouchDrag.project;
+    li.style.transform = "";
+    li.style.zIndex = "";
+    li.classList.remove("dragging");
+    // Suppress the click the browser synthesises from this touch — on
+    // this page that click lands on the goal card and would open the
+    // detail panel on top of the drop the user just made.
+    if (e.cancelable) e.preventDefault();
+    // `touches` is empty at touchend — the release point is in
+    // changedTouches.
+    const t = (e.changedTouches && e.changedTouches[0]) || null;
+    _goalTouchDrag = null;
+    _dragProject = null;
+    _goalsClearDropMarks();
+    if (!t) {
+        goalsDragStatus("");
+        return;
+    }
+    const id = window.projectTaskDragHelpers.cardIdUnderPoint(
+        _goalsTouchTargets(), t.clientX, t.clientY);
+    const target = id ? _goalsTargetForId(id) : undefined;
+    if (target === undefined) {
+        goalsDragStatus("Dropped outside a goal — nothing moved.");
+        return;
+    }
+    await _goalsApplyProjectMove(project, target);
+}

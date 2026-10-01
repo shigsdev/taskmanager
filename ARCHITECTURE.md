@@ -493,6 +493,39 @@ component is added, a data flow changes, or a security boundary shifts.
   dropdown — and the reported **goal cascade**, since
   `task_service.update_task` overwrites the task's goal with the
   destination project's when that project has one (#77).
+- **Project drag between goal cards** (#343, 2026-09-30): goal cards
+  did not render their projects at all; they now list them behind a
+  collapsed `Projects (N)` toggle, and each chip is a drag source
+  PATCHing `goal_id` on `/api/projects/<id>`. No new endpoint. The
+  whole **card** is the drop target (not the project list), so a
+  collapsed card accepts a drop — that is the recorded user decision,
+  pinned by a Playwright test. Three things differ from #344 and are
+  the reason this is not a copy of it:
+  - **No type/category gate.** `populateGoalDropdown`
+    (`static/projects.js`) offers every active goal for any project
+    with no type filter, and bulk edit agrees; `ProjectType`
+    (work|personal) and `GoalCategory` (health|personal_growth|
+    relationships|work|bau) are not parallel enums, so there is no
+    pairing to enforce. #344 added a gate because the picker had one
+    and drag would have been a hole in it; here a gate would make drag
+    *stricter* than the picker.
+  - **A `No goal` drop zone** carrying the `_GOALS_NO_GOAL` sentinel
+    is a first-class target, because `goal_id = NULL` is otherwise
+    unreachable by drag and goal-less projects never appear on the
+    page. The sentinel is non-empty on purpose: the shared hit-test
+    skips falsy ids, so `""` would make the zone untouchable on mobile.
+  - **No task cascade, and the progress bars do not move.**
+    `project_service.update_project` sets `goal_id` and stops —
+    deliberately, per the principle recorded in `delete_project` ("the
+    goal is independent intent") — while `goal_service.
+    goal_progress_batch` counts tasks by `Task.goal_id` alone and
+    never traverses Project → Goal. A move therefore leaves the
+    project's tasks counting toward their old goal, so the UI counts
+    them and says so rather than letting it look broken.
+  Decision logic is pure in `static/goal_project_drag_helpers.js`
+  (dual-export, Jest-tested). The card hit-test geometry is **shared**
+  with #344 via `projectTaskDragHelpers.cardIdUnderPoint` rather than
+  duplicated.
 - **Task cancellation** (#25, ADR-012): `TaskStatus.CANCELLED` is
   distinct from ARCHIVED (completed) so users can drop tasks honestly
   without inflating completion stats. Optional `cancellation_reason`

@@ -379,8 +379,16 @@ Report.
      correct tier. Open detail panel, change fields, save, verify changes
      persist on reload. Click Done/Week/Backlog tier buttons, verify task
      moves. Test repeat dropdown (select Weekly, verify day picker appears).
+     On /projects, drag a task line from one project card to another and
+     verify the reassignment persists; confirm a cross-type drop is
+     refused with a visible message (#344).
   7. **Goals page**: verify goal cards show progress bars with correct task
      counts. Filter by category/priority/status, verify results change.
+     Expand a card's `Projects (N)` toggle, drag a project chip onto
+     another goal card, verify the move persists on reload (#343).
+     Drag one onto the `No goal` zone and verify it unassigns. Drop
+     onto a COLLAPSED card and verify that works without expanding it
+     — that is a recorded user decision, not an implementation detail.
   8. **Review page**: click Keep/Freeze/Snooze, verify the card advances
      and the progress counter updates.
   9. **Settings page**: verify stats reflect the seeded data counts.
@@ -432,6 +440,10 @@ Report.
   Goals: filter category        PASS          Goals: filter category        PASS
   Goals: filter priority        PASS          Goals: filter priority        PASS
   Goals: filter status          PASS          Goals: filter status          PASS
+  Goals: drag project to goal   PASS          Goals: drag project to goal   PASS
+  Goals: drop on collapsed card PASS          Goals: drop on collapsed card PASS
+  Goals: No-goal zone unassign  PASS          Goals: No-goal zone unassign  PASS
+  Projects: drag task to card   PASS          Projects: drag task to card   PASS
   Review: Keep                  PASS          Review: Keep                  PASS
   Review: Freeze                PASS          Review: Freeze                PASS
   Review: Snooze                PASS          Review: Snooze                PASS
