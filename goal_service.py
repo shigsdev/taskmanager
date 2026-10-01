@@ -11,8 +11,11 @@ from models import (
     GoalCategory,
     GoalPriority,
     GoalStatus,
+    Project,
+    RecurringTask,
     Task,
     TaskStatus,
+    WeeklyFocus,
     db,
 )
 from utils import (
@@ -155,6 +158,69 @@ def delete_goal(goal_id: uuid.UUID) -> bool:
     goal.batch_id = None
     db.session.commit()
     return True
+
+
+# #349 (2026-10-01): the hard delete, and the guard that makes it safe.
+#
+# FOUR models carry a `goal_id`: Project, Task, RecurringTask and
+# WeeklyFocus. Only `Task.goal_id` lacks `ondelete="SET NULL"`, so a raw
+# DELETE would hard-fail on tasks and SILENTLY null the other three.
+# Silently nulling a project's goal because its goal was removed is
+# exactly the class of invisible data change #350/#351 exist to stop, so
+# this refuses and names the blockers rather than letting the database
+# quietly decide.
+#
+# WeeklyFocus is the one worth calling out: it is the least visible of
+# the four, and leaving it out would have emptied a past week's focus
+# row with nothing shown to the user.
+_GOAL_REFERRERS = (
+    ("tasks", Task),
+    ("projects", Project),
+    ("recurring", RecurringTask),
+    ("weekly_focus", WeeklyFocus),
+)
+
+
+def goal_reference_counts(goal_id: uuid.UUID) -> dict[str, int]:
+    """How many rows in each table still point at this goal.
+
+    Deliberately unfiltered by status or is_active: an archived task
+    holds the same foreign key as an active one, and the database does
+    not care which it is.
+    """
+    return {
+        name: db.session.scalar(
+            select(func.count()).select_from(model).where(model.goal_id == goal_id)
+        ) or 0
+        for name, model in _GOAL_REFERRERS
+    }
+
+
+def hard_delete_goal(goal_id: uuid.UUID) -> dict:
+    """Permanently remove a goal row.
+
+    Returns ``{"deleted": bool, "reason": str | None, "references": {...}}``.
+    ``reason`` is ``"not_found"``, ``"still_active"`` or ``"referenced"``.
+
+    Requires the goal to be ARCHIVED first. That is a deliberate second
+    gate: it makes the destructive path two separate decisions, and it
+    means every hard delete has already been through ``delete_goal``,
+    which clears ``batch_id`` — so a hard delete can never strand a
+    restorable import batch holding a row that no longer exists.
+    """
+    goal = get_goal(goal_id)
+    if goal is None:
+        return {"deleted": False, "reason": "not_found", "references": {}}
+
+    refs = goal_reference_counts(goal_id)
+    if goal.is_active:
+        return {"deleted": False, "reason": "still_active", "references": refs}
+    if any(refs.values()):
+        return {"deleted": False, "reason": "referenced", "references": refs}
+
+    db.session.delete(goal)
+    db.session.commit()
+    return {"deleted": True, "reason": None, "references": refs}
 
 
 # --- Progress ----------------------------------------------------------------

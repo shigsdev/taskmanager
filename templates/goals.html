@@ -41,6 +41,14 @@
                 <option value="done">Done</option>
                 <option value="on_hold">On Hold</option>
             </select>
+            {# #349: mirrors the Active/Archived/All control on /projects.
+               Without it an archived goal was unreachable from the UI,
+               which is what made the mislabelled "Delete" unrecoverable. #}
+            <select id="filterArchived" title="Show archived goals">
+                <option value="active">Active only</option>
+                <option value="archived">Archived</option>
+                <option value="all">All</option>
+            </select>
             <select id="filterQuarter" title="Filter by quarter">
                 <option value="">All quarters</option>
                 <option value="Q1">Q1</option>
@@ -133,9 +141,18 @@
                 <button type="button" class="icon-btn voice-btn" data-voice-target="goalNotes" title="Voice input">🎤</button>
             </div>
 
+            {# #349: "Delete" was a soft archive wearing a destructive
+               label. The toggle now says what it does, and the real
+               delete is a separate, gated control below it. #}
             <div class="detail-actions">
                 <button type="submit" class="btn">Save</button>
-                <button type="button" class="btn btn-danger" id="goalDelete">Delete</button>
+                <button type="button" class="btn btn-secondary" id="goalDelete">Archive</button>
+            </div>
+            <div class="goal-danger-zone" id="goalDangerZone">
+                <button type="button" class="btn btn-danger" id="goalHardDelete" disabled>
+                    Delete permanently
+                </button>
+                <p class="goal-danger-hint" id="goalHardDeleteHint" aria-live="polite"></p>
             </div>
         </form>
 
@@ -168,6 +185,7 @@
      keeping a second copy of the same rect math. -->
 <script src="{{ url_for('static', filename='project_task_drag_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='goal_project_drag_helpers.js') }}"></script>
+<script src="{{ url_for('static', filename='goal_archive_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='goals.js') }}"></script>
 <script src="{{ url_for('static', filename='parse_capture.js') }}"></script>
 <script src="{{ url_for('static', filename='capture.js') }}"></script>

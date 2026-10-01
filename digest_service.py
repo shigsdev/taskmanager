@@ -168,7 +168,16 @@ def _build_digest_data(target_date: date | None = None) -> dict[str, Any]:
     goal_counts: dict[str, int] = {}
     seen_goals: dict[str, Goal] = {}
     for t in today_tasks:
-        if t.goal_id and t.goal and t.goal.status != GoalStatus.DONE:
+        # #349: `is_active` as well as the status check. An archived goal
+        # kept turning up in the daily email, which made "archive" a
+        # false promise in exactly the way the old "Delete" button was.
+        # The inactive-PROJECT guard beside this one (PR62 audit fix #14)
+        # is the precedent; goals only ever got the status half.
+        if (
+            t.goal_id and t.goal
+            and t.goal.is_active
+            and t.goal.status != GoalStatus.DONE
+        ):
             key = str(t.goal_id)
             goal_counts[key] = goal_counts.get(key, 0) + 1
             seen_goals[key] = t.goal
@@ -204,7 +213,11 @@ def _build_digest_data(target_date: date | None = None) -> dict[str, Any]:
         )
         goal_title = (
             _sanitize(t.goal.title)
-            if t.goal_id and t.goal and t.goal.status != GoalStatus.DONE
+            if (
+                t.goal_id and t.goal
+                and t.goal.is_active                       # #349
+                and t.goal.status != GoalStatus.DONE
+            )
             else None
         )
         return {

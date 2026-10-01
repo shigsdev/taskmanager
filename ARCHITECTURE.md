@@ -567,6 +567,47 @@ component is added, a data flow changes, or a security boundary shifts.
   `update_project` now updates `Task` and `RecurringTask` together,
   under the same change-only guard, and `delete_project` still leaves
   both alone (the genuine independent-intent case).
+- **Archive / unarchive a goal, and a guarded hard delete** (#349,
+  2026-10-01): `delete_goal` had always been a SOFT delete setting
+  `is_active=False`, but the button said **Delete**, `goalsRender`
+  hard-filtered to active goals with no filter control, and nothing
+  could unarchive. One click made a goal permanently invisible and
+  unrecoverable from the UI while the row survived in the database —
+  and because `delete_goal` also clears `batch_id` on purpose, the
+  recycle-bin restore could not bring it back either. `/goals` now
+  mirrors the `/projects` pattern (#24, ADR-011): an
+  `Active only / Archived / All` filter, an Archive ↔ Unarchive toggle
+  whose label follows the goal's state, and an `Archived` badge.
+  `DELETE /api/goals/<id>` is unchanged and is the archive action, so
+  an in-flight client keeps working.
+  - **The hard delete is gated on state, not on a scary dialog.** The
+    goal must already be archived, and nothing may still point at it.
+    `GET /api/goals/<id>/references` returns per-table counts so the
+    panel can say *why* the button is dead before the click rather than
+    surfacing it as an error after.
+  - **Why a guard rather than a cascade.** FOUR models carry a
+    `goal_id` — `Project`, `Task`, `RecurringTask` and `WeeklyFocus` —
+    and only `Task.goal_id` lacks `ondelete="SET NULL"`. An unguarded
+    delete would hard-fail on tasks and SILENTLY null the other three,
+    which is the same class of invisible data change #350 and #351
+    exist to stop. `WeeklyFocus` is the one worth naming: it is the
+    least visible of the four and would have been the easiest to miss.
+  - **Archive-before-delete is a second gate, not ceremony.** It makes
+    the destructive path two separate decisions, and it means every
+    hard delete has already been through `delete_goal` — which clears
+    `batch_id` — so a hard delete can never strand a restorable import
+    batch pointing at a row that no longer exists.
+  - **Archiving now actually hides.** `digest_service` grouped goals by
+    `status != DONE` and never checked `is_active`, so an archived goal
+    still appeared in the daily email, in both the grouped section and
+    the per-task label. The inactive-*project* guard beside it (PR62
+    audit fix #14) was the precedent; goals only ever got the status
+    half. Both paths fixed.
+  - Decision logic is pure in `static/goal_archive_helpers.js`
+    (dual-export, Jest-tested), including the hint copy — Phase 6
+    caught it reading *"1 task still point at this goal … clear them
+    first"*, which every unit assertion had missed by checking only the
+    noun phrase.
 - **Flatten guard on the goal drag** (#351, 2026-10-01): `/goals`
   confirms when a move would **overwrite more than one distinct goal**,
   in either direction — not only when goals are being cleared, which is
@@ -859,6 +900,8 @@ the code.
 # goals_api.py
 /api/goals
 /api/goals/<uuid:goal_id>
+/api/goals/<uuid:goal_id>/permanent        # #349 — DELETE only; hard delete, guarded
+/api/goals/<uuid:goal_id>/references       # #349 — what still points at this goal
 /api/goals/<uuid:goal_id>/progress
 
 # projects_api.py

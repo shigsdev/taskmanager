@@ -16,7 +16,12 @@ work and personal life, with a regulated (air-gapped) work environment.
 - **Due-date → tier auto-route** — setting a `due_date` automatically moves the
   task to the matching tier (today → Today, this week → This Week, etc.)
 - **Goals** — grouped by category (Health, Work, Personal Growth, Relationships,
-  BAU) with priority ranking, progress tracking, and linked tasks. Each card
+  BAU) with priority ranking, progress tracking, and linked tasks.
+  `Active only / Archived / All` filter with an Archive ↔ Unarchive toggle and
+  an `Archived` badge; a separate **Delete permanently** removes the row for
+  good but is only available once a goal is archived *and* nothing still
+  points at it (tasks, projects, repeating tasks, weekly focus), so it can
+  never leave a dangling link. Each card
   also lists its linked projects behind a collapsed `Projects (N)` toggle, and
   a project can be **dragged between goal cards** (or onto the `No goal` zone
   to unfile it) — any project type may sit under any goal category. Moving a

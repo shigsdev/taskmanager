@@ -395,6 +395,14 @@ Report.
      overwrite, and a project whose tasks all share ONE goal must
      raise none at all. The second is the easy one to regress into a
      nag. Confirm a recurring template on the project moves too (#352).
+     Then the #349 archive controls: the `Active only / Archived / All`
+     filter actually changes what renders, the panel button reads
+     Archive on a live goal and Unarchive on an archived one, and
+     **Delete permanently is disabled with a readable reason** on both
+     a live goal and an archived-but-referenced one. A disabled button
+     whose hint is wrong or missing is the failure mode here — it was
+     caught reading "1 task still point at this goal" by eye, not by a
+     unit test.
   8. **Review page**: click Keep/Freeze/Snooze, verify the card advances
      and the progress counter updates.
   9. **Settings page**: verify stats reflect the seeded data counts.
@@ -452,6 +460,9 @@ Report.
   Goals: flatten move confirms  PASS          Goals: flatten move confirms  PASS
   Goals: 1-goal move is silent  PASS          Goals: 1-goal move is silent  PASS
   Goals: template moves too     PASS          Goals: template moves too     PASS
+  Goals: archived filter        PASS          Goals: archived filter        PASS
+  Goals: Archive/Unarchive      PASS          Goals: Archive/Unarchive      PASS
+  Goals: hard-delete gating     PASS          Goals: hard-delete gating     PASS
   Projects: drag task to card   PASS          Projects: drag task to card   PASS
   Review: Keep                  PASS          Review: Keep                  PASS
   Review: Freeze                PASS          Review: Freeze                PASS

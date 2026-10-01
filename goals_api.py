@@ -13,6 +13,8 @@ from goal_service import (
     get_goal,
     goal_progress,
     goal_progress_batch,
+    goal_reference_counts,
+    hard_delete_goal,
     list_goals,
     update_goal,
 )
@@ -121,9 +123,48 @@ def patch(email: str, goal_id: uuid.UUID):  # noqa: ARG001
 @bp.delete("/<uuid:goal_id>")
 @login_required
 def destroy(email: str, goal_id: uuid.UUID):  # noqa: ARG001
+    # This is the ARCHIVE action — `delete_goal` is a soft delete and
+    # always has been. #349 relabelled the button to say so rather than
+    # changing the verb here, so an in-flight client keeps working.
     if not delete_goal(goal_id):
         return jsonify({"error": "not found"}), 404
     return "", 204
+
+
+# #349: the real delete. DELETE only — never add GET to this list
+# (#190): a state-mutating GET is a CSRF surface, because SameSite=Lax
+# does not block a top-level cross-origin GET, so a malicious page's
+# `<img src>` would silently fire it.
+@bp.delete("/<uuid:goal_id>/permanent")
+@login_required
+def destroy_permanent(email: str, goal_id: uuid.UUID):  # noqa: ARG001
+    result = hard_delete_goal(goal_id)
+    if result["deleted"]:
+        return "", 204
+    if result["reason"] == "not_found":
+        return jsonify({"error": "not found"}), 404
+    if result["reason"] == "still_active":
+        return jsonify({
+            "error": "Archive this goal before deleting it permanently.",
+            "references": result["references"],
+        }), 409
+    # "referenced" — say what is in the way so the user can clear it in
+    # one pass instead of discovering the blockers one delete at a time.
+    return jsonify({
+        "error": "Something still points at this goal.",
+        "references": result["references"],
+    }), 409
+
+
+# #349: what still points at this goal. Read-only, so the detail panel
+# can say WHY the permanent delete is unavailable before the click
+# rather than surfacing it as an error afterwards.
+@bp.get("/<uuid:goal_id>/references")
+@login_required
+def references(email: str, goal_id: uuid.UUID):  # noqa: ARG001
+    if get_goal(goal_id) is None:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(goal_reference_counts(goal_id))
 
 
 @bp.get("/<uuid:goal_id>/progress")

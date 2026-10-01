@@ -4994,3 +4994,244 @@ test.describe("Goals - drag a project to another goal (#343)", () => {
         }
     });
 });
+
+test.describe("Goals - archive, unarchive, and a guarded delete (#349)", () => {
+    // The bug: `delete_goal` is a SOFT delete, but the button said
+    // "Delete", the board hard-filtered to active goals with no filter
+    // control, and nothing could unarchive. So one click made a goal
+    // permanently invisible and unrecoverable from the UI while the row
+    // survived in the database.
+    //
+    // Every test asserts PERSISTED state via the API, not that a class
+    // appeared — #347 is open precisely because a test that watched the
+    // shape of a request passed while the request was failing.
+
+    const goalCard = (page, id) =>
+        page.locator(`.goal-card[data-goal-id="${id}"]`);
+
+    // `create_goal` deliberately ignores `is_active` — a goal cannot be
+    // born archived — so an archived fixture has to go through the real
+    // archive action, which is DELETE /api/goals/<id>.
+    async function makeGoal(request, opts) {
+        const r = await request.post("/api/goals", {
+            data: {
+                title: `E2E arch ${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                category: "work", priority: "should",
+            },
+        });
+        expect(r.ok()).toBe(true);
+        const goal = await r.json();
+        if (opts && opts.archived) {
+            const d = await request.delete(`/api/goals/${goal.id}`);
+            expect(d.status()).toBe(204);
+            goal.is_active = false;
+        }
+        return goal;
+    }
+
+    const goalById = async (request, id) => {
+        const r = await request.get("/api/goals?is_active=all");
+        return (await r.json()).find((g) => g.id === id);
+    };
+
+    async function setFilter(page, value) {
+        await page.selectOption("#filterArchived", value);
+        await page.waitForTimeout(150);          // re-render is synchronous
+    }
+
+    async function openGoal(page, id) {
+        await goalCard(page, id).click();
+        await expect(page.locator("#goalDetailOverlay")).toBeVisible();
+    }
+
+    test("an archived goal is hidden by default and found under Archived", async ({
+        page, request,
+    }) => {
+        const goal = await makeGoal(request, { archived: true });
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+
+            // Default view: gone.
+            await expect(goalCard(page, goal.id)).toHaveCount(0);
+
+            // Archived: there, and badged.
+            await setFilter(page, "archived");
+            await expect(goalCard(page, goal.id)).toHaveCount(1, { timeout: 10000 });
+            await expect(goalCard(page, goal.id).locator(".badge-archived"))
+                .toHaveText(/archived/i);
+
+            // All: there too.
+            await setFilter(page, "all");
+            await expect(goalCard(page, goal.id)).toHaveCount(1);
+        } finally {
+            await request.delete(`/api/goals/${goal.id}`);
+            await request.delete(`/api/goals/${goal.id}/permanent`);
+        }
+    });
+
+    test("the button says Archive, not Delete, and archives", async ({
+        page, request,
+    }) => {
+        // The label is the fix. A destructive word on a non-destructive
+        // action is what made this unrecoverable in the first place.
+        const goal = await makeGoal(request);
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await openGoal(page, goal.id);
+
+            await expect(page.locator("#goalDelete")).toHaveText(/^Archive$/);
+
+            await page.locator("#goalDelete").click();
+            await expect.poll(async () => (await goalById(request, goal.id)).is_active,
+                              { timeout: 10000 }).toBe(false);
+            // ...and the row still exists. That is the difference
+            // between archiving and deleting.
+            expect(await goalById(request, goal.id)).toBeTruthy();
+        } finally {
+            await request.delete(`/api/goals/${goal.id}/permanent`);
+        }
+    });
+
+    test("an archived goal offers Unarchive, and it comes back", async ({
+        page, request,
+    }) => {
+        const goal = await makeGoal(request, { archived: true });
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await setFilter(page, "archived");
+            await openGoal(page, goal.id);
+
+            await expect(page.locator("#goalDelete")).toHaveText(/^Unarchive$/);
+
+            await page.locator("#goalDelete").click();
+            await expect.poll(async () => (await goalById(request, goal.id)).is_active,
+                              { timeout: 10000 }).toBe(true);
+        } finally {
+            await request.delete(`/api/goals/${goal.id}`);
+            await request.delete(`/api/goals/${goal.id}/permanent`);
+        }
+    });
+
+    test("permanent delete is refused on an ACTIVE goal, and says why", async ({
+        page, request,
+    }) => {
+        const goal = await makeGoal(request);
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await openGoal(page, goal.id);
+
+            await expect(page.locator("#goalHardDelete")).toBeDisabled();
+            await expect(page.locator("#goalHardDeleteHint"))
+                .toContainText(/archive this goal first/i);
+        } finally {
+            await request.delete(`/api/goals/${goal.id}`);
+            await request.delete(`/api/goals/${goal.id}/permanent`);
+        }
+    });
+
+    test("permanent delete is refused while a task points at it, and names it",
+        async ({ page, request }) => {
+            // A disabled button with no explanation is its own usability
+            // bug. The hint has to say what is in the way.
+            const goal = await makeGoal(request, { archived: true });
+            const taskRes = await request.post("/api/tasks", {
+                data: {
+                    title: `E2E clinger ${Date.now()}`, type: "work",
+                    tier: "inbox", goal_id: goal.id,
+                },
+            });
+            const task = await taskRes.json();
+            try {
+                await page.goto("/goals?nosw=1");
+                await page.waitForLoadState("networkidle");
+                await setFilter(page, "archived");
+                await openGoal(page, goal.id);
+
+                await expect(page.locator("#goalHardDelete")).toBeDisabled();
+                await expect(page.locator("#goalHardDeleteHint"))
+                    .toContainText(/1 task/i);
+                await expect(page.locator("#goalHardDeleteHint"))
+                    .toContainText(/pointing at nothing/i);
+
+                // And the goal is still there.
+                expect(await goalById(request, goal.id)).toBeTruthy();
+            } finally {
+                await request.delete(`/api/tasks/${task.id}`);
+                await request.delete(`/api/goals/${goal.id}/permanent`);
+            }
+        });
+
+    test("permanent delete removes an archived, unreferenced goal", async ({
+        page, request,
+    }) => {
+        const goal = await makeGoal(request, { archived: true });
+        let gone = false;
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await setFilter(page, "archived");
+            await openGoal(page, goal.id);
+
+            await expect(page.locator("#goalHardDelete")).toBeEnabled({
+                timeout: 10000,
+            });
+            await expect(page.locator("#goalHardDeleteHint"))
+                .toContainText(/nothing points at this goal/i);
+
+            page.once("dialog", (d) => d.accept());
+            await page.locator("#goalHardDelete").click();
+
+            await expect.poll(() => goalById(request, goal.id),
+                              { timeout: 10000 }).toBeUndefined();
+            gone = true;
+        } finally {
+            if (!gone) await request.delete(`/api/goals/${goal.id}/permanent`);
+        }
+    });
+
+    test("dismissing the permanent-delete confirm changes nothing", async ({
+        page, request,
+    }) => {
+        const goal = await makeGoal(request, { archived: true });
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await setFilter(page, "archived");
+            await openGoal(page, goal.id);
+            await expect(page.locator("#goalHardDelete")).toBeEnabled({
+                timeout: 10000,
+            });
+
+            const seen = [];
+            page.once("dialog", async (d) => { seen.push(d.message()); await d.dismiss(); });
+            await page.locator("#goalHardDelete").click();
+            await page.waitForTimeout(800);       // a late DELETE would lose
+
+            expect(seen.length).toBe(1);
+            expect(seen[0]).toMatch(/cannot be undone/i);
+            expect(seen[0]).toMatch(/recycle bin will not bring it back/i);
+            expect(await goalById(request, goal.id)).toBeTruthy();
+        } finally {
+            await request.delete(`/api/goals/${goal.id}/permanent`);
+        }
+    });
+
+    test("a brand-new goal shows no archive or delete controls", async ({
+        page,
+    }) => {
+        // Neither action means anything for a goal that does not exist
+        // yet, and an enabled-looking destructive button on a blank form
+        // is exactly the kind of thing that gets clicked.
+        await page.goto("/goals?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator("#addGoalBtn").click();
+        await expect(page.locator("#goalDetailOverlay")).toBeVisible();
+
+        await expect(page.locator("#goalDelete")).toBeHidden();
+        await expect(page.locator("#goalDangerZone")).toBeHidden();
+    });
+});

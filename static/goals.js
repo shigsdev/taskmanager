@@ -148,7 +148,12 @@ function goalsRender() {
 }
 
 function goalsFiltered() {
-    let goals = goalsData.filter((g) => g.is_active);
+    // #349: the archive filter replaces a hard-coded `g.is_active`.
+    // That hard filter, plus a "Delete" button that only archived, is
+    // what made a deleted goal unreachable from the UI forever.
+    const archEl = document.getElementById("filterArchived");
+    let goals = window.goalArchiveHelpers.goalArchiveFilter(
+        goalsData, archEl ? archEl.value : "active");
 
     const cat = document.getElementById("filterCategory").value;
     if (cat) goals = goals.filter((g) => g.category === cat);
@@ -199,6 +204,16 @@ function goalCardEl(goal) {
         qBadge.className = "badge badge-quarter";
         qBadge.textContent = goal.target_quarter;
         badges.appendChild(qBadge);
+    }
+
+    // #349: an archived goal is only visible under the Archived/All
+    // filter, but once it IS on screen it has to be distinguishable —
+    // otherwise "All" renders live and dead goals identically.
+    if (goal.is_active === false) {
+        const archBadge = document.createElement("span");
+        archBadge.className = "badge badge-archived";
+        archBadge.textContent = "Archived";
+        badges.appendChild(archBadge);
     }
 
     card.appendChild(badges);
@@ -256,8 +271,12 @@ function goalCardEl(goal) {
 // --- Filters -----------------------------------------------------------------
 
 function goalsSetupFilters() {
-    ["filterCategory", "filterPriority", "filterStatus", "filterQuarter"].forEach((id) => {
-        document.getElementById(id).addEventListener("change", goalsRender);
+    [
+        "filterCategory", "filterPriority", "filterStatus", "filterQuarter",
+        "filterArchived",                                       // #349
+    ].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener("change", goalsRender);
     });
     document.getElementById("addGoalBtn").addEventListener("click", goalDetailNew);
 }
@@ -270,7 +289,10 @@ function goalsSetupDetailPanel() {
         if (e.target === e.currentTarget) goalDetailClose();
     });
     document.getElementById("goalDetailForm").addEventListener("submit", goalDetailSave);
-    document.getElementById("goalDelete").addEventListener("click", goalDetailDelete);
+    document.getElementById("goalDelete")
+        .addEventListener("click", goalDetailToggleArchive);
+    document.getElementById("goalHardDelete")
+        .addEventListener("click", goalDetailHardDelete);   // #349
     document.getElementById("addLinkedTaskBtn").addEventListener("click", goalAddLinkedTask);
     document.getElementById("linkedTaskInput").addEventListener("keydown", (e) => {
         if (e.key === "Enter") { e.preventDefault(); goalAddLinkedTask(); }
@@ -289,6 +311,8 @@ function goalDetailNew() {
     document.getElementById("goalActions").value = "";
     document.getElementById("goalNotes").value = "";
     document.getElementById("goalDelete").style.display = "none";
+    // A goal that does not exist yet can be neither archived nor deleted.
+    document.getElementById("goalDangerZone").style.display = "none";
     document.getElementById("linkedTasksSection").style.display = "none";
     document.getElementById("goalDetailOverlay").style.display = "";
 }
@@ -304,7 +328,12 @@ function goalDetailOpen(goal) {
     document.getElementById("goalStatus").value = goal.status;
     document.getElementById("goalActions").value = goal.actions || "";
     document.getElementById("goalNotes").value = goal.notes || "";
-    document.getElementById("goalDelete").style.display = "";
+    const toggle = document.getElementById("goalDelete");
+    toggle.style.display = "";
+    // #349: the label follows the goal's state rather than lying about it.
+    toggle.textContent = window.goalArchiveHelpers.goalArchiveToggleLabel(goal);
+    document.getElementById("goalDangerZone").style.display = "";
+    _goalRefreshHardDeleteState(goal);
 
     // Linked tasks
     const section = document.getElementById("linkedTasksSection");
@@ -413,12 +442,85 @@ async function goalDetailSave(e) {
     }
 }
 
-async function goalDetailDelete() {
+// #349: this button used to say "Delete" and silently archive. It is
+// the same request — DELETE /api/goals/<id> is a soft delete and always
+// was — but it now says what it does, and it toggles back.
+async function goalDetailToggleArchive() {
     const id = document.getElementById("goalId").value;
     if (!id) return;
-    await apiFetch(`/api/goals/${id}`, { method: "DELETE" });
+    const goal = goalsData.find((g) => g.id === id);
+    if (!goal) return;
+
+    if (goal.is_active === false) {
+        // Unarchive. PATCH rather than DELETE — there is no "undelete".
+        await apiFetch(`/api/goals/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ is_active: true }),
+        });
+    } else {
+        await apiFetch(`/api/goals/${id}`, { method: "DELETE" });
+    }
     await goalsLoad();
     goalDetailClose();
+}
+
+// The real delete. Gated on state rather than guarded by a scary
+// dialog: the goal must already be archived, and nothing may still
+// point at it. `goalDetailOpen` has already resolved both and set the
+// button's disabled state, so reaching here means the server agreed
+// when we asked — but it checks again, because the data can change
+// between opening the panel and clicking.
+async function goalDetailHardDelete() {
+    const id = document.getElementById("goalId").value;
+    if (!id) return;
+    const goal = goalsData.find((g) => g.id === id);
+    const h = window.goalArchiveHelpers;
+    if (!confirm(h.goalHardDeleteConfirm(goal))) return;
+
+    try {
+        await apiFetch(`/api/goals/${id}/permanent`, { method: "DELETE" });
+    } catch (err) {
+        // A 409 means something started pointing at it since the panel
+        // opened. Re-resolve rather than leaving a stale hint on screen.
+        console.error("Permanent delete refused:", err);
+        alert("Could not delete this goal: " + err.message);
+        await _goalRefreshHardDeleteState(goal);
+        return;
+    }
+    await goalsLoad();
+    goalDetailClose();
+}
+
+// Resolve the permanent-delete button's state for `goal`. Null
+// references mean "not counted yet", which the helper renders as a
+// disabled button rather than an enabled one.
+async function _goalRefreshHardDeleteState(goal) {
+    const btn = document.getElementById("goalHardDelete");
+    const hint = document.getElementById("goalHardDeleteHint");
+    if (!btn || !hint) return;
+    const h = window.goalArchiveHelpers;
+
+    const paint = (state) => {
+        btn.disabled = !state.enabled;
+        hint.textContent = state.hint;
+    };
+    paint(h.goalHardDeleteState(goal, null));
+    if (!goal || !goal.id) return;
+
+    let refs = null;
+    try {
+        refs = await apiFetch(`/api/goals/${goal.id}/references`);
+    } catch (err) {
+        // Leave it disabled and say so; an unreachable count must not
+        // read as "nothing points at this".
+        console.error("Could not load goal references:", err);
+        hint.textContent = "Could not check what points at this goal.";
+        return;
+    }
+    // The panel may have been closed or moved on while that was in
+    // flight — only paint if this is still the goal on screen.
+    if (document.getElementById("goalId").value !== goal.id) return;
+    paint(h.goalHardDeleteState(goal, refs));
 }
 
 function goalsUpdateInboxBadge() {

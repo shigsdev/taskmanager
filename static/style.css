@@ -2355,6 +2355,49 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     letter-spacing: 0.03em;
 }
 
+/* #349: under the Archived / All filter, live and archived goals render
+   side by side, so the archived one has to be readable as archived.
+   `.goal-inactive` already dims the card; this names the state. */
+.badge-archived {
+    background: rgba(255, 247, 232, 0.1);
+    color: var(--cream-dim);
+    border: 1px dashed var(--border);
+    text-transform: uppercase;
+    font-size: 0.62rem;
+    letter-spacing: 0.06em;
+}
+
+/* #349: the permanent delete sits apart from Save / Archive so it
+   cannot be hit on the way to either. It is disabled far more often
+   than not, and a dead control with no explanation is its own
+   usability bug — the hint below it is doing real work. */
+.goal-danger-zone {
+    margin-top: 1.25rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--border);
+}
+
+.goal-danger-zone .btn-danger[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.goal-danger-hint {
+    margin: 0.45rem 0 0;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--cream-dim);
+}
+
+/* Mobile: keep the destructive button a full-width 44px target rather
+   than a small one crowded against the panel edge. */
+@media (max-width: 600px) {
+    .goal-danger-zone .btn-danger {
+        width: 100%;
+        min-height: 44px;
+    }
+}
+
 .goal-title {
     font-size: 0.95rem;
     font-weight: 600;
