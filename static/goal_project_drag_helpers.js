@@ -55,6 +55,30 @@
  *   not what you were touching. Clearing a project's goal is a direct
  *   statement about that goal. Because it is destructive and has no
  *   undo, the caller confirms first with an exact count.
+ *
+ *   REVERSIBILITY IS THE LINE, NOT DIRECTION (#351) — #350 shipped the
+ *   confirm on the CLEAR direction only, and that was the wrong test.
+ *   The question that matters is whether the move can be taken back.
+ *
+ *   Move a project whose tasks all sit on ONE goal and the move is
+ *   reversible: drag it back and every task returns to the goal they
+ *   shared. Move a project whose tasks sit on SEVERAL goals and the
+ *   split is gone for good — dragging back lands all of them on
+ *   whichever single goal you drag to, because the server stores one
+ *   `goal_id` per project and has nowhere to remember the old spread.
+ *   That holds in both directions, so direction was never the right
+ *   signal; "is more than one goal being overwritten" is.
+ *
+ *   This was not hypothetical. On the live data a 394-task catch-all
+ *   project sat across four goals while its own `goal_id` was NULL, so
+ *   dropping it on any goal card would have rewritten all four at once
+ *   — with no dialog at all, because nothing was being cleared.
+ *
+ *   TEMPLATES COUNT TOO — `RecurringTask` carries its own `goal_id`,
+ *   and the spawner stamps it onto every task it creates
+ *   (`recurring_service.py:676`), so a template is a goal choice that
+ *   keeps paying out. #352 brought them into the server-side cascade;
+ *   they are counted here for the same reason tasks are.
  */
 "use strict";
 
@@ -112,41 +136,163 @@ function goalProjectMovePayload(goalId) {
 }
 
 /**
- * How many of the project's tasks the server will re-point, so the
- * caller can say it — and, when the destination is "no goal", warn
- * BEFORE doing it.
+ * What the server is about to do, in enough detail to warn about it.
  *
  * `tasks` must be EVERY task on the project, not just the active ones:
  * `update_project` cascades with no status filter (matching the
- * backfill), while `/api/tasks` returns only ACTIVE by default. Counting
- * the default list would understate the blast radius in exactly the
- * destructive direction, so the caller fetches `status=all` first.
+ * backfill), while `/api/tasks` returns only ACTIVE by default.
+ * Counting the default list would understate the blast radius in
+ * exactly the destructive direction, so the caller fetches
+ * `status=all` first. `recurring` is the project's RecurringTask
+ * templates, which #352 brought into the same cascade.
  *
- * Returns the count of tasks whose goal will change. When the move is
- * an unassign, every one of those is a goal being CLEARED, which is the
- * number worth confirming against.
+ * Returns:
+ *   changing          tasks whose goal_id will change
+ *   clearing          of those, how many lose a goal entirely
+ *   recurringChanging templates whose goal_id will change
+ *   fromGoals         [{goalId, count}] — the DISTINCT goals being
+ *                     overwritten, biggest first. Rows with no goal
+ *                     are absent: they are gaining one, so nothing of
+ *                     theirs is destroyed.
+ *   flattening        fromGoals.length > 1, i.e. the move cannot be
+ *                     undone by dragging the project back.
  */
-function goalProjectCascadeCount(tasks, newGoalId) {
-    if (!tasks || !tasks.length) return 0;
+function goalProjectCascadeImpact(tasks, newGoalId, recurring) {
     var dest = newGoalId || null;
-    var n = 0;
-    for (var i = 0; i < tasks.length; i++) {
-        var t = tasks[i];
-        if (!t) continue;
-        if ((t.goal_id || null) !== dest) n += 1;
+    var changing = 0;
+    var clearing = 0;
+    var recurringChanging = 0;
+    var fromCounts = {};
+
+    var scan = function (rows, isTask) {
+        if (!rows || !rows.length) return;
+        for (var i = 0; i < rows.length; i++) {
+            var row = rows[i];
+            if (!row) continue;
+            var current = row.goal_id || null;
+            if (current === dest) continue;          // already correct
+            if (isTask) {
+                changing += 1;
+                if (current !== null && dest === null) clearing += 1;
+            } else {
+                recurringChanging += 1;
+            }
+            // Only a real goal can be destroyed. Going from "no goal"
+            // to a goal adds information; it never removes any.
+            if (current === null) continue;
+            fromCounts[current] = (fromCounts[current] || 0) + 1;
+        }
+    };
+    scan(tasks, true);
+    scan(recurring, false);
+
+    var fromGoals = Object.keys(fromCounts).map(function (id) {
+        return { goalId: id, count: fromCounts[id] };
+    });
+    // Biggest first so the dialog leads with the goal that loses most.
+    // Ties break on id so the order is deterministic under test.
+    fromGoals.sort(function (a, b) {
+        if (b.count !== a.count) return b.count - a.count;
+        return a.goalId < b.goalId ? -1 : 1;
+    });
+
+    return {
+        changing: changing,
+        clearing: clearing,
+        recurringChanging: recurringChanging,
+        fromGoals: fromGoals,
+        flattening: fromGoals.length > 1,
+    };
+}
+
+/**
+ * Does this move need a confirm?
+ *
+ * Two cases, one reason — the user cannot get back what it overwrites:
+ *   clearing > 0   goals are being removed, and there is no undo;
+ *   flattening     several goals collapse into one, and the spread is
+ *                  unrecoverable even by dragging the project back.
+ *
+ * A single-goal move is deliberately NOT confirmed. It is what "move
+ * the project" plainly means, and dragging it back restores every task
+ * exactly as it was.
+ */
+function goalProjectMoveNeedsConfirm(impact) {
+    if (!impact) return false;
+    return impact.clearing > 0 || impact.flattening === true;
+}
+
+function _gpCount(n, one, many) {
+    return n === 1 ? "1 " + one : n + " " + many;
+}
+
+/**
+ * The confirm() text.
+ *
+ * Pure, so the copy itself is under test. That matters more here than
+ * usual: the dialog's whole job is to state the blast radius, and a
+ * count that disagrees with what the server then does is worse than
+ * showing no dialog at all.
+ *
+ * `goalTitles` maps goal id -> title. An id missing from it renders as
+ * "a goal you can no longer see" rather than a raw UUID — which is
+ * exactly what an overwritten-but-since-archived goal would otherwise
+ * look like.
+ */
+function goalProjectConfirmMessage(project, goal, impact, goalTitles) {
+    var titles = goalTitles || {};
+    var name = (project && project.name) || "this project";
+    var clearing = impact.clearing > 0;
+
+    var head = clearing
+        ? 'Take "' + name + '" out of its goal?'
+        : 'Move "' + name + '" to "'
+            + ((goal && goal.title) || "that goal") + '"?';
+
+    var moved = _gpCount(impact.changing, "task", "tasks");
+    if (impact.recurringChanging > 0) {
+        moved += " and " + _gpCount(
+            impact.recurringChanging, "repeating task", "repeating tasks");
     }
-    return n;
+    var body = clearing
+        ? "This clears the goal on " + moved + "."
+        : "This sets the goal on " + moved + ".";
+
+    if (impact.flattening) {
+        var total = 0;
+        var i;
+        for (i = 0; i < impact.fromGoals.length; i++) {
+            total += impact.fromGoals[i].count;
+        }
+        body += "\n\n" + _gpCount(total, "of them is", "of them are")
+            + " on a different goal right now, across "
+            + impact.fromGoals.length + " goals. Dragging \"" + name
+            + "\" back will NOT restore that split — a project stores "
+            + "one goal, so the spread is lost for good:\n";
+        for (i = 0; i < impact.fromGoals.length; i++) {
+            var row = impact.fromGoals[i];
+            body += "\n  " + row.count + "  "
+                + (titles[row.goalId] || "a goal you can no longer see");
+        }
+    } else if (clearing) {
+        body += " This cannot be undone.";
+    }
+
+    return head + "\n\n" + body;
 }
 
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         goalProjectDropDecision, goalProjectMovePayload,
-        goalProjectCascadeCount,
+        goalProjectCascadeImpact, goalProjectMoveNeedsConfirm,
+        goalProjectConfirmMessage,
     };
 } else if (typeof window !== "undefined") {
     window.goalProjectDragHelpers = {
         goalProjectDropDecision: goalProjectDropDecision,
         goalProjectMovePayload: goalProjectMovePayload,
-        goalProjectCascadeCount: goalProjectCascadeCount,
+        goalProjectCascadeImpact: goalProjectCascadeImpact,
+        goalProjectMoveNeedsConfirm: goalProjectMoveNeedsConfirm,
+        goalProjectConfirmMessage: goalProjectConfirmMessage,
     };
 }

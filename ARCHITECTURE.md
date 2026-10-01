@@ -557,6 +557,33 @@ component is added, a data flow changes, or a security boundary shifts.
     first with an exact count, fetched with `status=all` — `/api/tasks`
     returns ACTIVE only by default, which would understate the blast
     radius in precisely that direction.
+- **The cascade reaches recurring templates** (#352, 2026-10-01):
+  `RecurringTask` carries its own `goal_id`, and `spawn_today_tasks`
+  copies it onto every task it creates, so a template left behind by
+  #350 does not merely hold a stale value — it re-stamps the OLD goal
+  onto a new task on every fire. #350's invariant would hold at the
+  moment of the move and then decay on a timer, which is worse than
+  the drift it was written to fix because it renews itself.
+  `update_project` now updates `Task` and `RecurringTask` together,
+  under the same change-only guard, and `delete_project` still leaves
+  both alone (the genuine independent-intent case).
+- **Flatten guard on the goal drag** (#351, 2026-10-01): `/goals`
+  confirms when a move would **overwrite more than one distinct goal**,
+  in either direction — not only when goals are being cleared, which is
+  what #350 shipped. The line is reversibility, not direction. A
+  project stores a single `goal_id`, so once several goals have been
+  collapsed into one, nothing remembers the old spread and dragging the
+  project back cannot restore it; a one-goal move is fully reversible
+  and is deliberately left frictionless. The dialog names every goal
+  being overwritten with its row count, and counts recurring templates
+  alongside tasks per #352. `goalProjectCascadeImpact` /
+  `goalProjectMoveNeedsConfirm` / `goalProjectConfirmMessage` are pure
+  and Jest-tested in `static/goal_project_drag_helpers.js`, including
+  the copy itself — a dialog whose count disagrees with what the server
+  then does is worse than no dialog. Found on live data: a 394-task
+  catch-all project spanning four goals whose own `goal_id` was NULL,
+  so any drop cleared nothing, warned about nothing, and rewrote all
+  four.
 - **Task cancellation** (#25, ADR-012): `TaskStatus.CANCELLED` is
   distinct from ARCHIVED (completed) so users can drop tasks honestly
   without inflating completion stats. Optional `cancellation_reason`

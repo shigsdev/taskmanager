@@ -20,8 +20,11 @@ work and personal life, with a regulated (air-gapped) work environment.
   also lists its linked projects behind a collapsed `Projects (N)` toggle, and
   a project can be **dragged between goal cards** (or onto the `No goal` zone
   to unfile it) — any project type may sit under any goal category. Moving a
-  project takes its tasks' goals with it, so both progress bars update;
-  unfiling clears them, cannot be undone, and asks first
+  project takes its tasks' goals — and its repeating-task templates' goals —
+  with it, so both progress bars update. The drag asks first whenever the
+  move can't be taken back: when it would clear goals, or when the project's
+  tasks sit on several goals and the move would collapse them into one (a
+  project stores a single goal, so dragging it back cannot restore the split)
 - **Projects** — task grouping with auto-color by type (Work blue / Personal green),
   goal linkage that cascades onto linked tasks, `priority` + `priority_order` with
   drag-to-reorder within type group, **drag a task from one project card to

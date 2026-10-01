@@ -4551,6 +4551,230 @@ test.describe("Goals - drag a project to another goal (#343)", () => {
         }
     });
 
+    // --- #351: the flatten guard ------------------------------------------
+    //
+    // #350 confirmed on the CLEAR direction only, which left the worse
+    // case silent. A project stores ONE goal_id, so when its tasks sit
+    // on several goals, any drop collapses them and nothing afterwards
+    // remembers the spread — dragging the project back cannot restore
+    // it. Reversibility, not direction, is what the dialog is for.
+
+    async function makeTask(request, title, projectId, goalId) {
+        const r = await request.post("/api/tasks", {
+            data: {
+                title: `${title} ${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                type: "work", tier: "inbox",
+                project_id: projectId, goal_id: goalId,
+            },
+        });
+        expect(r.ok()).toBe(true);
+        return await r.json();
+    }
+
+    const taskGoalOf = async (request, id) =>
+        (await (await request.get(`/api/tasks/${id}`)).json()).goal_id;
+
+    test("moving a project whose tasks span two goals asks first (#351)",
+        async ({ page, request }) => {
+            const goals = await activeGoals(request);
+            const project = await makeProject(request, goals[0].id);
+            // One task on the project's own goal, one on a DIFFERENT
+            // goal. Dropping on a third goal clears nothing, so #350's
+            // guard would have stayed silent while both were rewritten.
+            const a = await makeTask(request, "E2E flat A", project.id, goals[0].id);
+            const b = await makeTask(request, "E2E flat B", project.id, goals[1].id);
+            try {
+                await page.goto("/goals?nosw=1");
+                await page.waitForLoadState("networkidle");
+                await expandAll(page);
+                await expect(chip(page, project.id))
+                    .toHaveCount(1, { timeout: 10000 });
+
+                const seen = [];
+                page.on("dialog", async (d) => {
+                    seen.push(d.message());
+                    await d.dismiss();              // say No
+                });
+
+                await dragProjectTo(page, project.id,
+                                    `.goal-card[data-goal-id="${goals[2].id}"]`);
+                await page.waitForTimeout(800);     // a late PATCH would lose
+
+                expect(seen.length).toBe(1);
+                expect(seen[0]).toMatch(/across 2 goals/i);
+                expect(seen[0]).toMatch(/will NOT restore that split/i);
+                // It names the goals being overwritten, not just a count.
+                expect(seen[0]).toContain(goals[0].title);
+                expect(seen[0]).toContain(goals[1].title);
+
+                // Dismissed, so nothing moved at all.
+                expect(await goalIdOf(request, project.id)).toBe(goals[0].id);
+                expect(await taskGoalOf(request, a.id)).toBe(goals[0].id);
+                expect(await taskGoalOf(request, b.id)).toBe(goals[1].id);
+                await expect(page.locator("#goalsDragStatus"))
+                    .toContainText(/where it was/i);
+            } finally {
+                await request.delete(`/api/tasks/${a.id}`);
+                await request.delete(`/api/tasks/${b.id}`);
+                await request.delete(`/api/projects/${project.id}`);
+            }
+        });
+
+    test("accepting the flatten confirm collapses them onto one goal (#351)",
+        async ({ page, request }) => {
+            const goals = await activeGoals(request);
+            const project = await makeProject(request, goals[0].id);
+            const a = await makeTask(request, "E2E flat ok A", project.id, goals[0].id);
+            const b = await makeTask(request, "E2E flat ok B", project.id, goals[1].id);
+            try {
+                await page.goto("/goals?nosw=1");
+                await page.waitForLoadState("networkidle");
+                await expandAll(page);
+                await expect(chip(page, project.id))
+                    .toHaveCount(1, { timeout: 10000 });
+
+                page.on("dialog", (d) => d.accept());
+
+                await dragProjectTo(page, project.id,
+                                    `.goal-card[data-goal-id="${goals[2].id}"]`);
+                await expect.poll(() => goalIdOf(request, project.id),
+                                  { timeout: 10000 }).toBe(goals[2].id);
+                await expect.poll(() => taskGoalOf(request, a.id),
+                                  { timeout: 10000 }).toBe(goals[2].id);
+                await expect.poll(() => taskGoalOf(request, b.id),
+                                  { timeout: 10000 }).toBe(goals[2].id);
+            } finally {
+                await request.delete(`/api/tasks/${a.id}`);
+                await request.delete(`/api/tasks/${b.id}`);
+                await request.delete(`/api/projects/${project.id}`);
+            }
+        });
+
+    test("a single-goal move still does not ask (#351)",
+        async ({ page, request }) => {
+            // The guard must not become a nag on the ordinary case. Every
+            // task shares one goal, so dragging the project back would
+            // restore all of them exactly — nothing to warn about.
+            const goals = await activeGoals(request);
+            const project = await makeProject(request, goals[0].id);
+            const a = await makeTask(request, "E2E one A", project.id, goals[0].id);
+            const b = await makeTask(request, "E2E one B", project.id, goals[0].id);
+            try {
+                await page.goto("/goals?nosw=1");
+                await page.waitForLoadState("networkidle");
+                await expandAll(page);
+                await expect(chip(page, project.id))
+                    .toHaveCount(1, { timeout: 10000 });
+
+                const seen = [];
+                page.on("dialog", async (d) => {
+                    seen.push(d.message());
+                    await d.accept();
+                });
+
+                await dragProjectTo(page, project.id,
+                                    `.goal-card[data-goal-id="${goals[1].id}"]`);
+                await expect.poll(() => taskGoalOf(request, a.id),
+                                  { timeout: 10000 }).toBe(goals[1].id);
+                await expect.poll(() => taskGoalOf(request, b.id),
+                                  { timeout: 10000 }).toBe(goals[1].id);
+
+                expect(seen).toEqual([]);
+            } finally {
+                await request.delete(`/api/tasks/${a.id}`);
+                await request.delete(`/api/tasks/${b.id}`);
+                await request.delete(`/api/projects/${project.id}`);
+            }
+        });
+
+    // --- #352: recurring templates are part of the cascade ----------------
+    //
+    // RecurringTask carries its own goal_id and the spawner copies it
+    // onto every task it creates, so a template left behind re-stamps
+    // the OLD goal on each future fire. The invariant would hold at the
+    // moment of the drag and then decay on a timer.
+
+    async function makeRecurring(request, projectId, goalId) {
+        const r = await request.post("/api/recurring", {
+            data: {
+                title: `E2E repeat ${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                frequency: "daily", type: "work",
+                project_id: projectId, goal_id: goalId,
+            },
+        });
+        expect(r.ok()).toBe(true);
+        return await r.json();
+    }
+
+    const recurringGoalOf = async (request, id) =>
+        (await (await request.get(`/api/recurring/${id}`)).json()).goal_id;
+
+    test("a repeating task moves with the project (#352)",
+        async ({ page, request }) => {
+            const goals = await activeGoals(request);
+            const project = await makeProject(request, goals[0].id);
+            const rt = await makeRecurring(request, project.id, goals[0].id);
+            try {
+                await page.goto("/goals?nosw=1");
+                await page.waitForLoadState("networkidle");
+                await expandAll(page);
+                await expect(chip(page, project.id))
+                    .toHaveCount(1, { timeout: 10000 });
+
+                // One source goal, so this is NOT a flatten — it must
+                // move silently, and the template must still follow.
+                const seen = [];
+                page.on("dialog", async (d) => { seen.push(d.message()); await d.accept(); });
+
+                await dragProjectTo(page, project.id,
+                                    `.goal-card[data-goal-id="${goals[1].id}"]`);
+                await expect.poll(() => recurringGoalOf(request, rt.id),
+                                  { timeout: 10000 }).toBe(goals[1].id);
+                expect(seen).toEqual([]);
+                await expect(page.locator("#goalsDragStatus"))
+                    .toContainText(/1 repeating task moved with it/i);
+            } finally {
+                await request.delete(`/api/recurring/${rt.id}`);
+                await request.delete(`/api/projects/${project.id}`);
+            }
+        });
+
+    test("a repeating task on its own goal triggers the flatten confirm (#352)",
+        async ({ page, request }) => {
+            // The live "Evening prep" shape: the template sits on a goal
+            // nothing else on the project uses. Losing it is losing more
+            // than a task, because it keeps paying out.
+            const goals = await activeGoals(request);
+            const project = await makeProject(request, goals[0].id);
+            const task = await makeTask(request, "E2E rt task", project.id, goals[0].id);
+            const rt = await makeRecurring(request, project.id, goals[1].id);
+            try {
+                await page.goto("/goals?nosw=1");
+                await page.waitForLoadState("networkidle");
+                await expandAll(page);
+                await expect(chip(page, project.id))
+                    .toHaveCount(1, { timeout: 10000 });
+
+                const seen = [];
+                page.on("dialog", async (d) => { seen.push(d.message()); await d.dismiss(); });
+
+                await dragProjectTo(page, project.id,
+                                    `.goal-card[data-goal-id="${goals[2].id}"]`);
+                await page.waitForTimeout(800);
+
+                expect(seen.length).toBe(1);
+                expect(seen[0]).toMatch(/1 repeating task/i);
+                expect(seen[0]).toMatch(/across 2 goals/i);
+
+                // Dismissed: the template kept its own goal.
+                expect(await recurringGoalOf(request, rt.id)).toBe(goals[1].id);
+            } finally {
+                await request.delete(`/api/tasks/${task.id}`);
+                await request.delete(`/api/recurring/${rt.id}`);
+                await request.delete(`/api/projects/${project.id}`);
+            }
+        });
+
     test("the project chip advertises that it can be dragged", async ({
         page, request,
     }) => {

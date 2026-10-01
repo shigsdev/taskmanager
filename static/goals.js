@@ -717,22 +717,32 @@ async function _goalsApplyProjectMove(project, goal) {
         // status filter. `/api/tasks` returns only ACTIVE by default, so
         // the board's own map would undercount — ask for the real set
         // before quoting a number the user is about to act on.
-        const owned = await apiFetch(
-            `/api/tasks?status=all&project_id=${encodeURIComponent(project.id)}`);
-        const n = h.goalProjectCascadeCount(owned, d.newGoalId);
+        //
+        // #352: templates cascade too, and `?all=1` is required for the
+        // same reason `status=all` is — the server filters on
+        // project_id alone, so an inactive template is still re-pointed
+        // and still has to be counted. `/api/recurring` takes no
+        // project filter, so narrow it here rather than widen the API
+        // for one caller.
+        const [owned, allRecurring] = await Promise.all([
+            apiFetch(
+                `/api/tasks?status=all&project_id=${encodeURIComponent(project.id)}`),
+            apiFetch("/api/recurring?all=1"),
+        ]);
+        const recurring = allRecurring.filter((r) => r.project_id === project.id);
+        const impact = h.goalProjectCascadeImpact(owned, d.newGoalId, recurring);
 
-        // Clearing is the destructive direction and has no undo, so it
-        // asks first. Moving between goals is a re-point and is cheap to
-        // reverse, so it does not.
-        if (d.unassign && n > 0) {
-            const ok = confirm(
-                `Take "${project.name}" out of its goal?\n\n` +
-                `${n === 1 ? "1 task" : n + " tasks"} on this project ` +
-                `${n === 1 ? "has" : "have"} their goal set from it, and ` +
-                `${n === 1 ? "it" : "they"} will be cleared too. ` +
-                `This cannot be undone.`,
-            );
-            if (!ok) {
+        // #351: ask when the user cannot get back what this overwrites.
+        // That is NOT the same as "is this a clear" — a project whose
+        // tasks sit on several goals collapses them all into one on any
+        // drop, and nothing afterwards remembers the spread, because a
+        // project stores a single goal_id. A one-goal move is left
+        // frictionless: dragging it back restores every task exactly.
+        if (h.goalProjectMoveNeedsConfirm(impact)) {
+            const titles = {};
+            for (const g of goalsData) titles[g.id] = g.title;
+            if (!confirm(h.goalProjectConfirmMessage(
+                project, goal, impact, titles))) {
                 goalsDragStatus(`Left "${project.name}" where it was.`);
                 return;
             }
@@ -750,11 +760,21 @@ async function _goalsApplyProjectMove(project, goal) {
         let msg = d.unassign
             ? `Moved "${project.name}" out of its goal.`
             : `Moved "${project.name}" to "${goal.title}".`;
-        if (n > 0) {
-            const tasks = n === 1 ? "1 task" : `${n} tasks`;
+        if (impact.changing > 0 || impact.recurringChanging > 0) {
+            const parts = [];
+            if (impact.changing > 0) {
+                parts.push(impact.changing === 1
+                    ? "1 task" : `${impact.changing} tasks`);
+            }
+            if (impact.recurringChanging > 0) {
+                parts.push(impact.recurringChanging === 1
+                    ? "1 repeating task"
+                    : `${impact.recurringChanging} repeating tasks`);
+            }
+            const what = parts.join(" and ");
             msg += d.unassign
-                ? ` Cleared the goal on ${tasks}.`
-                : ` ${tasks} moved with it.`;
+                ? ` Cleared the goal on ${what}.`
+                : ` ${what} moved with it.`;
         }
         goalsDragStatus(msg);
     } catch (err) {

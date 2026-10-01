@@ -389,6 +389,12 @@ Report.
      Drag one onto the `No goal` zone and verify it unassigns. Drop
      onto a COLLAPSED card and verify that works without expanding it
      — that is a recorded user decision, not an implementation detail.
+     Then verify BOTH halves of the #351 flatten guard, because each
+     half can break without the other: a project whose tasks sit on
+     two or more goals must raise a confirm naming every goal it will
+     overwrite, and a project whose tasks all share ONE goal must
+     raise none at all. The second is the easy one to regress into a
+     nag. Confirm a recurring template on the project moves too (#352).
   8. **Review page**: click Keep/Freeze/Snooze, verify the card advances
      and the progress counter updates.
   9. **Settings page**: verify stats reflect the seeded data counts.
@@ -443,6 +449,9 @@ Report.
   Goals: drag project to goal   PASS          Goals: drag project to goal   PASS
   Goals: drop on collapsed card PASS          Goals: drop on collapsed card PASS
   Goals: No-goal zone unassign  PASS          Goals: No-goal zone unassign  PASS
+  Goals: flatten move confirms  PASS          Goals: flatten move confirms  PASS
+  Goals: 1-goal move is silent  PASS          Goals: 1-goal move is silent  PASS
+  Goals: template moves too     PASS          Goals: template moves too     PASS
   Projects: drag task to card   PASS          Projects: drag task to card   PASS
   Review: Keep                  PASS          Review: Keep                  PASS
   Review: Freeze                PASS          Review: Freeze                PASS

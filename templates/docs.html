@@ -2096,13 +2096,18 @@ Skip this line (too short)</pre>
                     because the goal isn't what you were changing. An explicit
                     goal in the same save wins over the cascade.</li>
                 <li><strong>Changing a project's goal</strong> re-points every
-                    task in that project, whether you do it from the project
+                    task in that project &mdash; and every repeating task
+                    template on it &mdash; whether you do it from the project
                     panel, from bulk edit, or by dragging the project between
                     goal cards on <a href="{{ url_for('goals_page') }}">/goals</a>.
-                    Clearing a project's goal clears its tasks' goals too
+                    Clearing a project's goal clears their goals too
                     &mdash; there the goal <em>is</em> what you're changing, so
-                    it carries through. That one cannot be undone, so the drag
-                    asks first.</li>
+                    it carries through.</li>
+                <li><strong>The drag asks first when the move can't be taken
+                    back</strong> &mdash; when it would clear goals, or when
+                    the project's tasks currently sit on more than one goal
+                    and the move would collapse them into a single one. See
+                    <a href="#goals-feature">Goals</a>.</li>
             </ul>
             <p>
                 Removing a task's project entirely also clears its goal.
@@ -2189,11 +2194,31 @@ Skip this line (too short)</pre>
                 how many tasks moved.
             </p>
             <p>
-                <strong>Dropping a project on &ldquo;No goal&rdquo; also
-                clears its tasks' goals</strong>, and that cannot be undone —
-                so that direction asks first and tells you how many tasks it
-                will affect. Moving between goals does not ask, because
-                dragging it somewhere else puts everything right again.
+                <strong>Repeating tasks move too.</strong> If a template on
+                this project has its own goal, it is re-pointed with
+                everything else &mdash; otherwise every copy it spawns from
+                then on would arrive back on the old goal, quietly undoing
+                the move a day at a time.
+            </p>
+            <p>
+                <strong>You are asked first whenever the move would
+                overwrite more than one goal</strong>, whichever direction
+                you drag. The dialog names each goal it is about to
+                overwrite and how many tasks sit on it.
+            </p>
+            <p>
+                The reason is that it cannot be taken back. A project holds a
+                single goal, so once a mixed set has been collapsed onto one
+                goal, nothing remembers how it was split &mdash; dragging the
+                project back puts <em>everything</em> on whichever goal you
+                drag it to. A project whose tasks all share one goal is a
+                different matter: dragging it back restores every task
+                exactly, so that move is never questioned.
+            </p>
+            <p>
+                Dropping a project on &ldquo;No goal&rdquo; clears its tasks'
+                goals, which also cannot be undone, so it asks for the same
+                reason.
             </p>
         </section>
 
