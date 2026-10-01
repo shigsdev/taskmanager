@@ -28,17 +28,22 @@ same line (`new_goal_id = proj.goal_id  # may be None`).
 """
 from __future__ import annotations
 
+from datetime import date
+
 from models import (
     Goal,
     GoalCategory,
     GoalPriority,
     Project,
+    RecurringFrequency,
+    RecurringTask,
     Task,
     TaskStatus,
     TaskType,
     Tier,
     db,
 )
+from recurring_service import spawn_today_tasks
 
 
 def _goal(title: str) -> Goal:
@@ -261,3 +266,202 @@ def test_deleting_a_project_still_leaves_task_goals_alone(authed_client, app):
         task = db.session.get(Task, tid)
         assert task.project_id is None
         assert task.goal_id == gid
+
+
+# --- #352: the cascade has to reach recurring templates ----------------------
+#
+# `RecurringTask` carries its OWN `goal_id`, and `spawn_today_tasks`
+# copies it onto every task it creates (`recurring_service.py:676`). So
+# a template left behind by the #350 cascade does not just hold a stale
+# value — it re-stamps the OLD goal onto a brand-new task every time it
+# fires. #350's invariant would hold the moment you dragged the project
+# and then decay on a timer, which is strictly worse than the drift it
+# was written to fix, because it is self-renewing.
+#
+# Found on the live data: a 394-task "BAU" project whose "Evening prep"
+# template sat on the WORK goal while every other personal routine on
+# the same project sat on no goal. One mis-set template field had
+# stamped 122 task rows.
+
+
+def _recurring(title: str, project: Project | None, goal: Goal | None, **kw):
+    rt = RecurringTask(
+        title=title,
+        frequency=kw.pop("frequency", RecurringFrequency.DAILY),
+        type=kw.pop("type", TaskType.WORK),
+        project_id=project.id if project else None,
+        goal_id=goal.id if goal else None,
+        **kw,
+    )
+    db.session.add(rt)
+    db.session.commit()
+    return rt
+
+
+def test_moving_a_project_repoints_its_recurring_templates(authed_client, app):
+    with app.app_context():
+        old, new = _goal("Old"), _goal("New")
+        proj = _project("Mover", old)
+        rt = _recurring("Evening prep", proj, old)
+        rt_id, new_id, proj_id = rt.id, new.id, proj.id
+
+    resp = authed_client.patch(
+        f"/api/projects/{proj_id}", json={"goal_id": str(new_id)}
+    )
+    assert resp.status_code == 200
+
+    with app.app_context():
+        assert db.session.get(RecurringTask, rt_id).goal_id == new_id
+
+
+def test_future_spawns_land_on_the_new_goal(authed_client, app):
+    # The one that actually matters. Re-pointing the template row is
+    # only the mechanism; this asserts the user-visible consequence,
+    # which is that tomorrow's task arrives on the right goal.
+    with app.app_context():
+        old, new = _goal("Old"), _goal("New")
+        proj = _project("Routines", old)
+        _recurring("Morning Prep", proj, old)
+        new_id, proj_id = new.id, proj.id
+
+    assert authed_client.patch(
+        f"/api/projects/{proj_id}", json={"goal_id": str(new_id)}
+    ).status_code == 200
+
+    with app.app_context():
+        spawned = spawn_today_tasks(target_date=date(2026, 10, 2))
+        assert len(spawned) == 1
+        assert spawned[0].goal_id == new_id
+
+
+def test_a_template_whose_goal_was_wrong_is_corrected_by_the_move(
+    authed_client, app
+):
+    # The live shape: the project has NO goal, one template sits on a
+    # goal nothing else on the project uses. Filing the project under
+    # its real goal has to fix the template too, or the next spawn
+    # re-opens the hole the move just closed.
+    with app.app_context():
+        work_bau, personal_bau = _goal("Work BAU"), _goal("Personal BAU")
+        proj = _project("BAU", None)
+        evening = _recurring("Evening prep", proj, work_bau)
+        morning = _recurring("Morning Prep", proj, None)
+        ids = (evening.id, morning.id)
+        dest, proj_id = personal_bau.id, proj.id
+
+    assert authed_client.patch(
+        f"/api/projects/{proj_id}", json={"goal_id": str(dest)}
+    ).status_code == 200
+
+    with app.app_context():
+        for rt_id in ids:
+            assert db.session.get(RecurringTask, rt_id).goal_id == dest
+
+
+def test_unassigning_a_project_clears_its_templates_goals(authed_client, app):
+    # Same rule as tasks, by the user's #350 decision: clearing a
+    # project's goal is a direct statement about that goal.
+    with app.app_context():
+        g = _goal("Dropped")
+        proj = _project("Loose", g)
+        rt = _recurring("Laundry", proj, g)
+        rt_id, proj_id = rt.id, proj.id
+
+    resp = authed_client.patch(f"/api/projects/{proj_id}", json={"goal_id": None})
+    assert resp.status_code == 200
+
+    with app.app_context():
+        assert db.session.get(RecurringTask, rt_id).goal_id is None
+
+
+def test_no_template_cascade_when_the_goal_did_not_change(authed_client, app):
+    # The /projects detail panel sends goal_id on EVERY save, so a
+    # rename or a recolour must not quietly rewrite template rows. Same
+    # change-only guard the task cascade uses.
+    with app.app_context():
+        g, other = _goal("Kept"), _goal("Unrelated")
+        proj = _project("Stable", g)
+        # Deliberately NOT the project's goal: a hand-set template goal
+        # that a recolour has no business overwriting.
+        rt = _recurring("Hand-set", proj, other)
+        rt_id, proj_id, other_id, same_goal = rt.id, proj.id, other.id, g.id
+
+    resp = authed_client.patch(
+        f"/api/projects/{proj_id}",
+        json={"goal_id": str(same_goal), "color": "#ff0000"},
+    )
+    assert resp.status_code == 200
+
+    with app.app_context():
+        assert db.session.get(RecurringTask, rt_id).goal_id == other_id
+
+
+def test_templates_on_another_project_are_untouched(authed_client, app):
+    with app.app_context():
+        a, b = _goal("A"), _goal("B")
+        mine, theirs = _project("Mine", a), _project("Theirs", a)
+        kept = _recurring("Not mine", theirs, a)
+        kept_id, b_id, mine_id, a_id = kept.id, b.id, mine.id, a.id
+
+    assert authed_client.patch(
+        f"/api/projects/{mine_id}", json={"goal_id": str(b_id)}
+    ).status_code == 200
+
+    with app.app_context():
+        assert db.session.get(RecurringTask, kept_id).goal_id == a_id
+
+
+def test_a_template_with_no_project_is_never_touched(authed_client, app):
+    # Project-less templates exist on the live data ("Meds", "Weekly
+    # Reflection", "Clean out CPAP"). A project move must not sweep
+    # them up — nothing links them to it.
+    with app.app_context():
+        a, b = _goal("A"), _goal("B")
+        proj = _project("Mover", a)
+        loose = _recurring("Weekly Reflection", None, a)
+        loose_id, b_id, proj_id, a_id = loose.id, b.id, proj.id, a.id
+
+    assert authed_client.patch(
+        f"/api/projects/{proj_id}", json={"goal_id": str(b_id)}
+    ).status_code == 200
+
+    with app.app_context():
+        assert db.session.get(RecurringTask, loose_id).goal_id == a_id
+
+
+def test_bulk_project_update_cascades_to_templates_too(authed_client, app):
+    # bulk_update_projects reuses update_project per row, so this is
+    # inherited rather than reimplemented — pinned so a future refactor
+    # that inlines the logic cannot drop it.
+    with app.app_context():
+        old, new = _goal("Old"), _goal("New")
+        p1, p2 = _project("One", old), _project("Two", old)
+        r1, r2 = _recurring("R1", p1, old), _recurring("R2", p2, old)
+        ids = (r1.id, r2.id)
+        payload = {
+            "project_ids": [str(p1.id), str(p2.id)],
+            "updates": {"goal_id": str(new.id)},
+        }
+        new_id = new.id
+
+    resp = authed_client.patch("/api/projects/bulk", json=payload)
+    assert resp.status_code == 200
+
+    with app.app_context():
+        for rt_id in ids:
+            assert db.session.get(RecurringTask, rt_id).goal_id == new_id
+
+
+def test_archiving_a_project_leaves_template_goals_alone(authed_client, app):
+    # Mirrors test_deleting_a_project_still_leaves_task_goals_alone:
+    # the project went away, the user said nothing about the goal.
+    with app.app_context():
+        g = _goal("Survives")
+        proj = _project("Doomed", g)
+        rt = _recurring("Still mine", proj, g)
+        rt_id, pid, gid = rt.id, proj.id, g.id
+
+    assert authed_client.delete(f"/api/projects/{pid}").status_code == 204
+
+    with app.app_context():
+        assert db.session.get(RecurringTask, rt_id).goal_id == gid

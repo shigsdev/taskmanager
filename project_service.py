@@ -6,7 +6,15 @@ import uuid
 
 from sqlalchemy import select
 
-from models import Project, ProjectPriority, ProjectStatus, ProjectType, Task, db
+from models import (
+    Project,
+    ProjectPriority,
+    ProjectStatus,
+    ProjectType,
+    RecurringTask,
+    Task,
+    db,
+)
 from utils import ValidationError  # noqa: F401 — re-exported for API layer
 from utils import parse_enum as _parse_enum
 from utils import parse_int as _parse_int
@@ -245,13 +253,28 @@ def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
         #
         # No status filter, matching the backfill — a completed task
         # left behind would make the goal's own completed-count wrong.
+        #
+        # #352 (2026-10-01): the same cascade has to reach RecurringTask.
+        # Templates carry their OWN goal_id and `spawn_today_tasks`
+        # copies it onto every task it creates (recurring_service.py:676),
+        # so a template left behind does not merely hold a stale value —
+        # it re-stamps the OLD goal onto a brand-new task every time it
+        # fires. #350's invariant would hold the instant you moved the
+        # project and then decay on a timer, which is worse than the
+        # drift #350 fixed, because it renews itself.
+        #
+        # Found on the live data: a 394-task "BAU" project whose
+        # "Evening prep" template sat on the WORK goal while every other
+        # personal routine on the same project sat on no goal at all.
+        # One mis-set template field had stamped 122 task rows.
         if new_goal_id != project.goal_id:
             project.goal_id = new_goal_id
-            # Bulk update so we don't pull every Task into the session;
+            # Bulk updates so we don't pull every Task into the session;
             # there can be hundreds linked to a single project.
-            Task.query.filter_by(project_id=project.id).update(
-                {"goal_id": new_goal_id}, synchronize_session=False
-            )
+            for model in (Task, RecurringTask):
+                model.query.filter_by(project_id=project.id).update(
+                    {"goal_id": new_goal_id}, synchronize_session=False
+                )
 
     if "is_active" in data:
         if not isinstance(data["is_active"], bool):
