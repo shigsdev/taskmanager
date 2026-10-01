@@ -16,11 +16,17 @@ work and personal life, with a regulated (air-gapped) work environment.
 - **Due-date → tier auto-route** — setting a `due_date` automatically moves the
   task to the matching tier (today → Today, this week → This Week, etc.)
 - **Goals** — grouped by category (Health, Work, Personal Growth, Relationships,
-  BAU) with priority ranking, progress tracking, and linked tasks
+  BAU) with priority ranking, progress tracking, and linked tasks. Each card
+  also lists its linked projects behind a collapsed `Projects (N)` toggle, and
+  a project can be **dragged between goal cards** (or onto the `No goal` zone
+  to unfile it) — any project type may sit under any goal category. Progress
+  counts each task's own goal, so moving a project does not move the bars; the
+  move says so when it leaves tasks behind
 - **Projects** — task grouping with auto-color by type (Work blue / Personal green),
   goal linkage that cascades onto linked tasks, `priority` + `priority_order` with
-  drag-to-reorder within type group, `target_quarter`, lifecycle `status` mirroring
-  Goals, plus Actions and Notes fields
+  drag-to-reorder within type group, **drag a task from one project card to
+  another** to reassign it (same type only), `target_quarter`, lifecycle
+  `status` mirroring Goals, plus Actions and Notes fields
 - **Inbox triage** — single and bulk triage flow for new tasks; plus
   one-click **AI auto-categorize** that sends every active Inbox task
   to Claude Haiku in a single batch and surfaces suggested
