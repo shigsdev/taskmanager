@@ -14,14 +14,34 @@
     var allTemplates = [];
     var allProjects = [];
     var allGoals = [];
+    // #355: archived halves of the same two fetches. allProjects/allGoals
+    // stay active-only so the editor's pick-list is unchanged.
+    var archivedProjects = [];
+    var archivedGoals = [];
 
+    function _splitActive(rows) {
+        return window.archivedOptionHelpers
+            ? window.archivedOptionHelpers.splitByActive(rows)
+            : { active: Array.isArray(rows) ? rows : [], archived: [] };
+    }
+
+    // #355: an archived project/goal used to render as "(none)" here —
+    // the endpoint returned active-only, so the lookup missed and the
+    // list claimed the template had no project at all. Now that the
+    // archived rows are loaded, say what it actually is.
     function _projectName(id) {
+        if (!id) return "(none)";
         var p = allProjects.find(function (x) { return x.id === id; });
-        return p ? p.name : "(none)";
+        if (p) return p.name;
+        var a = archivedProjects.find(function (x) { return x.id === id; });
+        return a ? a.name + " (archived)" : "(none)";
     }
     function _goalTitle(id) {
+        if (!id) return "(none)";
         var g = allGoals.find(function (x) { return x.id === id; });
-        return g ? g.title : "(none)";
+        if (g) return g.title;
+        var a = archivedGoals.find(function (x) { return x.id === id; });
+        return a ? a.title + " (archived)" : "(none)";
     }
     function _freqSummary(rt) {
         var base;
@@ -110,14 +130,21 @@
 
     async function load() {
         // PR67 #132: window.apiFetch (auto-retry + recovery)
+        // #355: is_active=all + split, so a template whose project or goal
+        // is archived keeps that link visible in the editor instead of the
+        // select reading back "" and detaching it on the next save.
         var [tpls, projs, gls] = await Promise.all([
             window.apiFetch("/api/recurring?active_only=false"),
-            window.apiFetch("/api/projects"),
-            window.apiFetch("/api/goals"),
+            window.apiFetch("/api/projects?is_active=all"),
+            window.apiFetch("/api/goals?is_active=all"),
         ]);
         allTemplates = Array.isArray(tpls) ? tpls : [];
-        allProjects = Array.isArray(projs) ? projs : [];
-        allGoals = Array.isArray(gls) ? gls : [];
+        var projSplit = _splitActive(projs);
+        var goalSplit = _splitActive(gls);
+        allProjects = projSplit.active;
+        archivedProjects = projSplit.archived;
+        allGoals = goalSplit.active;
+        archivedGoals = goalSplit.archived;
         render();
     }
 
@@ -206,7 +233,7 @@
 
     function _el(id) { return document.getElementById(id); }
 
-    function _populateEditorDropdowns() {
+    function _populateEditorDropdowns(projectId, goalId) {
         // Day-of-month options 1–31 (built once).
         var dom = _el("recurEditDayOfMonth");
         if (dom && dom.options.length === 0) {
@@ -217,19 +244,44 @@
             }
         }
         // Project + Goal dropdowns (all projects/goals; — None — first).
+        // #355: projectId/goalId are the template's STORED ids. They must
+        // be passed in because openEditor populates BEFORE assigning the
+        // values, so the selects are still empty here. Without them an
+        // archived link matches no option, reads back "", and editing any
+        // other field silently detaches the template.
         var proj = _el("recurEditProject");
         var goal = _el("recurEditGoal");
-        proj.length = 1; goal.length = 1;  // keep the "— None —" option
-        allProjects.forEach(function (p) {
-            var o = document.createElement("option");
-            o.value = p.id; o.textContent = p.name;
-            proj.appendChild(o);
-        });
-        allGoals.forEach(function (g) {
-            var o = document.createElement("option");
-            o.value = g.id; o.textContent = g.title + " (" + g.category + ")";
-            goal.appendChild(o);
-        });
+        var h = window.archivedOptionHelpers;
+        if (!h) {
+            proj.length = 1; goal.length = 1;  // keep the "— None —" option
+            allProjects.forEach(function (p) {
+                var o = document.createElement("option");
+                o.value = p.id; o.textContent = p.name;
+                proj.appendChild(o);
+            });
+            allGoals.forEach(function (g) {
+                var o = document.createElement("option");
+                o.value = g.id; o.textContent = g.title + " (" + g.category + ")";
+                goal.appendChild(o);
+            });
+            return;
+        }
+        h.renderValuePreservingOptions(
+            proj,
+            h.optionRowsPreservingValue({
+                live: allProjects, archived: archivedProjects, currentId: projectId,
+            }),
+            function (p) { return p.name; },
+            projectId,
+        );
+        h.renderValuePreservingOptions(
+            goal,
+            h.optionRowsPreservingValue({
+                live: allGoals, archived: archivedGoals, currentId: goalId,
+            }),
+            function (g) { return g.title + " (" + g.category + ")"; },
+            goalId,
+        );
     }
 
     function recurEditFreqChanged() {
@@ -287,7 +339,8 @@
     }
 
     function openEditor(rt) {
-        _populateEditorDropdowns();
+        // #355: hand the stored ids to populate — see _populateEditorDropdowns.
+        _populateEditorDropdowns(rt.project_id, rt.goal_id);
         _setEditorMode(false);
         _editId = rt.id;
         _el("recurEditId").value = rt.id;

@@ -608,6 +608,25 @@ component is added, a data flow changes, or a security boundary shifts.
     caught it reading *"1 task still point at this goal … clear them
     first"*, which every unit assertion had missed by checking only the
     noun phrase.
+- **An archived link stays representable** (#355, 2026-10-01): the five
+  selects that RESTORE a stored `project_id`/`goal_id` were populated
+  from active-only lists, so an archived stored value matched no
+  `<option>`, read back as `""`, and the save path wrote that clearing
+  to the database — on a save where the user edited nothing. On the task
+  detail panel the phantom diff also tripped the #148 revival branch, so
+  opening and saving a *completed* task on an archived project
+  resurrected it onto the active board (270 such tasks on prod). The
+  endpoints already answered `?is_active=all`, so the fix is entirely
+  client-side: fetch both, **split** rather than widen — `allProjects`
+  has nine readers, three of which are the independent halves of the
+  PR63 #129 fix, so widening it would bring #129 back — and render an
+  absent stored value as a disabled `"… (archived)"` option.
+  `static/archived_option_helpers.js` is pure and Jest-tested, and owns
+  the option loop for all five call sites so the round-trip test drives
+  the shipped renderer rather than a copy of it. Generalises #272 from
+  "don't let the *type* filter hide the current value" to "don't let
+  *anything* hide it" — #272 could not reach this case because it
+  filters `allGoals`, and an archived goal is not in `allGoals` at all.
 - **Flatten guard on the goal drag** (#351, 2026-10-01): `/goals`
   confirms when a move would **overwrite more than one distinct goal**,
   in either direction — not only when goals are being cleared, which is

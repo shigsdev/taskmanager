@@ -100,6 +100,20 @@ def _seed():
                 target_quarter="2026-Q2",
                 actions="Weekly inbox zero, monthly dependency bumps",
             ),
+            # #355 fixture: an ARCHIVED goal. A task still pointing at it
+            # must render it as a disabled "(archived)" option rather than
+            # matching no option and reading back as "" — which used to
+            # null the link on any save. goals[5].
+            Goal(
+                title="Ship the 2026 reorg comms",
+                category=GoalCategory.WORK,
+                priority=GoalPriority.COULD,
+                priority_rank=5,
+                status=GoalStatus.DONE,
+                target_quarter="2026-Q1",
+                actions="Done and archived — kept for the #355 fixture",
+                is_active=False,
+            ),
         ]
         db.session.add_all(goals)
         db.session.flush()
@@ -127,6 +141,18 @@ def _seed():
             Project(
                 name="AI Training", color="#a855f7",
                 type=ProjectType.PERSONAL, goal_id=goals[0].id,
+            ),
+            # #355 fixture: an ARCHIVED project that still owns a
+            # completed task and a recurring template. Mirrors the real
+            # prod shape (270 completed tasks across 8 archived projects,
+            # 262 of them also carrying a goal_id, plus 2 templates on an
+            # archived "Community of Practice"). Phase 6 opens the task
+            # below, saves without editing, and asserts the project link
+            # survives and the task is NOT resurrected to active.
+            # projects[6].
+            Project(
+                name="Community of Practice", color="#0ea5e9",
+                goal_id=goals[0].id, is_active=False,
             ),
         ]
         db.session.add_all(projects)
@@ -176,6 +202,20 @@ def _seed():
                 type=TaskType.PERSONAL,
                 goal_id=goals[2].id,
                 notes="At least 30 minutes. Log distance in Strava.",
+            ),
+            # #355 fixture: a template on the ARCHIVED project. The
+            # /recurring editor had no keep-set at all, so editing ANY
+            # field on this template used to detach it. Also exercises
+            # the list-view label, which rendered "(none)" for an
+            # archived project because the lookup missed it entirely.
+            RecurringTask(
+                title="Menti survey for the CoP session",
+                frequency=RecurringFrequency.MONTHLY_DATE,
+                day_of_month=15,
+                type=TaskType.WORK,
+                project_id=projects[6].id,
+                goal_id=goals[0].id,
+                notes="#355 fixture — project is archived.",
             ),
         ]
         db.session.add_all(recurring)
@@ -470,6 +510,28 @@ def _seed():
                 goal_id=goals[2].id,
                 status=TaskStatus.ARCHIVED,
                 sort_order=4,
+            ),
+            # #355 fixtures. Both are COMPLETED, which is what made the
+            # bug bite twice: the phantom project_id diff also tripped
+            # the #148 revival branch and sent status: "active".
+            Task(
+                title="Run the April CoP session",
+                tier=Tier.BACKLOG,
+                type=TaskType.WORK,
+                project_id=projects[6].id,   # archived project
+                goal_id=goals[0].id,         # active goal — the 262/270 shape
+                status=TaskStatus.ARCHIVED,
+                notes="Open this, click Save, change nothing: the project "
+                      "link must survive and the task must stay completed.",
+                sort_order=5,
+            ),
+            Task(
+                title="Write up the reorg comms retro",
+                tier=Tier.BACKLOG,
+                type=TaskType.WORK,
+                goal_id=goals[5].id,         # archived goal
+                status=TaskStatus.ARCHIVED,
+                sort_order=6,
             ),
         ]
         db.session.add_all(completed)

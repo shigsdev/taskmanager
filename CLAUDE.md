@@ -55,9 +55,34 @@ python scripts/stop_dev_bypass.py                 # canonical teardown
   re-run" hint. If you see it, just re-run; it's not a CVE. (pip-audit's
   own `--timeout` is only a per-socket read timeout, so it does NOT bound
   the total operation — the wall-clock cap is the real guard.)
-- **Windows pytest pass-count is uncapturable.** A post-suite OneDrive
-  `PermissionError` swallows the `N passed` summary line. Trust the exit code +
-  coverage %; cite "all passed, <coverage>%" in commit trailers, not a raw count.
+- **Windows pytest teardown can FAIL the gate with nothing broken.** A
+  post-suite `PermissionError: [WinError 5]` on
+  `%LOCALAPPDATA%\Temp\pytest-of-<user>\pytest-current` lands in
+  `pytest_sessionfinish` *before* pytest-cov's terminal summary — so there is
+  no `N passed` line, **no coverage table, and a non-zero exit**, and
+  `run_all_gates.sh` prints `✗ pytest failed or coverage below floor` even
+  though the suite reached `[100%]` with zero failures and the floor was never
+  evaluated. Do NOT "trust the exit code" here (the pre-2026-10-01 advice) and
+  do not go hunting a phantom test failure: confirm by grepping the log for
+  `[100%]` plus the ABSENCE of `FAILED` / `=== FAILURES ===`. Not a OneDrive
+  problem — the temp root is in `AppData`; the cause is `pytest-current`
+  becoming a broken reparse point (empty `LinkType`/`Target`), which pytest
+  treats as a dead symlink and `os.unlink`s. Clearing it by hand does not work
+  (`cmd /c rmdir` is denied too). **Fix — bypass the numbered-dir machinery
+  with `--basetemp`, no script edit needed:**
+  ```
+  export PYTEST_ADDOPTS='--basetemp=C:/Users/.../scratchpad/pytest-basetemp'
+  bash scripts/run_all_gates.sh > /tmp/gates.log 2>&1
+  ```
+  **Forward slashes are mandatory** — `PYTEST_ADDOPTS` is split with POSIX
+  `shlex`, which eats `\` as an escape, silently collapsing the path to a
+  RELATIVE one so pytest builds its whole basetemp tree inside the repo. That
+  then reds the Jest gate, because `testMatch: ["**/tests/js/**/*.test.js"]`
+  is a deliberately relative glob and picks up the `tests/js/foo.test.js`
+  fixture that `test_bug_pattern_scan.py` writes into its tmp dir. Also note
+  `--basetemp` deletes and recreates the directory it is given, so point it at
+  a dedicated subdir, never a directory holding anything you want to keep.
+  Cite "all passed, <coverage>%" in commit trailers, not a raw count.
 - **Worktree/main trap.** If `main` gets checked out in a `.claude/worktrees/*`
   worktree, the primary repo is stuck on a feature branch and `main` looks
   "behind." Fix: `git worktree remove <path>` (or `git worktree prune` if the

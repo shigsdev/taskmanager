@@ -638,16 +638,37 @@ function projectsSetupDetailPanel() {
 
 function populateGoalDropdown(selectedId) {
     const select = document.getElementById("projectGoalId");
-    // Keep the "(no goal)" option as #1.
-    select.innerHTML = '<option value="">(no goal)</option>';
-    const activeGoals = projectsGoals.filter((g) => g.is_active);
-    for (const goal of activeGoals) {
-        const opt = document.createElement("option");
-        opt.value = goal.id;
-        opt.textContent = goal.title;
-        if (selectedId && goal.id === selectedId) opt.selected = true;
-        select.appendChild(opt);
+    if (!select) return;
+    // The "(no goal)" option is declared in projects.html and preserved
+    // as index 0 — it used to be re-created here via innerHTML, which was
+    // both redundant and against the CLAUDE.md no-innerHTML rule.
+    const h = window.archivedOptionHelpers;
+    // #355: projectsGoals is already fetched with is_active=all (see
+    // projectsLoad), so the archived rows are in hand — they were simply
+    // being filtered away. A project whose goal is archived would
+    // otherwise match no option and have Project.goal_id nulled on save.
+    const split = h
+        ? h.splitByActive(projectsGoals)
+        : { active: (projectsGoals || []).filter((g) => g.is_active), archived: [] };
+    if (!h) {
+        while (select.options.length > 1) select.remove(1);
+        for (const goal of split.active) {
+            const opt = document.createElement("option");
+            opt.value = goal.id;
+            opt.textContent = goal.title;
+            if (selectedId && goal.id === selectedId) opt.selected = true;
+            select.appendChild(opt);
+        }
+        return;
     }
+    h.renderValuePreservingOptions(
+        select,
+        h.optionRowsPreservingValue({
+            live: split.active, archived: split.archived, currentId: selectedId,
+        }),
+        (g) => g.title,
+        selectedId,
+    );
 }
 
 function projectDetailNew() {

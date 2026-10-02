@@ -16,6 +16,13 @@ let allGoals = [];
 let goalsLoaded = false;
 let projectsLoaded = false;
 let allProjects = [];
+// #355: the archived halves of the same two fetches. Read ONLY by the
+// detail-panel dropdowns, so a task's stored link to an archived project
+// or goal renders as a disabled "(archived)" option instead of matching
+// no option and silently reading back as "" on save. Kept separate from
+// allGoals / allProjects on purpose — see the comment on _splitActive.
+let archivedGoals = [];
+let archivedProjects = [];
 let allPreviews = [];  // recurring-template previews (#32). Each item:
 // {template_id, title, type, frequency, project_id, goal_id,
 //  fire_date: "YYYY-MM-DD", notes, url}
@@ -149,9 +156,25 @@ function _sweepStaleFilterIds() {
     if (dirty) _saveFilterPrefs();
 }
 
+// #355: fetch is_active=all and SPLIT, rather than widening allGoals /
+// allProjects. Those two keep their active-only meaning deliberately —
+// allProjects alone has nine readers, three of which are the independent
+// halves of the PR63 #129 fix (_sweepStaleFilterIds, the task badge, the
+// filter bar), so widening it would bring back #129's phantom badges and
+// ghost filters. The archived halves are read ONLY by the two detail-panel
+// dropdowns, to keep a stored archived link representable instead of
+// letting the select collapse it to "".
+function _splitActive(rows) {
+    return window.archivedOptionHelpers
+        ? window.archivedOptionHelpers.splitByActive(rows)
+        : { active: Array.isArray(rows) ? rows : [], archived: [] };
+}
+
 async function loadGoals() {
     try {
-        allGoals = await apiFetch(GOALS_API);
+        const split = _splitActive(await apiFetch(GOALS_API + "?is_active=all"));
+        allGoals = split.active;
+        archivedGoals = split.archived;
         goalsLoaded = true;
     } catch (err) {
         console.error("Failed to load goals:", err);
@@ -164,7 +187,9 @@ async function loadGoals() {
 
 async function loadProjects() {
     try {
-        allProjects = await apiFetch(PROJECTS_API);
+        const split = _splitActive(await apiFetch(PROJECTS_API + "?is_active=all"));
+        allProjects = split.active;
+        archivedProjects = split.archived;
         projectsLoaded = true;
     } catch (err) {
         console.error("Failed to load projects:", err);
@@ -2500,14 +2525,24 @@ function taskDetailOpen(task) {
     // ensures the value persists if it's a valid match (and gets
     // dropped to "" if the task somehow has a cross-type project_id —
     // which would be a data anomaly, but at least we surface it).
-    taskDetailPopulateProjects(task.type);
+    // #355: pass task.project_id — populate runs BEFORE the assignment
+    // below, so the select is empty and the stored id can't be read off
+    // it. Without this an archived project matches no option, the select
+    // reads back "", and the next save nulls Task.project_id AND trips
+    // the #148 revival branch on a completed task.
+    taskDetailPopulateProjects(task.type, task.project_id);
     document.getElementById("detailProject").value = task.project_id || "";
     document.getElementById("detailDueDate").value = task.due_date || "";
     // #142 (2026-05-09): scope goals by type, same pattern as projects.
     // #272: pass task.goal_id so an existing cross-side assignment (e.g.
     // a Personal task already on the work-category goal "AI Upskilling")
     // is kept in the option list and the value below sticks.
-    taskDetailPopulateGoals(task.type, task.goal_id ? [task.goal_id] : []);
+    // #355: task.goal_id also passed as currentId (3rd arg) so an
+    // ARCHIVED goal survives too — extraKeepIds alone can't, because it
+    // filters the active-only allGoals and finds no row to keep.
+    taskDetailPopulateGoals(
+        task.type, task.goal_id ? [task.goal_id] : [], task.goal_id,
+    );
     document.getElementById("detailGoal").value = task.goal_id || "";
     const urlInput = document.getElementById("detailUrl");
     const urlOpen = document.getElementById("detailUrlOpen");
@@ -2800,12 +2835,13 @@ function _setupParentPicker(task) {
     input.onblur = () => setTimeout(() => { results.style.display = "none"; }, 200);
 }
 
-function taskDetailPopulateGoals(filterType, extraKeepIds) {
+function taskDetailPopulateGoals(filterType, extraKeepIds, currentId) {
     filterType = _taskDetailActiveTypeFilter(filterType);
     const sel = document.getElementById("detailGoal");
     if (!sel) return;
-    const currentValue = sel.value;
-    while (sel.options.length > 1) sel.remove(1);
+    // #355: see taskDetailPopulateProjects — on panel open the select is
+    // still empty, so the stored id has to be handed in.
+    const currentValue = currentId || sel.value;
     // #272: always-keep set — the currently-selected goal, the selected
     // project's linked goal, and any explicit extras (e.g. task.goal_id
     // on panel open). A cross-side project→goal link (a personal project
@@ -2816,8 +2852,12 @@ function taskDetailPopulateGoals(filterType, extraKeepIds) {
     const keep = new Set();
     if (currentValue) keep.add(currentValue);
     const projSel = document.getElementById("detailProject");
-    if (projSel && projSel.value && Array.isArray(allProjects)) {
-        const proj = allProjects.find((p) => p && p.id === projSel.value);
+    if (projSel && projSel.value) {
+        // #355: search the archived projects too. An archived project's
+        // linked goal was previously never kept here, because the lookup
+        // only covered allProjects and returned undefined.
+        const proj = [...(allProjects || []), ...(archivedProjects || [])]
+            .find((p) => p && p.id === projSel.value);
         if (proj && proj.goal_id) keep.add(proj.goal_id);
     }
     if (extraKeepIds) for (const id of extraKeepIds) if (id) keep.add(id);
@@ -2827,19 +2867,33 @@ function taskDetailPopulateGoals(filterType, extraKeepIds) {
     const filtered = window.goalFilterHelpers
         ? window.goalFilterHelpers.goalsForDropdown(allGoals, filterType, keep)
         : (allGoals || []);
-    for (const goal of filtered) {
-        const opt = document.createElement("option");
-        opt.value = goal.id;
-        opt.textContent = `${goal.title} (${goal.category})`;
-        sel.appendChild(opt);
+    const goalLabel = (g) => `${g.title} (${g.category})`;
+    const h = window.archivedOptionHelpers;
+    if (!h) {
+        // Defensive: pre-#355 loop rather than an empty dropdown.
+        while (sel.options.length > 1) sel.remove(1);
+        for (const goal of filtered) {
+            const opt = document.createElement("option");
+            opt.value = goal.id;
+            opt.textContent = goalLabel(goal);
+            sel.appendChild(opt);
+        }
+        if (currentValue && filtered.some((g) => g.id === currentValue)) {
+            sel.value = currentValue;
+        }
+        return;
     }
-    // Restore selection if it's still in the filtered list. If the
-    // user changed the type and the previously-selected goal no
-    // longer fits, the dropdown silently resets to "" — matches the
-    // project-side behavior and the user can re-pick.
-    if (currentValue && filtered.some((g) => g.id === currentValue)) {
-        sel.value = currentValue;
-    }
+    // #355: the #272 keep set above can hold an archived goal's id, but
+    // it filters allGoals — which is active-only — so there is no row to
+    // keep. This supplies the row (for its label) and renders it disabled.
+    h.renderValuePreservingOptions(
+        sel,
+        h.optionRowsPreservingValue({
+            live: filtered, archived: archivedGoals, currentId: currentValue,
+        }),
+        goalLabel,
+        currentValue,
+    );
 }
 
 // When taskDetailPopulate{Projects,Goals} is called WITHOUT an explicit
@@ -2862,25 +2916,45 @@ function _taskDetailActiveTypeFilter(filterType) {
     return filterType;
 }
 
-function taskDetailPopulateProjects(filterType) {
+// #355: `currentId` is the stored Task.project_id. It MUST be passed on
+// the taskDetailOpen path, where populate runs before the value is
+// assigned (so the select is still empty and sel.value would read ""):
+// that missing parameter was the actual hole. Every other call site has
+// the value on the select already, hence the `|| sel.value` fallback.
+function taskDetailPopulateProjects(filterType, currentId) {
     filterType = _taskDetailActiveTypeFilter(filterType);
     const sel = document.getElementById("detailProject");
     if (!sel) return;
-    const currentValue = sel.value;
-    while (sel.options.length > 1) sel.remove(1);
+    const currentValue = currentId || sel.value;
     const filtered = filterType
         ? allProjects.filter((p) => p.type === filterType)
         : allProjects;
-    for (const p of filtered) {
-        const opt = document.createElement("option");
-        opt.value = p.id;
-        opt.textContent = p.name;
-        sel.appendChild(opt);
+    const h = window.archivedOptionHelpers;
+    if (!h) {
+        // Defensive: without the helper, fall back to the pre-#355 loop
+        // rather than rendering an empty dropdown.
+        while (sel.options.length > 1) sel.remove(1);
+        for (const p of filtered) {
+            const opt = document.createElement("option");
+            opt.value = p.id;
+            opt.textContent = p.name;
+            sel.appendChild(opt);
+        }
+        if (currentValue && filtered.some((p) => p.id === currentValue)) {
+            sel.value = currentValue;
+        }
+        return;
     }
-    // Restore selection if it's still in the filtered list
-    if (currentValue && filtered.some((p) => p.id === currentValue)) {
-        sel.value = currentValue;
-    }
+    // Keeps an archived (or dangling) stored value representable, so a
+    // no-edit save can't null Task.project_id and resurrect the task.
+    h.renderValuePreservingOptions(
+        sel,
+        h.optionRowsPreservingValue({
+            live: filtered, archived: archivedProjects, currentId: currentValue,
+        }),
+        (p) => p.name,
+        currentValue,
+    );
 }
 
 function taskDetailInitRepeat() {

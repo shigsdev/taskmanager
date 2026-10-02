@@ -5235,3 +5235,264 @@ test.describe("Goals - archive, unarchive, and a guarded delete (#349)", () => {
         await expect(page.locator("#goalDangerZone")).toBeHidden();
     });
 });
+
+test.describe("An archived link stays representable (#355)", () => {
+    // The bug: every select that restores a stored project_id / goal_id
+    // built its <option> list from the ACTIVE rows only. An archived
+    // stored value matched no option, so selectedIndex went to -1 and the
+    // select read back "". The save path cannot tell that apart from "the
+    // user picked — None —", so a save with nothing edited destroyed the
+    // link. Worse, the phantom diff looked like a real edit, which tripped
+    // #148's revival branch (buildTaskDetailPayload adds status:"active"
+    // when a completed task "changed") and un-completed the task.
+    //
+    // Live exposure when this was written: 270 completed tasks across 8
+    // archived projects, 262 of them also carrying a goal_id, plus 2
+    // recurring templates still spawning into an archived project.
+    //
+    // Every assertion reads PERSISTED state back through the API. A test
+    // that only checked the option's label would pass while the save was
+    // still detaching — that is #347's whole lesson.
+
+    const stamp = () =>
+        `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    // The fixture has to be built live, not taken from the seed: the gate
+    // runner never seeds, and the archived state must be reached the way
+    // prod reached it.
+    //
+    // PATCH is_active:false — NOT DELETE /api/projects/<id>. That route is
+    // the soft-delete, and PR63 #129 made it null Task.project_id on the
+    // way out, which would dismantle the exact fixture under test.
+    async function archivedFixture(request, { withTemplate = false } = {}) {
+        const s = stamp();
+        const g = await request.post("/api/goals", {
+            data: { title: `E2E 355 goal ${s}`, category: "work",
+                    priority: "should" },
+        });
+        expect(g.ok()).toBe(true);
+        const goal = await g.json();
+
+        const p = await request.post("/api/projects", {
+            data: { name: `E2E 355 project ${s}`, type: "work",
+                    goal_id: goal.id },
+        });
+        expect(p.ok()).toBe(true);
+        const project = await p.json();
+
+        const t = await request.post("/api/tasks", {
+            data: { title: `E2E 355 task ${s}`, type: "work", tier: "today",
+                    project_id: project.id, goal_id: goal.id },
+        });
+        expect(t.ok()).toBe(true);
+        let task = await t.json();
+        const done = await request.post(`/api/tasks/${task.id}/complete`);
+        expect(done.ok()).toBe(true);
+        task = await done.json();
+        expect(task.status).toBe("archived");
+
+        let template = null;
+        if (withTemplate) {
+            const r = await request.post("/api/recurring", {
+                data: { title: `E2E 355 template ${s}`, frequency: "daily",
+                        type: "work", project_id: project.id,
+                        goal_id: goal.id },
+            });
+            expect(r.ok()).toBe(true);
+            template = await r.json();
+        }
+
+        // Archive both links, in the order that leaves the rows intact.
+        const ap = await request.patch(`/api/projects/${project.id}`, {
+            data: { is_active: false },
+        });
+        expect(ap.ok()).toBe(true);
+        const ag = await request.delete(`/api/goals/${goal.id}`);   // soft
+        expect(ag.status()).toBe(204);
+
+        // The link really did survive being archived — otherwise the rest
+        // of the test would be asserting against an already-empty field.
+        const check = await (await request.get(`/api/tasks/${task.id}`)).json();
+        expect(check.project_id).toBe(project.id);
+        expect(check.goal_id).toBe(goal.id);
+
+        return { goal, project, task, template };
+    }
+
+    // Unwind in dependency order. The dev DB is shared with every other
+    // local spec, so a leftover archived project would change what the
+    // project filter bar and the goal pickers render for the next test.
+    // hard_delete_goal refuses while ANY row still points at the goal,
+    // and it counts tasks, projects and recurring templates regardless of
+    // is_active — so every link has to be nulled, not merely archived.
+    // DELETE on a task or a template is a soft-delete that keeps the
+    // foreign key.
+    async function cleanup(request, { goal, project, task, template }) {
+        if (template) {
+            await request.patch(`/api/recurring/${template.id}`, {
+                data: { project_id: null, goal_id: null },
+            });
+            await request.delete(`/api/recurring/${template.id}`);
+        }
+        await request.patch(`/api/tasks/${task.id}`, {
+            data: { project_id: null, goal_id: null },
+        });
+        await request.delete(`/api/tasks/${task.id}`);
+        await request.patch(`/api/projects/${project.id}`, {
+            data: { goal_id: null },
+        });
+        await request.delete(`/api/projects/${project.id}`);
+        await request.delete(`/api/goals/${goal.id}/permanent`);
+    }
+
+    // Opens the completed task through the BOARD's Completed section, not
+    // the dedicated /completed page. That is the surface the user actually
+    // reaches these tasks through, and /completed currently renders an
+    // empty list on main — init()'s panel-only branch (#270's `isBoard`
+    // gate) returns before loadCompletedTasks(). Filed separately; it is
+    // not #355 and absorbing it here would turn one row into two.
+    async function openCompletedTask(page, taskId) {
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator("#tierCompleted .collapse-toggle").click();
+        const card = page.locator(
+            `#completedList .task-card[data-id="${taskId}"]`);
+        await expect(card).toHaveCount(1, { timeout: 10000 });
+        // #281: click the title's top-left, not the card centre.
+        await card.locator(".task-title").click({ position: { x: 4, y: 4 } });
+        await expect(page.locator("#detailPanel")).toBeVisible({
+            timeout: 2000,
+        });
+    }
+
+    test("saving a completed task on an archived project keeps the link and stays completed", async ({
+        page, request,
+    }) => {
+        const fx = await archivedFixture(request);
+        try {
+            await openCompletedTask(page, fx.task.id);
+
+            // The selects must actually hold the stored ids. Reading ""
+            // here IS the bug.
+            await expect(page.locator("#detailProject"))
+                .toHaveValue(fx.project.id);
+            await expect(page.locator("#detailGoal"))
+                .toHaveValue(fx.goal.id);
+
+            // Save with nothing edited — the absent-minded save that
+            // used to destroy the link.
+            await page.locator("#detailForm button[type=submit]").click();
+            await page.waitForTimeout(600);
+
+            const after = await (
+                await request.get(`/api/tasks/${fx.task.id}`)).json();
+            expect(after.project_id).toBe(fx.project.id);
+            expect(after.goal_id).toBe(fx.goal.id);
+            // #148's revival branch must NOT fire: nothing was edited.
+            expect(after.status).toBe("archived");
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("the archived option is labelled and disabled, so it can be left but not chosen", async ({
+        page, request,
+    }) => {
+        const fx = await archivedFixture(request);
+        try {
+            await openCompletedTask(page, fx.task.id);
+
+            const state = await page.evaluate(({ pid, gid }) => {
+                const read = (selId, optId) => {
+                    const sel = document.getElementById(selId);
+                    const opt = sel.querySelector(`option[value="${optId}"]`);
+                    return opt
+                        ? { label: opt.textContent, disabled: opt.disabled }
+                        : null;
+                };
+                return { proj: read("detailProject", pid),
+                         goal: read("detailGoal", gid) };
+            }, { pid: fx.project.id, gid: fx.goal.id });
+
+            // Present at all — the option has to exist for the select to
+            // hold the value.
+            expect(state.proj).not.toBeNull();
+            expect(state.goal).not.toBeNull();
+            // Say WHY it looks different, rather than showing a live name.
+            expect(state.proj.label).toContain("(archived)");
+            expect(state.goal.label).toContain("(archived)");
+            // Disabled, not enabled: the link is readable and keepable,
+            // but an archived row is not a thing you can newly pick.
+            expect(state.proj.disabled).toBe(true);
+            expect(state.goal.disabled).toBe(true);
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("— None — still unlinks a task whose project is archived", async ({
+        page, request,
+    }) => {
+        // The other half of the contract: keeping the link must stay
+        // possible WITHOUT making the field read-only. Clearing it is a
+        // deliberate choice and has to keep working.
+        const fx = await archivedFixture(request);
+        try {
+            await openCompletedTask(page, fx.task.id);
+            await page.locator("#detailProject").selectOption("");
+            await page.locator("#detailForm button[type=submit]").click();
+            await page.waitForTimeout(600);
+
+            const after = await (
+                await request.get(`/api/tasks/${fx.task.id}`)).json();
+            expect(after.project_id).toBeNull();
+            // This WAS a real edit, so #148 revival is correct here.
+            expect(after.status).toBe("active");
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("a recurring template on an archived project survives an edit @noviewport", async ({
+        page, request,
+    }) => {
+        // The /recurring editor is the worst case: it has no "did anything
+        // change" guard at all, so collectEditor() sent
+        // project_id: value || null on EVERY save. One edited title
+        // detached a template that is still spawning tasks.
+        const fx = await archivedFixture(request, { withTemplate: true });
+        try {
+            await page.goto("/recurring?nosw=1");
+            await page.waitForLoadState("networkidle");
+
+            const row = page.locator(
+                `.recurring-row:has(input[data-id="${fx.template.id}"])`);
+            await expect(row).toHaveCount(1, { timeout: 10000 });
+            // The list view must name the archived project, not "(none)".
+            await expect(row.locator(".recurring-row-meta"))
+                .toContainText("(archived)");
+
+            await row.locator(".recurring-row-info").click();
+            await expect(page.locator("#recurEditOverlay")).toBeVisible({
+                timeout: 2000,
+            });
+            await expect(page.locator("#recurEditProject"))
+                .toHaveValue(fx.project.id);
+            await expect(page.locator("#recurEditGoal"))
+                .toHaveValue(fx.goal.id);
+
+            // Edit something unrelated and save.
+            await page.locator("#recurEditNotes").fill("edited by #355 e2e");
+            await page.locator("#recurEditForm button[type=submit]").click();
+            await page.waitForTimeout(600);
+
+            const after = await (
+                await request.get(`/api/recurring/${fx.template.id}`)).json();
+            expect(after.notes).toBe("edited by #355 e2e");
+            expect(after.project_id).toBe(fx.project.id);
+            expect(after.goal_id).toBe(fx.goal.id);
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+});
