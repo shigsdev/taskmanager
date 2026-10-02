@@ -81,10 +81,13 @@ they're displayed:
   unarchived. That is a pre-existing limitation of that page (#363), not
   caused by this decision; the archive confirm says the templates will
   resume.
-- `recycle_service.undo_batch` / `restore_batch` still write
-  `is_active` directly and still null task links. Bringing them under
-  this rule is #356. A test (`test_undo_batch_does_not_pause_templates_356`)
-  pins the current behavior so that change is deliberate.
+- The recycle bin follows this rule too (#356, 2026-10-02):
+  `recycle_service.undo_batch` / `restore_batch` archive and unarchive an
+  imported project through `_set_project_active`, and undo no longer
+  nulls task links. `purge_batch` clears `paused_by_project_archive` on
+  templates of the projects it hard-deletes, because that promise can't
+  be kept once the project is gone; it leaves them paused rather than
+  firing into no project. Spec: `docs/design/356-recycle-paths-follow-archive-rule.md`.
 
 ## Alternatives considered
 
@@ -105,7 +108,8 @@ they're displayed:
 ## Regression tests
 
 - `tests/test_project_archive_templates.py`: the cascade on every path,
-  link preservation, flag hygiene, the backfill SQL, and the #356 pin.
+  link preservation, flag hygiene, the backfill SQL, and the recycle-bin
+  paths (#356: undo pauses, restore resumes, purge clears the flag).
 - `tests/test_projects_api.py::test_delete_preserves_task_project_fk`
   and `tests/test_project_goal_cascade.py::test_deleting_a_project_preserves_task_project_and_goal`:
   the two former PR63 tests, rewritten to the new rule.

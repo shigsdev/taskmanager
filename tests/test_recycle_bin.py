@@ -171,11 +171,14 @@ class TestProjectImportUndoFlow:
         )
         assert proj_a.is_active is False
 
-    def test_undo_nulls_task_project_fk_on_imported_projects(self, app):
+    def test_undo_keeps_task_project_fk_on_imported_projects(self, app):
         """If a user manually created tasks pointing at the imported
         project before undoing, those tasks must stay (not be soft-
-        deleted), but their project_id must be nulled to avoid phantom
-        labels on the surviving tasks."""
+        deleted) AND keep their project_id. #356 / ADR-038 reversed the
+        PR66 #131 null-out: undo now archives the project exactly as the
+        Archive button does, and an archived project's id renders no
+        label (the board badge and filters resolve against active
+        projects only), so the link survives for a later restore."""
         from models import Project
         bid = _make_batch(project_names=["LinkedProj"])
         proj = db.session.scalar(
@@ -194,7 +197,7 @@ class TestProjectImportUndoFlow:
         recycle_service.undo_batch(bid)
 
         refreshed = db.session.get(Task, manual_id)
-        assert refreshed.project_id is None  # PR66 cascade
+        assert refreshed.project_id == proj.id  # #356: link kept
         assert refreshed.status == TaskStatus.ACTIVE  # not in batch, not deleted
 
     def test_restore_reactivates_imported_projects(self, app):

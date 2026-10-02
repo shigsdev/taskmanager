@@ -581,9 +581,10 @@ component is added, a data flow changes, or a security boundary shifts.
   Delete and the Archive button now agree and both keep task links.
   `/projects` names the templates that will pause in its archive confirms
   (`static/project_archive_helpers.js`, fed by `GET /api/recurring`).
-  `recycle_service` still writes `is_active` directly (#356). A data
-  migration (`r7f8a9b0c1d2`) paused templates already sitting on archived
-  projects.
+  The recycle bin's undo / restore reach it too (#356), and `purge_batch`
+  clears the flag on templates of the projects it hard-deletes (they
+  stay paused; the DB SET NULLs their `project_id`). A data migration
+  (`r7f8a9b0c1d2`) paused templates already sitting on archived projects.
 - **Archive / unarchive a goal, and a guarded hard delete** (#349,
   2026-10-01): `delete_goal` had always been a SOFT delete setting
   `is_active=False`, but the button said **Delete**, `goalsRender`

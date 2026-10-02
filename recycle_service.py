@@ -25,6 +25,10 @@ without going through the bin. See CLAUDE.md / BACKLOG.md for rationale.
 No automated cleanup — the user manually purges batches or empties the
 whole bin via the UI. See "Recycle bin: automated TTL cleanup" in the
 BACKLOG Freezer for the deferred auto-expiry feature.
+
+Projects follow the archive rule (#356 / ADR-038): undo and restore
+archive and unarchive them through ``project_service._set_project_active``,
+the same function the Archive button uses.
 """
 from __future__ import annotations
 
@@ -33,7 +37,11 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 
-from models import Goal, ImportLog, Project, Task, TaskStatus, db
+from models import Goal, ImportLog, Project, RecurringTask, Task, TaskStatus, db
+
+# #356: a private name on purpose. Renaming it public would rewrite
+# #353's ADR, spec and docstrings for no behavioral gain.
+from project_service import _set_project_active
 
 # --- Errors ------------------------------------------------------------------
 
@@ -259,25 +267,13 @@ def undo_batch(batch_id: uuid.UUID) -> dict:
         if goal.is_active:
             goal.is_active = False
     # PR66 audit fix #131: also soft-delete bulk-imported projects.
-    # This mirrored PR63 #129's detach in project_service.delete_project,
-    # which #353 / ADR-038 REMOVED there (archiving now keeps task links
-    # and pauses templates via _set_project_active). This path still
-    # detaches by its own rule and bypasses the template pause; bringing
-    # it in line is #356. Original rationale: null Task.project_id
-    # on every linked task so the soft-deleted project doesn't leave
-    # phantom labels on still-active tasks (which can happen if the user
-    # manually created tasks and assigned the imported project to them
-    # before realising they wanted to undo the import).
-    project_ids = [p.id for p in projects]
+    # #356 / ADR-038: exactly as the Archive button does. Task links are
+    # KEPT (PR66 used to null Task.project_id here, mirroring PR63 #129;
+    # an archived project's id now renders no label, because the readers
+    # resolve against active projects only), and the project's running
+    # repeating templates pause and are flagged so restore resumes them.
     for project in projects:
-        if project.is_active:
-            project.is_active = False
-    if project_ids:
-        db.session.execute(
-            update(Task)
-            .where(Task.project_id.in_(project_ids))
-            .values(project_id=None)
-        )
+        _set_project_active(project, False)
 
     log.undone_at = datetime.now(UTC)
     db.session.commit()
@@ -318,13 +314,16 @@ def restore_batch(batch_id: uuid.UUID) -> dict:
             goal.is_active = True
             restored_goals += 1
 
-    # PR66 audit fix #131: restore bulk-imported projects too. We do NOT
-    # re-link tasks to the project — undo nulled Task.project_id, and
-    # the user may have moved on. They can manually re-assign if needed.
+    # PR66 audit fix #131: restore bulk-imported projects too, exactly as
+    # Unarchive does (#356 / ADR-038), which resumes the templates the
+    # undo (or an earlier /projects archive) paused. Task links come back
+    # with the project because undo no longer nulls them. Batches undone
+    # BEFORE #356 lost those links, and nothing recorded what they were,
+    # so they can't be rebuilt; the user re-assigns by hand.
     restored_projects = 0
     for project in projects:
         if not project.is_active:
-            project.is_active = True
+            _set_project_active(project, True)
             restored_projects += 1
 
     log.undone_at = None
@@ -368,14 +367,28 @@ def purge_batch(batch_id: uuid.UUID, confirmation: str | None) -> dict:
             .where(Task.goal_id.in_(goal_ids))
             .values(goal_id=None)
         )
-    # PR66 audit fix #131: same null-out for project FKs. Tasks that
-    # were re-linked to the soft-deleted project after undo (if the
-    # user manually re-activated it elsewhere) won't dangle on purge.
+    # PR66 audit fix #131: same null-out for project FKs. Required
+    # because Task.project_id has no ondelete. Since #356 undo KEEPS task
+    # links, so tasks (including ones linked by hand outside the batch)
+    # normally still point at these projects when purge runs.
     if project_ids:
         db.session.execute(
             update(Task)
             .where(Task.project_id.in_(project_ids))
             .values(project_id=None)
+        )
+
+    # #356: a template paused by its project's archive carries
+    # paused_by_project_archive, meaning "resume when the project is
+    # unarchived". Purge makes that impossible, so the template becomes
+    # an ordinary paused one. Its is_active is left alone: it isn't
+    # resumed into no project. The DB's ON DELETE SET NULL then clears its
+    # project_id when the project row goes.
+    if project_ids:
+        db.session.execute(
+            update(RecurringTask)
+            .where(RecurringTask.project_id.in_(project_ids))
+            .values(paused_by_project_archive=False)
         )
 
     for task in tasks:

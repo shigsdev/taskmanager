@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 import sqlalchemy as sa
 
+import recycle_service
 from models import (
     Goal,
     GoalCategory,
@@ -32,6 +33,7 @@ from models import (
     RecurringTask,
     ReflectionInputMode,
     Task,
+    TaskStatus,
     TaskType,
     Tier,
     db,
@@ -489,22 +491,229 @@ def test_saving_a_spawned_task_keeps_its_link_to_an_archive_paused_template(
         assert db.session.get(Task, tid).recurring_task_id == rt_id
 
 
-def test_undo_batch_does_not_pause_templates_356(app):
-    # Pins CURRENT behavior: recycle_service writes is_active directly
-    # and bypasses _set_project_active. Routing it through the cascade is
-    # #356's job; this test makes that a deliberate change, not drift.
-    import recycle_service
+# --- #356: the recycle bin follows the archive rule --------------------------
+#
+# Spec: docs/design/356-recycle-paths-follow-archive-rule.md. Undo and
+# restore treat an imported project exactly as Archive / Unarchive do
+# (via _set_project_active), and purge leaves no template flagged for a
+# project that no longer exists.
 
+
+def _batch_with_project(name: str):
+    """An import batch holding one project, in the live state."""
+    batch_id = uuid.uuid4()
+    p = Project(name=name, batch_id=batch_id)
+    db.session.add(p)
+    db.session.add(ImportLog(source="t", task_count=1, batch_id=batch_id))
+    db.session.commit()
+    return batch_id, p
+
+
+def test_undo_batch_pauses_templates(app):
+    # Was test_undo_batch_does_not_pause_templates_356, which pinned the
+    # bypass so #356 would change it on purpose. This is that change.
     with app.app_context():
-        batch_id = uuid.uuid4()
-        p = Project(name="Imported", batch_id=batch_id)
-        db.session.add(p)
-        db.session.add(ImportLog(source="t", task_count=1, batch_id=batch_id))
-        db.session.commit()
-        pid = p.id
-        rt_id = _recurring("imported routine", p).id
+        bid, p = _batch_with_project("Imported")
+        pid, rt_id = p.id, _recurring("imported routine", p).id
 
-        recycle_service.undo_batch(batch_id)
+        recycle_service.undo_batch(bid)
 
         assert db.session.get(Project, pid).is_active is False
+        assert _state(rt_id) == (False, True)
+
+
+def test_undo_batch_keeps_task_project_links(app):
+    # ADR-038 on the last path that still broke it. Includes a task the
+    # user linked by hand OUTSIDE the batch, which undo used to detach.
+    with app.app_context():
+        bid, p = _batch_with_project("Imported")
+        in_batch = Task(title="imported", type=TaskType.WORK, tier=Tier.INBOX,
+                        project_id=p.id, batch_id=bid)
+        by_hand = Task(title="mine", type=TaskType.WORK, tier=Tier.INBOX,
+                       project_id=p.id)
+        db.session.add_all([in_batch, by_hand])
+        db.session.commit()
+        pid, in_id, hand_id = p.id, in_batch.id, by_hand.id
+
+        recycle_service.undo_batch(bid)
+
+        assert db.session.get(Task, in_id).project_id == pid
+        hand = db.session.get(Task, hand_id)
+        assert hand.project_id == pid
+        assert hand.status == TaskStatus.ACTIVE
+
+
+def test_restore_batch_resumes_templates_undo_paused(app):
+    with app.app_context():
+        bid, p = _batch_with_project("Imported")
+        t = Task(title="imported", type=TaskType.WORK, tier=Tier.INBOX,
+                 project_id=p.id, batch_id=bid)
+        db.session.add(t)
+        db.session.commit()
+        pid, tid = p.id, t.id
+        rt_id = _recurring("imported routine", p).id
+
+        recycle_service.undo_batch(bid)
+        result = recycle_service.restore_batch(bid)
+
+        assert result["projects_restored"] == 1
+        assert db.session.get(Project, pid).is_active is True
         assert _state(rt_id) == (True, False)
+        # The round trip no longer loses the link.
+        assert db.session.get(Task, tid).project_id == pid
+
+
+def test_restore_batch_resumes_templates_a_projects_archive_flagged(
+    authed_client, app,
+):
+    # #353's final-review stuck state. Archived on /projects first
+    # (template flagged), so undo is a no-op transition; restore must
+    # still bring the project AND its template back.
+    with app.app_context():
+        bid, p = _batch_with_project("Imported")
+        pid, rt_id = p.id, _recurring("imported routine", p).id
+
+    _archive_patch(authed_client, pid)
+
+    with app.app_context():
+        assert _state(rt_id) == (False, True)
+        recycle_service.undo_batch(bid)
+        recycle_service.restore_batch(bid)
+
+        assert db.session.get(Project, pid).is_active is True
+        assert _state(rt_id) == (True, False)
+
+
+def test_restore_batch_leaves_user_paused_template_paused(app):
+    with app.app_context():
+        bid, p = _batch_with_project("Imported")
+        rt_id = _recurring("paused by me", p, is_active=False).id
+
+        recycle_service.undo_batch(bid)
+        recycle_service.restore_batch(bid)
+
+        assert _state(rt_id) == (False, False)
+
+
+def test_undo_restore_leave_goal_links_alone(app):
+    # Spec §1: goals already follow the keep-links rule. Pinned so a
+    # future change to goals is deliberate (that's #368's job).
+    with app.app_context():
+        bid, p = _batch_with_project("Imported")
+        batch_goal = Goal(title="Imported goal", category=GoalCategory.WORK,
+                          priority=GoalPriority.SHOULD, batch_id=bid)
+        outside = Goal(title="Mine", category=GoalCategory.WORK,
+                       priority=GoalPriority.MUST)
+        db.session.add_all([batch_goal, outside])
+        db.session.commit()
+        t_out = Task(title="a", type=TaskType.WORK, tier=Tier.INBOX,
+                     project_id=p.id, goal_id=outside.id)
+        t_batch = Task(title="b", type=TaskType.WORK, tier=Tier.INBOX,
+                       goal_id=batch_goal.id)
+        db.session.add_all([t_out, t_batch])
+        db.session.commit()
+        rt_id = _recurring("routine", p, goal_id=outside.id).id
+        want = {t_out.id: outside.id, t_batch.id: batch_goal.id}
+
+        for step in (recycle_service.undo_batch, recycle_service.restore_batch):
+            step(bid)
+            for tid, gid in want.items():
+                assert db.session.get(Task, tid).goal_id == gid
+            assert db.session.get(RecurringTask, rt_id).goal_id == outside.id
+
+
+# Purge hard-deletes the project, and the DB's ON DELETE SET NULL nulls
+# the template's project_id. SQLite only enforces that with the pragma
+# on (the tests/test_recycle_bin.py:552 pattern); Postgres always does.
+
+
+def _fk_on():
+    db.session.execute(sa.text("PRAGMA foreign_keys=ON"))
+
+
+def test_purge_batch_clears_flag_on_templates_of_purged_projects(app):
+    # The flag promises "resumes when the project is unarchived". Once the
+    # project is gone that can't happen, so the template becomes an
+    # ordinary paused one. It is NOT resumed: a template whose project
+    # the user permanently deleted shouldn't start firing into no project.
+    with app.app_context():
+        _fk_on()
+        bid, p = _batch_with_project("Imported")
+        rt_id = _recurring("imported routine", p).id
+        recycle_service.undo_batch(bid)
+        assert _state(rt_id) == (False, True)
+
+        recycle_service.purge_batch(bid, "DELETE")
+
+        rt = db.session.get(RecurringTask, rt_id)
+        db.session.refresh(rt)
+        assert rt.project_id is None
+        assert (rt.is_active, rt.paused_by_project_archive) == (False, False)
+
+
+def test_purge_leaves_a_user_resumed_template_running(authed_client, app):
+    # Review Focus 2: resumed by hand while the project sat in the bin,
+    # so the flag is already clear. Purge changes nothing about it except
+    # the DB nulling its project link.
+    with app.app_context():
+        bid, p = _batch_with_project("Imported")
+        rt_id = _recurring("keep running", p).id
+        recycle_service.undo_batch(bid)
+
+    authed_client.patch(f"/api/recurring/{rt_id}", json={"is_active": True})
+
+    with app.app_context():
+        _fk_on()
+        recycle_service.purge_batch(bid, "DELETE")
+
+        rt = db.session.get(RecurringTask, rt_id)
+        db.session.refresh(rt)
+        assert rt.project_id is None
+        assert (rt.is_active, rt.paused_by_project_archive) == (True, False)
+
+
+def test_purge_never_touches_goal_links(app):
+    # Review Focus 4, purge half (final-review finding): only project_id
+    # is DB-nulled. A template and a hand-made task on the purged project
+    # keep a goal that lives OUTSIDE the batch.
+    with app.app_context():
+        _fk_on()
+        bid, p = _batch_with_project("Imported")
+        outside = Goal(title="Mine", category=GoalCategory.WORK,
+                       priority=GoalPriority.MUST)
+        db.session.add(outside)
+        db.session.commit()
+        t = Task(title="mine", type=TaskType.WORK, tier=Tier.INBOX,
+                 project_id=p.id, goal_id=outside.id)
+        db.session.add(t)
+        db.session.commit()
+        tid, gid = t.id, outside.id
+        rt_id = _recurring("routine", p, goal_id=gid).id
+        recycle_service.undo_batch(bid)
+
+        recycle_service.purge_batch(bid, "DELETE")
+
+        rt = db.session.get(RecurringTask, rt_id)
+        db.session.refresh(rt)
+        assert (rt.project_id, rt.goal_id) == (None, gid)
+        task = db.session.get(Task, tid)
+        db.session.refresh(task)
+        assert (task.project_id, task.goal_id) == (None, gid)
+
+
+def test_empty_bin_clears_flags_across_batches(app):
+    # Review Focus 3: empty_bin loops purge_batch, so it inherits the
+    # flag clearing for every batch in the bin.
+    with app.app_context():
+        _fk_on()
+        rts = []
+        for name in ("First import", "Second import"):
+            bid, p = _batch_with_project(name)
+            rts.append(_recurring(f"{name} routine", p).id)
+            recycle_service.undo_batch(bid)
+
+        result = recycle_service.empty_bin("DELETE")
+
+        assert result["batches_purged"] == 2
+        for rt_id in rts:
+            assert _state(rt_id) == (False, False)

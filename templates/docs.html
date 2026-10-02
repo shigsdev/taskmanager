@@ -2348,6 +2348,16 @@ Skip this line (too short)</pre>
                 <li><strong>Restore</strong> — put the rows back on the board.</li>
                 <li><strong>Purge</strong> — permanent delete. Requires typing <code>DELETE</code> in the confirmation dialog.</li>
             </ul>
+            <p>
+                Undoing an import that created projects archives those
+                projects the same way the Archive button does: tasks
+                keep their project, and the projects' running repeating
+                tasks pause. Restore unarchives them and resumes those
+                repeating tasks. Purge deletes the projects for good; a
+                repeating task that still pointed at one is no longer
+                tied to a project, and purging never turns one back on
+                &mdash; a paused one stays paused.
+            </p>
 
             <h3>Empty Bin</h3>
             <p>

@@ -353,7 +353,8 @@ class RecurringTask(db.Model):
     # user override — an actual is_active change (in practice a resume),
     # a move to another project, or a delete — clears it, so unarchiving
     # can never resurrect a template the user stopped themselves. See
-    # spec §4.3.
+    # spec §4.3. A recycle-bin purge of the project clears it too (#356):
+    # the project is gone, so "resume on unarchive" can't happen.
     paused_by_project_archive: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sql_false()
     )

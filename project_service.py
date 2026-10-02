@@ -315,8 +315,9 @@ def _set_project_active(project: Project, active: bool) -> None:
     re-sent ``is_active: false`` (a second tab, a double click) must not
     re-pause a template the user resumed by hand after archiving.
 
-    Doesn't commit; the callers do. ``recycle_service`` still writes
-    ``is_active`` directly — routing it through here is #356.
+    Doesn't commit; the callers do. The recycle bin's ``undo_batch`` /
+    ``restore_batch`` call this too (#356), so an import's undo and
+    restore archive and unarchive exactly as the buttons do.
     """
     if project.is_active == active:
         return
