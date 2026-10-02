@@ -87,7 +87,8 @@ component is added, a data flow changes, or a security boundary shifts.
   spawn pattern, and `paused_by_project_archive` / `paused_by_goal_archive`
   for #353 / #368 — set when a project or goal archive pauses the template,
   so unarchive resumes only those, and only once neither is set),
-  import log, app_logs, and `reflections` (Weekly
+  import log (with `undo_snapshot` for #367 — what an undo changed, so
+  Restore returns each row to its pre-undo state), app_logs, and `reflections` (Weekly
   Reflection transcripts + AI-proposed action audit trail, 2026-05-16;
   self-referential `continued_from_id` for #334's forked continuations,
   `synthesis_of` for #335's combined analyses, plus `title`, `is_draft`

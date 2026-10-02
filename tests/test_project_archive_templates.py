@@ -563,12 +563,15 @@ def test_restore_batch_resumes_templates_undo_paused(app):
         assert db.session.get(Task, tid).project_id == pid
 
 
-def test_restore_batch_resumes_templates_a_projects_archive_flagged(
+def test_restore_batch_leaves_a_projects_archive_alone_and_unarchive_resumes(
     authed_client, app,
 ):
-    # #353's final-review stuck state. Archived on /projects first
-    # (template flagged), so undo is a no-op transition; restore must
-    # still bring the project AND its template back.
+    # #353's final-review stuck state, revisited by #367. Archived on
+    # /projects first (template flagged), so undo changes nothing about
+    # the project. Restore now leaves it as the user left it, archived
+    # (#367: restore only reverses what the undo did). It is not stuck:
+    # the template keeps its flag, so unarchiving the project brings it
+    # back.
     with app.app_context():
         bid, p = _batch_with_project("Imported")
         pid, rt_id = p.id, _recurring("imported routine", p).id
@@ -580,6 +583,11 @@ def test_restore_batch_resumes_templates_a_projects_archive_flagged(
         recycle_service.undo_batch(bid)
         recycle_service.restore_batch(bid)
 
+        assert db.session.get(Project, pid).is_active is False
+        assert _state(rt_id) == (False, True)
+
+    _unarchive(authed_client, pid)
+    with app.app_context():
         assert db.session.get(Project, pid).is_active is True
         assert _state(rt_id) == (True, False)
 

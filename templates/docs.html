@@ -2360,14 +2360,14 @@ Skip this line (too short)</pre>
 
             <h3>Actions on a batch in the bin</h3>
             <ul>
-                <li><strong>Restore</strong> — put the rows back on the board.</li>
+                <li><strong>Restore</strong> — put every row back exactly as it was before the undo: completed tasks stay completed, and a project or goal you had already archived stays archived. Anything you changed while the batch was in the bin stays as you left it.</li>
                 <li><strong>Purge</strong> — permanent delete. Requires typing <code>DELETE</code> in the confirmation dialog.</li>
             </ul>
             <p>
                 Undoing an import that created projects or goals
                 archives them the same way the Archive buttons do: tasks
                 keep their links, and the running repeating tasks on
-                them pause. Restore unarchives them and resumes those
+                them pause. Restore unarchives the ones the undo archived and resumes those
                 repeating tasks. Purge deletes them for good; a repeating
                 task that still pointed at one is no longer tied to it,
                 and purging never turns one back on. One that is also

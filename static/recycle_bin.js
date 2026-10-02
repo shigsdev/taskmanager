@@ -132,10 +132,14 @@
     // --- Actions -------------------------------------------------------------
 
     function onRestore(batch) {
+        // #367: restore leaves a goal the user archived before the undo
+        // alone, so count only the goals it will bring back. Purge below
+        // still uses goal_count: it deletes every goal in the batch.
+        var goals = batch.restore_goal_count != null ? batch.restore_goal_count : batch.goal_count;
         var body = "Restore " + batch.task_count + " task" +
             (batch.task_count === 1 ? "" : "s") +
-            " and " + batch.goal_count + " goal" +
-            (batch.goal_count === 1 ? "" : "s") +
+            " and " + goals + " goal" +
+            (goals === 1 ? "" : "s") +
             " from this batch back into your task list?";
         openModal({
             title: "Restore Batch",

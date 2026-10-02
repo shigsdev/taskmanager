@@ -30,13 +30,19 @@ Projects and goals follow the archive rule (#356, #368 / ADR-038): undo
 and restore archive and unarchive them through
 ``project_service._set_project_active`` and ``goal_service._set_goal_active``,
 the same functions the Archive buttons use.
+
+Restore returns rows to their state before the undo (#367): undo records
+what it changes in ``ImportLog.undo_snapshot`` and restore reverses
+exactly that, so a completed task comes back completed and a goal or
+project the user had already archived stays archived.
 """
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import null, select, update
 
 # #356 / #368: private names on purpose, the one writer of each parent's
 # is_active. Renaming them public would rewrite #353's ADR, spec and
@@ -44,6 +50,11 @@ from sqlalchemy import select, update
 from goal_service import _set_goal_active
 from models import Goal, ImportLog, Project, RecurringTask, Task, TaskStatus, db
 from project_service import _set_project_active
+
+logger = logging.getLogger(__name__)
+
+# #367: version of the ImportLog.undo_snapshot shape, in case it changes.
+_SNAPSHOT_VERSION = 1
 
 # --- Errors ------------------------------------------------------------------
 
@@ -156,6 +167,22 @@ def list_bin() -> list[dict]:
         .group_by(Project.batch_id)
     ).all())
 
+    # #367: what Restore will actually bring back. goal_count above stays
+    # the purge truth (purge deletes every goal in the batch), but restore
+    # only unarchives the goals the undo archived, so a goal the user had
+    # archived first isn't counted here. A legacy batch (no snapshot)
+    # restores every inactive goal, so it counts them all.
+    snapshots = {log.batch_id: log.undo_snapshot for log in logs}
+    restore_goal_counts: dict = {}
+    for gbid, gid in db.session.execute(
+        select(Goal.batch_id, Goal.id)
+        .where(Goal.batch_id.in_(batch_ids))
+        .where(Goal.is_active.is_(False))
+    ).all():
+        snap = snapshots.get(gbid)
+        if snap is None or str(gid) in (snap.get("goals") or []):
+            restore_goal_counts[gbid] = restore_goal_counts.get(gbid, 0) + 1
+
     entries = []
     for log in logs:
         entries.append(
@@ -170,6 +197,7 @@ def list_bin() -> list[dict]:
                 ),
                 "task_count": task_counts.get(log.batch_id, 0),
                 "goal_count": goal_counts.get(log.batch_id, 0),
+                "restore_goal_count": restore_goal_counts.get(log.batch_id, 0),
                 "project_count": project_counts.get(log.batch_id, 0),
             }
         )
@@ -262,6 +290,21 @@ def undo_batch(batch_id: uuid.UUID) -> dict:
     goals = _batch_goals(batch_id)
     projects = _batch_projects(batch_id)
 
+    # #367: record what this undo changes, BEFORE changing it, so restore
+    # can put each row back exactly as it was. A row the undo leaves
+    # alone (a cancelled task, a goal or project the user had already
+    # archived) isn't listed, and restore never touches it.
+    snapshot: dict = {
+        "v": _SNAPSHOT_VERSION,
+        "tasks": {
+            str(t.id): t.status.value
+            for t in tasks
+            if t.status in (TaskStatus.ACTIVE, TaskStatus.ARCHIVED)
+        },
+        "goals": [str(g.id) for g in goals if g.is_active],
+        "projects": [str(p.id) for p in projects if p.is_active],
+    }
+
     for task in tasks:
         if task.status == TaskStatus.ACTIVE or task.status == TaskStatus.ARCHIVED:
             task.status = TaskStatus.DELETED
@@ -278,6 +321,7 @@ def undo_batch(batch_id: uuid.UUID) -> dict:
     for project in projects:
         _set_project_active(project, False)
 
+    log.undo_snapshot = snapshot
     log.undone_at = datetime.now(UTC)
     db.session.commit()
 
@@ -289,22 +333,60 @@ def undo_batch(batch_id: uuid.UUID) -> dict:
     }
 
 
-def restore_batch(batch_id: uuid.UUID) -> dict:
-    """Restore a batch from the recycle bin (un-soft-delete).
+def _restore_from_snapshot(snapshot: dict, tasks, goals, projects) -> tuple[int, int, int]:
+    """Reverse exactly what the undo recorded (#367). Returns the counts.
 
-    Only rows whose status is still ``DELETED`` / ``is_active=False`` are
-    restored. If something has already been manually edited or had its
-    status changed elsewhere, we leave it alone to avoid clobbering user
-    intent.
+    Walks the batch's own rows and looks each up in the snapshot, never
+    the other way round, so an id for a row that's gone is simply never
+    seen. Ids are stored as strings (JSON keys), hence ``str(row.id)``.
     """
-    log = _get_log(batch_id)
-    if log.undone_at is None:
-        raise BatchStateError(f"batch {batch_id} is not in the recycle bin")
+    task_status = snapshot.get("tasks") or {}
+    goal_ids = set(snapshot.get("goals") or [])
+    project_ids = set(snapshot.get("projects") or [])
 
-    tasks = _batch_tasks(batch_id)
-    goals = _batch_goals(batch_id)
-    projects = _batch_projects(batch_id)
+    restored_tasks = 0
+    for task in tasks:
+        recorded = task_status.get(str(task.id))
+        if recorded is None or task.status != TaskStatus.DELETED:
+            continue
+        try:
+            status = TaskStatus(recorded)
+        except ValueError:
+            status = None
+        if status is None or status == TaskStatus.DELETED:
+            # A corrupt entry must not sink the whole restore: leave this
+            # one in the bin. Id only, never the title.
+            logger.warning("recycle restore: bad snapshot status for task %s", task.id)
+            continue
+        task.status = status
+        restored_tasks += 1
 
+    restored_goals = 0
+    for goal in goals:
+        if str(goal.id) in goal_ids and not goal.is_active:
+            _set_goal_active(goal, True)  # #368: resumes its templates
+            restored_goals += 1
+
+    # Exactly as Unarchive does (#356 / ADR-038), which resumes the
+    # templates the undo paused. Task links come back with the project
+    # because undo no longer nulls them.
+    restored_projects = 0
+    for project in projects:
+        if str(project.id) in project_ids and not project.is_active:
+            _set_project_active(project, True)
+            restored_projects += 1
+
+    return restored_tasks, restored_goals, restored_projects
+
+
+def _restore_legacy(tasks, goals, projects) -> tuple[int, int, int]:
+    """The pre-#367 rule, for a batch undone before snapshots existed.
+
+    It can't know what each row looked like before the undo, so every
+    DELETED task comes back ACTIVE and every inactive goal/project is
+    unarchived. Batches undone BEFORE #356 also lost their task-project
+    links, which nothing recorded; the user re-assigns by hand.
+    """
     restored_tasks = 0
     for task in tasks:
         if task.status == TaskStatus.DELETED:
@@ -314,21 +396,51 @@ def restore_batch(batch_id: uuid.UUID) -> dict:
     restored_goals = 0
     for goal in goals:
         if not goal.is_active:
-            _set_goal_active(goal, True)  # #368
+            _set_goal_active(goal, True)
             restored_goals += 1
 
-    # PR66 audit fix #131: restore bulk-imported projects too, exactly as
-    # Unarchive does (#356 / ADR-038), which resumes the templates the
-    # undo (or an earlier /projects archive) paused. Task links come back
-    # with the project because undo no longer nulls them. Batches undone
-    # BEFORE #356 lost those links, and nothing recorded what they were,
-    # so they can't be rebuilt; the user re-assigns by hand.
     restored_projects = 0
     for project in projects:
         if not project.is_active:
             _set_project_active(project, True)
             restored_projects += 1
 
+    return restored_tasks, restored_goals, restored_projects
+
+
+def restore_batch(batch_id: uuid.UUID) -> dict:
+    """Restore a batch from the recycle bin (un-soft-delete).
+
+    #367: driven by the snapshot ``undo_batch`` recorded, so every row the
+    undo changed goes back exactly as it was (a completed task comes back
+    completed) and a row the undo didn't change is never touched (a
+    project or goal the user had already archived stays archived). A row
+    the user changed while the batch sat in the bin (a goal unarchived by
+    hand) is no longer DELETED / inactive, so it's left alone too.
+
+    A batch undone before #367 has no snapshot and restores with the old
+    rule; see ``_restore_legacy``.
+    """
+    log = _get_log(batch_id)
+    if log.undone_at is None:
+        raise BatchStateError(f"batch {batch_id} is not in the recycle bin")
+
+    tasks = _batch_tasks(batch_id)
+    goals = _batch_goals(batch_id)
+    projects = _batch_projects(batch_id)
+
+    if log.undo_snapshot is not None:
+        restored_tasks, restored_goals, restored_projects = _restore_from_snapshot(
+            log.undo_snapshot, tasks, goals, projects,
+        )
+    else:
+        restored_tasks, restored_goals, restored_projects = _restore_legacy(
+            tasks, goals, projects,
+        )
+
+    # SQL NULL, not JSON 'null' (the JSON type's default for None), so
+    # the column really is NULL as the model promises.
+    log.undo_snapshot = null()
     log.undone_at = None
     db.session.commit()
 
@@ -412,8 +524,10 @@ def purge_batch(batch_id: uuid.UUID, confirmation: str | None) -> dict:
         db.session.delete(project)
 
     # Retain the ImportLog row as audit, but disassociate it from the now
-    # non-existent rows.
+    # non-existent rows. #367: the snapshot only lists their ids, so it
+    # goes too.
     log.batch_id = None
+    log.undo_snapshot = null()
     db.session.commit()
 
     return {

@@ -447,6 +447,15 @@ class ImportLog(db.Model):
     undone_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # #367 (2026-10-02): what the last undo changed, so Restore can put
+    # each row back exactly as it was: {"v": 1, "tasks": {id: prior
+    # status}, "goals": [ids it archived], "projects": [ids it archived]}.
+    # Rows the undo didn't change (a completed-then-cancelled task, a
+    # project the user had already archived) aren't listed and Restore
+    # leaves them alone. Cleared on restore and purge. NULL on a live
+    # batch, or on one undone before #367 (Restore falls back to the old
+    # behavior). See docs/design/367-restore-returns-rows-to-pre-undo-state.md.
+    undo_snapshot: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
 
 
 # Feature 1 (2026-05-09): "This Week's Focus" panel

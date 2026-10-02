@@ -156,7 +156,8 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "raw_text":    {"desc": "The pasted/extracted source text", "notes": "Stored for debug + audit"},
             "error":       {"desc": "Failure message (if the import errored partway)", "notes": "Optional"},
             "imported_at": {"desc": "When the import ran", "notes": "Used for the recycle-bin TTL"},
-            "undone_at":   {"desc": "When the import was undone (if at all)", "notes": "NULL = still in recycle bin; not-NULL = restored to the active board"},
+            "undone_at":   {"desc": "When the import was undone (if at all)", "notes": "NULL = live on the board; set = in the recycle bin"},
+            "undo_snapshot": {"desc": "What the last undo changed, so Restore can put it back", "notes": "JSON: each task's prior status plus the goals/projects the undo archived; cleared on restore and purge (#367)"},
         },
     },
     "weekly_focus": {
