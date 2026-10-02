@@ -84,7 +84,9 @@ component is added, a data flow changes, or a security boundary shifts.
   `cancellation_reason` for status=CANCELLED tasks), projects, goals,
   `global_context_files` (#336 — reference documents attached to every
   reflection), recurring tasks (with `subtasks_snapshot` JSON for #26's clone-on-
-  spawn pattern), import log, app_logs, and `reflections` (Weekly
+  spawn pattern, and `paused_by_project_archive` for #353 — set when a
+  project archive pauses the template, so unarchive resumes only those),
+  import log, app_logs, and `reflections` (Weekly
   Reflection transcripts + AI-proposed action audit trail, 2026-05-16;
   self-referential `continued_from_id` for #334's forked continuations,
   `synthesis_of` for #335's combined analyses, plus `title`, `is_draft`
@@ -567,6 +569,21 @@ component is added, a data flow changes, or a security boundary shifts.
   `update_project` now updates `Task` and `RecurringTask` together,
   under the same change-only guard, and `delete_project` still leaves
   both alone (the genuine independent-intent case).
+- **Archiving a project pauses its repeating tasks** (#353, 2026-10-01,
+  ADR-038): `project_service._set_project_active` is the one place a
+  project's `is_active` changes. `update_project`, `delete_project`, both
+  bulk paths and the reflection apply path all reach it. On an actual
+  archive transition it pauses the project's currently-active
+  `RecurringTask` rows and sets `paused_by_project_archive`; on unarchive
+  it resumes only flagged rows. `recurring_service` clears the flag on any
+  user override (an actual `is_active` or `project_id` change, or a
+  delete). The PR63 #129 task-detach was removed from `delete_project`, so
+  Delete and the Archive button now agree and both keep task links.
+  `/projects` names the templates that will pause in its archive confirms
+  (`static/project_archive_helpers.js`, fed by `GET /api/recurring`).
+  `recycle_service` still writes `is_active` directly (#356). A data
+  migration (`r7f8a9b0c1d2`) paused templates already sitting on archived
+  projects.
 - **Archive / unarchive a goal, and a guarded hard delete** (#349,
   2026-10-01): `delete_goal` had always been a SOFT delete setting
   `is_active=False`, but the button said **Delete**, `goalsRender`

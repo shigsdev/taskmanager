@@ -472,11 +472,14 @@ def test_delete_404(authed_client):
     assert resp.status_code == 404
 
 
-def test_delete_nulls_task_project_fk(authed_client, app):
-    """PR63 audit fix #129: soft-deleting a project must null
-    Task.project_id on every linked task. Previously the project flipped
-    is_active=False but linked tasks still pointed at the dead project,
-    leaving phantom labels and ghost filter dropdown entries."""
+def test_delete_preserves_task_project_fk(authed_client, app):
+    """#353 / ADR-038 reverses PR63 audit fix #129, which nulled
+    Task.project_id on delete. Delete now does exactly what the Archive
+    button always did and keeps the link, so the two archive paths agree
+    and Delete-then-unarchive is lossless. PR63's two symptoms (phantom
+    labels, ghost filter entries) are fixed on the read side: the board
+    badge resolves against active-only projects, and
+    `_sweepStaleFilterIds` drops dead filter ids."""
     from models import Task, TaskType
 
     with app.app_context():
@@ -495,9 +498,9 @@ def test_delete_nulls_task_project_fk(authed_client, app):
         # Project soft-deleted
         fetched = db.session.get(Project, pid)
         assert fetched.is_active is False
-        # Both tasks now have project_id = None
-        assert db.session.get(Task, t1_id).project_id is None
-        assert db.session.get(Task, t2_id).project_id is None
+        # Both tasks keep their project link
+        assert db.session.get(Task, t1_id).project_id == pid
+        assert db.session.get(Task, t2_id).project_id == pid
 
 
 # --- Seed defaults -----------------------------------------------------------

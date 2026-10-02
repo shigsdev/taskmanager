@@ -1498,6 +1498,21 @@ Skip this line (too short)</pre>
                 blocks a duplicate.
             </p>
 
+            <h3>When its project is archived</h3>
+            <p>
+                Archiving a project pauses every repeating task on it
+                that is currently running, so nothing new spawns into a
+                project you've put away. Unarchiving the project resumes
+                exactly those. A repeating task you had already paused
+                yourself stays paused either way.
+            </p>
+            <p>
+                While the project is archived, its paused repeating tasks
+                don't appear in the /recurring list, and a task they
+                spawned shows its Repeat as none. Unarchiving the project
+                is how you bring them back.
+            </p>
+
             <h3>Preview cards vs. real tasks</h3>
             <p>In the This Week and Next Week panels you'll see two card styles:</p>
             <ul>
@@ -2112,8 +2127,16 @@ Skip this line (too short)</pre>
             <p>
                 Removing a task's project entirely also clears its goal.
                 <em>Archiving</em> a project does not: the project goes away,
-                but you haven't said anything about the goal, so its tasks
-                keep theirs.
+                but its tasks keep both their project and their goal, so
+                unarchiving brings everything back as it was. The Archive
+                button, bulk Archive and bulk Delete all do the same thing.
+            </p>
+            <p>
+                Archiving also pauses the project's repeating tasks. Before
+                it does, you're shown which ones will pause; if there are
+                none, there's no extra question. Unarchiving resumes them
+                without asking. See
+                <a href="#recurring">Recurring tasks</a>.
             </p>
         </section>
 

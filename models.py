@@ -347,6 +347,16 @@ class RecurringTask(db.Model):
         JSONType, nullable=True, default=list
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # #353 (2026-10-01): True means "paused ONLY because its project was
+    # archived". Set by project_service._set_project_active when the
+    # project is archived; unarchiving resumes exactly these rows. Any
+    # user override — an actual is_active change (in practice a resume),
+    # a move to another project, or a delete — clears it, so unarchiving
+    # can never resurrect a template the user stopped themselves. See
+    # spec §4.3.
+    paused_by_project_archive: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sql_false()
+    )
     # #101 (PR30, 2026-04-26): optional sunset date. When set, the
     # spawn cron skips this template once today > end_date. Lets the
     # user set up a finite recurring (e.g. "stretch every morning

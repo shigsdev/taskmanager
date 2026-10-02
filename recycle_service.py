@@ -259,7 +259,11 @@ def undo_batch(batch_id: uuid.UUID) -> dict:
         if goal.is_active:
             goal.is_active = False
     # PR66 audit fix #131: also soft-delete bulk-imported projects.
-    # Same cascade as project_service.delete_project — null Task.project_id
+    # This mirrored PR63 #129's detach in project_service.delete_project,
+    # which #353 / ADR-038 REMOVED there (archiving now keeps task links
+    # and pauses templates via _set_project_active). This path still
+    # detaches by its own rule and bypasses the template pause; bringing
+    # it in line is #356. Original rationale: null Task.project_id
     # on every linked task so the soft-deleted project doesn't leave
     # phantom labels on still-active tasks (which can happen if the user
     # manually created tasks and assigned the imported project to them

@@ -358,6 +358,15 @@ def _update_repeat(task: Task, repeat: dict | None) -> None:
         # Remove repeat — deactivate linked template
         if task.recurring_task_id:
             rt = db.session.get(RecurringTask, task.recurring_task_id)
+            if rt is not None and not rt.is_active:
+                # #353: an INACTIVE template is shown as Repeat "none"
+                # (_serialize_repeat hides it), and the detail panel always
+                # sends `repeat`, so null here is the form echoing what it
+                # displayed, not a choice. Keep the link — otherwise saving
+                # any spawned task on an archived project cuts it loose from
+                # a template that unarchive will resume, and re-setting
+                # Repeat later would mint a duplicate template.
+                return
             if rt:
                 rt.is_active = False
             task.recurring_task_id = None

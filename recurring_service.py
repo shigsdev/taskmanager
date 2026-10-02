@@ -336,8 +336,17 @@ def update_recurring(rt_id: uuid.UUID, data: dict) -> RecurringTask | None:
     if "type" in data:
         rt.type = _parse_enum(TaskType, data["type"], "type") or rt.type
 
+    # #353: `paused_by_project_archive` means "paused ONLY because its
+    # project was archived". Moving the template or switching it on/off
+    # yourself overrides that, so either clears the flag and the next
+    # unarchive leaves the template alone. Only on an ACTUAL change: the
+    # /recurring editor re-sends project_id on every Save, and treating
+    # that as an override would silently cancel the resume.
     if "project_id" in data:
-        rt.project_id = _parse_uuid(data["project_id"], "project_id")
+        new_project_id = _parse_uuid(data["project_id"], "project_id")
+        if new_project_id != rt.project_id:
+            rt.project_id = new_project_id
+            rt.paused_by_project_archive = False
 
     if "goal_id" in data:
         rt.goal_id = _parse_uuid(data["goal_id"], "goal_id")
@@ -355,7 +364,10 @@ def update_recurring(rt_id: uuid.UUID, data: dict) -> RecurringTask | None:
         rt.subtasks_snapshot = _clean_subtasks_snapshot(data["subtasks_snapshot"])
 
     if "is_active" in data:
-        rt.is_active = bool(data["is_active"])
+        new_active = bool(data["is_active"])
+        if new_active != rt.is_active:  # #353: see the project_id note above
+            rt.is_active = new_active
+            rt.paused_by_project_archive = False
 
     if "end_date" in data:  # #101 (PR30)
         rt.end_date = _parse_end_date(data["end_date"])
@@ -398,6 +410,10 @@ def delete_recurring(rt_id: uuid.UUID) -> bool:
     if rt is None:
         return False
     rt.is_active = False
+    # #353: unconditionally. Delete writes the same is_active=False as
+    # Pause, so a surviving flag would let unarchiving the project
+    # resurrect a template the user deleted.
+    rt.paused_by_project_archive = False
     db.session.commit()
     return True
 

@@ -159,6 +159,7 @@ EXPECTED_STATIC_FILES = (
     "static/goal_project_drag_helpers.js",  # #343 — project-drag decision + side effects
     "static/goal_archive_helpers.js",  # #349 — archive / unarchive + guarded hard delete
     "static/archived_option_helpers.js",  # #355 — keep an archived link representable
+    "static/project_archive_helpers.js",  # #353 — name the templates an archive pauses
     "static/recurring.js",
     "static/recurring_helpers.js",
     "static/inbox_categorize_helpers.js",  # #208 — Jest-importable due-date helpers

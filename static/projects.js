@@ -786,12 +786,35 @@ async function projectDetailSave(e) {
     }
 }
 
+// #353: archiving pauses a project's active repeating tasks (server-side,
+// on every path). Before the archive, tell the user which ones. Returns ""
+// when none would pause, or when the lookup fails: the server cascade is
+// the control and the dialog is only information, so a failed fetch must
+// never block archiving.
+async function projectsArchiveImpactMessage(ids) {
+    const h = window.projectArchiveHelpers;
+    if (!h) return "";
+    try {
+        const templates = await apiFetch("/api/recurring");
+        return h.archiveConfirmMessage(h.templatesPausedBy(templates, ids));
+    } catch (err) {
+        console.warn("Could not list repeating tasks for the archive confirm:", err);
+        return "";
+    }
+}
+
 async function projectDetailToggleArchive() {
     const id = document.getElementById("projectId").value;
     if (!id) return;
     const current = projectsData.find((p) => p.id === id);
     if (!current) return;
     const newState = !current.is_active;
+    // Only when archiving. Unarchiving restores a prior state, so it
+    // doesn't ask; and with nothing to pause, archiving doesn't ask either.
+    if (!newState) {
+        const impact = await projectsArchiveImpactMessage([id]);
+        if (impact && !confirm(impact)) return;
+    }
     try {
         await apiFetch(`/api/projects/${id}`, {
             method: "PATCH",
@@ -933,17 +956,22 @@ function projectsSetupBulk() {
         showProjectsBulkDropdown(e.currentTarget, items);
     });
 
-    document.getElementById("projectsBulkArchive").addEventListener("click", () => {
+    // #353: both bulk confirms also name the repeating tasks that will pause.
+    const withImpact = (text, impact) => (impact ? `${text}\n\n${impact}` : text);
+
+    document.getElementById("projectsBulkArchive").addEventListener("click", async () => {
         const ids = bulkSelectedIds();
         if (!ids.length) return;
-        if (!confirm(`Archive ${ids.length} project(s)?`)) return;
+        const impact = await projectsArchiveImpactMessage(ids);
+        if (!confirm(withImpact(`Archive ${ids.length} project(s)?`, impact))) return;
         bulkPatchProjects({ is_active: false });
     });
 
     document.getElementById("projectsBulkDelete").addEventListener("click", async () => {
         const ids = bulkSelectedIds();
         if (!ids.length) return;
-        if (!confirm(`Soft-delete (archive) ${ids.length} project(s)? They can be restored from the Projects archived filter.`)) return;
+        const impact = await projectsArchiveImpactMessage(ids);
+        if (!confirm(withImpact(`Soft-delete (archive) ${ids.length} project(s)? They can be restored from the Projects archived filter.`, impact))) return;
         try {
             await apiFetch("/api/projects/bulk", {
                 method: "DELETE",

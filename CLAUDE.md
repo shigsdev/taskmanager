@@ -407,6 +407,11 @@ Report.
      On /projects, drag a task line from one project card to another and
      verify the reassignment persists; confirm a cross-type drop is
      refused with a visible message (#344).
+     Archive a project that has an active repeating task: the confirm
+     must NAME the template, and after accepting, the template is
+     inactive; Unarchive must ask nothing and bring it back (#353).
+     Archive a project with NO templates and verify there is no dialog
+     at all — the quiet case is the easy one to regress into a nag.
   7. **Goals page**: verify goal cards show progress bars with correct task
      counts. Filter by category/priority/status, verify results change.
      Expand a card's `Projects (N)` toggle, drag a project chip onto
@@ -489,6 +494,8 @@ Report.
   Goals: Archive/Unarchive      PASS          Goals: Archive/Unarchive      PASS
   Goals: hard-delete gating     PASS          Goals: hard-delete gating     PASS
   Projects: drag task to card   PASS          Projects: drag task to card   PASS
+  Projects: archive pauses tmpl PASS          Projects: archive pauses tmpl PASS
+  Projects: no-tmpl archive quiet PASS        Projects: no-tmpl archive quiet PASS
   Review: Keep                  PASS          Review: Keep                  PASS
   Review: Freeze                PASS          Review: Freeze                PASS
   Review: Snooze                PASS          Review: Snooze                PASS

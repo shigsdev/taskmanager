@@ -5261,9 +5261,10 @@ test.describe("An archived link stays representable (#355)", () => {
     // runner never seeds, and the archived state must be reached the way
     // prod reached it.
     //
-    // PATCH is_active:false — NOT DELETE /api/projects/<id>. That route is
-    // the soft-delete, and PR63 #129 made it null Task.project_id on the
-    // way out, which would dismantle the exact fixture under test.
+    // PATCH is_active:false, the Archive button's path. (Until #353 the
+    // DELETE route also nulled Task.project_id, per PR63 #129, which would
+    // have dismantled this fixture. ADR-038 removed that detach, so both
+    // paths now keep the link.)
     async function archivedFixture(request, { withTemplate = false } = {}) {
         const s = stamp();
         const g = await request.post("/api/goals", {
@@ -5309,6 +5310,20 @@ test.describe("An archived link stays representable (#355)", () => {
         expect(ap.ok()).toBe(true);
         const ag = await request.delete(`/api/goals/${goal.id}`);   // soft
         expect(ag.status()).toBe(204);
+
+        // #353: archiving the project PAUSED the template. Turn it back
+        // on, which is the real-world state this fixture models: a
+        // template the user resumed while its project stays archived. It
+        // is also the only way it can appear on /recurring, which lists
+        // active templates only (#363).
+        if (template) {
+            const paused = await (
+                await request.get(`/api/recurring/${template.id}`)).json();
+            expect(paused.is_active).toBe(false);
+            const resumed = await request.patch(
+                `/api/recurring/${template.id}`, { data: { is_active: true } });
+            expect(resumed.ok()).toBe(true);
+        }
 
         // The link really did survive being archived — otherwise the rest
         // of the test would be asserting against an already-empty field.
@@ -5493,6 +5508,218 @@ test.describe("An archived link stays representable (#355)", () => {
             expect(after.goal_id).toBe(fx.goal.id);
         } finally {
             await cleanup(request, fx);
+        }
+    });
+});
+
+test.describe("Archiving a project pauses its repeating tasks (#353) @noviewport", () => {
+    // The pause is server-side, on every archive path (pytest pins that).
+    // What this proves is the /projects half: the user is TOLD which
+    // repeating tasks will pause before the archive happens, and only
+    // when there are any. Every assertion on the pause itself reads
+    // persisted state back through the API.
+    //
+    // @noviewport: desktop only. The dialogs are browser confirm()s, so
+    // there's no layout to differ, and mobile is covered by Phase 6.
+
+    const stamp = () =>
+        `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const TAIL = "They resume when you unarchive the project.";
+
+    async function projectWith(request, { templates = 0 } = {}) {
+        const s = stamp();
+        const p = await request.post("/api/projects", {
+            data: { name: `E2E 353 project ${s}`, type: "work" },
+        });
+        expect(p.ok()).toBe(true);
+        const project = await p.json();
+        const made = [];
+        for (let i = 0; i < templates; i++) {
+            const r = await request.post("/api/recurring", {
+                data: { title: `E2E 353 routine ${i} ${s}`, frequency: "daily",
+                        type: "work", project_id: project.id },
+            });
+            expect(r.ok()).toBe(true);
+            made.push(await r.json());
+        }
+        return { project, templates: made };
+    }
+
+    // Projects have no hard delete (#357), so an archived project is the
+    // floor. Detach + soft-delete the templates so nothing keeps firing.
+    async function cleanup(request, fixtures) {
+        for (const { project, templates } of fixtures) {
+            for (const t of templates) {
+                await request.patch(`/api/recurring/${t.id}`, {
+                    data: { project_id: null },
+                });
+                await request.delete(`/api/recurring/${t.id}`);
+            }
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    }
+
+    async function templateActive(request, id) {
+        return (await (await request.get(`/api/recurring/${id}`)).json()).is_active;
+    }
+
+    async function openProjects(page, filter = "active") {
+        await page.goto("/projects?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator("#projectFilterActive").selectOption(filter);
+    }
+
+    async function openPanel(page, projectId) {
+        await page.locator(`.project-card[data-project-id="${projectId}"]`).click();
+        await expect(page.locator("#projectArchiveToggle")).toBeVisible({ timeout: 3000 });
+    }
+
+    test("the archive confirm names the template; unarchive resumes it with no dialog", async ({
+        page, request,
+    }) => {
+        const fx = await projectWith(request, { templates: 1 });
+        try {
+            await openProjects(page);
+            await openPanel(page, fx.project.id);
+
+            const shown = [];
+            page.once("dialog", (d) => { shown.push(d.message()); d.accept(); });
+            await page.locator("#projectArchiveToggle").click();
+            await expect.poll(async () => (await (await request.get(
+                `/api/projects/${fx.project.id}`)).json()).is_active).toBe(false);
+
+            expect(shown).toHaveLength(1);
+            expect(shown[0]).toContain(`"${fx.templates[0].title}"`);
+            expect(shown[0]).toContain(TAIL);
+            expect(await templateActive(request, fx.templates[0].id)).toBe(false);
+
+            // Unarchive: restoring a prior state is not a decision, so
+            // any dialog here is a failure.
+            const unexpected = [];
+            page.on("dialog", (d) => { unexpected.push(d.message()); d.dismiss(); });
+            await openProjects(page, "archived");
+            await openPanel(page, fx.project.id);
+            await expect(page.locator("#projectArchiveToggle")).toHaveText("Unarchive");
+            await page.locator("#projectArchiveToggle").click();
+            await expect.poll(() => templateActive(request, fx.templates[0].id)).toBe(true);
+            expect(unexpected).toEqual([]);
+        } finally {
+            await cleanup(request, [fx]);
+        }
+    });
+
+    test("cancelling the confirm archives nothing", async ({ page, request }) => {
+        const fx = await projectWith(request, { templates: 1 });
+        try {
+            await openProjects(page);
+            await openPanel(page, fx.project.id);
+            page.once("dialog", (d) => d.dismiss());
+            await page.locator("#projectArchiveToggle").click();
+            await page.waitForTimeout(600);
+
+            const proj = await (await request.get(`/api/projects/${fx.project.id}`)).json();
+            expect(proj.is_active).toBe(true);
+            expect(await templateActive(request, fx.templates[0].id)).toBe(true);
+        } finally {
+            await cleanup(request, [fx]);
+        }
+    });
+
+    test("archiving a project with no repeating tasks shows no dialog", async ({
+        page, request,
+    }) => {
+        const fx = await projectWith(request);
+        try {
+            const unexpected = [];
+            page.on("dialog", (d) => { unexpected.push(d.message()); d.dismiss(); });
+            await openProjects(page);
+            await openPanel(page, fx.project.id);
+            await page.locator("#projectArchiveToggle").click();
+            await expect.poll(async () => (await (await request.get(
+                `/api/projects/${fx.project.id}`)).json()).is_active).toBe(false);
+            expect(unexpected).toEqual([]);
+        } finally {
+            await cleanup(request, [fx]);
+        }
+    });
+
+    test("the bulk Archive confirm lists templates across two projects", async ({
+        page, request,
+    }) => {
+        const a = await projectWith(request, { templates: 1 });
+        const b = await projectWith(request, { templates: 1 });
+        try {
+            await openProjects(page);
+            await page.locator("#projectsBulkToggle").click();
+            for (const fx of [a, b]) {
+                await page.locator(
+                    `.project-card[data-project-id="${fx.project.id}"]`).click();
+            }
+            const shown = [];
+            page.once("dialog", (d) => { shown.push(d.message()); d.accept(); });
+            await page.locator("#projectsBulkArchive").click();
+            await expect.poll(() => templateActive(request, b.templates[0].id)).toBe(false);
+
+            expect(shown).toHaveLength(1);
+            expect(shown[0]).toContain("Archive 2 project(s)?");
+            expect(shown[0]).toContain(`"${a.templates[0].title}"`);
+            expect(shown[0]).toContain(`"${b.templates[0].title}"`);
+            expect(await templateActive(request, a.templates[0].id)).toBe(false);
+        } finally {
+            await cleanup(request, [a, b]);
+        }
+    });
+
+    test("the bulk Delete confirm names the template too", async ({ page, request }) => {
+        const fx = await projectWith(request, { templates: 1 });
+        try {
+            await openProjects(page);
+            await page.locator("#projectsBulkToggle").click();
+            await page.locator(
+                `.project-card[data-project-id="${fx.project.id}"]`).click();
+            const shown = [];
+            page.once("dialog", (d) => { shown.push(d.message()); d.accept(); });
+            await page.locator("#projectsBulkDelete").click();
+            await expect.poll(() => templateActive(request, fx.templates[0].id)).toBe(false);
+
+            expect(shown).toHaveLength(1);
+            expect(shown[0]).toContain("Soft-delete (archive) 1 project(s)?");
+            expect(shown[0]).toContain(`"${fx.templates[0].title}"`);
+        } finally {
+            await cleanup(request, [fx]);
+        }
+    });
+
+    test("if the template lookup fails, the archive still goes through", async ({
+        page, request,
+    }) => {
+        // The server cascade is the control; the dialog is only
+        // information. A failed lookup must not block archiving.
+        //
+        // A 500, not a dropped connection: a true network failure trips
+        // apiFetch's app-wide "Reload the page to recover?" prompt
+        // (PR47 #112), which is right there, because the archive PATCH
+        // right after would fail too. The case where the LOOKUP fails but
+        // archiving can still succeed is a server error on this endpoint.
+        const fx = await projectWith(request, { templates: 1 });
+        try {
+            await page.route("**/api/recurring", (r) => r.fulfill({
+                status: 500, contentType: "application/json",
+                body: JSON.stringify({ error: "boom" }),
+            }));
+            const unexpected = [];
+            page.on("dialog", (d) => { unexpected.push(d.message()); d.dismiss(); });
+            await openProjects(page);
+            await openPanel(page, fx.project.id);
+            await page.locator("#projectArchiveToggle").click();
+            await expect.poll(async () => (await (await request.get(
+                `/api/projects/${fx.project.id}`)).json()).is_active).toBe(false);
+
+            expect(unexpected).toEqual([]);
+            // ...and the server still paused it.
+            expect(await templateActive(request, fx.templates[0].id)).toBe(false);
+        } finally {
+            await cleanup(request, [fx]);
         }
     });
 });

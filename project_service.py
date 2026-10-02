@@ -279,7 +279,7 @@ def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
     if "is_active" in data:
         if not isinstance(data["is_active"], bool):
             raise ValidationError("is_active must be a boolean", "is_active")
-        project.is_active = data["is_active"]
+        _set_project_active(project, data["is_active"])
 
     # Accept either name; both write to priority_order.
     if "priority_order" in data or "sort_order" in data:
@@ -297,26 +297,64 @@ def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
     return project
 
 
-def delete_project(project_id: uuid.UUID) -> bool:
-    """Soft-delete a project and detach all tasks pointing at it.
+def _set_project_active(project: Project, active: bool) -> None:
+    """The one place a project's ``is_active`` changes (#353).
 
-    PR63 audit fix #129: previously this only flipped ``is_active=False``,
-    leaving ``Task.project_id`` pointing at the now-inactive project.
-    Joinedload queries returned the dead project; the UI rendered phantom
-    project labels and ghost entries in the project filter dropdown. Now
-    we also null the foreign key on every Task referencing this project.
-    Goal cascade is unchanged (project deletion shouldn't drag a task off
-    its goal — the goal is independent intent).
+    Archiving pauses the project's CURRENTLY-ACTIVE repeating templates
+    and flags them ``paused_by_project_archive``; unarchiving resumes
+    exactly the flagged ones, never a template the user paused or deleted
+    themselves. Before #353 nothing touched templates, so one kept
+    spawning fresh tasks into a project the user had put away.
+
+    It lives in the service layer because the reflection apply path
+    (``reflection_service.apply_selected_actions``) calls
+    ``update_project`` / ``delete_project`` directly and would bypass a
+    route-level cascade.
+
+    Only on an actual transition, the same rule as #350's goal cascade: a
+    re-sent ``is_active: false`` (a second tab, a double click) must not
+    re-pause a template the user resumed by hand after archiving.
+
+    Doesn't commit; the callers do. ``recycle_service`` still writes
+    ``is_active`` directly — routing it through here is #356.
+    """
+    if project.is_active == active:
+        return
+    project.is_active = active
+    # Bulk updates so we don't pull every template into the session.
+    if not active:
+        RecurringTask.query.filter_by(
+            project_id=project.id, is_active=True,
+        ).update(
+            {"is_active": False, "paused_by_project_archive": True},
+            synchronize_session=False,
+        )
+    else:
+        RecurringTask.query.filter_by(
+            project_id=project.id, paused_by_project_archive=True,
+        ).update(
+            {"is_active": True, "paused_by_project_archive": False},
+            synchronize_session=False,
+        )
+
+
+def delete_project(project_id: uuid.UUID) -> bool:
+    """Soft-delete (archive) a project — identical to the Archive button.
+
+    #353 / ADR-038: this used to also null ``Task.project_id`` on every
+    linked task (PR63 audit fix #129), while the Archive button
+    (``update_project(is_active=False)``) never did. So the two archive
+    paths disagreed, and Delete-then-unarchive lost every task's link
+    for good. Both now go through ``_set_project_active`` and keep task
+    links. PR63's symptoms are fixed on the read side: the board badge
+    resolves against active-only projects and ``_sweepStaleFilterIds``
+    drops dead filter ids. Goals were never touched (the goal is
+    independent intent).
     """
     project = get_project(project_id)
     if project is None:
         return False
-    project.is_active = False
-    # Detach orphaned tasks. Bulk update so we don't pull every Task into
-    # the session — there can be hundreds linked to a single project.
-    Task.query.filter_by(project_id=project.id).update(
-        {"project_id": None}, synchronize_session=False
-    )
+    _set_project_active(project, False)
     db.session.commit()
     return True
 

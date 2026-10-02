@@ -247,12 +247,13 @@ def test_bulk_project_update_cascades_too(authed_client, app):
             assert db.session.get(Task, tid).goal_id == new_id
 
 
-def test_deleting_a_project_still_leaves_task_goals_alone(authed_client, app):
+def test_deleting_a_project_preserves_task_project_and_goal(authed_client, app):
     # The one case that genuinely IS "independent intent", and the
-    # distinction this whole change turns on. Archiving a project
-    # detaches its tasks (PR63 #129) but must not drag them off their
-    # goal — the project went away, the user did not say anything about
-    # the goal. Unchanged by #350.
+    # distinction this whole change turns on. Archiving a project must
+    # not drag its tasks off their goal — the project went away, the
+    # user did not say anything about the goal. Unchanged by #350.
+    # #353 / ADR-038: it no longer detaches them from the project either
+    # (reversing PR63 #129), so Delete matches the Archive button.
     with app.app_context():
         g = _goal("Survives")
         proj = _project("Doomed", g)
@@ -264,7 +265,7 @@ def test_deleting_a_project_still_leaves_task_goals_alone(authed_client, app):
 
     with app.app_context():
         task = db.session.get(Task, tid)
-        assert task.project_id is None
+        assert task.project_id == pid
         assert task.goal_id == gid
 
 
