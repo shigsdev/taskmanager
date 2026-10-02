@@ -15,6 +15,7 @@ from models import (
     Task,
     db,
 )
+from recurring_service import cascade_parent_archive
 from utils import ValidationError  # noqa: F401 — re-exported for API layer
 from utils import parse_enum as _parse_enum
 from utils import parse_int as _parse_int
@@ -271,10 +272,22 @@ def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
             project.goal_id = new_goal_id
             # Bulk updates so we don't pull every Task into the session;
             # there can be hundreds linked to a single project.
-            for model in (Task, RecurringTask):
-                model.query.filter_by(project_id=project.id).update(
-                    {"goal_id": new_goal_id}, synchronize_session=False
-                )
+            Task.query.filter_by(project_id=project.id).update(
+                {"goal_id": new_goal_id}, synchronize_session=False
+            )
+            # #368: a goal change clears the goal-archive marker, as the
+            # /recurring editor's does, and the template stays paused.
+            # Only on rows whose goal actually changes: a template already
+            # on the new goal keeps its marker, so that goal's unarchive
+            # still resumes it. Runs before the re-point, which erases the
+            # difference.
+            RecurringTask.query.filter(
+                RecurringTask.project_id == project.id,
+                RecurringTask.goal_id.is_distinct_from(new_goal_id),
+            ).update({"paused_by_goal_archive": False}, synchronize_session=False)
+            RecurringTask.query.filter_by(project_id=project.id).update(
+                {"goal_id": new_goal_id}, synchronize_session=False,
+            )
 
     if "is_active" in data:
         if not isinstance(data["is_active"], bool):
@@ -315,6 +328,10 @@ def _set_project_active(project: Project, active: bool) -> None:
     re-sent ``is_active: false`` (a second tab, a double click) must not
     re-pause a template the user resumed by hand after archiving.
 
+    The rule itself lives in ``recurring_service.cascade_parent_archive``
+    (#368), shared with ``goal_service._set_goal_active``: unarchiving
+    leaves a template paused while its goal is still archived.
+
     Doesn't commit; the callers do. The recycle bin's ``undo_batch`` /
     ``restore_batch`` call this too (#356), so an import's undo and
     restore archive and unarchive exactly as the buttons do.
@@ -322,21 +339,9 @@ def _set_project_active(project: Project, active: bool) -> None:
     if project.is_active == active:
         return
     project.is_active = active
-    # Bulk updates so we don't pull every template into the session.
-    if not active:
-        RecurringTask.query.filter_by(
-            project_id=project.id, is_active=True,
-        ).update(
-            {"is_active": False, "paused_by_project_archive": True},
-            synchronize_session=False,
-        )
-    else:
-        RecurringTask.query.filter_by(
-            project_id=project.id, paused_by_project_archive=True,
-        ).update(
-            {"is_active": True, "paused_by_project_archive": False},
-            synchronize_session=False,
-        )
+    # #368: the pause/resume rule is shared with goals, so a template on
+    # an archived project AND an archived goal waits for both.
+    cascade_parent_archive("project", project.id, not active)
 
 
 def delete_project(project_id: uuid.UUID) -> bool:

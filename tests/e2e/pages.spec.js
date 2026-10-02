@@ -5723,3 +5723,143 @@ test.describe("Archiving a project pauses its repeating tasks (#353) @noviewport
         }
     });
 });
+
+test.describe("Archiving a goal pauses its repeating tasks (#368) @noviewport", () => {
+    // The pause is server-side on every path (pytest pins that). This
+    // proves the /goals half: the user is TOLD which repeating tasks will
+    // pause before the archive, only when there are any, and a failed
+    // lookup never blocks the archive. Assertions read persisted state
+    // back through the API.
+    //
+    // @noviewport: desktop only; the dialog is a browser confirm(), and
+    // mobile is covered by Phase 6.
+
+    const stamp = () =>
+        `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const TAIL = "They resume when you unarchive the goal.";
+
+    async function goalWith(request, { templates = 0 } = {}) {
+        const s = stamp();
+        const g = await request.post("/api/goals", {
+            data: { title: `E2E 368 goal ${s}`, category: "work", priority: "should" },
+        });
+        expect(g.ok()).toBe(true);
+        const goal = await g.json();
+        const made = [];
+        for (let i = 0; i < templates; i++) {
+            const r = await request.post("/api/recurring", {
+                data: { title: `E2E 368 routine ${i} ${s}`, frequency: "daily",
+                        type: "work", goal_id: goal.id },
+            });
+            expect(r.ok()).toBe(true);
+            made.push(await r.json());
+        }
+        return { goal, templates: made };
+    }
+
+    // Detach + soft-delete the templates so nothing references the goal,
+    // then archive and hard-delete it (#349 requires both).
+    async function cleanup(request, { goal, templates }) {
+        for (const t of templates) {
+            await request.patch(`/api/recurring/${t.id}`, { data: { goal_id: null } });
+            await request.delete(`/api/recurring/${t.id}`);
+        }
+        await request.delete(`/api/goals/${goal.id}`);
+        await request.delete(`/api/goals/${goal.id}/permanent`);
+    }
+
+    const goalActive = async (request, id) =>
+        (await (await request.get("/api/goals?is_active=all")).json())
+            .find((g) => g.id === id).is_active;
+
+    const templateActive = async (request, id) =>
+        (await (await request.get(`/api/recurring/${id}`)).json()).is_active;
+
+    async function openGoal(page, id, filter = "active") {
+        await page.goto("/goals?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.selectOption("#filterArchived", filter);
+        await page.locator(`.goal-card[data-goal-id="${id}"]`).click();
+        await expect(page.locator("#goalDetailOverlay")).toBeVisible();
+    }
+
+    test("the archive confirm names the template; unarchive resumes it with no dialog", async ({
+        page, request,
+    }) => {
+        const fx = await goalWith(request, { templates: 1 });
+        try {
+            await openGoal(page, fx.goal.id);
+            const shown = [];
+            page.once("dialog", (d) => { shown.push(d.message()); d.accept(); });
+            await page.locator("#goalDelete").click();
+            await expect.poll(() => goalActive(request, fx.goal.id)).toBe(false);
+
+            expect(shown).toHaveLength(1);
+            expect(shown[0]).toContain(`"${fx.templates[0].title}"`);
+            expect(shown[0]).toContain(TAIL);
+            expect(await templateActive(request, fx.templates[0].id)).toBe(false);
+
+            const unexpected = [];
+            page.on("dialog", (d) => { unexpected.push(d.message()); d.dismiss(); });
+            await openGoal(page, fx.goal.id, "archived");
+            await expect(page.locator("#goalDelete")).toHaveText(/^Unarchive$/);
+            await page.locator("#goalDelete").click();
+            await expect.poll(() => templateActive(request, fx.templates[0].id)).toBe(true);
+            expect(unexpected).toEqual([]);
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("cancelling the confirm archives nothing", async ({ page, request }) => {
+        const fx = await goalWith(request, { templates: 1 });
+        try {
+            await openGoal(page, fx.goal.id);
+            page.once("dialog", (d) => d.dismiss());
+            await page.locator("#goalDelete").click();
+            await page.waitForTimeout(600);
+
+            expect(await goalActive(request, fx.goal.id)).toBe(true);
+            expect(await templateActive(request, fx.templates[0].id)).toBe(true);
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("archiving a goal with no repeating tasks shows no dialog", async ({
+        page, request,
+    }) => {
+        const fx = await goalWith(request);
+        try {
+            const unexpected = [];
+            page.on("dialog", (d) => { unexpected.push(d.message()); d.dismiss(); });
+            await openGoal(page, fx.goal.id);
+            await page.locator("#goalDelete").click();
+            await expect.poll(() => goalActive(request, fx.goal.id)).toBe(false);
+            expect(unexpected).toEqual([]);
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("lookup failure archives without a dialog", async ({ page, request }) => {
+        // A 500, not route.abort: an aborted fetch trips apiFetch's
+        // app-wide reload prompt (#353's ruling).
+        const fx = await goalWith(request, { templates: 1 });
+        try {
+            await openGoal(page, fx.goal.id);
+            await page.route("**/api/recurring", (r) =>
+                r.fulfill({ status: 500, contentType: "application/json", body: "{}" }));
+            const unexpected = [];
+            page.on("dialog", (d) => { unexpected.push(d.message()); d.dismiss(); });
+            await page.locator("#goalDelete").click();
+            await expect.poll(() => goalActive(request, fx.goal.id)).toBe(false);
+            expect(unexpected).toEqual([]);
+            // The server still paused it; only the warning was lost.
+            expect(await templateActive(request, fx.templates[0].id)).toBe(false);
+        } finally {
+            await page.unroute("**/api/recurring");
+            await cleanup(request, fx);
+        }
+    });
+});

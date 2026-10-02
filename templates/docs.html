@@ -1498,19 +1498,26 @@ Skip this line (too short)</pre>
                 blocks a duplicate.
             </p>
 
-            <h3>When its project is archived</h3>
+            <h3>When its project or goal is archived</h3>
             <p>
-                Archiving a project pauses every repeating task on it
-                that is currently running, so nothing new spawns into a
-                project you've put away. Unarchiving the project resumes
+                Archiving a project or a goal pauses every repeating task
+                on it that is currently running, so nothing new spawns
+                into something you've put away. Unarchiving resumes
                 exactly those. A repeating task you had already paused
-                yourself stays paused either way.
+                yourself stays paused either way, and if you turn one
+                back on or delete it yourself, unarchiving later leaves
+                it alone.
             </p>
             <p>
-                While the project is archived, its paused repeating tasks
-                don't appear in the /recurring list, and a task they
-                spawned shows its Repeat as none. Unarchiving the project
-                is how you bring them back.
+                A repeating task can belong to a project and a goal at
+                once. If both are archived, it stays paused until both
+                are unarchived, in whichever order you do it.
+            </p>
+            <p>
+                While it's paused this way, a repeating task doesn't
+                appear in the /recurring list, and a task it spawned
+                shows its Repeat as none. Unarchiving is how you bring
+                it back.
             </p>
 
             <h3>Preview cards vs. real tasks</h3>
@@ -2252,6 +2259,14 @@ Skip this line (too short)</pre>
                 bring it back.
             </p>
             <p>
+                Archiving a goal also pauses its running repeating tasks.
+                Before it does, you're shown which ones will pause; if
+                there are none, there's no extra question. Unarchiving
+                resumes them without asking, except one whose project is
+                still archived: that one waits for its project. See
+                <a href="#recurring">Recurring tasks</a>.
+            </p>
+            <p>
                 Use the <strong>Active only / Archived / All</strong> filter
                 at the top of the page to see archived goals. They carry an
                 <strong>Archived</strong> badge so they're never confused
@@ -2349,14 +2364,15 @@ Skip this line (too short)</pre>
                 <li><strong>Purge</strong> — permanent delete. Requires typing <code>DELETE</code> in the confirmation dialog.</li>
             </ul>
             <p>
-                Undoing an import that created projects archives those
-                projects the same way the Archive button does: tasks
-                keep their project, and the projects' running repeating
-                tasks pause. Restore unarchives them and resumes those
-                repeating tasks. Purge deletes the projects for good; a
-                repeating task that still pointed at one is no longer
-                tied to a project, and purging never turns one back on
-                &mdash; a paused one stays paused.
+                Undoing an import that created projects or goals
+                archives them the same way the Archive buttons do: tasks
+                keep their links, and the running repeating tasks on
+                them pause. Restore unarchives them and resumes those
+                repeating tasks. Purge deletes them for good; a repeating
+                task that still pointed at one is no longer tied to it,
+                and purging never turns one back on. One that is also
+                waiting on another archived project or goal still comes
+                back when that one is unarchived.
             </p>
 
             <h3>Empty Bin</h3>

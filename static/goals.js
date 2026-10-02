@@ -458,10 +458,28 @@ async function goalDetailToggleArchive() {
             body: JSON.stringify({ is_active: true }),
         });
     } else {
+        // #368: archiving pauses the goal's running repeating tasks, so
+        // name them first. None means no dialog. Unarchive asks nothing.
+        const impact = await goalArchiveImpactMessage(id);
+        if (impact && !confirm(impact)) return;
         await apiFetch(`/api/goals/${id}`, { method: "DELETE" });
     }
     await goalsLoad();
     goalDetailClose();
+}
+
+// #368: the confirm text for archiving this goal, or "" for no dialog.
+// A failed lookup archives without a dialog: never block an archive on
+// its confirm (#353's ruling for /projects).
+async function goalArchiveImpactMessage(goalId) {
+    const h = window.goalArchiveHelpers;
+    try {
+        const templates = await apiFetch("/api/recurring");
+        return h.goalArchivePauseMessage(h.templatesPausedByGoal(templates, [goalId]));
+    } catch (err) {
+        console.warn("Could not list repeating tasks for the archive confirm:", err);
+        return "";
+    }
 }
 
 // The real delete. Gated on state rather than guarded by a scary

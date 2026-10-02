@@ -26,9 +26,10 @@ No automated cleanup — the user manually purges batches or empties the
 whole bin via the UI. See "Recycle bin: automated TTL cleanup" in the
 BACKLOG Freezer for the deferred auto-expiry feature.
 
-Projects follow the archive rule (#356 / ADR-038): undo and restore
-archive and unarchive them through ``project_service._set_project_active``,
-the same function the Archive button uses.
+Projects and goals follow the archive rule (#356, #368 / ADR-038): undo
+and restore archive and unarchive them through
+``project_service._set_project_active`` and ``goal_service._set_goal_active``,
+the same functions the Archive buttons use.
 """
 from __future__ import annotations
 
@@ -37,10 +38,11 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 
+# #356 / #368: private names on purpose, the one writer of each parent's
+# is_active. Renaming them public would rewrite #353's ADR, spec and
+# docstrings for no behavioral gain.
+from goal_service import _set_goal_active
 from models import Goal, ImportLog, Project, RecurringTask, Task, TaskStatus, db
-
-# #356: a private name on purpose. Renaming it public would rewrite
-# #353's ADR, spec and docstrings for no behavioral gain.
 from project_service import _set_project_active
 
 # --- Errors ------------------------------------------------------------------
@@ -263,9 +265,10 @@ def undo_batch(batch_id: uuid.UUID) -> dict:
     for task in tasks:
         if task.status == TaskStatus.ACTIVE or task.status == TaskStatus.ARCHIVED:
             task.status = TaskStatus.DELETED
+    # #368: through the same function as the Archive button, so the
+    # goal's running repeating templates pause and restore resumes them.
     for goal in goals:
-        if goal.is_active:
-            goal.is_active = False
+        _set_goal_active(goal, False)
     # PR66 audit fix #131: also soft-delete bulk-imported projects.
     # #356 / ADR-038: exactly as the Archive button does. Task links are
     # KEPT (PR66 used to null Task.project_id here, mirroring PR63 #129;
@@ -311,7 +314,7 @@ def restore_batch(batch_id: uuid.UUID) -> dict:
     restored_goals = 0
     for goal in goals:
         if not goal.is_active:
-            goal.is_active = True
+            _set_goal_active(goal, True)  # #368
             restored_goals += 1
 
     # PR66 audit fix #131: restore bulk-imported projects too, exactly as
@@ -389,6 +392,16 @@ def purge_batch(batch_id: uuid.UUID, confirmation: str | None) -> dict:
             update(RecurringTask)
             .where(RecurringTask.project_id.in_(project_ids))
             .values(paused_by_project_archive=False)
+        )
+
+    # #368: the same for the goal marker. Each purge clears only its own
+    # marker, so a template whose project is still archived keeps that
+    # one and still comes back when the project does.
+    if goal_ids:
+        db.session.execute(
+            update(RecurringTask)
+            .where(RecurringTask.goal_id.in_(goal_ids))
+            .values(paused_by_goal_archive=False)
         )
 
     for task in tasks:

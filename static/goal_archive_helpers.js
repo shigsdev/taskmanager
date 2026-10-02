@@ -151,10 +151,46 @@ function goalHardDeleteConfirm(goal) {
         + "and the recycle bin will not bring it back.";
 }
 
+// #368: archiving a goal pauses its running repeating tasks, so the
+// Archive confirm names them first. Same wording as /projects' (#353),
+// own copy so /goals doesn't load a projects-page file. Names are
+// prefixed: classic scripts share one global scope (#359).
+var GOAL_PAUSE_MAX_NAMED = 5;
+
+/**
+ * The templates archiving `goalIds` will pause: active ones whose goal is
+ * in the set. Mirrors the server's filter exactly
+ * (recurring_service.cascade_parent_archive), so the dialog can't promise
+ * more or less than the cascade does. A template already paused by its
+ * project's archive is inactive, so it isn't listed: the archive only
+ * adds a second marker to it.
+ */
+function templatesPausedByGoal(templates, goalIds) {
+    if (!Array.isArray(templates) || !Array.isArray(goalIds)) return [];
+    var wanted = new Set(goalIds);
+    return templates.filter(function (t) {
+        return t && t.is_active && t.goal_id && wanted.has(t.goal_id);
+    });
+}
+
+/** Confirm text for the templates `templatesPausedByGoal` returned; "" = no dialog. */
+function goalArchivePauseMessage(paused) {
+    if (!Array.isArray(paused) || paused.length === 0) return "";
+    var n = paused.length;
+    var names = paused.slice(0, GOAL_PAUSE_MAX_NAMED).map(function (t) {
+        return '"' + t.title + '"';
+    }).join(", ");
+    var more = n > GOAL_PAUSE_MAX_NAMED ? " and " + (n - GOAL_PAUSE_MAX_NAMED) + " more" : "";
+    var noun = n === 1 ? "repeating task" : "repeating tasks";
+    return "This will pause " + n + " " + noun + ": " + names + more + ". "
+        + "They resume when you unarchive the goal.";
+}
+
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         goalArchiveFilter, goalArchiveToggleLabel, goalReferenceSummary,
         goalHardDeleteState, goalHardDeleteConfirm,
+        templatesPausedByGoal, goalArchivePauseMessage,
     };
 } else if (typeof window !== "undefined") {
     window.goalArchiveHelpers = {
@@ -163,5 +199,7 @@ if (typeof module !== "undefined" && module.exports) {
         goalReferenceSummary: goalReferenceSummary,
         goalHardDeleteState: goalHardDeleteState,
         goalHardDeleteConfirm: goalHardDeleteConfirm,
+        templatesPausedByGoal: templatesPausedByGoal,
+        goalArchivePauseMessage: goalArchivePauseMessage,
     };
 }

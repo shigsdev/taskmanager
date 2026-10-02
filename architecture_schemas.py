@@ -115,6 +115,7 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "subtasks_snapshot":  {"desc": "List of subtasks to also spawn each cycle", "notes": "JSON; captured at template create/update (#26)"},
             "is_active":          {"desc": "Inactive templates don't spawn", "notes": ""},
             "paused_by_project_archive": {"desc": "Paused only because its project was archived", "notes": "Unarchiving the project resumes it; a manual resume, a move to another project, a delete, or a recycle-bin purge of its project clears it (#353, #356)"},
+            "paused_by_goal_archive": {"desc": "Paused only because its goal was archived", "notes": "Unarchiving the goal resumes it once its project isn't archived either; a manual pause/resume, a goal change, a delete, or a recycle-bin purge of its goal clears it (#368)"},
             "end_date":           {"desc": "Optional sunset date — spawn cron skips once today > end_date", "notes": "NULL = run forever (#101)"},
             "start_date":         {"desc": "Optional sunrise date — spawn cron + previews skip when target < start_date", "notes": "NULL = fire from beginning of time. Auto-set from task.due_date in _apply_repeat (#147)"},
             "goal_id":            {"desc": "Goal these spawned tasks support", "fk_target": "goals.id", "notes": "Optional. ON DELETE SET NULL (#175): purging the goal clears this rather than blocking"},

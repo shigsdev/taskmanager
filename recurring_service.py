@@ -348,8 +348,12 @@ def update_recurring(rt_id: uuid.UUID, data: dict) -> RecurringTask | None:
             rt.project_id = new_project_id
             rt.paused_by_project_archive = False
 
+    # #368: the same rule for the goal marker, on an actual change only.
     if "goal_id" in data:
-        rt.goal_id = _parse_uuid(data["goal_id"], "goal_id")
+        new_goal_id = _parse_uuid(data["goal_id"], "goal_id")
+        if new_goal_id != rt.goal_id:
+            rt.goal_id = new_goal_id
+            rt.paused_by_goal_archive = False
 
     if "notes" in data:
         rt.notes = data["notes"] or None
@@ -368,6 +372,7 @@ def update_recurring(rt_id: uuid.UUID, data: dict) -> RecurringTask | None:
         if new_active != rt.is_active:  # #353: see the project_id note above
             rt.is_active = new_active
             rt.paused_by_project_archive = False
+            rt.paused_by_goal_archive = False  # #368
 
     if "end_date" in data:  # #101 (PR30)
         rt.end_date = _parse_end_date(data["end_date"])
@@ -412,10 +417,59 @@ def delete_recurring(rt_id: uuid.UUID) -> bool:
     rt.is_active = False
     # #353: unconditionally. Delete writes the same is_active=False as
     # Pause, so a surviving flag would let unarchiving the project
-    # resurrect a template the user deleted.
+    # resurrect a template the user deleted. #368: same for the goal.
     rt.paused_by_project_archive = False
+    rt.paused_by_goal_archive = False
     db.session.commit()
     return True
+
+
+# #368: (parent FK column, this parent's marker, the other parent's marker).
+_ARCHIVE_PARENTS = {
+    "project": ("project_id", "paused_by_project_archive", "paused_by_goal_archive"),
+    "goal": ("goal_id", "paused_by_goal_archive", "paused_by_project_archive"),
+}
+
+
+def cascade_parent_archive(parent: str, parent_id: uuid.UUID, archived: bool) -> None:
+    """Pause or resume a parent's templates when it's archived or unarchived.
+
+    The one rule for both parents (#353 projects, #368 goals). Each
+    marker means "this parent is archived, and that's part of why the
+    template is paused"; a template restarts only when it has no marker
+    left. Spec: docs/design/368-goal-archive-pauses-templates.md §4.2.
+
+    Archive: running templates pause and get this parent's marker; ones
+    already paused by the OTHER parent's archive get this marker too, so
+    unarchiving that other parent alone can't wake them. A template the
+    user paused (inactive, no marker) is never touched.
+
+    Unarchive: templates with this marker and not the other resume; ones
+    with both lose only this marker and wait for the other parent. The
+    resume runs first, so it can't see rows the second update just
+    cleared.
+
+    Bulk updates, so no template is pulled into the session. Doesn't
+    commit; the callers (``_set_project_active`` / ``_set_goal_active``)
+    do.
+    """
+    if parent not in _ARCHIVE_PARENTS:
+        raise ValueError(f"unknown archive parent: {parent!r}")
+    fk, mine, other = _ARCHIVE_PARENTS[parent]
+    col = getattr(RecurringTask, fk)
+    mine_col, other_col = getattr(RecurringTask, mine), getattr(RecurringTask, other)
+
+    def _update(*where, **values):
+        RecurringTask.query.filter(col == parent_id, *where).update(
+            values, synchronize_session=False,
+        )
+
+    if archived:
+        _update(RecurringTask.is_active.is_(True), is_active=False, **{mine: True})
+        _update(other_col.is_(True), **{mine: True})
+    else:
+        _update(mine_col.is_(True), other_col.is_(False), is_active=True, **{mine: False})
+        _update(mine_col.is_(True), **{mine: False})
 
 
 # --- Spawn logic -------------------------------------------------------------

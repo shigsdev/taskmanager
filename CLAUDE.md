@@ -433,6 +433,11 @@ Report.
      whose hint is wrong or missing is the failure mode here — it was
      caught reading "1 task still point at this goal" by eye, not by a
      unit test.
+     Then #368, the same pair as /projects': archive a goal that has an
+     active repeating task — the confirm must NAME it, and after
+     accepting the template is inactive; Unarchive must ask nothing and
+     bring it back. Archive a goal with NO templates and verify there is
+     no dialog at all.
   8. **Review page**: click Keep/Freeze/Snooze, verify the card advances
      and the progress counter updates.
   9. **Settings page**: verify stats reflect the seeded data counts.
@@ -493,6 +498,8 @@ Report.
   Goals: archived filter        PASS          Goals: archived filter        PASS
   Goals: Archive/Unarchive      PASS          Goals: Archive/Unarchive      PASS
   Goals: hard-delete gating     PASS          Goals: hard-delete gating     PASS
+  Goals: archive pauses tmpl    PASS          Goals: archive pauses tmpl    PASS
+  Goals: no-tmpl archive quiet  PASS          Goals: no-tmpl archive quiet  PASS
   Projects: drag task to card   PASS          Projects: drag task to card   PASS
   Projects: archive pauses tmpl PASS          Projects: archive pauses tmpl PASS
   Projects: no-tmpl archive quiet PASS        Projects: no-tmpl archive quiet PASS

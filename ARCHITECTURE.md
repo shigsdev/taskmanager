@@ -84,8 +84,9 @@ component is added, a data flow changes, or a security boundary shifts.
   `cancellation_reason` for status=CANCELLED tasks), projects, goals,
   `global_context_files` (#336 — reference documents attached to every
   reflection), recurring tasks (with `subtasks_snapshot` JSON for #26's clone-on-
-  spawn pattern, and `paused_by_project_archive` for #353 — set when a
-  project archive pauses the template, so unarchive resumes only those),
+  spawn pattern, and `paused_by_project_archive` / `paused_by_goal_archive`
+  for #353 / #368 — set when a project or goal archive pauses the template,
+  so unarchive resumes only those, and only once neither is set),
   import log, app_logs, and `reflections` (Weekly
   Reflection transcripts + AI-proposed action audit trail, 2026-05-16;
   self-referential `continued_from_id` for #334's forked continuations,
@@ -585,6 +586,19 @@ component is added, a data flow changes, or a security boundary shifts.
   clears the flag on templates of the projects it hard-deletes (they
   stay paused; the DB SET NULLs their `project_id`). A data migration
   (`r7f8a9b0c1d2`) paused templates already sitting on archived projects.
+- **Archiving a goal pauses its repeating tasks** (#368, 2026-10-02,
+  ADR-038): `goal_service._set_goal_active` is the one writer of
+  `Goal.is_active` (`update_goal`, `delete_goal`, the reflection apply
+  path, recycle undo/restore). The pause/resume rule for both parents is
+  `recurring_service.cascade_parent_archive`, one marker per parent: a
+  template on an archived project AND an archived goal resumes only when
+  both are back. `recurring_service` clears the goal marker on an actual
+  `goal_id` change, `project_service`'s #352 goal re-point clears it on the
+  moved templates, and `purge_batch` clears it for purged goals; manual
+  pause/resume and delete clear both. `/goals` names the templates in its
+  Archive confirm (`static/goal_archive_helpers.js`, fed by
+  `GET /api/recurring`). Migration `s8a9b0c1d2e3` adds the column and
+  backfills.
 - **Archive / unarchive a goal, and a guarded hard delete** (#349,
   2026-10-01): `delete_goal` had always been a SOFT delete setting
   `is_active=False`, but the button said **Delete**, `goalsRender`

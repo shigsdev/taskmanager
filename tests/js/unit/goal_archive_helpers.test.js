@@ -35,6 +35,8 @@ const {
     goalReferenceSummary,
     goalHardDeleteState,
     goalHardDeleteConfirm,
+    templatesPausedByGoal,
+    goalArchivePauseMessage,
 } = require("../../../static/goal_archive_helpers");
 
 const live = { id: "g1", title: "Land the DTCC role", is_active: true };
@@ -240,5 +242,58 @@ describe("goalHardDeleteConfirm", () => {
 
     test("a missing title does not render undefined", () => {
         expect(goalHardDeleteConfirm(null)).toContain('"this goal"');
+    });
+});
+
+// #368: archiving a goal pauses its running repeating tasks, so the
+// Archive confirm names them first. The filter must match the server's
+// exactly (goal_id in the set AND is_active), or the dialog promises
+// more or less than the cascade does.
+describe("templatesPausedByGoal", () => {
+    const rt = (id, goal_id, is_active = true) =>
+        ({ id, title: `T${id}`, goal_id, is_active });
+
+    test("active templates on the goal only", () => {
+        const rows = [rt("1", "g1"), rt("2", "g1", false), rt("3", "g2"), rt("4", null)];
+        expect(templatesPausedByGoal(rows, ["g1"]).map((t) => t.id)).toEqual(["1"]);
+    });
+
+    test("several goals at once", () => {
+        const rows = [rt("1", "g1"), rt("2", "g2"), rt("3", "g3")];
+        expect(templatesPausedByGoal(rows, ["g1", "g3"]).map((t) => t.id))
+            .toEqual(["1", "3"]);
+    });
+
+    test("bad input is an empty list, never a throw", () => {
+        expect(templatesPausedByGoal(null, ["g1"])).toEqual([]);
+        expect(templatesPausedByGoal({ error: "x" }, ["g1"])).toEqual([]);
+        expect(templatesPausedByGoal(undefined, ["g1"])).toEqual([]);
+        expect(templatesPausedByGoal([rt("1", "g1")], [])).toEqual([]);
+        expect(templatesPausedByGoal([rt("1", "g1")], null)).toEqual([]);
+    });
+});
+
+describe("goalArchivePauseMessage", () => {
+    const named = (n) => Array.from({ length: n }, (_, i) => ({ title: String.fromCharCode(65 + i) }));
+    const TAIL = "They resume when you unarchive the goal.";
+
+    test("one template, singular", () => {
+        expect(goalArchivePauseMessage(named(1))).toBe(
+            `This will pause 1 repeating task: "A". ${TAIL}`);
+    });
+
+    test("two templates, plural", () => {
+        expect(goalArchivePauseMessage(named(2))).toBe(
+            `This will pause 2 repeating tasks: "A", "B". ${TAIL}`);
+    });
+
+    test("more than five names five and counts the rest", () => {
+        expect(goalArchivePauseMessage(named(7))).toBe(
+            `This will pause 7 repeating tasks: "A", "B", "C", "D", "E" and 2 more. ${TAIL}`);
+    });
+
+    test("none means no dialog", () => {
+        expect(goalArchivePauseMessage([])).toBe("");
+        expect(goalArchivePauseMessage(null)).toBe("");
     });
 });

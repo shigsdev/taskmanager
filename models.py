@@ -358,6 +358,17 @@ class RecurringTask(db.Model):
     paused_by_project_archive: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sql_false()
     )
+    # #368 (2026-10-02): the same marker for the template's GOAL. Each
+    # marker means "this parent is archived, and that's part of why the
+    # template is paused"; it restarts only when neither is left, so a
+    # template on an archived project AND an archived goal stays paused
+    # until both come back. Set by recurring_service.cascade_parent_archive
+    # (via goal_service._set_goal_active); cleared by a manual pause/resume,
+    # a goal change, a delete, or a recycle-bin purge of the goal. See
+    # docs/design/368-goal-archive-pauses-templates.md §4.
+    paused_by_goal_archive: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sql_false()
+    )
     # #101 (PR30, 2026-04-26): optional sunset date. When set, the
     # spawn cron skips this template once today > end_date. Lets the
     # user set up a finite recurring (e.g. "stretch every morning

@@ -88,6 +88,18 @@ they're displayed:
   templates of the projects it hard-deletes, because that promise can't
   be kept once the project is gone; it leaves them paused rather than
   firing into no project. Spec: `docs/design/356-recycle-paths-follow-archive-rule.md`.
+- Goals follow the same rule (#368, 2026-10-02). `goal_service._set_goal_active`
+  is the one writer of `Goal.is_active` (`update_goal`, `delete_goal`, the
+  reflection apply path, recycle undo/restore). A template can sit on an
+  archived project AND an archived goal, so each parent has its own marker
+  (`paused_by_project_archive`, `paused_by_goal_archive`) and the pause /
+  resume rule lives once, in `recurring_service.cascade_parent_archive`:
+  archiving pauses running templates and adds its marker to ones the other
+  parent already paused; unarchiving clears its marker and resumes only a
+  template with no marker left. Each override or purge clears only the
+  marker it concerns, and clearing never resumes. `/goals` names the
+  templates in its Archive confirm. Spec:
+  `docs/design/368-goal-archive-pauses-templates.md`.
 
 ## Alternatives considered
 
@@ -110,6 +122,9 @@ they're displayed:
 - `tests/test_project_archive_templates.py`: the cascade on every path,
   link preservation, flag hygiene, the backfill SQL, and the recycle-bin
   paths (#356: undo pauses, restore resumes, purge clears the flag).
+- `tests/test_goal_archive_templates.py` (#368): the goal cascade on every
+  path, both overlap orders, per-marker hygiene, the backfill SQL, and the
+  goal recycle-bin paths.
 - `tests/test_projects_api.py::test_delete_preserves_task_project_fk`
   and `tests/test_project_goal_cascade.py::test_deleting_a_project_preserves_task_project_and_goal`:
   the two former PR63 tests, rewritten to the new rule.

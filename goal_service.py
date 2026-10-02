@@ -18,6 +18,7 @@ from models import (
     WeeklyFocus,
     db,
 )
+from recurring_service import cascade_parent_archive
 from utils import (
     ValidationError,  # noqa: F401 — re-exported for API layer
     parse_int,
@@ -133,7 +134,7 @@ def update_goal(goal_id: uuid.UUID, data: dict) -> Goal | None:
     if "is_active" in data:
         if not isinstance(data["is_active"], bool):
             raise ValidationError("is_active must be a boolean", "is_active")
-        goal.is_active = data["is_active"]
+        _set_goal_active(goal, data["is_active"])
 
     unknown = set(data) - _UPDATABLE_FIELDS
     if unknown:
@@ -154,10 +155,33 @@ def delete_goal(goal_id: uuid.UUID) -> bool:
     goal = get_goal(goal_id)
     if goal is None:
         return False
-    goal.is_active = False
+    _set_goal_active(goal, False)
     goal.batch_id = None
     db.session.commit()
     return True
+
+
+def _set_goal_active(goal: Goal, active: bool) -> None:
+    """The one place a goal's ``is_active`` changes (#368).
+
+    Archiving pauses the goal's running repeating templates and marks
+    them ``paused_by_goal_archive``; unarchiving resumes the marked ones
+    whose project isn't archived too. The rule is shared with projects
+    in ``recurring_service.cascade_parent_archive``, the same way #353's
+    ``project_service._set_project_active`` works.
+
+    Service layer, not route, because the reflection apply path calls
+    ``update_goal`` / ``delete_goal`` directly, and the recycle bin's
+    ``undo_batch`` / ``restore_batch`` call this.
+
+    Only on an actual transition: a re-sent ``is_active: false`` (a
+    second tab, a double click, a second DELETE) must not re-pause a
+    template the user resumed by hand. Doesn't commit; callers do.
+    """
+    if goal.is_active == active:
+        return
+    goal.is_active = active
+    cascade_parent_archive("goal", goal.id, not active)
 
 
 # #349 (2026-10-01): the hard delete, and the guard that makes it safe.
