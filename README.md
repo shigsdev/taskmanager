@@ -520,6 +520,12 @@ every commit (~200ms) and blocks any potential secret before it hits
 git history. Belt-and-braces on top of gate 10 in `run_all_gates.sh`.
 See ADR-022 for the rationale. Emergency bypass: `git commit --no-verify`.
 
+**Reading the backlog:** `BACKLOG.md` is long. To browse it, run
+`python scripts/render_backlog_html.py` from the repo root and open the
+`backlog.html` it writes: open and in-progress items at the top grouped by
+section, every done item in one collapsed group at the bottom, plus a
+search box. The file is gitignored; re-run the script to refresh it.
+
 **Token rotation procedure:** if gate 11 catches an embedded credential
 in a remote URL (e.g. `https://shigsdev:github_pat_…@github.com/...`),
 follow the step-by-step in
