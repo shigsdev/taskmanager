@@ -412,6 +412,11 @@ Report.
      inactive; Unarchive must ask nothing and bring it back (#353).
      Archive a project with NO templates and verify there is no dialog
      at all — the quiet case is the easy one to regress into a nag.
+     #372: click a card task line — the task panel opens and the project
+     panel does NOT. Open a project, click a task in its panel list —
+     the task panel stacks on top, a save refreshes that list without a
+     reload, and closing returns to the project panel. On mobile a tap
+     opens the panel and a long-press still drags instead.
   7. **Goals page**: verify goal cards show progress bars with correct task
      counts. Filter by category/priority/status, verify results change.
      Expand a card's `Projects (N)` toggle, drag a project chip onto
@@ -438,6 +443,10 @@ Report.
      accepting the template is inactive; Unarchive must ask nothing and
      bring it back. Archive a goal with NO templates and verify there is
      no dialog at all.
+     #372: open a goal and click a Linked Tasks row — the task panel
+     stacks on top; a save refreshes the goal's list without a reload,
+     and closing returns to the goal panel. Ticking a row's checkbox
+     must still only complete it, never open the panel.
   8. **Review page**: click Keep/Freeze/Snooze, verify the card advances
      and the progress counter updates.
   9. **Settings page**: verify stats reflect the seeded data counts.
@@ -504,9 +513,11 @@ Report.
   Goals: hard-delete gating     PASS          Goals: hard-delete gating     PASS
   Goals: archive pauses tmpl    PASS          Goals: archive pauses tmpl    PASS
   Goals: no-tmpl archive quiet  PASS          Goals: no-tmpl archive quiet  PASS
+  Goals: linked task opens panel PASS         Goals: linked task opens panel PASS
   Projects: drag task to card   PASS          Projects: drag task to card   PASS
   Projects: archive pauses tmpl PASS          Projects: archive pauses tmpl PASS
   Projects: no-tmpl archive quiet PASS        Projects: no-tmpl archive quiet PASS
+  Projects: task line opens panel PASS        Projects: task line opens panel PASS
   Review: Keep                  PASS          Review: Keep                  PASS
   Review: Freeze                PASS          Review: Freeze                PASS
   Review: Snooze                PASS          Review: Snooze                PASS
