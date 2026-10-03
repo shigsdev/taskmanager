@@ -44,6 +44,9 @@ const PROJECT_TASKS_INLINE_LIMIT = 5;  // collapse threshold
 // --- Init --------------------------------------------------------------------
 
 async function projectsInit() {
+    // #372: this page hosts the task detail panel (#270 panel-only mode),
+    // so app.js loadTasks() hands every panel mutation to this hook.
+    window.taskDetailAfterSave = projectsAfterTaskSave;
     await projectsLoad();
     projectsSetupFilters();
     projectsSetupDetailPanel();
@@ -97,6 +100,33 @@ async function projectsLoad() {
     }
 
     projectsRender();
+}
+
+// #372: after a save / complete / cancel / delete from the task panel,
+// reload the page and, if the project panel is still open behind the task
+// panel, re-render only its task list — re-running projectDetailOpen
+// would reset any field the user is mid-way through editing.
+async function projectsAfterTaskSave() {
+    await projectsLoad();
+    const overlay = document.getElementById("projectDetailOverlay");
+    const id = document.getElementById("projectId").value;
+    if (!id || overlay.style.display === "none") return;
+    projectRenderSideTasks(id);
+}
+
+// #372: a task line (card or side panel) is a button that opens the task
+// detail panel. Enter/Space only when aimed at the line itself.
+function projectTaskLineAffordance(li, task, onOpen) {
+    li.tabIndex = 0;
+    li.setAttribute("role", "button");
+    li.setAttribute("aria-label", `Open task: ${task.title}`);
+    li.addEventListener("keydown", (e) => {
+        if (e.target !== li) return;
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        e.stopPropagation();
+        onOpen();
+    });
 }
 
 // --- Rendering ---------------------------------------------------------------
@@ -538,7 +568,20 @@ function projectCardEl(project) {
             if (i >= initialShow) li.style.display = "none";
             li.textContent = t.title;
             li.title = t.title;
-            li.addEventListener("click", (e) => e.stopPropagation());
+            // The stop keeps the card's own click (open the project
+            // panel) from firing too. #372: the line opens the task
+            // panel — unless this click is the tail of a touch
+            // long-press that started a #344 drag.
+            li.addEventListener("click", (e) => {
+                e.stopPropagation();
+                if (!window.projectTaskDragHelpers.taskLineClickOpens(
+                    _touchLongPressAt, Date.now())) {
+                    _touchLongPressAt = null;
+                    return;
+                }
+                taskDetailOpen(t);
+            });
+            projectTaskLineAffordance(li, t, () => taskDetailOpen(t));
             // #344 (2026-09-30): the task line is the drag source for
             // moving a task to another project. Archived tasks stay put
             // — dragging one into another project would pad that
@@ -704,8 +747,20 @@ function projectDetailOpen(project) {
     document.getElementById("projectPriority").value = project.priority || "";
     populateGoalDropdown(project.goal_id);
 
-    // Task summary.
-    const counts = projectTaskCounts[project.id] || { total: 0, active: 0 };
+    projectRenderSideTasks(project.id);
+
+    // Archive toggle label flips based on current state.
+    const archiveBtn = document.getElementById("projectArchiveToggle");
+    archiveBtn.style.display = "";
+    archiveBtn.textContent = project.is_active ? "Archive" : "Unarchive";
+
+    document.getElementById("projectDetailOverlay").style.display = "";
+}
+
+// Task summary + the panel's task list. Split out of projectDetailOpen
+// (#372) so a save from the stacked task panel can refresh just this part.
+function projectRenderSideTasks(projectId) {
+    const counts = projectTaskCounts[projectId] || { total: 0, active: 0 };
     const summary = document.getElementById("projectTaskSummary");
     document.getElementById("projectTaskCount").textContent = counts.total;
     document.getElementById("projectTaskPlural").textContent = counts.total === 1 ? "" : "s";
@@ -716,27 +771,24 @@ function projectDetailOpen(project) {
     // see project detail.
     const taskListWrap = document.getElementById("projectTaskListWrap");
     const taskList = document.getElementById("projectTaskList");
-    const tasks = projectTasksById[project.id] || [];
-    taskList.innerHTML = "";
+    const tasks = projectTasksById[projectId] || [];
+    taskList.replaceChildren();
     if (tasks.length > 0) {
         for (const t of tasks) {
             const li = document.createElement("li");
             li.className = "project-side-task" + (t.status === "archived" ? " done" : "");
             li.textContent = t.title;
             li.title = t.title;
+            // #372: opens the task panel, stacked on this one. Not
+            // draggable, so no long-press guard.
+            li.addEventListener("click", () => taskDetailOpen(t));
+            projectTaskLineAffordance(li, t, () => taskDetailOpen(t));
             taskList.appendChild(li);
         }
         taskListWrap.style.display = "";
     } else {
         taskListWrap.style.display = "none";
     }
-
-    // Archive toggle label flips based on current state.
-    const archiveBtn = document.getElementById("projectArchiveToggle");
-    archiveBtn.style.display = "";
-    archiveBtn.textContent = project.is_active ? "Archive" : "Unarchive";
-
-    document.getElementById("projectDetailOverlay").style.display = "";
 }
 
 function projectDetailClose() {
@@ -1032,6 +1084,10 @@ async function _projectsApplyTaskMove(task, project) {
 let _touchDrag = null;        // { li, task, startY }
 let _touchLongPress = null;
 let _touchStart = { x: 0, y: 0 };
+// #372: Date.now() when the last long-press timer fired. A touch browser
+// can still send a click when that finger lifts; taskLineClickOpens uses
+// this to keep that click from opening the task panel.
+let _touchLongPressAt = null;
 
 function _projectsTouchTargets() {
     return Array.from(
@@ -1048,6 +1104,7 @@ function onTaskTouchStart(e) {
     _touchStart = { x: t.clientX, y: t.clientY };
     _touchLongPress = setTimeout(function () {
         _touchLongPress = null;
+        _touchLongPressAt = Date.now();
         const task = _projectsTaskById(li.dataset.taskId);
         if (!task) return;
         // Read the stored coords, not the Touch object — it may be

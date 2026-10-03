@@ -170,6 +170,10 @@
         </form>
     </div>
 </div>
+{# #372: the task detail panel, so a task line opens in place. After
+   #projectDetailOverlay on purpose: both overlays share z-index 200, and
+   the later one paints on top, so the task panel stacks over this one. #}
+{% include "_task_detail_panel.html" %}
 {% endblock %}
 
 {% block scripts %}

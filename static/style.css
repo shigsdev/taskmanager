@@ -2178,6 +2178,21 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     background: var(--surface-sunk, #f7f7f7);
     border-radius: 3px;
 }
+/* #372: a side-panel task line opens the task panel. Focus ring comes
+   from the #294 `[tabindex]:focus-visible` baseline. (Card lines keep
+   #344's grab cursor: they are drag handles and click targets both.) */
+.project-side-task[role="button"] { cursor: pointer; }
+.project-side-task[role="button"]:hover {
+    background: var(--surface, #fff);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+@media (max-width: 767px) {
+    .project-side-task[role="button"] {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+    }
+}
 .project-side-task.done {
     text-decoration: line-through;
     color: var(--text-muted, #999);
