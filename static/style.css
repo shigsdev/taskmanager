@@ -2473,6 +2473,12 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     height: 15px;
 }
 .linked-task-title { flex: 1; }
+/* #372: a linked task row opens the task panel. Focus ring comes from
+   the #294 `[tabindex]:focus-visible` baseline. */
+.linked-task-row[role="button"] { cursor: pointer; }
+@media (max-width: 700px) {
+    .linked-task-row[role="button"] { min-height: 44px; }
+}
 .linked-task-title.completed {
     text-decoration: line-through;
     color: var(--text-muted);

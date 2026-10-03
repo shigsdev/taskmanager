@@ -6074,3 +6074,227 @@ test.describe("/completed lists completed tasks on load (#358)", () => {
         }
     });
 });
+
+test.describe("Goals - a linked task opens the task panel (#372)", () => {
+    // #372: the goal panel's Linked Tasks list rendered each task as inert
+    // text. goals.html never included the task detail panel markup, so
+    // there was nothing to open. Now the row opens the panel, stacked on
+    // top of the goal panel (user decision 2026-10-03), and a save
+    // refreshes the still-open goal panel through window.taskDetailAfterSave.
+    //
+    // Persisted state is read back through the API wherever a save is
+    // involved (#347: a test that watches the UI alone can pass while the
+    // request fails).
+
+    const stamp = () =>
+        `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    async function makeGoal(request, s, suffix = "") {
+        const r = await request.post("/api/goals", {
+            data: { title: `E2E 372 goal ${s}${suffix}`, category: "work",
+                    priority: "should" },
+        });
+        expect(r.ok()).toBe(true);
+        return r.json();
+    }
+
+    async function fixture(request, { secondGoal = false } = {}) {
+        const s = stamp();
+        const goal = await makeGoal(request, s);
+        const other = secondGoal ? await makeGoal(request, s, " B") : null;
+        const t = await request.post("/api/tasks", {
+            data: { title: `E2E 372 task ${s}`, type: "work", tier: "today",
+                    goal_id: goal.id },
+        });
+        expect(t.ok()).toBe(true);
+        const task = await t.json();
+        return { goal, other, task };
+    }
+
+    // DELETE on a task is a soft delete that keeps goal_id, and
+    // hard_delete_goal refuses while any row points at the goal, so the
+    // link is nulled first.
+    async function cleanup(request, { goal, other, task }) {
+        await request.patch(`/api/tasks/${task.id}`,
+                            { data: { goal_id: null } });
+        await request.delete(`/api/tasks/${task.id}`);
+        for (const g of [goal, other]) {
+            if (!g) continue;
+            await request.delete(`/api/goals/${g.id}`);
+            await request.delete(`/api/goals/${g.id}/permanent`);
+        }
+    }
+
+    const linkedRow = (page, title) =>
+        page.locator("#linkedTasksList .linked-task-row")
+            .filter({ hasText: title });
+
+    async function openGoal(page, goalId, { filter } = {}) {
+        await page.goto("/goals?nosw=1");
+        await page.waitForLoadState("networkidle");
+        if (filter) await page.selectOption("#filterArchived", filter);
+        await page.locator(`.goal-card[data-goal-id="${goalId}"]`).click();
+        await expect(page.locator("#goalDetailOverlay")).toBeVisible();
+    }
+
+    const taskPatch = (page, taskId) => page.waitForResponse((r) =>
+        r.url().endsWith(`/api/tasks/${taskId}`)
+        && r.request().method() === "PATCH");
+
+    const apiTask = async (request, id) =>
+        (await request.get(`/api/tasks/${id}`)).json();
+
+    test("clicking a linked task stacks the task panel on the goal panel", async ({
+        page, request,
+    }) => {
+        const fx = await fixture(request);
+        try {
+            await openGoal(page, fx.goal.id);
+            await linkedRow(page, fx.task.title).click();
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+            await expect(page.locator("#detailTitle"))
+                .toHaveValue(fx.task.title);
+
+            // Stacked, not underneath: the topmost element at the task
+            // panel's centre belongs to the task overlay. A template that
+            // moved the include above #goalDetailOverlay would flip this.
+            const onTop = await page.evaluate(() => {
+                const r = document.getElementById("detailPanel")
+                    .getBoundingClientRect();
+                const el = document.elementFromPoint(
+                    r.left + r.width / 2, r.top + Math.min(r.height / 2, 200));
+                return !!(el && el.closest("#detailOverlay"));
+            });
+            expect(onTop).toBe(true);
+
+            await page.locator("#detailClose").click();
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+            await expect(page.locator("#goalDetailOverlay")).toBeVisible();
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("saving from the panel refreshes the open goal panel", async ({
+        page, request,
+    }) => {
+        const fx = await fixture(request);
+        const renamed = `${fx.task.title} renamed`;
+        try {
+            await openGoal(page, fx.goal.id);
+            await linkedRow(page, fx.task.title).click();
+            await page.locator("#detailTitle").fill(renamed);
+            const saved = taskPatch(page, fx.task.id);
+            await page.locator("#detailForm button[type=submit]").click();
+            expect((await saved).ok()).toBe(true);
+
+            // No page.reload(): the goal panel's own list re-rendered.
+            await expect(page.locator("#goalDetailOverlay")).toBeVisible();
+            await expect(linkedRow(page, renamed)).toHaveCount(1);
+            expect((await apiTask(request, fx.task.id)).title).toBe(renamed);
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("Enter on a focused linked row opens the panel", async ({
+        page, request,
+    }) => {
+        const fx = await fixture(request);
+        try {
+            await openGoal(page, fx.goal.id);
+            const row = linkedRow(page, fx.task.title);
+            await expect(row).toHaveAttribute("role", "button");
+            await expect(row).toHaveAttribute("tabindex", "0");
+            await expect(row).toHaveAttribute(
+                "aria-label", `Open task: ${fx.task.title}`);
+            await row.focus();
+            await page.keyboard.press("Enter");
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("checkbox completes without opening the panel", async ({
+        page, request,
+    }) => {
+        // The checkbox's click bubbles to the row; without a stop it
+        // would complete the task AND pop the panel open.
+        const fx = await fixture(request);
+        try {
+            await openGoal(page, fx.goal.id);
+            await linkedRow(page, fx.task.title)
+                .locator('input[type="checkbox"]').click();
+            await expect.poll(async () =>
+                (await apiTask(request, fx.task.id)).status).toBe("archived");
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("Space on the checkbox does not open the panel", async ({
+        page, request,
+    }) => {
+        // A keydown on the focused checkbox bubbles to the row's keydown
+        // handler, which must ignore anything not aimed at the row itself.
+        const fx = await fixture(request);
+        try {
+            await openGoal(page, fx.goal.id);
+            await linkedRow(page, fx.task.title)
+                .locator('input[type="checkbox"]').focus();
+            await page.keyboard.press("Space");
+            await expect.poll(async () =>
+                (await apiTask(request, fx.task.id)).status).toBe("archived");
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("re-goaling a task removes it from the open goal panel", async ({
+        page, request,
+    }) => {
+        const fx = await fixture(request, { secondGoal: true });
+        try {
+            await openGoal(page, fx.goal.id);
+            await expect(page.locator("#linkedTaskCount")).toHaveText("1");
+            await linkedRow(page, fx.task.title).click();
+            await page.selectOption("#detailGoal", fx.other.id);
+            const saved = taskPatch(page, fx.task.id);
+            await page.locator("#detailForm button[type=submit]").click();
+            expect((await saved).ok()).toBe(true);
+
+            await expect(linkedRow(page, fx.task.title)).toHaveCount(0);
+            await expect(page.locator("#linkedTaskCount")).toHaveText("0");
+            expect((await apiTask(request, fx.task.id)).goal_id)
+                .toBe(fx.other.id);
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("#355: a task on an archived goal keeps its goal after a save", async ({
+        page, request,
+    }) => {
+        // #372 is the first route into the panel from a page that LISTS
+        // archived goals, so #355's guarantee is asserted from here too.
+        // DELETE /api/goals/<id> is the Archive button's soft delete.
+        const fx = await fixture(request);
+        try {
+            const ar = await request.delete(`/api/goals/${fx.goal.id}`);
+            expect(ar.status()).toBe(204);
+            await openGoal(page, fx.goal.id, { filter: "archived" });
+            await linkedRow(page, fx.task.title).click();
+            await expect(page.locator("#detailGoal")).toHaveValue(fx.goal.id);
+            const saved = taskPatch(page, fx.task.id);
+            await page.locator("#detailForm button[type=submit]").click();
+            expect((await saved).ok()).toBe(true);
+            expect((await apiTask(request, fx.task.id)).goal_id)
+                .toBe(fx.goal.id);
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+});
