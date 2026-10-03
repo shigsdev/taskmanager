@@ -958,6 +958,27 @@ test.describe("Prod smoke — feature surfaces", () => {
             expect(layout.qaWidthPct).toBeGreaterThan(0.85);
         }
     });
+
+    test("/completed boots its list (#358)", async ({ page }) => {
+        // #358: init()'s board check missed /completed's archived list, so
+        // the page took #270's panel-only branch and never called
+        // loadCompletedTasks() — no cards AND no empty state until the 55s
+        // poll. Data-independent: whatever prod holds, one of the two
+        // outcomes must be on screen well before that poll could fire.
+        await page.goto("/completed?nosw=1");
+        await expect.poll(async () => page.evaluate(() => {
+            const cards = document.querySelectorAll(
+                "#tierDetailList .task-card").length;
+            const count = document.getElementById("tierDetailCount");
+            const empty = document.getElementById("tierDetailEmpty");
+            if (cards > 0) {
+                return String(cards) === count.textContent.trim()
+                    ? "listed" : `count ${count.textContent} != ${cards} cards`;
+            }
+            return empty && getComputedStyle(empty).display !== "none"
+                ? "empty-state" : "nothing rendered";
+        }), { timeout: 10000 }).toMatch(/^(listed|empty-state)$/);
+    });
 });
 
 test.describe("Prod smoke — admin endpoints (read-only checks)", () => {
