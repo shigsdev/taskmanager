@@ -28,6 +28,7 @@ const {
     projectTaskDropDecision,
     projectTaskMovePayload,
     projectCardIdUnderPoint,
+    taskLineClickOpens,
 } = require("../../../static/project_task_drag_helpers");
 
 const workTask = { id: "t1", title: "Draft plan", type: "work", project_id: "p1" };
@@ -176,5 +177,28 @@ describe("projectCardIdUnderPoint — the touch path's hit test", () => {
         expect(projectCardIdUnderPoint(null, 10, 10)).toBe(null);
         expect(projectCardIdUnderPoint(undefined, 10, 10)).toBe(null);
         expect(projectCardIdUnderPoint([{}, { id: "x" }, null], 10, 10)).toBe(null);
+    });
+});
+
+// #372: a task line on a project card opens the task panel on click.
+// On touch, releasing a long-press (the #344 drag gesture) can still
+// synthesize a click, which must NOT open the panel.
+describe("taskLineClickOpens (#372)", () => {
+    test("opens when no long-press has fired", () => {
+        expect(taskLineClickOpens(null, 1000)).toBe(true);
+        expect(taskLineClickOpens(undefined, 1000)).toBe(true);
+    });
+
+    test("swallows a click right after a long-press", () => {
+        expect(taskLineClickOpens(1000, 1000)).toBe(false);
+        expect(taskLineClickOpens(1000, 1700)).toBe(false);
+    });
+
+    test("opens once the window has passed", () => {
+        expect(taskLineClickOpens(1000, 1701)).toBe(true);
+    });
+
+    test("opens for a stale long-press", () => {
+        expect(taskLineClickOpens(1000, 60000)).toBe(true);
     });
 });
