@@ -5362,10 +5362,10 @@ test.describe("An archived link stays representable (#355)", () => {
 
     // Opens the completed task through the BOARD's Completed section, not
     // the dedicated /completed page. That is the surface the user actually
-    // reaches these tasks through, and /completed currently renders an
-    // empty list on main — init()'s panel-only branch (#270's `isBoard`
-    // gate) returns before loadCompletedTasks(). Filed separately; it is
-    // not #355 and absorbing it here would turn one row into two.
+    // reaches these tasks through. (When #355 shipped, /completed rendered
+    // an empty list — init()'s panel-only branch, #270's `isBoard` gate,
+    // returned before loadCompletedTasks(). That was filed and fixed
+    // separately as #358; this test stays on the board's section.)
     async function openCompletedTask(page, taskId) {
         await page.goto("/?nosw=1");
         await page.waitForLoadState("networkidle");
@@ -6005,6 +6005,72 @@ test.describe("Import undo names the repeating tasks it pauses (#369) @noviewpor
         } finally {
             await page.unroute("**/api/recycle-bin/impact/**");
             await cleanup(request, fx);
+        }
+    });
+});
+
+test.describe("/completed lists completed tasks on load (#358)", () => {
+    // #358: init()'s "is this the board?" test only matched
+    // `.task-list[data-tier]`, so /completed (whose list carries
+    // data-archived-list instead) took #270's panel-only branch and
+    // returned before loadCompletedTasks() and setupNavTabs(). The list
+    // filled only on the 55s poll, and the view tabs had no handler.
+    async function completedPair(request) {
+        const ids = {};
+        for (const type of ["work", "personal"]) {
+            const resp = await request.post("/api/tasks", {
+                data: { title: `BUG358 ${type} card`, type, tier: "today" },
+            });
+            const task = await resp.json();
+            await request.post(`/api/tasks/${task.id}/complete`);
+            ids[type] = task.id;
+        }
+        return ids;
+    }
+
+    const card = (page, id) =>
+        page.locator(`#tierDetailList .task-card[data-id="${id}"]`);
+
+    test("cards and count render on load, not on the poll", async ({
+        page, request,
+    }) => {
+        const ids = await completedPair(request);
+        try {
+            await page.goto("/completed?nosw=1");
+            // 5s is far inside the 55s freshness poll, so the poll can't
+            // be what makes this pass.
+            await expect(card(page, ids.work)).toBeVisible({ timeout: 5000 });
+            await expect(card(page, ids.personal)).toBeVisible();
+            const rendered = await page
+                .locator("#tierDetailList .task-card").count();
+            await expect(page.locator("#tierDetailCount"))
+                .toHaveText(String(rendered));
+        } finally {
+            await request.delete(`/api/tasks/${ids.work}`);
+            await request.delete(`/api/tasks/${ids.personal}`);
+        }
+    });
+
+    test("the Work / All view tabs filter the list", async ({
+        page, request,
+    }) => {
+        const ids = await completedPair(request);
+        try {
+            await page.goto("/completed?nosw=1");
+            await expect(card(page, ids.personal)).toBeVisible({ timeout: 5000 });
+
+            await page.locator('.view-filter-btn[data-view="work"]').click();
+            await expect(card(page, ids.work)).toBeVisible();
+            await expect(card(page, ids.personal)).toHaveCount(0);
+            await expect(page.locator('.view-filter-btn[data-view="work"]'))
+                .toHaveClass(/active/);
+
+            await page.locator('.view-filter-btn[data-view="all"]').click();
+            await expect(card(page, ids.work)).toBeVisible();
+            await expect(card(page, ids.personal)).toBeVisible();
+        } finally {
+            await request.delete(`/api/tasks/${ids.work}`);
+            await request.delete(`/api/tasks/${ids.personal}`);
         }
     });
 });

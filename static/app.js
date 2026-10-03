@@ -237,7 +237,14 @@ async function init() {
     // by its tier lists; when absent, wire up JUST the panel — the goal /
     // project dropdowns plus the panel's own handlers — and let the host
     // page drive refresh via window.taskDetailAfterSave (see loadTasks).
-    const isBoard = !!document.querySelector('.task-list[data-tier]');
+    // #358: /completed is board-shaped too — its list carries
+    // data-archived-list instead of data-tier (so renderBoard() never
+    // treats "completed" as a tier). Matching only data-tier sent it down
+    // the panel-only branch, skipping loadCompletedTasks() and
+    // setupNavTabs(): an empty page until the 55s poll, and dead tabs.
+    const isBoard = !!document.querySelector(
+        '.task-list[data-tier], .task-list[data-archived-list]'
+    );
     if (!isBoard) {
         // Preload the active-task cache so the panel's parent-picker chip and
         // subtask lookups resolve names from the FIRST open (the host page —
