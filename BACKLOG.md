@@ -988,6 +988,14 @@ The script preserves operator-added prose across re-renders. -->
 | `tech-debt/dependency-drift/pip-dep-filelock-stuck-at-3.32.7-latest-is-4.0.1-1-major-version-s-behind` | pip dep 'filelock' stuck at 3.32.7 — latest is 4.0.1 (1 major version(s) behind) | 2026-09-19 | 2026-09-19 | 🟢 auto-detected resolved 2026-09-26 |
 <!-- audit-row: tech-debt/dependency-drift/pip-dep-gunicorn-stuck-at-22.0.0-latest-is-26.0.0-4-major-version-s-behind -->
 | `tech-debt/dependency-drift/pip-dep-gunicorn-stuck-at-22.0.0-latest-is-26.0.0-4-major-version-s-behind` | pip dep 'gunicorn' stuck at 22.0.0 — latest is 26.0.0 (4 major version(s) behind) | 2026-05-28 | 2026-05-28 | 🟢 auto-detected resolved 2026-05-30 |
+<!-- audit-row: tech-debt/stale-tests/tests-test_checklist_notes.py -->
+| `tech-debt/stale-tests/tests-test_checklist_notes.py` | **tests/test_checklist_notes.py** — last touched 2026-04-05 (181 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-03 | 2026-10-03 |  |
+<!-- audit-row: tech-debt/stale-tests/tests-test_inbox_triage.py -->
+| `tech-debt/stale-tests/tests-test_inbox_triage.py` | **tests/test_inbox_triage.py** — last touched 2026-04-05 (181 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-03 | 2026-10-03 |  |
+<!-- audit-row: tech-debt/stale-tests/tests-test_models.py -->
+| `tech-debt/stale-tests/tests-test_models.py` | **tests/test_models.py** — last touched 2026-04-05 (181 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-03 | 2026-10-03 |  |
+<!-- audit-row: tech-debt/stale-tests/tests-test_smoke.py -->
+| `tech-debt/stale-tests/tests-test_smoke.py` | **tests/test_smoke.py** — last touched 2026-04-05 (181 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-03 | 2026-10-03 |  |
 <!-- autofile-section-end -->
 
 ## Resolved (newest first)
