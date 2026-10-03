@@ -354,8 +354,20 @@ function goalDetailClose() {
 // reload the page's data and, if the goal panel is still open behind the
 // task panel, re-render its linked list and re-check the hard-delete
 // hint (a task that left this goal can change what still points at it).
+//
+// app.js loadTasks() also lands here from its 60s poll, the tab-visible
+// refresh and cross-tab broadcasts, so this is a page-wide refresh: it
+// must never re-render under a live #343 project drag (the chip being
+// dragged would be swapped out from under the pointer), and a failed
+// fetch must not become an unhandled rejection every minute.
 async function goalsAfterTaskSave() {
-    await goalsLoad();
+    if (_dragProject || _goalTouchDrag) return;
+    try {
+        await goalsLoad();
+    } catch (err) {
+        console.warn("Goals refresh failed:", err);
+        return;
+    }
     const overlay = document.getElementById("goalDetailOverlay");
     const id = document.getElementById("goalId").value;
     if (!id || overlay.style.display === "none") return;

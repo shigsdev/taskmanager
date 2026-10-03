@@ -40,6 +40,10 @@ let projectTaskCounts = {};  // project_id -> { total, active }
 // re-fetching.
 let projectTasksById = {};  // project_id -> Task[] (active first)
 const PROJECT_TASKS_INLINE_LIMIT = 5;  // collapse threshold
+// Cards the user expanded with "Show all". Held outside the DOM (#372)
+// so an expansion survives the re-render that app.js's poll now drives
+// through projectsAfterTaskSave — same pattern as goals.js _goalsExpanded.
+const _projectsExpanded = new Set();
 
 // --- Init --------------------------------------------------------------------
 
@@ -106,8 +110,19 @@ async function projectsLoad() {
 // reload the page and, if the project panel is still open behind the task
 // panel, re-render only its task list — re-running projectDetailOpen
 // would reset any field the user is mid-way through editing.
+//
+// app.js loadTasks() also lands here from its 60s poll, the tab-visible
+// refresh and cross-tab broadcasts, so this is a page-wide refresh: it
+// must never re-render under a live #344 task drag, and a failed fetch
+// must not become an unhandled rejection every minute.
 async function projectsAfterTaskSave() {
-    await projectsLoad();
+    if (_dragTask || _touchDrag) return;
+    try {
+        await projectsLoad();
+    } catch (err) {
+        console.warn("Projects refresh failed:", err);
+        return;
+    }
     const overlay = document.getElementById("projectDetailOverlay");
     const id = document.getElementById("projectId").value;
     if (!id || overlay.style.display === "none") return;
@@ -561,11 +576,12 @@ function projectCardEl(project) {
         const initialShow = tasks.length <= PROJECT_TASKS_INLINE_LIMIT
             ? tasks.length
             : PROJECT_TASKS_INLINE_LIMIT;
+        let expanded = _projectsExpanded.has(project.id);
         for (let i = 0; i < tasks.length; i++) {
             const t = tasks[i];
             const li = document.createElement("li");
             li.className = "project-card-task" + (t.status === "archived" ? " done" : "");
-            if (i >= initialShow) li.style.display = "none";
+            if (i >= initialShow && !expanded) li.style.display = "none";
             li.textContent = t.title;
             li.title = t.title;
             // The stop keeps the card's own click (open the project
@@ -573,6 +589,9 @@ function projectCardEl(project) {
             // panel — unless this click is the tail of a touch
             // long-press that started a #344 drag.
             li.addEventListener("click", (e) => {
+                // In Select mode the click belongs to the card (it
+                // toggles selection); let it through untouched.
+                if (projectsBulkMode) return;
                 e.stopPropagation();
                 if (!window.projectTaskDragHelpers.taskLineClickOpens(
                     _touchLongPressAt, Date.now())) {
@@ -602,11 +621,12 @@ function projectCardEl(project) {
             toggle.type = "button";
             toggle.className = "btn-sm project-card-toggle";
             const hidden = tasks.length - initialShow;
-            toggle.textContent = `Show all (${tasks.length})`;
-            let expanded = false;
+            toggle.textContent = expanded ? "Hide" : `Show all (${tasks.length})`;
             toggle.addEventListener("click", (e) => {
                 e.stopPropagation();
                 expanded = !expanded;
+                if (expanded) _projectsExpanded.add(project.id);
+                else _projectsExpanded.delete(project.id);
                 Array.from(ul.children).forEach((li, idx) => {
                     li.style.display = (expanded || idx < initialShow) ? "" : "none";
                 });

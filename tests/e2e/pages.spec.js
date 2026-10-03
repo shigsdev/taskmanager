@@ -6552,3 +6552,206 @@ test.describe("Projects - a linked task opens the task panel (#372)", () => {
         }
     });
 });
+
+test.describe("Panel hosts /goals and /projects keep their state (#372 review)", () => {
+    // Found by #372's final review. Hosting the task panel made these
+    // pages register window.taskDetailAfterSave, and app.js's 60s poll,
+    // tab-visible and cross-tab refreshes all call loadTasks(), which
+    // hands off to that hook. So the hook is a page-wide refresh, not
+    // just a post-save one: it must keep page state, never tear a live
+    // drag out from under the finger, and never throw. Separately, the
+    // panel's Goal dropdown needs goal_filter_helpers.js for the #142
+    // work/personal split, as on the board and /calendar.
+
+    const stamp = () =>
+        `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    async function post(request, url, data) {
+        const r = await request.post(url, { data });
+        expect(r.ok()).toBe(true);
+        return r.json();
+    }
+
+    test("a personal task's Goal dropdown leaves out work goals on /goals and /projects (#142)", async ({
+        page, request,
+    }) => {
+        const s = stamp();
+        const home = await post(request, "/api/goals", {
+            title: `E2E 372r health ${s}`, category: "health",
+            priority: "should" });
+        const work = await post(request, "/api/goals", {
+            title: `E2E 372r work ${s}`, category: "work",
+            priority: "should" });
+        const project = await post(request, "/api/projects", {
+            name: `E2E 372r personal ${s}`, type: "personal" });
+        const task = await post(request, "/api/tasks", {
+            title: `E2E 372r task ${s}`, type: "personal", tier: "today",
+            goal_id: home.id, project_id: project.id });
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator(`.goal-card[data-goal-id="${home.id}"]`)
+                .click({ position: { x: 8, y: 8 } });
+            await page.locator("#linkedTasksList .linked-task-row")
+                .filter({ hasText: task.title }).click();
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+            await expect(page.locator(
+                `#detailGoal option[value="${home.id}"]`)).toHaveCount(1);
+            await expect(page.locator(
+                `#detailGoal option[value="${work.id}"]`)).toHaveCount(0);
+
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator(
+                `.project-card-task[data-task-id="${task.id}"]`).click();
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+            await expect(page.locator(
+                `#detailGoal option[value="${work.id}"]`)).toHaveCount(0);
+        } finally {
+            await request.patch(`/api/tasks/${task.id}`,
+                { data: { goal_id: null, project_id: null } });
+            await request.delete(`/api/tasks/${task.id}`);
+            await request.delete(`/api/projects/${project.id}`);
+            for (const g of [home, work]) {
+                await request.delete(`/api/goals/${g.id}`);
+                await request.delete(`/api/goals/${g.id}/permanent`);
+            }
+        }
+    });
+
+    test("/projects: an expanded card stays expanded across the poll's refresh", async ({
+        page, request,
+    }) => {
+        const s = stamp();
+        const project = await post(request, "/api/projects", {
+            name: `E2E 372r many ${s}`, type: "work" });
+        const tasks = [];
+        for (let i = 0; i < 6; i++) {
+            tasks.push(await post(request, "/api/tasks", {
+                title: `E2E 372r line ${i} ${s}`, type: "work",
+                tier: "today", project_id: project.id }));
+        }
+        try {
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const card = page.locator(
+                `.project-card[data-project-id="${project.id}"]`);
+            await card.locator(".project-card-toggle").click();
+            await expect(card.locator(".project-card-task")).toHaveCount(6);
+            await expect(card.locator(".project-card-task").nth(5))
+                .toBeVisible();
+            // The 60s poll's path: app.js loadTasks() → the page hook.
+            await page.evaluate(() => loadTasks());
+            await page.evaluate(() => window.taskDetailAfterSave());
+            await expect(card.locator(".project-card-task").nth(5))
+                .toBeVisible();
+            await expect(card.locator(".project-card-toggle"))
+                .toHaveText("Hide");
+        } finally {
+            for (const t of tasks) {
+                await request.patch(`/api/tasks/${t.id}`,
+                    { data: { project_id: null } });
+                await request.delete(`/api/tasks/${t.id}`);
+            }
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+
+    test("/projects: a refresh never re-renders under a live task drag", async ({
+        page,
+    }) => {
+        await page.goto("/projects?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator(".project-card-task[data-task-id]").first())
+            .toBeVisible({ timeout: 10000 });
+        const kept = await page.evaluate(async () => {
+            const li = document.querySelector(
+                ".project-card-task[data-task-id]");
+            li.dispatchEvent(new DragEvent("dragstart",
+                { dataTransfer: new DataTransfer(), bubbles: true }));
+            await window.taskDetailAfterSave();
+            const still = document.contains(li);
+            li.dispatchEvent(new DragEvent("dragend", { bubbles: true }));
+            return still;
+        });
+        expect(kept).toBe(true);
+    });
+
+    test("/goals: a refresh never re-renders under a live project drag", async ({
+        page, request,
+    }) => {
+        const s = stamp();
+        const goal = await post(request, "/api/goals", {
+            title: `E2E 372r goal ${s}`, category: "work",
+            priority: "should" });
+        const project = await post(request, "/api/projects", {
+            name: `E2E 372r chip ${s}`, type: "work", goal_id: goal.id });
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const kept = await page.evaluate(async (pid) => {
+                const li = document.querySelector(
+                    `.goal-card-project[data-project-id="${pid}"]`);
+                li.dispatchEvent(new DragEvent("dragstart",
+                    { dataTransfer: new DataTransfer(), bubbles: true }));
+                await window.taskDetailAfterSave();
+                const still = document.contains(li);
+                li.dispatchEvent(new DragEvent("dragend", { bubbles: true }));
+                return still;
+            }, project.id);
+            expect(kept).toBe(true);
+        } finally {
+            await request.patch(`/api/projects/${project.id}`,
+                { data: { goal_id: null } });
+            await request.delete(`/api/projects/${project.id}`);
+            await request.delete(`/api/goals/${goal.id}`);
+            await request.delete(`/api/goals/${goal.id}/permanent`);
+        }
+    });
+
+    for (const path of ["/goals", "/projects"]) {
+        test(`${path}: a failed background refresh does not throw`, async ({
+            page,
+        }) => {
+            await page.goto(`${path}?nosw=1`);
+            await page.waitForLoadState("networkidle");
+            await page.route("**/api/**", (route) => route.abort());
+            // Resolves rather than rejecting: an unhandled rejection from
+            // the poll would be reported as a client error every minute
+            // the network is down.
+            const outcome = await page.evaluate(() =>
+                window.taskDetailAfterSave().then(() => "resolved",
+                                                  (e) => `rejected: ${e}`));
+            expect(outcome).toBe("resolved");
+        });
+    }
+
+    test("/projects: in Select mode a click on a task line selects the card", async ({
+        page, request,
+    }) => {
+        // Bulk mode is for selecting cards; the task lines cover much of
+        // a card, so they must not hijack that click into opening a task.
+        const s = stamp();
+        const project = await post(request, "/api/projects", {
+            name: `E2E 372r bulk ${s}`, type: "work" });
+        const task = await post(request, "/api/tasks", {
+            title: `E2E 372r bulk task ${s}`, type: "work", tier: "today",
+            project_id: project.id });
+        try {
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator("#projectsBulkToggle").click();
+            await page.locator(
+                `.project-card-task[data-task-id="${task.id}"]`).click();
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+            await expect(page.locator(
+                `.project-card[data-project-id="${project.id}"]`))
+                .toHaveClass(/bulk-selected/);
+        } finally {
+            await request.patch(`/api/tasks/${task.id}`,
+                { data: { project_id: null } });
+            await request.delete(`/api/tasks/${task.id}`);
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+});

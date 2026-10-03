@@ -183,6 +183,9 @@
 <script src="{{ url_for('static', filename='api_helpers.js') }}"></script>
     <script src="{{ url_for('static', filename='voice_input.js') }}"></script>
     <script src="{{ url_for('static', filename='filter_helpers.js') }}"></script>
+    {# #372: goal-dropdown scoping (#142) for the embedded task panel,
+       as on the board and /calendar. #}
+    <script src="{{ url_for('static', filename='goal_filter_helpers.js') }}"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 <!-- #343 drag. project_task_drag_helpers is loaded for its card
      hit-test geometry (exported here under the card-agnostic name

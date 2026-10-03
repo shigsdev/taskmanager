@@ -995,8 +995,11 @@ test.describe("Prod smoke — feature surfaces", () => {
             .click({ position: { x: 8, y: 8 } });
         await expect(page.locator("#goalDetailOverlay")).toBeVisible();
         const row = page.locator("#linkedTasksList .linked-task-row").first();
-        const title = (await row.locator(".linked-task-title").textContent()).trim();
-        await row.click({ position: { x: 40, y: 8 } });
+        const label = row.locator(".linked-task-title");
+        const title = (await label.textContent()).trim();
+        // Click the title text, never a position: the row's checkbox
+        // COMPLETES the task, and this runs against real prod data.
+        await label.click();
         await expect(page.locator("#detailOverlay")).toBeVisible();
         await expect(page.locator("#detailTitle")).toHaveValue(title);
         await page.locator("#detailClose").click();
