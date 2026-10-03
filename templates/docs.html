@@ -2346,9 +2346,16 @@ Skip this line (too short)</pre>
             <p>
                 Every import tags its new rows with a shared
                 <code>batch_id</code>. When you click Undo on an
-                import (from Settings → Import History or via the
-                Recycle Bin), every row with that <code>batch_id</code>
-                is soft-deleted in one step.
+                import in Settings → Import History, every row with
+                that <code>batch_id</code> is soft-deleted in one step.
+                The Recycle Bin itself has no Undo; it restores and
+                purges batches that are already there.
+            </p>
+            <p>
+                Before the undo, the confirm dialog names the repeating
+                tasks it will pause (the running ones on the projects
+                and goals the import created). An import with none gets
+                the plain confirm.
             </p>
 
             <h3>Batch states</h3>

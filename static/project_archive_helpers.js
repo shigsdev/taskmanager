@@ -5,6 +5,8 @@
  * on every archive path. This module only decides what /projects TELLS the
  * user before archiving: which active templates will pause, and the confirm
  * text. Spec: docs/design/353-project-archive-pauses-templates.md §4.4.
+ * /settings also uses archiveConfirmMessage for the import-undo confirm
+ * (#369), with the list computed server-side.
  *
  * - Nothing would pause → "" so the caller shows no extra text. The quiet
  *   case stays quiet (the #351 rule).
@@ -36,8 +38,12 @@
         });
     }
 
-    /** Confirm text for the templates `templatesPausedBy` returned. */
-    function archiveConfirmMessage(paused) {
+    /**
+     * Confirm text for the templates `templatesPausedBy` returned.
+     * `tail` (optional) replaces the closing sentence: #369's Settings
+     * import-undo confirm passes its own, /projects uses the default.
+     */
+    function archiveConfirmMessage(paused, tail) {
         if (!Array.isArray(paused) || paused.length === 0) return "";
         var n = paused.length;
         var names = paused.slice(0, MAX_NAMED).map(function (t) {
@@ -45,7 +51,8 @@
         }).join(", ");
         var more = n > MAX_NAMED ? " and " + (n - MAX_NAMED) + " more" : "";
         var noun = n === 1 ? "repeating task" : "repeating tasks";
-        return "This will pause " + n + " " + noun + ": " + names + more + ". " + TAIL;
+        var end = typeof tail === "string" && tail ? tail : TAIL;
+        return "This will pause " + n + " " + noun + ": " + names + more + ". " + end;
     }
 
     var api = {

@@ -3,6 +3,7 @@
 Endpoints:
     GET  /api/recycle-bin                    — list batches in the bin
     GET  /api/recycle-bin/summary            — aggregate counts for the bin
+    GET  /api/recycle-bin/impact/<batch_id>  — repeating tasks an undo would pause (#369)
     POST /api/recycle-bin/undo/<batch_id>    — soft-delete a batch
     POST /api/recycle-bin/restore/<batch_id> — un-soft-delete a batch
     POST /api/recycle-bin/purge/<batch_id>   — hard-delete a batch
@@ -29,6 +30,7 @@ from recycle_service import (
     purge_batch,
     restore_batch,
     undo_batch,
+    undo_impact,
 )
 
 bp = Blueprint("recycle_api", __name__, url_prefix="/api/recycle-bin")
@@ -53,6 +55,28 @@ def list_entries(email: str):  # noqa: ARG001
 def summary(email: str):  # noqa: ARG001
     """Return aggregate counts for everything currently in the bin."""
     return jsonify(bin_summary())
+
+
+@bp.get("/impact/<batch_id>")
+@login_required
+def impact(email: str, batch_id: str):  # noqa: ARG001
+    """Read-only: the repeating tasks undoing this batch would pause (#369).
+
+    Its own path on purpose: ``/undo/<id>`` mutates, and #190 keeps GET
+    off mutating routes.
+    """
+    bid = _parse_batch_id(batch_id)
+    if bid is None:
+        return jsonify({"error": "invalid batch_id"}), 400
+
+    try:
+        result = undo_impact(bid)
+    except BatchNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    except BatchStateError as e:
+        return jsonify({"error": str(e)}), 409
+
+    return jsonify(result)
 
 
 @bp.post("/undo/<batch_id>")

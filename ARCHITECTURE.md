@@ -600,6 +600,16 @@ component is added, a data flow changes, or a security boundary shifts.
   Archive confirm (`static/goal_archive_helpers.js`, fed by
   `GET /api/recurring`). Migration `s8a9b0c1d2e3` adds the column and
   backfills.
+- **The import-undo confirm names the repeating tasks it pauses** (#369,
+  2026-10-03): Settings → Import History → Undo first calls
+  `GET /api/recycle-bin/impact/<batch_id>` (read-only) →
+  `recycle_service.undo_impact` → `recurring_service.templates_paused_by_archive`
+  over the batch's ACTIVE projects and goals (the ones `undo_batch` will
+  archive), and appends the names to the confirm via
+  `projectArchiveHelpers.archiveConfirmMessage` with an undo-specific
+  tail. No templates → today's confirm; a failed lookup → today's
+  confirm, never a blocked undo. The query lives server-side so #364 can
+  reuse it.
 - **Archive / unarchive a goal, and a guarded hard delete** (#349,
   2026-10-01): `delete_goal` had always been a SOFT delete setting
   `is_active=False`, but the button said **Delete**, `goalsRender`
@@ -1050,6 +1060,7 @@ the code.
 # recycle_api.py
 /api/recycle-bin
 /api/recycle-bin/summary
+/api/recycle-bin/impact/<batch_id>
 /api/recycle-bin/undo/<batch_id>
 /api/recycle-bin/restore/<batch_id>
 /api/recycle-bin/purge/<batch_id>

@@ -21,9 +21,10 @@ Key concepts:
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from models import (
     RecurringFrequency,
@@ -470,6 +471,31 @@ def cascade_parent_archive(parent: str, parent_id: uuid.UUID, archived: bool) ->
     else:
         _update(mine_col.is_(True), other_col.is_(False), is_active=True, **{mine: False})
         _update(mine_col.is_(True), **{mine: False})
+
+
+def templates_paused_by_archive(
+    project_ids: Iterable[uuid.UUID], goal_ids: Iterable[uuid.UUID],
+) -> list[RecurringTask]:
+    """The templates archiving these projects and goals would stop, by title.
+
+    Read-only. Mirrors the first update of ``cascade_parent_archive``'s
+    archive branch: a running template on any of the parents. One
+    already paused (by the user, or by another archive) isn't returned,
+    because archiving only adds a marker to it. #369 uses it for the
+    import-undo confirm; #364 is meant to reuse it.
+    """
+    project_ids, goal_ids = list(project_ids), list(goal_ids)
+    if not project_ids and not goal_ids:
+        return []
+    return list(db.session.scalars(
+        select(RecurringTask)
+        .where(
+            RecurringTask.is_active.is_(True),
+            or_(RecurringTask.project_id.in_(project_ids),
+                RecurringTask.goal_id.in_(goal_ids)),
+        )
+        .order_by(RecurringTask.title)
+    ))
 
 
 # --- Spawn logic -------------------------------------------------------------

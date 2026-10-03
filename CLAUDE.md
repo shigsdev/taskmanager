@@ -441,6 +441,10 @@ Report.
   8. **Review page**: click Keep/Freeze/Snooze, verify the card advances
      and the progress counter updates.
   9. **Settings page**: verify stats reflect the seeded data counts.
+     Then #369: Import History → Undo on an import whose project has an
+     active repeating task — the confirm must NAME it; cancel and the
+     button reads Undo again. Undo on an import with NO templates must
+     show the plain confirm with no "pause" line.
   10. **Import page**: verify buttons render and are clickable.
   11. **Scan page**: verify radio buttons toggle and upload area is tappable.
   12. **Recycle bin**: verify batch entries show, Empty Bin button is visible.
@@ -507,6 +511,8 @@ Report.
   Review: Freeze                PASS          Review: Freeze                PASS
   Review: Snooze                PASS          Review: Snooze                PASS
   Settings: stats               PASS          Settings: stats               PASS
+  Settings: undo names paused tmpl PASS       Settings: undo names paused tmpl PASS
+  Settings: no-tmpl undo quiet  PASS          Settings: no-tmpl undo quiet  PASS
   Import: button click          PASS          Import: button click          PASS
   Scan: radio toggle            PASS          Scan: radio toggle            PASS
   Scan: upload area             PASS          Scan: upload area             PASS

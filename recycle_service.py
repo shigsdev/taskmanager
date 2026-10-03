@@ -50,6 +50,7 @@ from sqlalchemy import null, select, update
 from goal_service import _set_goal_active
 from models import Goal, ImportLog, Project, RecurringTask, Task, TaskStatus, db
 from project_service import _set_project_active
+from recurring_service import templates_paused_by_archive
 
 logger = logging.getLogger(__name__)
 
@@ -330,6 +331,29 @@ def undo_batch(batch_id: uuid.UUID) -> dict:
         "tasks_removed": len(tasks),
         "goals_removed": len(goals),
         "projects_removed": len(projects),
+    }
+
+
+def undo_impact(batch_id: uuid.UUID) -> dict:
+    """The repeating tasks ``undo_batch`` would pause, without undoing (#369).
+
+    Only the batch's ACTIVE projects and goals count: the undo archives
+    them through the transition-guarded ``_set_*_active``, which skips
+    one that's already archived. Read-only; same errors as
+    ``undo_batch``, so the confirm can't describe a batch the undo
+    would refuse.
+    """
+    log = _get_log(batch_id)
+    if log.undone_at is not None:
+        raise BatchStateError(f"batch {batch_id} is already in the recycle bin")
+
+    templates = templates_paused_by_archive(
+        [p.id for p in _batch_projects(batch_id) if p.is_active],
+        [g.id for g in _batch_goals(batch_id) if g.is_active],
+    )
+    return {
+        "batch_id": str(batch_id),
+        "paused_templates": [{"id": str(t.id), "title": t.title} for t in templates],
     }
 
 

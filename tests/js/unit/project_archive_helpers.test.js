@@ -78,4 +78,30 @@ describe("archiveConfirmMessage", () => {
             `This will pause 1 repeating task: "say "hi" <b>now</b>". ${TAIL}`,
         );
     });
+
+    // #369: the Settings import-undo confirm reuses this builder with its
+    // own tail; /projects keeps the default.
+    describe("optional tail (#369)", () => {
+        const UNDO_TAIL = "They resume if you restore this import from the Recycle Bin.";
+
+        test("a custom tail replaces the project tail", () => {
+            expect(archiveConfirmMessage([{ title: "A" }], UNDO_TAIL)).toBe(
+                `This will pause 1 repeating task: "A". ${UNDO_TAIL}`,
+            );
+        });
+
+        test("omitted or empty tail keeps the project tail", () => {
+            expect(archiveConfirmMessage([{ title: "A" }])).toBe(
+                `This will pause 1 repeating task: "A". ${TAIL}`,
+            );
+            expect(archiveConfirmMessage([{ title: "A" }], "")).toBe(
+                `This will pause 1 repeating task: "A". ${TAIL}`,
+            );
+        });
+
+        test("nothing pausing is still \"\" with a tail", () => {
+            expect(archiveConfirmMessage([], UNDO_TAIL)).toBe("");
+            expect(archiveConfirmMessage(undefined, UNDO_TAIL)).toBe("");
+        });
+    });
 });

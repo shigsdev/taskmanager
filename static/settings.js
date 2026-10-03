@@ -193,6 +193,23 @@
         });
     }
 
+    // #369: closing line of the "this will pause…" paragraph.
+    var UNDO_PAUSE_TAIL = "They resume if you restore this import from the Recycle Bin.";
+
+    // #369: the repeating tasks this undo would pause, as confirm text, or
+    // "" when there are none. Any failure → "": the server cascade is the
+    // control, the dialog is information, so a lookup must never block
+    // the undo (#353's ruling).
+    function undoPauseMessage(batchId) {
+        var helpers = window.projectArchiveHelpers;
+        if (!helpers) return Promise.resolve("");
+        return window.apiFetch("/api/recycle-bin/impact/" + batchId)
+            .then(function (data) {
+                return helpers.archiveConfirmMessage(data && data.paused_templates, UNDO_PAUSE_TAIL);
+            })
+            .catch(function () { return ""; });
+    }
+
     function onUndoClick(e) {
         var btn = e.currentTarget;
         var batchId = btn.dataset.batchId;
@@ -202,9 +219,22 @@
             "Source: " + source + "\n" +
             "Items:  " + count + "\n\n" +
             "You can restore it later from the Recycle Bin page.";
-        if (!confirm(confirmMsg)) return;
 
+        // Disabled during the lookup so a double click can't open two dialogs.
         btn.disabled = true;
+        btn.textContent = "Checking…";
+
+        undoPauseMessage(batchId).then(function (pauseMsg) {
+            if (!confirm(pauseMsg ? confirmMsg + "\n\n" + pauseMsg : confirmMsg)) {
+                btn.disabled = false;
+                btn.textContent = "Undo";
+                return;
+            }
+            runUndo(btn, batchId);
+        });
+    }
+
+    function runUndo(btn, batchId) {
         btn.textContent = "Undoing…";
 
         // PR67 #132: window.apiFetch (auto-retry + recovery)

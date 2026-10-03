@@ -5863,3 +5863,148 @@ test.describe("Archiving a goal pauses its repeating tasks (#368) @noviewport", 
         }
     });
 });
+
+test.describe("Import undo names the repeating tasks it pauses (#369) @noviewport", () => {
+    // The pause is server-side (pytest pins it, incl. the parity test).
+    // This proves the /settings half: Import History → Undo names the
+    // repeating tasks before the undo, reads as before when there are
+    // none, and a failed lookup never blocks the undo.
+    //
+    // @noviewport: desktop only; the dialog is a browser confirm(), and
+    // mobile is covered by Phase 6.
+
+    const stamp = () =>
+        `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const TAIL = "They resume if you restore this import from the Recycle Bin.";
+
+    // One imported project (its own batch), plus an optional template on it.
+    async function importWith(request, { template = false } = {}) {
+        const s = stamp();
+        const source = `E2E 369 import ${s}`;
+        const r = await request.post("/api/import/projects/confirm", {
+            data: { candidates: [{ name: `E2E 369 project ${s}`, type: "work" }], source },
+        });
+        expect(r.ok()).toBe(true);
+        const project = (await r.json()).projects[0];
+        const logs = await (await request.get("/api/settings/imports")).json();
+        const batchId = logs.find((l) => l.source === source).batch_id;
+        let rt = null;
+        if (template) {
+            const t = await request.post("/api/recurring", {
+                data: { title: `E2E 369 routine ${s}`, frequency: "daily",
+                        type: "work", project_id: project.id },
+            });
+            expect(t.ok()).toBe(true);
+            rt = await t.json();
+        }
+        return { source, batchId, project, rt };
+    }
+
+    // Soft-delete the template, then undo (if still live) and purge the batch.
+    async function cleanup(request, { batchId, rt }) {
+        if (rt) await request.delete(`/api/recurring/${rt.id}`);
+        await request.post(`/api/recycle-bin/undo/${batchId}`);
+        await request.post(`/api/recycle-bin/purge/${batchId}`, {
+            data: { confirmation: "DELETE" },
+        });
+    }
+
+    const undoneAt = async (request, source) =>
+        (await (await request.get("/api/settings/imports")).json())
+            .find((l) => l.source === source).undone_at;
+
+    const templateActive = async (request, id) =>
+        (await (await request.get(`/api/recurring/${id}`)).json()).is_active;
+
+    async function undoButton(page, source) {
+        await page.goto("/settings?nosw=1");
+        const btn = page.locator("#settingsImportBody tr", { hasText: source })
+            .locator("button");
+        await expect(btn).toHaveText("Undo");
+        return btn;
+    }
+
+    test("the undo confirm names the template; OK undoes and pauses it", async ({
+        page, request,
+    }) => {
+        const fx = await importWith(request, { template: true });
+        try {
+            const btn = await undoButton(page, fx.source);
+            const shown = [];
+            page.once("dialog", (d) => { shown.push(d.message()); d.accept(); });
+            await btn.click();
+            await expect.poll(() => undoneAt(request, fx.source)).not.toBeNull();
+
+            expect(shown).toHaveLength(1);
+            expect(shown[0]).toContain("Move this import to the recycle bin?");
+            expect(shown[0]).toContain(
+                `This will pause 1 repeating task: "${fx.rt.title}". ${TAIL}`);
+            expect(await templateActive(request, fx.rt.id)).toBe(false);
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("an import with no repeating tasks gets today's confirm", async ({
+        page, request,
+    }) => {
+        const fx = await importWith(request);
+        try {
+            const btn = await undoButton(page, fx.source);
+            const shown = [];
+            page.once("dialog", (d) => { shown.push(d.message()); d.accept(); });
+            await btn.click();
+            await expect.poll(() => undoneAt(request, fx.source)).not.toBeNull();
+
+            expect(shown).toHaveLength(1);
+            expect(shown[0]).toContain("Move this import to the recycle bin?");
+            expect(shown[0]).not.toMatch(/repeating task/i);
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("cancel leaves the import live and the button usable", async ({
+        page, request,
+    }) => {
+        const fx = await importWith(request, { template: true });
+        try {
+            const btn = await undoButton(page, fx.source);
+            page.once("dialog", (d) => d.dismiss());
+            await btn.click();
+            await expect(btn).toHaveText("Undo");
+            await expect(btn).toBeEnabled();
+
+            expect(await undoneAt(request, fx.source)).toBeNull();
+            expect(await templateActive(request, fx.rt.id)).toBe(true);
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("lookup failure falls back to today's confirm and still undoes", async ({
+        page, request,
+    }) => {
+        // A 500, not route.abort: an aborted fetch trips apiFetch's
+        // app-wide reload prompt (#353's ruling).
+        const fx = await importWith(request, { template: true });
+        try {
+            const btn = await undoButton(page, fx.source);
+            await page.route("**/api/recycle-bin/impact/**", (r) =>
+                r.fulfill({ status: 500, contentType: "application/json", body: "{}" }));
+            const shown = [];
+            page.once("dialog", (d) => { shown.push(d.message()); d.accept(); });
+            await btn.click();
+            await expect.poll(() => undoneAt(request, fx.source)).not.toBeNull();
+
+            expect(shown).toHaveLength(1);
+            expect(shown[0]).toContain("Move this import to the recycle bin?");
+            expect(shown[0]).not.toMatch(/repeating task/i);
+            // The server still paused it; only the warning was lost.
+            expect(await templateActive(request, fx.rt.id)).toBe(false);
+        } finally {
+            await page.unroute("**/api/recycle-bin/impact/**");
+            await cleanup(request, fx);
+        }
+    });
+});

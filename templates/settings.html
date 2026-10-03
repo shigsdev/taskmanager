@@ -119,5 +119,7 @@
 {% endblock %}
 
 {% block scripts %}
+{# #369: the Undo confirm names the repeating tasks it pauses #}
+<script src="{{ url_for('static', filename='project_archive_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='settings.js') }}"></script>
 {% endblock %}
