@@ -1550,6 +1550,26 @@ class TestReorder:
         )
         assert resp.status_code == 400
 
+    def test_reorder_skips_non_string_ids(self, authed_client, app):
+        # #383: the board sent `null` for recurring preview cards (they
+        # carry no data-id). uuid.UUID(None) raises TypeError, which the
+        # route didn't catch -> 500 and nothing reordered. A non-string
+        # id is skipped like a malformed one; the valid ids still land.
+        with app.app_context():
+            t1 = _make_task(title="First", tier=Tier.THIS_WEEK)
+            t2 = _make_task(title="Second", tier=Tier.THIS_WEEK)
+            ids = [None, str(t2.id), 7, str(t1.id)]
+
+        resp = authed_client.post(
+            "/api/tasks/reorder",
+            json={"tier": "this_week", "task_ids": ids},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["reordered"] == 2
+        resp = authed_client.get("/api/tasks?tier=this_week")
+        titles = [t["title"] for t in resp.get_json()]
+        assert titles.index("Second") < titles.index("First")
+
 
 # --- Repeat (task ↔ recurring template) --------------------------------------
 
