@@ -806,6 +806,9 @@ function projectRenderSideTasks(projectId) {
         for (const t of tasks) {
             const li = document.createElement("li");
             li.className = "project-side-task" + (t.status === "archived" ? " done" : "");
+            // #377: lets the task panel find this line again after a
+            // re-render and hand focus back to it.
+            li.dataset.taskId = t.id;
             li.textContent = t.title;
             li.title = t.title;
             // #372: opens the task panel, stacked on this one. Not
