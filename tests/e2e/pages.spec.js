@@ -6555,6 +6555,54 @@ test.describe("Projects - a linked task opens the task panel (#372)", () => {
             await cleanup(request, fx);
         }
     });
+
+    test("a drag held still past 700ms before release does not open the panel (#376)", async ({
+        page, request,
+    }) => {
+        // #376: the guard measured 700ms from when the 500ms hold timer
+        // fired, so a drag held still for longer than that before the
+        // finger lifted let the release click through and opened the
+        // panel at the end of a drag. The window now runs from release.
+        const fx = await fixture(request);
+        try {
+            await openProjects(page);
+            await expect(cardLine(page, fx.task.id)).toBeVisible();
+
+            const opened = await page.evaluate(async (id) => {
+                const fire = (el, type, x, y, released) => {
+                    const touch = new Touch({
+                        identifier: 1, target: el, clientX: x, clientY: y,
+                    });
+                    el.dispatchEvent(new TouchEvent(type, {
+                        bubbles: true, cancelable: true,
+                        touches: released ? [] : [touch],
+                        targetTouches: released ? [] : [touch],
+                        changedTouches: [touch],
+                    }));
+                };
+                const li = document.querySelector(
+                    `.project-card-task[data-task-id="${id}"]`);
+                const r = li.getBoundingClientRect();
+                const x = r.left + 10;
+                const y = r.top + r.height / 2;
+                fire(li, "touchstart", x, y, false);
+                await new Promise((s) => setTimeout(s, 600));  // drag starts
+                await new Promise((s) => setTimeout(s, 900));  // held still
+                fire(document, "touchend", x, y, true);
+                li.click();
+                await new Promise((s) => setTimeout(s, 100));
+                return document.getElementById("detailOverlay")
+                    .style.display !== "none";
+            }, fx.task.id);
+            expect(opened).toBe(false);
+
+            // Released over its own card: a same-project drop, no move.
+            expect((await apiTask(request, fx.task.id)).project_id)
+                .toBe(fx.project.id);
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
 });
 
 test.describe("Panel hosts /goals and /projects keep their state (#372 review)", () => {

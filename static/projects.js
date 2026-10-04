@@ -1104,9 +1104,10 @@ async function _projectsApplyTaskMove(task, project) {
 let _touchDrag = null;        // { li, task, startY }
 let _touchLongPress = null;
 let _touchStart = { x: 0, y: 0 };
-// #372: Date.now() when the last long-press timer fired. A touch browser
-// can still send a click when that finger lifts; taskLineClickOpens uses
-// this to keep that click from opening the task panel.
+// #372: Date.now() when the last long-press timer fired, and again when
+// that drag is released (#376). A touch browser can still send a click
+// when that finger lifts; taskLineClickOpens uses this to keep that
+// click from opening the task panel.
 let _touchLongPressAt = null;
 
 function _projectsTouchTargets() {
@@ -1178,6 +1179,9 @@ async function onProjectsTouchEnd(e) {
         _touchLongPress = null;
     }
     if (!_touchDrag) return;
+    // #376: restart the guard window at release. Stamping only when the
+    // hold timer fired let a drag held still past 700ms through.
+    _touchLongPressAt = Date.now();
     const li = _touchDrag.li;
     const task = _touchDrag.task;
     li.style.transform = "";
