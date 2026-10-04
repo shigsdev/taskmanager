@@ -7121,3 +7121,192 @@ test.describe("A superseded refresh never paints over a newer one (#379)", () =>
         }
     });
 });
+
+test.describe("Keyboard focus moves into the task panel and back (#377)", () => {
+    // #377: opening the task panel from a #372 row left focus behind the
+    // overlay, and closing it dropped focus on the page body. Now focus
+    // lands on the panel's close button and returns to the row that
+    // opened it, including after a save re-renders that row.
+
+    const stamp = () =>
+        `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    // What has focus: the close button, or a row's task id + where it is.
+    const focused = (page) => page.evaluate(() => {
+        const el = document.activeElement;
+        if (!el || el === document.body) return { body: true };
+        return {
+            id: el.id || null,
+            taskId: (el.dataset && el.dataset.taskId) || null,
+            inLinked: !!el.closest("#linkedTasksList"),
+            cardLine: el.classList.contains("project-card-task"),
+            sideLine: el.classList.contains("project-side-task"),
+            stale: !!el.__e2eOld,
+        };
+    });
+
+    async function goalFixture(request) {
+        const s = stamp();
+        const goal = await (await request.post("/api/goals", {
+            data: { title: `E2E 377 goal ${s}`, category: "work",
+                    priority: "should" } })).json();
+        const task = await (await request.post("/api/tasks", {
+            data: { title: `E2E 377 task ${s}`, type: "work", tier: "today",
+                    goal_id: goal.id } })).json();
+        return { goal, task };
+    }
+
+    async function goalCleanup(request, { goal, task }) {
+        await request.patch(`/api/tasks/${task.id}`, { data: { goal_id: null } });
+        await request.delete(`/api/tasks/${task.id}`);
+        await request.delete(`/api/goals/${goal.id}`);
+        await request.delete(`/api/goals/${goal.id}/permanent`);
+    }
+
+    async function projectFixture(request) {
+        const s = stamp();
+        const project = await (await request.post("/api/projects", {
+            data: { name: `E2E 377 project ${s}`, type: "work" } })).json();
+        const task = await (await request.post("/api/tasks", {
+            data: { title: `E2E 377 task ${s}`, type: "work", tier: "today",
+                    project_id: project.id } })).json();
+        return { project, task };
+    }
+
+    async function projectCleanup(request, { project, task }) {
+        await request.patch(`/api/tasks/${task.id}`, { data: { project_id: null } });
+        await request.delete(`/api/tasks/${task.id}`);
+        await request.delete(`/api/projects/${project.id}`);
+    }
+
+    async function openGoalPanel(page, goalId) {
+        await page.goto("/goals?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator(`.goal-card[data-goal-id="${goalId}"]`)
+            .click({ position: { x: 8, y: 8 } });
+        await expect(page.locator("#goalDetailOverlay")).toBeVisible();
+    }
+
+    test("/goals: Enter on a linked row focuses the panel; close returns to the row", async ({
+        page, request,
+    }) => {
+        const fx = await goalFixture(request);
+        try {
+            await openGoalPanel(page, fx.goal.id);
+            const row = page.locator(
+                `#linkedTasksList .linked-task-row[data-task-id="${fx.task.id}"]`);
+            await row.focus();
+            await page.keyboard.press("Enter");
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+            expect((await focused(page)).id).toBe("detailClose");
+
+            await page.keyboard.press("Enter");   // activates the close button
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+            const f = await focused(page);
+            expect(f.taskId).toBe(fx.task.id);
+            expect(f.inLinked).toBe(true);
+        } finally {
+            await goalCleanup(request, fx);
+        }
+    });
+
+    test("/goals: after a save, focus lands on the re-rendered row", async ({
+        page, request,
+    }) => {
+        const fx = await goalFixture(request);
+        try {
+            await openGoalPanel(page, fx.goal.id);
+            const row = page.locator(
+                `#linkedTasksList .linked-task-row[data-task-id="${fx.task.id}"]`);
+            await row.evaluate((el) => { el.__e2eOld = true; });
+            await row.focus();
+            await page.keyboard.press("Enter");
+            await page.locator("#detailTitle").fill(`${fx.task.title} saved`);
+            await page.locator("#detailPanel button[type=submit]").click();
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+            await expect.poll(async () => (await focused(page)).taskId)
+                .toBe(fx.task.id);
+            const f = await focused(page);
+            expect(f.inLinked).toBe(true);
+            expect(f.stale).toBe(false);   // the new row, not the replaced one
+        } finally {
+            await goalCleanup(request, fx);
+        }
+    });
+
+    test("/projects: Enter on a card line focuses the panel; close returns to the line", async ({
+        page, request,
+    }) => {
+        const fx = await projectFixture(request);
+        try {
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const line = page.locator(
+                `.project-card-task[data-task-id="${fx.task.id}"]`);
+            await line.focus();
+            await page.keyboard.press("Enter");
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+            expect((await focused(page)).id).toBe("detailClose");
+
+            await page.keyboard.press("Enter");
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+            const f = await focused(page);
+            expect(f.taskId).toBe(fx.task.id);
+            expect(f.cardLine).toBe(true);
+        } finally {
+            await projectCleanup(request, fx);
+        }
+    });
+
+    test("/projects: after a save, focus lands on the re-rendered card line", async ({
+        page, request,
+    }) => {
+        const fx = await projectFixture(request);
+        try {
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const line = page.locator(
+                `.project-card-task[data-task-id="${fx.task.id}"]`);
+            await line.evaluate((el) => { el.__e2eOld = true; });
+            await line.focus();
+            await page.keyboard.press("Enter");
+            await page.locator("#detailTitle").fill(`${fx.task.title} saved`);
+            await page.locator("#detailPanel button[type=submit]").click();
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+            await expect.poll(async () => (await focused(page)).taskId)
+                .toBe(fx.task.id);
+            const f = await focused(page);
+            expect(f.cardLine).toBe(true);
+            expect(f.stale).toBe(false);
+        } finally {
+            await projectCleanup(request, fx);
+        }
+    });
+
+    test("board: a mouse open and close still works with nothing to return to", async ({
+        page, request,
+    }) => {
+        const task = await (await request.post("/api/tasks", {
+            data: { title: `E2E 377 board ${stamp()}`, type: "work",
+                    tier: "today" } })).json();
+        const errors = [];
+        page.on("pageerror", (e) => errors.push(e.message));
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator(`.task-card[data-id="${task.id}"] .task-title`)
+                .first().click();
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+            await page.locator("#detailClose").click();
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+            // Create mode still puts the cursor in the title.
+            await page.locator("#captureFull").click();
+            await expect(page.locator("#detailTitle")).toBeFocused();
+            await page.locator("#detailClose").click();
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+            expect(errors).toEqual([]);
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+});

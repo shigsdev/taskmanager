@@ -399,6 +399,9 @@ function goalRenderLinkedTasks(goalId) {
     for (const task of tasks) {
         const row = document.createElement("div");
         row.className = "linked-task-row";
+        // #377: lets the task panel find this row again after a re-render
+        // and hand focus back to it.
+        row.dataset.taskId = task.id;
         // #372: the row opens the task detail panel, stacked on top.
         row.tabIndex = 0;
         row.setAttribute("role", "button");

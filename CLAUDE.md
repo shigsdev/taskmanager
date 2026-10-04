@@ -417,6 +417,9 @@ Report.
      the task panel stacks on top, a save refreshes that list without a
      reload, and closing returns to the project panel. On mobile a tap
      opens the panel and a long-press still drags instead.
+     #377: focus a card line, press Enter — focus lands on the panel's ✕;
+     press Enter again — focus is back on that line. After a save, focus
+     lands on the re-rendered line (card and side list alike).
   7. **Goals page**: verify goal cards show progress bars with correct task
      counts. Filter by category/priority/status, verify results change.
      Expand a card's `Projects (N)` toggle, drag a project chip onto
@@ -447,6 +450,9 @@ Report.
      stacks on top; a save refreshes the goal's list without a reload,
      and closing returns to the goal panel. Ticking a row's checkbox
      must still only complete it, never open the panel.
+     #377: Enter on a focused linked row puts focus on the panel's ✕;
+     closing returns it to that row, and after a save to the re-rendered
+     row. A mouse or tap open shows no focus ring.
   8. **Review page**: click Keep/Freeze/Snooze, verify the card advances
      and the progress counter updates.
   9. **Settings page**: verify stats reflect the seeded data counts.
@@ -514,10 +520,12 @@ Report.
   Goals: archive pauses tmpl    PASS          Goals: archive pauses tmpl    PASS
   Goals: no-tmpl archive quiet  PASS          Goals: no-tmpl archive quiet  PASS
   Goals: linked task opens panel PASS         Goals: linked task opens panel PASS
+  Goals: panel focus in and back PASS         Goals: panel focus in and back PASS
   Projects: drag task to card   PASS          Projects: drag task to card   PASS
   Projects: archive pauses tmpl PASS          Projects: archive pauses tmpl PASS
   Projects: no-tmpl archive quiet PASS        Projects: no-tmpl archive quiet PASS
   Projects: task line opens panel PASS        Projects: task line opens panel PASS
+  Projects: panel focus in and back PASS      Projects: panel focus in and back PASS
   Review: Keep                  PASS          Review: Keep                  PASS
   Review: Freeze                PASS          Review: Freeze                PASS
   Review: Snooze                PASS          Review: Snooze                PASS

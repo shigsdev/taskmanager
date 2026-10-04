@@ -125,7 +125,14 @@ async function loadTasks() {
     // (calendar cells, unscheduled list) in sync after any of them. allTasks
     // is still populated above for parent-link lookups.
     if (typeof window.taskDetailAfterSave === "function") {
-        window.taskDetailAfterSave();
+        // #377: awaited so a closed panel can hand focus back to the
+        // re-rendered row that opened it (_taskDetailRetryFocus).
+        try {
+            await window.taskDetailAfterSave();
+        } catch (err) {
+            console.error("Page refresh failed:", err);
+        }
+        _taskDetailRetryFocus();
         return;
     }
     renderBoard();
@@ -2522,6 +2529,7 @@ function taskDetailOpenNew(prefillTitle, prefillType, prefillDue) {
 }
 
 function taskDetailOpen(task) {
+    _taskDetailRememberOpener();   // #377 — before the overlay shows
     // Capture a deep copy so subsequent allTasks reloads can't mutate
     // it under us. JSON round-trip is safe — the API serializer's
     // shape is plain JSON-compatible (strings, numbers, arrays of
@@ -2658,6 +2666,12 @@ function taskDetailOpen(task) {
     }
 
     document.getElementById("detailOverlay").style.display = "";
+    // #377: keyboard users land inside the panel. The close button, not
+    // the title: focusing a text field pops the phone keyboard on every
+    // tap-open. A script-moved focus only shows a ring after a keyboard
+    // open (:focus-visible). taskDetailOpenNew still focuses the title.
+    const closeBtn = document.getElementById("detailClose");
+    if (closeBtn) closeBtn.focus();
 }
 
 function taskDetailToggleProject(type) {
@@ -2707,6 +2721,68 @@ function taskDetailProjectChanged(projectId) {
 
 function taskDetailClose() {
     document.getElementById("detailOverlay").style.display = "none";
+    _taskDetailRestoreFocus();
+}
+
+// --- #377: focus into the panel and back --------------------------------------
+// The panel remembers what had focus when it opened (a #372 row on /goals or
+// /projects; board cards can't take focus, #295) and hands focus back on
+// close. Panel-host pages re-render their lists after a save, replacing that
+// element, so the task id and the nearest container with an id are kept too:
+// the row is found again by [data-task-id] inside that container.
+let _detailReturnFocus = null;   // { el, taskId, containerId, pending }
+
+function _taskDetailRememberOpener() {
+    const overlay = document.getElementById("detailOverlay");
+    // Already open (duplicate re-opens on the clone): keep the first opener.
+    if (!overlay || overlay.style.display !== "none") return;
+    _detailReturnFocus = null;
+    const el = document.activeElement;
+    if (!el || el === document.body || overlay.contains(el)) return;
+    // Never a text field: refocusing one on close pops the phone keyboard,
+    // and iOS leaves focus in the capture input when its button is tapped.
+    if (el.matches("input, textarea, select, [contenteditable]")) return;
+    const box = el.parentElement ? el.parentElement.closest("[id]") : null;
+    _detailReturnFocus = {
+        el: el,
+        taskId: (el.dataset && el.dataset.taskId) || null,
+        containerId: box ? box.id : null,
+        pending: false,
+    };
+}
+
+function _taskDetailFocusTarget(r) {
+    if (r.el && r.el.isConnected) return r.el;
+    if (!r.taskId || !r.containerId) return null;
+    const box = document.getElementById(r.containerId);
+    if (!box) return null;
+    const id = (window.CSS && CSS.escape) ? CSS.escape(r.taskId) : r.taskId;
+    return box.querySelector(`[data-task-id="${id}"]`);
+}
+
+function _taskDetailRestoreFocus() {
+    const r = _detailReturnFocus;
+    if (!r) return;
+    const target = _taskDetailFocusTarget(r);
+    if (target) target.focus();
+    // Complete / Cancel close BEFORE their request, so the host re-renders
+    // afterwards and replaces the row just focused: one retry in loadTasks.
+    r.pending = true;
+}
+
+function _taskDetailRetryFocus() {
+    const r = _detailReturnFocus;
+    if (!r || !r.pending) return;
+    const overlay = document.getElementById("detailOverlay");
+    if (overlay && overlay.style.display !== "none") return;
+    _detailReturnFocus = null;
+    // Only when the re-render dropped focus: never steal it from wherever
+    // the user has moved on to.
+    const active = document.activeElement;
+    if (active && active !== document.body && active.isConnected) return;
+    // A task that left the list (completed) has no row: focus stays put.
+    const target = _taskDetailFocusTarget(r);
+    if (target) target.focus();
 }
 
 function taskDetailAddChecklistRow(text, checked) {
