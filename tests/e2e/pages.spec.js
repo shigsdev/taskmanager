@@ -6755,3 +6755,41 @@ test.describe("Panel hosts /goals and /projects keep their state (#372 review)",
         }
     });
 });
+
+test.describe("Goals - linked rows keep the 44px tap height up to 767px (#380) @noviewport", () => {
+    // #372 put the goal rows' 44px rule under max-width 700px, but the
+    // /projects side list and the #343/#344 rows on the same pages use
+    // 767px. Between 701 and 767px the goal rows lost their tap height.
+    test("a linked task row is at least 44px tall at 740px wide", async ({
+        page, request,
+    }) => {
+        const s = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const g = await request.post("/api/goals", {
+            data: { title: `E2E 380 goal ${s}`, category: "work",
+                    priority: "should" },
+        });
+        const goal = await g.json();
+        const t = await request.post("/api/tasks", {
+            data: { title: `E2E 380 task ${s}`, type: "work", tier: "today",
+                    goal_id: goal.id },
+        });
+        const task = await t.json();
+        try {
+            await page.setViewportSize({ width: 740, height: 900 });
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator(`.goal-card[data-goal-id="${goal.id}"]`)
+                .click({ position: { x: 8, y: 8 } });
+            const row = page.locator("#linkedTasksList .linked-task-row")
+                .filter({ hasText: task.title });
+            const box = await row.boundingBox();
+            expect(box.height).toBeGreaterThanOrEqual(44);
+        } finally {
+            await request.patch(`/api/tasks/${task.id}`,
+                                { data: { goal_id: null } });
+            await request.delete(`/api/tasks/${task.id}`);
+            await request.delete(`/api/goals/${goal.id}`);
+            await request.delete(`/api/goals/${goal.id}/permanent`);
+        }
+    });
+});

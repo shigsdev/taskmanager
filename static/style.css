@@ -2491,7 +2491,10 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 /* #372: a linked task row opens the task panel. Focus ring comes from
    the #294 `[tabindex]:focus-visible` baseline. */
 .linked-task-row[role="button"] { cursor: pointer; }
-@media (max-width: 700px) {
+/* #380: 767px, the same touch-target breakpoint as the #343/#344 rows
+   and the /projects side list on these pages (was 700px, so 701-767px
+   lost the tap height). */
+@media (max-width: 767px) {
     .linked-task-row[role="button"] { min-height: 44px; }
 }
 .linked-task-title.completed {
