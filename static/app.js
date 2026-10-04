@@ -887,8 +887,11 @@ function setupDragAndDrop() {
             // the same anchor so the block stays a block and lands as a
             // contiguous group.
             const cardsToMove = draggedGroup || [draggedCard];
+            // #383: insert next to the anchor in ITS parent. This Week /
+            // Next Week nest cards inside weekday groups (#23), so the
+            // anchor is not a direct child of `list` there.
             for (const c of cardsToMove) {
-                if (afterEl) list.insertBefore(c, afterEl);
+                if (afterEl) afterEl.parentNode.insertBefore(c, afterEl);
                 else list.appendChild(c);
             }
         });
@@ -1007,7 +1010,8 @@ function onTouchMove(e) {
         // Insert every group member in DOM order before the same anchor
         // so the block stays contiguous when it lands.
         for (var j = 0; j < cardsToMove.length; j++) {
-            if (afterEl) targetList.insertBefore(cardsToMove[j], afterEl);
+            // #383: anchor's own parent (weekday group), not the list.
+            if (afterEl) afterEl.parentNode.insertBefore(cardsToMove[j], afterEl);
             else targetList.appendChild(cardsToMove[j]);
         }
     }
@@ -1104,7 +1108,9 @@ function finishDrop(list) {
     var taskId = draggedCard.dataset.id;
     var sourceTier = draggedCard.dataset.sourceTier;
 
-    var cardIds = Array.from(list.querySelectorAll(".task-card"))
+    // #383: [data-id] skips recurring preview cards, which are
+    // .task-card too but have no id (they sent `null` to reorder).
+    var cardIds = Array.from(list.querySelectorAll(".task-card[data-id]"))
         .map(function (c) { return c.dataset.id; });
 
     // Multi-drag (2026-05-09): when the user drags a multi-selection,
@@ -3427,7 +3433,8 @@ async function bulkMove(direction) {
         `.task-list[data-tier="${cls.tier}"]`
     );
     if (!list) return;
-    const currentOrder = Array.from(list.querySelectorAll(".task-card"))
+    // #383: [data-id] skips recurring preview cards (no id).
+    const currentOrder = Array.from(list.querySelectorAll(".task-card[data-id]"))
         .map((c) => c.dataset.id);
     const newOrder = window.reorderHelpers.reorderSelectionWithinTier(
         currentOrder, new Set(ids), direction

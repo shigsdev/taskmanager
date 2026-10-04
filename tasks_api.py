@@ -299,7 +299,10 @@ def reorder(email: str):  # noqa: ARG001
     for i, tid in enumerate(task_ids):
         try:
             task = get_task(uuid.UUID(tid))
-        except (ValueError, AttributeError):
+        # TypeError: a non-string id (#383 — the board sent `null` for
+        # recurring preview cards) is skipped like a malformed one
+        # instead of 500ing the whole reorder.
+        except (ValueError, AttributeError, TypeError):
             continue
         if task:
             task.sort_order = i

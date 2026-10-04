@@ -837,7 +837,9 @@ test.describe("Tier-column drag updates due_date for today/tomorrow @noviewport"
                 tomorrowList.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
             }, task.id);
             await patchPromise;
-            await reorderPromise;
+            // #383: assert the reorder SUCCEEDED, not just that it
+            // answered — it 500'd for months behind a bare await.
+            expect((await reorderPromise).ok()).toBe(true);
 
             const refetch = await request.get(`/api/tasks/${task.id}`);
             const refreshed = await refetch.json();
@@ -901,7 +903,9 @@ test.describe("Tier-column drag updates due_date for today/tomorrow @noviewport"
                 list.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
             }, task.id);
             await patchPromise;
-            await reorderPromise;
+            // #383: assert the reorder SUCCEEDED, not just that it
+            // answered — it 500'd for months behind a bare await.
+            expect((await reorderPromise).ok()).toBe(true);
 
             const refetch = await request.get(`/api/tasks/${task.id}`);
             const refreshed = await refetch.json();
@@ -6885,6 +6889,87 @@ test.describe("#372 behaviours with direct tests (#378)", () => {
             for (const g of [archived, live]) {
                 await request.delete(`/api/goals/${g.id}`);
                 await request.delete(`/api/goals/${g.id}/permanent`);
+            }
+        }
+    });
+});
+
+test.describe("Board - dragging into a weekday-grouped tier (#383) @noviewport", () => {
+    // This Week / Next Week group cards under weekday headings (#23), so
+    // a card is a grandchild of .task-list. The drag handler inserted
+    // relative to the list (insertBefore threw NotFoundError) and the
+    // drop collected ids from recurring preview cards too (no data-id ->
+    // null -> /api/tasks/reorder 500). Next Week is used because it
+    // always has a full week of range, whatever weekday the suite runs.
+    test("a card dropped into Next Week lands in a day group and the reorder is clean", async ({
+        page, request,
+    }) => {
+        const s = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const iso = (d) => d.getFullYear() + "-"
+            + String(d.getMonth() + 1).padStart(2, "0") + "-"
+            + String(d.getDate()).padStart(2, "0");
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+        const sinceMonday = (now.getDay() + 6) % 7;
+        const nextWed = new Date(now.getTime() + (7 - sinceMonday + 2) * 86400000);
+
+        const post = async (url, data) => {
+            const r = await request.post(url, { data });
+            expect(r.ok()).toBe(true);
+            return r.json();
+        };
+        const anchor = await post("/api/tasks", {
+            title: `E2E 383 anchor ${s}`, type: "work", tier: "next_week",
+            due_date: iso(nextWed) });
+        const moving = await post("/api/tasks", {
+            title: `E2E 383 moving ${s}`, type: "work", tier: "today" });
+        const template = await post("/api/recurring", {
+            title: `E2E 383 preview ${s}`, frequency: "daily", type: "work" });
+
+        const errors = [];
+        page.on("pageerror", (e) => errors.push(e.message));
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const list = page.locator('.task-list[data-tier="next_week"]');
+            await expect(list.locator(".preview-card").first()).toBeAttached();
+
+            const reorderReq = page.waitForRequest((r) =>
+                r.url().includes("/api/tasks/reorder"));
+            const reorderResp = page.waitForResponse((r) =>
+                r.url().includes("/api/tasks/reorder"), { timeout: 15_000 });
+            const landed = await page.evaluate((tid) => {
+                const card = document.querySelector(`.task-card[data-id="${tid}"]`);
+                const target = document.querySelector(
+                    '.task-list[data-tier="next_week"]');
+                const dt = new DataTransfer();
+                dt.setData("text/plain", tid);
+                card.dispatchEvent(new DragEvent("dragstart",
+                    { dataTransfer: dt, bubbles: true }));
+                target.dispatchEvent(new DragEvent("dragover",
+                    { dataTransfer: dt, bubbles: true, cancelable: true }));
+                const inList = !!card.closest('.task-list[data-tier="next_week"]');
+                const nested = card.parentElement !== target;
+                target.dispatchEvent(new DragEvent("drop",
+                    { dataTransfer: dt, bubbles: true, cancelable: true }));
+                return { inList, nested };
+            }, moving.id);
+
+            const body = JSON.parse((await reorderReq).postData());
+            expect((await reorderResp).ok()).toBe(true);
+            expect(errors).toEqual([]);
+            // Followed the pointer into Next Week, inside a day group.
+            expect(landed.inList).toBe(true);
+            expect(landed.nested).toBe(true);
+            // Only real task ids reach the server — no preview nulls.
+            expect(body.task_ids).not.toContain(null);
+            expect(body.task_ids).toContain(moving.id);
+            await expect.poll(async () => (await (await request.get(
+                `/api/tasks/${moving.id}`)).json()).tier).toBe("next_week");
+        } finally {
+            await request.delete(`/api/recurring/${template.id}`);
+            for (const t of [anchor, moving]) {
+                await request.delete(`/api/tasks/${t.id}`);
             }
         }
     });

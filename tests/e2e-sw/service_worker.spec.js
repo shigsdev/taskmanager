@@ -71,7 +71,19 @@ async function primeSw(page) {
     // Now do a SECOND goto to land in a stable state where SW is
     // already controlling and no controllerchange is queued. This
     // second navigation is what makes evaluate safe afterwards.
-    await page.goto("/");
+    //
+    // #383/#348: the controller can appear a beat BEFORE base.html's
+    // controllerchange -> location.reload() has finished, and our goto
+    // then collides with that reload ("interrupted by another
+    // navigation"). That reload is the app behaving correctly, so let
+    // it land and go again — once; any other error still fails.
+    try {
+        await page.goto("/");
+    } catch (err) {
+        if (!/interrupted by another navigation/.test(String(err))) throw err;
+        await page.waitForLoadState("load");
+        await page.goto("/");
+    }
     await page.waitForLoadState("networkidle");
 }
 
