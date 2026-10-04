@@ -62,8 +62,14 @@ async function goalsInit() {
     document.addEventListener("touchend", onGoalsTouchEnd);
 }
 
+// #379: bumped on every goalsLoad. The save hook and app.js's poll /
+// tab-visible / cross-tab refreshes can overlap; a load that a newer one
+// has superseded must not paint its older data last (calendar.js #219).
+let _goalsLoadGeneration = 0;
+
 async function goalsLoad() {
-    goalsData = await apiFetch("/api/goals?is_active=all");
+    const myGen = ++_goalsLoadGeneration;
+    const goals = await apiFetch("/api/goals?is_active=all");
     // #343 added the projects fetch. Run it alongside tasks rather than
     // making the page wait for a third serial round-trip.
     //
@@ -73,6 +79,8 @@ async function goalsLoad() {
         apiFetch("/api/tasks"),
         apiFetch("/api/projects"),
     ]);
+    if (myGen !== _goalsLoadGeneration) return;
+    goalsData = goals;
     goalTasks = {};
     for (const task of tasks) {
         if (task.goal_id) {
