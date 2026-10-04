@@ -6793,3 +6793,99 @@ test.describe("Goals - linked rows keep the 44px tap height up to 767px (#380) @
         }
     });
 });
+
+test.describe("#372 behaviours with direct tests (#378)", () => {
+    // #378: two #372 behaviours that worked but had no test of their own.
+    // Both pass on first run by design (test-only row); each was proven
+    // by a mutation check when written: break the code, watch it go red.
+
+    const stamp = () =>
+        `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    test("a real mouse drag of a card task line never opens the task panel", async ({
+        page, request,
+    }) => {
+        // The #344 drag tests dispatch synthetic DragEvents, which never
+        // involve a real click. This drives Playwright's real mouse
+        // (press, move, release) across two project cards.
+        const s = stamp();
+        const mk = async (name) => (await request.post("/api/projects", {
+            data: { name, type: "work" } })).json();
+        const from = await mk(`E2E 378 from ${s}`);
+        const to = await mk(`E2E 378 to ${s}`);
+        const task = await (await request.post("/api/tasks", {
+            data: { title: `E2E 378 drag ${s}`, type: "work", tier: "today",
+                    project_id: from.id } })).json();
+        try {
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const line = page.locator(
+                `.project-card-task[data-task-id="${task.id}"]`);
+            await line.dragTo(
+                page.locator(`.project-card[data-project-id="${to.id}"]`),
+                { targetPosition: { x: 8, y: 8 } });
+            await page.waitForTimeout(800);
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+            // Chromium's real-mouse HTML5 drag does fire #344's handlers,
+            // so the move itself is asserted too: a gesture that both
+            // moved the task AND popped the panel would fail here.
+            await expect.poll(async () => (await (await request.get(
+                `/api/tasks/${task.id}`)).json()).project_id).toBe(to.id);
+        } finally {
+            await request.patch(`/api/tasks/${task.id}`,
+                                { data: { project_id: null } });
+            await request.delete(`/api/tasks/${task.id}`);
+            await request.delete(`/api/projects/${from.id}`);
+            await request.delete(`/api/projects/${to.id}`);
+        }
+    });
+
+    test("moving an archived goal's last task away enables Delete permanently", async ({
+        page, request,
+    }) => {
+        // goalsAfterTaskSave re-checks the hard-delete state after a save
+        // (#372). The case where that matters: an archived goal whose only
+        // reference is re-goaled from the stacked task panel.
+        const s = stamp();
+        const mkGoal = async (title) => (await request.post("/api/goals", {
+            data: { title, category: "work", priority: "should" } })).json();
+        const archived = await mkGoal(`E2E 378 archived ${s}`);
+        const live = await mkGoal(`E2E 378 live ${s}`);
+        const task = await (await request.post("/api/tasks", {
+            data: { title: `E2E 378 task ${s}`, type: "work", tier: "today",
+                    goal_id: archived.id } })).json();
+        try {
+            expect((await request.delete(
+                `/api/goals/${archived.id}`)).status()).toBe(204);
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.selectOption("#filterArchived", "archived");
+            await page.locator(`.goal-card[data-goal-id="${archived.id}"]`)
+                .click({ position: { x: 8, y: 8 } });
+            const btn = page.locator("#goalHardDelete");
+            const hint = page.locator("#goalHardDeleteHint");
+            await expect(hint).toContainText("still points");
+            await expect(btn).toBeDisabled();
+
+            await page.locator("#linkedTasksList .linked-task-row")
+                .filter({ hasText: task.title }).click();
+            await page.selectOption("#detailGoal", live.id);
+            const saved = page.waitForResponse((r) =>
+                r.url().endsWith(`/api/tasks/${task.id}`)
+                && r.request().method() === "PATCH");
+            await page.locator("#detailForm button[type=submit]").click();
+            expect((await saved).ok()).toBe(true);
+
+            await expect(btn).toBeEnabled();
+            await expect(hint).toContainText("Nothing points at this goal");
+        } finally {
+            await request.patch(`/api/tasks/${task.id}`,
+                                { data: { goal_id: null } });
+            await request.delete(`/api/tasks/${task.id}`);
+            for (const g of [archived, live]) {
+                await request.delete(`/api/goals/${g.id}`);
+                await request.delete(`/api/goals/${g.id}/permanent`);
+            }
+        }
+    });
+});
