@@ -46,6 +46,9 @@ let goalProjectsById = {};        // project_id -> project
 const _goalsExpanded = new Set();
 
 async function goalsInit() {
+    // #372: this page hosts the task detail panel (#270 panel-only mode),
+    // so app.js loadTasks() hands every panel mutation to this hook.
+    window.taskDetailAfterSave = goalsAfterTaskSave;
     await goalsLoad();
     goalsSetupFilters();
     goalsSetupDetailPanel();
@@ -347,6 +350,32 @@ function goalDetailClose() {
     document.getElementById("goalDetailOverlay").style.display = "none";
 }
 
+// #372: after a save / complete / cancel / delete from the task panel,
+// reload the page's data and, if the goal panel is still open behind the
+// task panel, re-render its linked list and re-check the hard-delete
+// hint (a task that left this goal can change what still points at it).
+//
+// app.js loadTasks() also lands here from its 60s poll, the tab-visible
+// refresh and cross-tab broadcasts, so this is a page-wide refresh: it
+// must never re-render under a live #343 project drag (the chip being
+// dragged would be swapped out from under the pointer), and a failed
+// fetch must not become an unhandled rejection every minute.
+async function goalsAfterTaskSave() {
+    if (_dragProject || _goalTouchDrag) return;
+    try {
+        await goalsLoad();
+    } catch (err) {
+        console.warn("Goals refresh failed:", err);
+        return;
+    }
+    const overlay = document.getElementById("goalDetailOverlay");
+    const id = document.getElementById("goalId").value;
+    if (!id || overlay.style.display === "none") return;
+    goalRenderLinkedTasks(id);
+    const goal = goalsData.find((g) => g.id === id);
+    if (goal) _goalRefreshHardDeleteState(goal);
+}
+
 function goalRenderLinkedTasks(goalId) {
     const list = document.getElementById("linkedTasksList");
     const countEl = document.getElementById("linkedTaskCount");
@@ -362,6 +391,19 @@ function goalRenderLinkedTasks(goalId) {
     for (const task of tasks) {
         const row = document.createElement("div");
         row.className = "linked-task-row";
+        // #372: the row opens the task detail panel, stacked on top.
+        row.tabIndex = 0;
+        row.setAttribute("role", "button");
+        row.setAttribute("aria-label", `Open task: ${task.title}`);
+        row.addEventListener("click", () => taskDetailOpen(task));
+        row.addEventListener("keydown", (e) => {
+            // Only keys aimed at the row itself: Space on the focused
+            // checkbox bubbles here and must tick the box, not open.
+            if (e.target !== row) return;
+            if (e.key !== "Enter" && e.key !== " ") return;
+            e.preventDefault();
+            taskDetailOpen(task);
+        });
 
         const cb = document.createElement("input");
         cb.type = "checkbox";
@@ -375,6 +417,8 @@ function goalRenderLinkedTasks(goalId) {
             await goalsLoad();
             goalRenderLinkedTasks(goalId);
         });
+        // The checkbox only completes; its click must not reach the row.
+        cb.addEventListener("click", (e) => e.stopPropagation());
         row.appendChild(cb);
 
         const label = document.createElement("span");

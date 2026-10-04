@@ -25,6 +25,10 @@
  *   (#77 + the PR24 audit refinement). The drag therefore changes a
  *   field the user never touched, so the decision reports it and the
  *   caller can say so.
+ *
+ * #372 adds `taskLineClickOpens`: a click on a card's task line opens
+ * the task detail panel, except the click a touch browser can still
+ * synthesize when the finger lifts after a long-press drag started.
  */
 "use strict";
 
@@ -105,6 +109,25 @@ function projectCardIdUnderPoint(targets, x, y) {
     return hit;
 }
 
+// How long after the long-press timer fires (projects.js
+// `onTaskTouchStart`) a click on the same line is treated as the tail
+// of that gesture rather than a tap. A long-press released without
+// moving can still synthesize a click on touch browsers; without this
+// window, starting a drag and letting go would pop the task panel open.
+var TASK_LINE_LONG_PRESS_GUARD_MS = 700;
+
+/**
+ * #372: should a click on a project-card task line open the task panel?
+ *
+ * `longPressAt` is the Date.now() at which the 500ms long-press timer
+ * last fired (null/undefined when none has). Returns false only for a
+ * click landing within TASK_LINE_LONG_PRESS_GUARD_MS of that moment.
+ */
+function taskLineClickOpens(longPressAt, now) {
+    if (longPressAt === null || longPressAt === undefined) return true;
+    return now - longPressAt > TASK_LINE_LONG_PRESS_GUARD_MS;
+}
+
 // `cardIdUnderPoint` is the same function under a card-agnostic name.
 // #343 reuses this geometry for goal cards on /goals rather than
 // growing a second copy of the hit-test, but calling something named
@@ -116,6 +139,7 @@ if (typeof module !== "undefined" && module.exports) {
         projectTaskDropDecision, projectTaskMovePayload,
         projectCardIdUnderPoint,
         cardIdUnderPoint: projectCardIdUnderPoint,
+        taskLineClickOpens,
     };
 } else if (typeof window !== "undefined") {
     window.projectTaskDragHelpers = {
@@ -123,5 +147,6 @@ if (typeof module !== "undefined" && module.exports) {
         projectTaskMovePayload: projectTaskMovePayload,
         projectCardIdUnderPoint: projectCardIdUnderPoint,
         cardIdUnderPoint: projectCardIdUnderPoint,
+        taskLineClickOpens: taskLineClickOpens,
     };
 }

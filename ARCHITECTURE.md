@@ -458,7 +458,14 @@ component is added, a data flow changes, or a security boundary shifts.
   tier in full-page layout (404 on invalid slug). Reuses the board's
   `renderBoard()` dispatch via a shared else-branch, with the
   `_task_detail_panel.html` Jinja partial included in both `index.html`
-  and `tier.html`. Tier headings on the board are clickable links into
+  and `tier.html`. Pages that show tasks without being the board
+  (`/calendar` #270, `/goals` and `/projects` #372)
+  include the same partial as **panel-only hosts**: `app.js init()` skips
+  the board render, and every panel mutation calls the page's own
+  `window.taskDetailAfterSave` refresh instead of `renderBoard()`. The
+  same hook also runs on app.js's 60s poll, tab-visible and cross-tab
+  refreshes, so each page's hook keeps its own state (expanded cards),
+  skips while a drag is live, and swallows fetch errors. Tier headings on the board are clickable links into
   these pages. Capture bar on a tier page defaults new tasks to the
   current tier via `data-default-tier`.
 - **Day-of-week grouping** (#23, ADR-010): `static/day_group.js` is a

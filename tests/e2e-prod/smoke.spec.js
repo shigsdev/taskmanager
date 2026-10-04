@@ -979,6 +979,47 @@ test.describe("Prod smoke — feature surfaces", () => {
                 ? "empty-state" : "nothing rendered";
         }), { timeout: 10000 }).toMatch(/^(listed|empty-state)$/);
     });
+
+    // #372: read-only. Opens the task panel from a linked task and closes
+    // it again; never saves. Skips (with a reason) if live data has no
+    // linked task to click, rather than failing on an empty account.
+    test("/goals: a linked task opens the task panel (#372)", async ({ page }) => {
+        await page.goto("/goals?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const goalId = await page.evaluate(() =>
+            Object.keys(goalTasks).find((id) => goalTasks[id].length > 0
+                && document.querySelector(`.goal-card[data-goal-id="${id}"]`))
+            || null);
+        test.skip(!goalId, "no visible goal with a linked active task in prod data");
+        await page.locator(`.goal-card[data-goal-id="${goalId}"]`)
+            .click({ position: { x: 8, y: 8 } });
+        await expect(page.locator("#goalDetailOverlay")).toBeVisible();
+        const row = page.locator("#linkedTasksList .linked-task-row").first();
+        const label = row.locator(".linked-task-title");
+        const title = (await label.textContent()).trim();
+        // Click the title text, never a position: the row's checkbox
+        // COMPLETES the task, and this runs against real prod data.
+        await label.click();
+        await expect(page.locator("#detailOverlay")).toBeVisible();
+        await expect(page.locator("#detailTitle")).toHaveValue(title);
+        await page.locator("#detailClose").click();
+        await expect(page.locator("#detailOverlay")).toBeHidden();
+        await expect(page.locator("#goalDetailOverlay")).toBeVisible();
+    });
+
+    test("/projects: a card task line opens the task panel (#372)", async ({ page }) => {
+        await page.goto("/projects?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const line = page.locator(".project-card-task[data-task-id]").first();
+        test.skip(await line.count() === 0, "no project task line in prod data");
+        const title = (await line.textContent()).trim();
+        await line.click();
+        await expect(page.locator("#detailOverlay")).toBeVisible();
+        await expect(page.locator("#detailTitle")).toHaveValue(title);
+        await expect(page.locator("#projectDetailOverlay")).toBeHidden();
+        await page.locator("#detailClose").click();
+        await expect(page.locator("#detailOverlay")).toBeHidden();
+    });
 });
 
 test.describe("Prod smoke — admin endpoints (read-only checks)", () => {

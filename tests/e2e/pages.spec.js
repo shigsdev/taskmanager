@@ -6074,3 +6074,684 @@ test.describe("/completed lists completed tasks on load (#358)", () => {
         }
     });
 });
+
+test.describe("Goals - a linked task opens the task panel (#372)", () => {
+    // #372: the goal panel's Linked Tasks list rendered each task as inert
+    // text. goals.html never included the task detail panel markup, so
+    // there was nothing to open. Now the row opens the panel, stacked on
+    // top of the goal panel (user decision 2026-10-03), and a save
+    // refreshes the still-open goal panel through window.taskDetailAfterSave.
+    //
+    // Persisted state is read back through the API wherever a save is
+    // involved (#347: a test that watches the UI alone can pass while the
+    // request fails).
+
+    const stamp = () =>
+        `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    async function makeGoal(request, s, suffix = "") {
+        const r = await request.post("/api/goals", {
+            data: { title: `E2E 372 goal ${s}${suffix}`, category: "work",
+                    priority: "should" },
+        });
+        expect(r.ok()).toBe(true);
+        return r.json();
+    }
+
+    async function fixture(request, { secondGoal = false } = {}) {
+        const s = stamp();
+        const goal = await makeGoal(request, s);
+        const other = secondGoal ? await makeGoal(request, s, " B") : null;
+        const t = await request.post("/api/tasks", {
+            data: { title: `E2E 372 task ${s}`, type: "work", tier: "today",
+                    goal_id: goal.id },
+        });
+        expect(t.ok()).toBe(true);
+        const task = await t.json();
+        return { goal, other, task };
+    }
+
+    // DELETE on a task is a soft delete that keeps goal_id, and
+    // hard_delete_goal refuses while any row points at the goal, so the
+    // link is nulled first.
+    async function cleanup(request, { goal, other, task }) {
+        await request.patch(`/api/tasks/${task.id}`,
+                            { data: { goal_id: null } });
+        await request.delete(`/api/tasks/${task.id}`);
+        for (const g of [goal, other]) {
+            if (!g) continue;
+            await request.delete(`/api/goals/${g.id}`);
+            await request.delete(`/api/goals/${g.id}/permanent`);
+        }
+    }
+
+    const linkedRow = (page, title) =>
+        page.locator("#linkedTasksList .linked-task-row")
+            .filter({ hasText: title });
+
+    async function openGoal(page, goalId, { filter } = {}) {
+        await page.goto("/goals?nosw=1");
+        await page.waitForLoadState("networkidle");
+        if (filter) await page.selectOption("#filterArchived", filter);
+        await page.locator(`.goal-card[data-goal-id="${goalId}"]`).click();
+        await expect(page.locator("#goalDetailOverlay")).toBeVisible();
+    }
+
+    const taskPatch = (page, taskId) => page.waitForResponse((r) =>
+        r.url().endsWith(`/api/tasks/${taskId}`)
+        && r.request().method() === "PATCH");
+
+    const apiTask = async (request, id) =>
+        (await request.get(`/api/tasks/${id}`)).json();
+
+    test("clicking a linked task stacks the task panel on the goal panel", async ({
+        page, request,
+    }) => {
+        const fx = await fixture(request);
+        try {
+            await openGoal(page, fx.goal.id);
+            await linkedRow(page, fx.task.title).click();
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+            await expect(page.locator("#detailTitle"))
+                .toHaveValue(fx.task.title);
+
+            // Stacked, not underneath: the topmost element at the task
+            // panel's centre belongs to the task overlay. A template that
+            // moved the include above #goalDetailOverlay would flip this.
+            const onTop = await page.evaluate(() => {
+                const r = document.getElementById("detailPanel")
+                    .getBoundingClientRect();
+                const el = document.elementFromPoint(
+                    r.left + r.width / 2, r.top + Math.min(r.height / 2, 200));
+                return !!(el && el.closest("#detailOverlay"));
+            });
+            expect(onTop).toBe(true);
+
+            await page.locator("#detailClose").click();
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+            await expect(page.locator("#goalDetailOverlay")).toBeVisible();
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("saving from the panel refreshes the open goal panel", async ({
+        page, request,
+    }) => {
+        const fx = await fixture(request);
+        const renamed = `${fx.task.title} renamed`;
+        try {
+            await openGoal(page, fx.goal.id);
+            await linkedRow(page, fx.task.title).click();
+            await page.locator("#detailTitle").fill(renamed);
+            const saved = taskPatch(page, fx.task.id);
+            await page.locator("#detailForm button[type=submit]").click();
+            expect((await saved).ok()).toBe(true);
+
+            // No page.reload(): the goal panel's own list re-rendered.
+            await expect(page.locator("#goalDetailOverlay")).toBeVisible();
+            await expect(linkedRow(page, renamed)).toHaveCount(1);
+            expect((await apiTask(request, fx.task.id)).title).toBe(renamed);
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("Enter on a focused linked row opens the panel", async ({
+        page, request,
+    }) => {
+        const fx = await fixture(request);
+        try {
+            await openGoal(page, fx.goal.id);
+            const row = linkedRow(page, fx.task.title);
+            await expect(row).toHaveAttribute("role", "button");
+            await expect(row).toHaveAttribute("tabindex", "0");
+            await expect(row).toHaveAttribute(
+                "aria-label", `Open task: ${fx.task.title}`);
+            await row.focus();
+            await page.keyboard.press("Enter");
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("checkbox completes without opening the panel", async ({
+        page, request,
+    }) => {
+        // The checkbox's click bubbles to the row; without a stop it
+        // would complete the task AND pop the panel open.
+        const fx = await fixture(request);
+        try {
+            await openGoal(page, fx.goal.id);
+            await linkedRow(page, fx.task.title)
+                .locator('input[type="checkbox"]').click();
+            await expect.poll(async () =>
+                (await apiTask(request, fx.task.id)).status).toBe("archived");
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("Space on the checkbox does not open the panel", async ({
+        page, request,
+    }) => {
+        // A keydown on the focused checkbox bubbles to the row's keydown
+        // handler, which must ignore anything not aimed at the row itself.
+        const fx = await fixture(request);
+        try {
+            await openGoal(page, fx.goal.id);
+            await linkedRow(page, fx.task.title)
+                .locator('input[type="checkbox"]').focus();
+            await page.keyboard.press("Space");
+            await expect.poll(async () =>
+                (await apiTask(request, fx.task.id)).status).toBe("archived");
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("re-goaling a task removes it from the open goal panel", async ({
+        page, request,
+    }) => {
+        const fx = await fixture(request, { secondGoal: true });
+        try {
+            await openGoal(page, fx.goal.id);
+            await expect(page.locator("#linkedTaskCount")).toHaveText("1");
+            await linkedRow(page, fx.task.title).click();
+            await page.selectOption("#detailGoal", fx.other.id);
+            const saved = taskPatch(page, fx.task.id);
+            await page.locator("#detailForm button[type=submit]").click();
+            expect((await saved).ok()).toBe(true);
+
+            await expect(linkedRow(page, fx.task.title)).toHaveCount(0);
+            await expect(page.locator("#linkedTaskCount")).toHaveText("0");
+            expect((await apiTask(request, fx.task.id)).goal_id)
+                .toBe(fx.other.id);
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("#355: a task on an archived goal keeps its goal after a save", async ({
+        page, request,
+    }) => {
+        // #372 is the first route into the panel from a page that LISTS
+        // archived goals, so #355's guarantee is asserted from here too.
+        // DELETE /api/goals/<id> is the Archive button's soft delete.
+        const fx = await fixture(request);
+        try {
+            const ar = await request.delete(`/api/goals/${fx.goal.id}`);
+            expect(ar.status()).toBe(204);
+            await openGoal(page, fx.goal.id, { filter: "archived" });
+            await linkedRow(page, fx.task.title).click();
+            await expect(page.locator("#detailGoal")).toHaveValue(fx.goal.id);
+            const saved = taskPatch(page, fx.task.id);
+            await page.locator("#detailForm button[type=submit]").click();
+            expect((await saved).ok()).toBe(true);
+            expect((await apiTask(request, fx.task.id)).goal_id)
+                .toBe(fx.goal.id);
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+});
+
+test.describe("Projects - a linked task opens the task panel (#372)", () => {
+    // #372: task lines on /projects (on each card, and in the project
+    // panel's list) were inert text. projects.html now hosts the task
+    // detail panel, a line click opens it, and a save refreshes the page
+    // and the still-open project panel through window.taskDetailAfterSave.
+    // The card lines are also the #344 drag source, so a touch long-press
+    // must still drag rather than open.
+
+    const stamp = () =>
+        `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    async function fixture(request) {
+        const s = stamp();
+        const p = await request.post("/api/projects", {
+            data: { name: `E2E 372 project ${s}`, type: "work" },
+        });
+        expect(p.ok()).toBe(true);
+        const project = await p.json();
+        const t = await request.post("/api/tasks", {
+            data: { title: `E2E 372 task ${s}`, type: "work", tier: "today",
+                    project_id: project.id },
+        });
+        expect(t.ok()).toBe(true);
+        const task = await t.json();
+        return { project, task };
+    }
+
+    // DELETE on a task or a project is a soft delete that keeps the
+    // foreign key, so the link is nulled first.
+    async function cleanup(request, { project, task }) {
+        await request.patch(`/api/tasks/${task.id}`,
+                            { data: { project_id: null } });
+        await request.delete(`/api/tasks/${task.id}`);
+        await request.delete(`/api/projects/${project.id}`);
+    }
+
+    const cardLine = (page, taskId) =>
+        page.locator(`.project-card-task[data-task-id="${taskId}"]`);
+    const sideLine = (page, title) =>
+        page.locator("#projectTaskList .project-side-task")
+            .filter({ hasText: title });
+
+    async function openProjects(page, filter) {
+        await page.goto("/projects?nosw=1");
+        await page.waitForLoadState("networkidle");
+        if (filter) await page.selectOption("#projectFilterActive", filter);
+    }
+
+    // The card's top-left corner is its name, never one of its task
+    // lines — a centre click could land on a line and open the task.
+    async function openProjectPanel(page, projectId) {
+        await page.locator(`.project-card[data-project-id="${projectId}"]`)
+            .click({ position: { x: 8, y: 8 } });
+        await expect(page.locator("#projectDetailOverlay")).toBeVisible();
+    }
+
+    const taskPatch = (page, taskId) => page.waitForResponse((r) =>
+        r.url().endsWith(`/api/tasks/${taskId}`)
+        && r.request().method() === "PATCH");
+
+    const apiTask = async (request, id) =>
+        (await request.get(`/api/tasks/${id}`)).json();
+
+    test("clicking a card task line opens only the task panel", async ({
+        page, request,
+    }) => {
+        const fx = await fixture(request);
+        try {
+            await openProjects(page);
+            await cardLine(page, fx.task.id).click();
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+            await expect(page.locator("#detailTitle"))
+                .toHaveValue(fx.task.title);
+            // The line still stops its click from reaching the card.
+            await expect(page.locator("#projectDetailOverlay")).toBeHidden();
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("a side-list task stacks on the project panel and refreshes on save", async ({
+        page, request,
+    }) => {
+        const fx = await fixture(request);
+        const renamed = `${fx.task.title} renamed`;
+        try {
+            await openProjects(page);
+            await openProjectPanel(page, fx.project.id);
+            await sideLine(page, fx.task.title).click();
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+
+            const onTop = await page.evaluate(() => {
+                const r = document.getElementById("detailPanel")
+                    .getBoundingClientRect();
+                const el = document.elementFromPoint(
+                    r.left + r.width / 2, r.top + Math.min(r.height / 2, 200));
+                return !!(el && el.closest("#detailOverlay"));
+            });
+            expect(onTop).toBe(true);
+
+            await page.locator("#detailTitle").fill(renamed);
+            const saved = taskPatch(page, fx.task.id);
+            await page.locator("#detailForm button[type=submit]").click();
+            expect((await saved).ok()).toBe(true);
+
+            // No reload: the open project panel's list re-rendered.
+            await expect(sideLine(page, renamed)).toHaveCount(1);
+            expect((await apiTask(request, fx.task.id)).title).toBe(renamed);
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+            await expect(page.locator("#projectDetailOverlay")).toBeVisible();
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("completing from the panel refreshes the side list", async ({
+        page, request,
+    }) => {
+        // The page lists active tasks only, so a completed task must
+        // leave the side list and the summary count must drop.
+        const fx = await fixture(request);
+        try {
+            await openProjects(page);
+            await openProjectPanel(page, fx.project.id);
+            await expect(page.locator("#projectTaskCount")).toHaveText("1");
+            await sideLine(page, fx.task.title).click();
+            await page.locator("#detailComplete").click();
+
+            await expect.poll(async () =>
+                (await apiTask(request, fx.task.id)).status).toBe("archived");
+            await expect(sideLine(page, fx.task.title)).toHaveCount(0);
+            await expect(page.locator("#projectTaskCount")).toHaveText("0");
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("Enter on a focused card line opens the panel", async ({
+        page, request,
+    }) => {
+        const fx = await fixture(request);
+        try {
+            await openProjects(page);
+            const line = cardLine(page, fx.task.id);
+            await expect(line).toHaveAttribute("role", "button");
+            await expect(line).toHaveAttribute("tabindex", "0");
+            await expect(line).toHaveAttribute(
+                "aria-label", `Open task: ${fx.task.title}`);
+            await line.focus();
+            await page.keyboard.press("Enter");
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+            await expect(page.locator("#projectDetailOverlay")).toBeHidden();
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("#355: a task on an archived project keeps its project after a save", async ({
+        page, request,
+    }) => {
+        // #372 is the first route into the panel from a page that LISTS
+        // archived projects, so #355's guarantee is asserted from here.
+        const fx = await fixture(request);
+        try {
+            const ar = await request.patch(`/api/projects/${fx.project.id}`,
+                                           { data: { is_active: false } });
+            expect(ar.ok()).toBe(true);
+            await openProjects(page, "archived");
+            await cardLine(page, fx.task.id).click();
+            await expect(page.locator("#detailProject"))
+                .toHaveValue(fx.project.id);
+            const saved = taskPatch(page, fx.task.id);
+            await page.locator("#detailForm button[type=submit]").click();
+            expect((await saved).ok()).toBe(true);
+            expect((await apiTask(request, fx.task.id)).project_id)
+                .toBe(fx.project.id);
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+
+    test("a long-press does not open the panel; a tap does", async ({
+        page, request,
+    }) => {
+        // Synthetic TouchEvents never synthesize a click, so the test
+        // dispatches the click a touch browser would send on release.
+        const fx = await fixture(request);
+        try {
+            await openProjects(page);
+            await expect(cardLine(page, fx.task.id)).toBeVisible();
+
+            const longPressOpened = await page.evaluate(async (id) => {
+                const fire = (el, type, x, y, released) => {
+                    const touch = new Touch({
+                        identifier: 1, target: el, clientX: x, clientY: y,
+                    });
+                    el.dispatchEvent(new TouchEvent(type, {
+                        bubbles: true, cancelable: true,
+                        touches: released ? [] : [touch],
+                        targetTouches: released ? [] : [touch],
+                        changedTouches: [touch],
+                    }));
+                };
+                const li = document.querySelector(
+                    `.project-card-task[data-task-id="${id}"]`);
+                const r = li.getBoundingClientRect();
+                const x = r.left + 10;
+                const y = r.top + r.height / 2;
+                fire(li, "touchstart", x, y, false);
+                await new Promise((s) => setTimeout(s, 600));  // past the hold
+                fire(document, "touchend", x, y, true);
+                li.click();
+                await new Promise((s) => setTimeout(s, 100));
+                return document.getElementById("detailOverlay")
+                    .style.display !== "none";
+            }, fx.task.id);
+            expect(longPressOpened).toBe(false);
+
+            // Releasing over the line's own card is a same-project drop:
+            // nothing moves.
+            expect((await apiTask(request, fx.task.id)).project_id)
+                .toBe(fx.project.id);
+
+            // Past the guard window, a quick tap opens the panel.
+            await page.waitForTimeout(800);
+            await page.evaluate(async (id) => {
+                const fire = (el, type, x, y, released) => {
+                    const touch = new Touch({
+                        identifier: 1, target: el, clientX: x, clientY: y,
+                    });
+                    el.dispatchEvent(new TouchEvent(type, {
+                        bubbles: true, cancelable: true,
+                        touches: released ? [] : [touch],
+                        targetTouches: released ? [] : [touch],
+                        changedTouches: [touch],
+                    }));
+                };
+                const li = document.querySelector(
+                    `.project-card-task[data-task-id="${id}"]`);
+                const r = li.getBoundingClientRect();
+                const x = r.left + 10;
+                const y = r.top + r.height / 2;
+                fire(li, "touchstart", x, y, false);
+                await new Promise((s) => setTimeout(s, 120));
+                fire(document, "touchend", x, y, true);
+                li.click();
+            }, fx.task.id);
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+        } finally {
+            await cleanup(request, fx);
+        }
+    });
+});
+
+test.describe("Panel hosts /goals and /projects keep their state (#372 review)", () => {
+    // Found by #372's final review. Hosting the task panel made these
+    // pages register window.taskDetailAfterSave, and app.js's 60s poll,
+    // tab-visible and cross-tab refreshes all call loadTasks(), which
+    // hands off to that hook. So the hook is a page-wide refresh, not
+    // just a post-save one: it must keep page state, never tear a live
+    // drag out from under the finger, and never throw. Separately, the
+    // panel's Goal dropdown needs goal_filter_helpers.js for the #142
+    // work/personal split, as on the board and /calendar.
+
+    const stamp = () =>
+        `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    async function post(request, url, data) {
+        const r = await request.post(url, { data });
+        expect(r.ok()).toBe(true);
+        return r.json();
+    }
+
+    test("a personal task's Goal dropdown leaves out work goals on /goals and /projects (#142)", async ({
+        page, request,
+    }) => {
+        const s = stamp();
+        const home = await post(request, "/api/goals", {
+            title: `E2E 372r health ${s}`, category: "health",
+            priority: "should" });
+        const work = await post(request, "/api/goals", {
+            title: `E2E 372r work ${s}`, category: "work",
+            priority: "should" });
+        const project = await post(request, "/api/projects", {
+            name: `E2E 372r personal ${s}`, type: "personal" });
+        const task = await post(request, "/api/tasks", {
+            title: `E2E 372r task ${s}`, type: "personal", tier: "today",
+            goal_id: home.id, project_id: project.id });
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator(`.goal-card[data-goal-id="${home.id}"]`)
+                .click({ position: { x: 8, y: 8 } });
+            await page.locator("#linkedTasksList .linked-task-row")
+                .filter({ hasText: task.title }).click();
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+            await expect(page.locator(
+                `#detailGoal option[value="${home.id}"]`)).toHaveCount(1);
+            await expect(page.locator(
+                `#detailGoal option[value="${work.id}"]`)).toHaveCount(0);
+
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator(
+                `.project-card-task[data-task-id="${task.id}"]`).click();
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+            await expect(page.locator(
+                `#detailGoal option[value="${work.id}"]`)).toHaveCount(0);
+        } finally {
+            await request.patch(`/api/tasks/${task.id}`,
+                { data: { goal_id: null, project_id: null } });
+            await request.delete(`/api/tasks/${task.id}`);
+            await request.delete(`/api/projects/${project.id}`);
+            for (const g of [home, work]) {
+                await request.delete(`/api/goals/${g.id}`);
+                await request.delete(`/api/goals/${g.id}/permanent`);
+            }
+        }
+    });
+
+    test("/projects: an expanded card stays expanded across the poll's refresh", async ({
+        page, request,
+    }) => {
+        const s = stamp();
+        const project = await post(request, "/api/projects", {
+            name: `E2E 372r many ${s}`, type: "work" });
+        const tasks = [];
+        for (let i = 0; i < 6; i++) {
+            tasks.push(await post(request, "/api/tasks", {
+                title: `E2E 372r line ${i} ${s}`, type: "work",
+                tier: "today", project_id: project.id }));
+        }
+        try {
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const card = page.locator(
+                `.project-card[data-project-id="${project.id}"]`);
+            await card.locator(".project-card-toggle").click();
+            await expect(card.locator(".project-card-task")).toHaveCount(6);
+            await expect(card.locator(".project-card-task").nth(5))
+                .toBeVisible();
+            // The 60s poll's path: app.js loadTasks() → the page hook.
+            await page.evaluate(() => loadTasks());
+            await page.evaluate(() => window.taskDetailAfterSave());
+            await expect(card.locator(".project-card-task").nth(5))
+                .toBeVisible();
+            await expect(card.locator(".project-card-toggle"))
+                .toHaveText("Hide");
+        } finally {
+            for (const t of tasks) {
+                await request.patch(`/api/tasks/${t.id}`,
+                    { data: { project_id: null } });
+                await request.delete(`/api/tasks/${t.id}`);
+            }
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+
+    test("/projects: a refresh never re-renders under a live task drag", async ({
+        page,
+    }) => {
+        await page.goto("/projects?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator(".project-card-task[data-task-id]").first())
+            .toBeVisible({ timeout: 10000 });
+        const kept = await page.evaluate(async () => {
+            const li = document.querySelector(
+                ".project-card-task[data-task-id]");
+            li.dispatchEvent(new DragEvent("dragstart",
+                { dataTransfer: new DataTransfer(), bubbles: true }));
+            await window.taskDetailAfterSave();
+            const still = document.contains(li);
+            li.dispatchEvent(new DragEvent("dragend", { bubbles: true }));
+            return still;
+        });
+        expect(kept).toBe(true);
+    });
+
+    test("/goals: a refresh never re-renders under a live project drag", async ({
+        page, request,
+    }) => {
+        const s = stamp();
+        const goal = await post(request, "/api/goals", {
+            title: `E2E 372r goal ${s}`, category: "work",
+            priority: "should" });
+        const project = await post(request, "/api/projects", {
+            name: `E2E 372r chip ${s}`, type: "work", goal_id: goal.id });
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const kept = await page.evaluate(async (pid) => {
+                const li = document.querySelector(
+                    `.goal-card-project[data-project-id="${pid}"]`);
+                li.dispatchEvent(new DragEvent("dragstart",
+                    { dataTransfer: new DataTransfer(), bubbles: true }));
+                await window.taskDetailAfterSave();
+                const still = document.contains(li);
+                li.dispatchEvent(new DragEvent("dragend", { bubbles: true }));
+                return still;
+            }, project.id);
+            expect(kept).toBe(true);
+        } finally {
+            await request.patch(`/api/projects/${project.id}`,
+                { data: { goal_id: null } });
+            await request.delete(`/api/projects/${project.id}`);
+            await request.delete(`/api/goals/${goal.id}`);
+            await request.delete(`/api/goals/${goal.id}/permanent`);
+        }
+    });
+
+    for (const path of ["/goals", "/projects"]) {
+        test(`${path}: a failed background refresh does not throw`, async ({
+            page,
+        }) => {
+            await page.goto(`${path}?nosw=1`);
+            await page.waitForLoadState("networkidle");
+            await page.route("**/api/**", (route) => route.abort());
+            // Resolves rather than rejecting: an unhandled rejection from
+            // the poll would be reported as a client error every minute
+            // the network is down.
+            const outcome = await page.evaluate(() =>
+                window.taskDetailAfterSave().then(() => "resolved",
+                                                  (e) => `rejected: ${e}`));
+            expect(outcome).toBe("resolved");
+        });
+    }
+
+    test("/projects: in Select mode a click on a task line selects the card", async ({
+        page, request,
+    }) => {
+        // Bulk mode is for selecting cards; the task lines cover much of
+        // a card, so they must not hijack that click into opening a task.
+        const s = stamp();
+        const project = await post(request, "/api/projects", {
+            name: `E2E 372r bulk ${s}`, type: "work" });
+        const task = await post(request, "/api/tasks", {
+            title: `E2E 372r bulk task ${s}`, type: "work", tier: "today",
+            project_id: project.id });
+        try {
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator("#projectsBulkToggle").click();
+            await page.locator(
+                `.project-card-task[data-task-id="${task.id}"]`).click();
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+            await expect(page.locator(
+                `.project-card[data-project-id="${project.id}"]`))
+                .toHaveClass(/bulk-selected/);
+        } finally {
+            await request.patch(`/api/tasks/${task.id}`,
+                { data: { project_id: null } });
+            await request.delete(`/api/tasks/${task.id}`);
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+});

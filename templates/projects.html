@@ -170,6 +170,10 @@
         </form>
     </div>
 </div>
+{# #372: the task detail panel, so a task line opens in place. After
+   #projectDetailOverlay on purpose: both overlays share z-index 200, and
+   the later one paints on top, so the task panel stacks over this one. #}
+{% include "_task_detail_panel.html" %}
 {% endblock %}
 
 {% block scripts %}
@@ -179,6 +183,9 @@
 <script src="{{ url_for('static', filename='api_helpers.js') }}"></script>
     <script src="{{ url_for('static', filename='voice_input.js') }}"></script>
     <script src="{{ url_for('static', filename='filter_helpers.js') }}"></script>
+    {# #372: goal-dropdown scoping (#142) for the embedded task panel,
+       as on the board and /calendar. #}
+    <script src="{{ url_for('static', filename='goal_filter_helpers.js') }}"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 <script src="{{ url_for('static', filename='project_task_drag_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='projects.js') }}"></script>
