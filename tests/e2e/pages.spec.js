@@ -7022,3 +7022,102 @@ test.describe("Board - dragging into a weekday-grouped tier (#383) @noviewport",
         }
     });
 });
+
+test.describe("A superseded refresh never paints over a newer one (#379)", () => {
+    // Since #372, /goals and /projects refresh from two triggers: the
+    // post-save hook and app.js's poll / tab-visible / cross-tab
+    // refreshes. Two overlapping loads used to resolve last-wins, so a
+    // slow, OLDER response could repaint over a newer one. Each test
+    // holds the first GET /api/tasks (fetched before a rename, so it
+    // carries the old title), runs a second refresh after the rename,
+    // then releases the first. The newer data must survive.
+
+    const stamp = () =>
+        `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    async function holdFirstTasksFetch(page) {
+        let release;
+        const seen = new Promise((r) => { release = r; });
+        let n = 0;
+        await page.route(/\/api\/tasks$/, async (route) => {
+            if (n++ === 0) {
+                const resp = await route.fetch();   // old data, fetched now
+                release();
+                await new Promise((d) => setTimeout(d, 1500));
+                await route.fulfill({ response: resp });
+            } else {
+                await route.continue();
+            }
+        });
+        // Wrapped: an async function returning a bare promise would make
+        // the caller's await wait for the held fetch itself.
+        return { seen };
+    }
+
+    async function raceRefreshes(page, request, taskId, renamed) {
+        const { seen } = await holdFirstTasksFetch(page);
+        await page.evaluate(() => { window.__olderLoad = window.taskDetailAfterSave(); });
+        await seen;
+        const r = await request.patch(`/api/tasks/${taskId}`,
+                                      { data: { title: renamed } });
+        expect(r.ok()).toBe(true);
+        await page.evaluate(async () => {
+            await window.taskDetailAfterSave();
+            await window.__olderLoad;
+        });
+    }
+
+    test("/goals: the open goal panel keeps the newer title", async ({
+        page, request,
+    }) => {
+        const s = stamp();
+        const goal = await (await request.post("/api/goals", {
+            data: { title: `E2E 379 goal ${s}`, category: "work",
+                    priority: "should" } })).json();
+        const task = await (await request.post("/api/tasks", {
+            data: { title: `E2E 379 task ${s}`, type: "work", tier: "today",
+                    goal_id: goal.id } })).json();
+        const renamed = `${task.title} renamed`;
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator(`.goal-card[data-goal-id="${goal.id}"]`)
+                .click({ position: { x: 8, y: 8 } });
+            await raceRefreshes(page, request, task.id, renamed);
+            const titles = page.locator("#linkedTasksList .linked-task-title");
+            await expect(titles.filter({ hasText: renamed })).toHaveCount(1);
+            await expect(titles).toHaveCount(1);
+        } finally {
+            await request.patch(`/api/tasks/${task.id}`,
+                                { data: { goal_id: null } });
+            await request.delete(`/api/tasks/${task.id}`);
+            await request.delete(`/api/goals/${goal.id}`);
+            await request.delete(`/api/goals/${goal.id}/permanent`);
+        }
+    });
+
+    test("/projects: the card keeps the newer title", async ({
+        page, request,
+    }) => {
+        const s = stamp();
+        const project = await (await request.post("/api/projects", {
+            data: { name: `E2E 379 project ${s}`, type: "work" } })).json();
+        const task = await (await request.post("/api/tasks", {
+            data: { title: `E2E 379 task ${s}`, type: "work", tier: "today",
+                    project_id: project.id } })).json();
+        const renamed = `${task.title} renamed`;
+        try {
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await raceRefreshes(page, request, task.id, renamed);
+            await expect(page.locator(
+                `.project-card-task[data-task-id="${task.id}"]`))
+                .toHaveText(renamed);
+        } finally {
+            await request.patch(`/api/tasks/${task.id}`,
+                                { data: { project_id: null } });
+            await request.delete(`/api/tasks/${task.id}`);
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+});

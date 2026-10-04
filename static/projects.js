@@ -63,11 +63,20 @@ async function projectsInit() {
     document.addEventListener("touchend", onProjectsTouchEnd);
 }
 
+// #379: bumped on every projectsLoad. The save hook and app.js's poll /
+// tab-visible / cross-tab refreshes can overlap; a load that a newer one
+// has superseded must not paint its older data last (calendar.js #219).
+let _projectsLoadGeneration = 0;
+
 async function projectsLoad() {
+    const myGen = ++_projectsLoadGeneration;
     // Load projects (is_active=all so archived ones show when filter is toggled).
-    projectsData = await apiFetch("/api/projects?is_active=all");
-    projectsGoals = await apiFetch("/api/goals?is_active=all");
+    const projects = await apiFetch("/api/projects?is_active=all");
+    const goals = await apiFetch("/api/goals?is_active=all");
     const tasks = await apiFetch("/api/tasks");
+    if (myGen !== _projectsLoadGeneration) return;
+    projectsData = projects;
+    projectsGoals = goals;
 
     // Compute task counts per project (total and active-only) AND keep
     // the task arrays so we can render them inline (#95).
