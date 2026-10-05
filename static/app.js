@@ -2458,17 +2458,26 @@ function setupDetailPanel() {
             const filled = window.tierHelpers.dueDateForTier(tier);
             if (filled) _detailDueDateEl.value = filled;
         });
-        _detailDueDateEl.addEventListener("change", () => {
+        const _syncTierToDate = () => {
             const tier = _detailTierEl.value;
             // FREEZER preserves explicit park.
             if (tier === "freezer") return;
             const v = _detailDueDateEl.value;
             if (!v) return;  // empty date — leave tier alone
-            const newTier = window.tierHelpers.tierForDueDate(v);
+            // #386: from Inbox an overdue date files to Today (mirrors
+            // the server's Inbox rule); other sections keep the mapping.
+            const newTier = tier === "inbox"
+                ? window.tierHelpers.tierForFiledDate(v)
+                : window.tierHelpers.tierForDueDate(v);
             if (newTier && newTier !== tier) {
                 _detailTierEl.value = newTier;
             }
-        });
+        };
+        // #386: "input" as well as "change" — the iOS Safari date picker
+        // can commit a value without a timely "change", leaving the
+        // dropdown on Inbox at Save. The handler is idempotent.
+        _detailDueDateEl.addEventListener("change", _syncTierToDate);
+        _detailDueDateEl.addEventListener("input", _syncTierToDate);
     }
     setupAddSubtask();
 }
@@ -2509,10 +2518,17 @@ function _setDetailCreateMode(isCreate) {
 // click seeds the date of the cell that was clicked so the new task lands
 // on that day without leaving the calendar.
 function taskDetailOpenNew(prefillTitle, prefillType, prefillDue) {
+    // #386: a pre-filled date (the /calendar empty-cell click) sets no
+    // "change" event, so pick the date's section up front — otherwise
+    // the dropdown shows Inbox for a task the server will file by date.
+    var prefillTier = "inbox";
+    if (prefillDue && window.tierHelpers) {
+        prefillTier = window.tierHelpers.tierForFiledDate(prefillDue) || "inbox";
+    }
     taskDetailOpen({
         id: "",
         title: prefillTitle || "",
-        tier: "inbox",
+        tier: prefillTier,
         type: prefillType || "work",
         project_id: null,
         due_date: prefillDue || "",

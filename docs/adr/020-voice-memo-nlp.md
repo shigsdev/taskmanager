@@ -109,6 +109,12 @@ Unknown tier values silently fall back to Inbox; unknown due_date
 formats silently become null. Both are per-candidate failures — one
 bad candidate doesn't fail the whole batch.
 
+> **Amended 2026-10-05 (#386):** a candidate *with* a due date is now
+> filed by that date (`task_service.tier_for_candidate`), whatever tier
+> it carries, Freezer included (an overdue date files to Today); the
+> candidate's tier applies only when there is no date. User decision recorded in
+> `docs/design/386-dated-tasks-skip-inbox.md` §8.
+
 ### 7. Review UI gains two controls per row
 
 `static/voice_memo.js renderCandidate` now produces:

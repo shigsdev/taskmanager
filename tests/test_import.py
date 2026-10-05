@@ -573,11 +573,13 @@ class TestCreateTasksFromImport:
 
     def test_accepts_full_field_set_per_candidate(self, app):
         """#76: each candidate carries optional tier/due_date/goal_id/project_id/notes/url."""
-        from datetime import date
-
         from import_service import create_tasks_from_import
         from models import Goal, GoalCategory, GoalPriority, Project
+        from task_service import _local_today_date
 
+        # #386: a dated row is filed by its date, so the date must agree
+        # with tier=today (the old fixed 2026-12-31 now routes to Backlog).
+        today = _local_today_date()
         with app.app_context():
             goal = Goal(
                 title="g", category=GoalCategory.WORK, priority=GoalPriority.MUST,
@@ -594,7 +596,7 @@ class TestCreateTasksFromImport:
                         "title": "Full field task",
                         "type": "personal",
                         "tier": "today",
-                        "due_date": "2026-12-31",
+                        "due_date": today.isoformat(),
                         "goal_id": goal_id,
                         "project_id": project_id,
                         "notes": "imported with notes",
@@ -608,7 +610,7 @@ class TestCreateTasksFromImport:
             t = tasks[0]
             assert t.tier == Tier.TODAY
             assert t.type == TaskType.PERSONAL
-            assert t.due_date == date(2026, 12, 31)
+            assert t.due_date == today
             assert str(t.goal_id) == goal_id
             assert str(t.project_id) == project_id
             assert t.notes == "imported with notes"

@@ -37,6 +37,7 @@ from models import (
     Tier,
     db,
 )
+from task_service import tier_for_candidate
 
 logger = logging.getLogger(__name__)
 
@@ -773,6 +774,9 @@ def create_tasks_from_import(
                 due_date_val = date.fromisoformat(due_raw)
             except ValueError:
                 due_date_val = None
+        # #386: a dated row is filed by its date, whatever section the
+        # review screen shows.
+        tier = tier_for_candidate(tier, due_date_val)
 
         # goal_id can be a UUID string OR fall through to a free-text
         # `linked_goal` lookup (#89 Excel path).

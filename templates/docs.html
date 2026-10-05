@@ -603,6 +603,7 @@ https://example.com/foo
                 <li>Server pipeline: Whisper transcribes → Claude parses the transcript into one or more task candidates.</li>
                 <li>Each candidate comes back with inferred title, type, section, and due date, plus optional project/goal hints.</li>
                 <li>You review each candidate in a list, tweak any field, and then Add All or Add Selected.</li>
+                <li>A candidate with a due date is filed by that date (overdue or today → Today, tomorrow → Tomorrow, this week → This Week, next week → Next Week, later → Backlog). The Section you see on the review screen is only used for candidates without a date.</li>
                 <li>Non-task items (reflections, asides) are grouped in a collapsed "Reflections" section, unchecked by default.</li>
             </ul>
 
@@ -1001,7 +1002,7 @@ https://example.com/foo
 
             <h3>Modes</h3>
             <ul>
-                <li><strong>Tasks</strong> — candidates land in Inbox after confirmation. One candidate per extracted line.</li>
+                <li><strong>Tasks</strong> — candidates land in Inbox after confirmation, unless a candidate has a due date: then it is filed in the section that date maps to. One candidate per extracted line.</li>
                 <li><strong>Goals</strong> — candidates become Goal rows. Claude assigns each goal a <strong>category</strong> (one of <code>health</code>, <code>personal_growth</code>, <code>relationships</code>, <code>work</code>, <code>bau</code> — falling back to <code>personal_growth</code> when the text is unclear) and a <strong>priority</strong> (falling back to <code>need_more_info</code>). New goals start <code>status=not_started</code>. Edit any field on the review screen before confirming.</li>
                 <li><strong>Projects</strong> — candidates become Project rows with default type=work, status=not_started, color=per-type default (Work blue / Personal green). Edit any on the review screen before confirming. Same recycle-bin batch undo as the other modes.</li>
             </ul>
@@ -1173,7 +1174,7 @@ Skip this line (too short)</pre>
             <ul>
                 <li><code>type</code>: <code>work</code>, <code>personal</code>. Default: <code>work</code>.</li>
                 <li><code>tier</code>: <code>inbox</code>, <code>today</code>, <code>tomorrow</code>, <code>this_week</code>, <code>next_week</code>, <code>backlog</code>, <code>freezer</code>. Default: <code>inbox</code>.</li>
-                <li><code>due_date</code>: ISO <code>YYYY-MM-DD</code>. Excel date cells are normalised automatically. Setting a due_date will auto-route the task to the matching section on save (e.g. today → Today).</li>
+                <li><code>due_date</code>: ISO <code>YYYY-MM-DD</code>. Excel date cells are normalised automatically. A row with a due_date is filed by its date (e.g. today → Today), whatever its <code>tier</code> column says — <code>tier</code> only applies to rows without a date.</li>
                 <li><code>linked_goal</code>: free-text goal title; matched case-insensitively against your active goals at create time. No exact-id needed. Misses are silently dropped (task created without a goal).</li>
                 <li><code>linked_project</code>: free-text project name; same matching as <code>linked_goal</code>. If the linked project has a <code>goal_id</code>, that cascades onto the task automatically.</li>
                 <li><code>notes</code>: free text.</li>
@@ -1418,10 +1419,29 @@ Skip this line (too short)</pre>
                 (always overwrites the section) <em>except</em> when:
             </p>
             <ul>
-                <li>You set <code>tier</code> (the API field name) and <code>due_date</code> in the same update — your explicit section wins.</li>
+                <li>You set a section other than Inbox (<code>tier</code>, the API field name) and <code>due_date</code> in the same update — your explicit section wins.</li>
                 <li>The task is in <strong>Freezer</strong> — you parked it on purpose; the date is just a reminder.</li>
                 <li>The task is not Active (archived/cancelled/deleted).</li>
             </ul>
+            <p>
+                <strong>Inbox never holds a task whose date you just set.</strong>
+                Creating a task with a due date, or setting or changing
+                the date of an Inbox task, files it by the date — even
+                if the Section dropdown still said Inbox when you saved.
+                A date that has already passed files it to
+                <strong>Today</strong>, so an overdue task stays in sight.
+                Moving an already-dated task <em>into</em> Inbox (bulk
+                toolbar, drag, or picking Inbox without touching the
+                date) keeps it in Inbox.
+            </p>
+            <p>
+                Tasks created from a <strong>reflection</strong>, a
+                <strong>photo scan</strong>, a <strong>voice memo</strong>
+                or an <strong>import</strong> are always filed by their
+                due date when they have one (an overdue date files to
+                Today) — the section on the review screen, Freezer
+                included, is only used for items without a date.
+            </p>
             <p>
                 Moving a task back out of Today/Tomorrow does NOT
                 clear the auto-filled date. The date is still

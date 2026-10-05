@@ -121,14 +121,49 @@ function dueDateForTier(tier, todayOverride) {
     return `${yyyy}-${mm}-${dd}`;
 }
 
+/**
+ * #386: the tier a task is FILED to when its date decides — an Inbox
+ * task getting a date, or a New Task opened with a pre-filled date.
+ * Mirrors `task_service._tier_for_filed_date`: same as tierForDueDate,
+ * except an overdue date files to "today" (not this_week / backlog), so
+ * a past-due task stays in sight.
+ *
+ * @param {Date|string} dueDate ISO string `YYYY-MM-DD` or Date
+ * @param {Date} [todayOverride] for testing only
+ * @returns {string|null} null when input can't be parsed.
+ */
+function tierForFiledDate(dueDate, todayOverride) {
+    const natural = tierForDueDate(dueDate, todayOverride);
+    if (natural === null) return null;
+    const todayIso = _tierHelpersIsoDate(todayOverride || new Date());
+    const dueIso = dueDate instanceof Date
+        ? _tierHelpersIsoDate(dueDate)
+        : String(dueDate).slice(0, 10);
+    return dueIso < todayIso ? "today" : natural;
+}
+
+// Local YYYY-MM-DD. Deliberately NOT a call to dueDateForTier: every
+// static/*.js shares one global scope, and inbox_categorize_helpers.js
+// declares its own global `dueDateForTier(tier, todayISO)` that loads
+// later and wins any bare-name call (#386 Phase 6 / Playwright caught
+// it; Jest can't, it loads files in isolation — see #359).
+function _tierHelpersIsoDate(d) {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+}
+
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         tierForDueDate: tierForDueDate,
         dueDateForTier: dueDateForTier,
+        tierForFiledDate: tierForFiledDate,
     };
 } else if (typeof window !== "undefined") {
     window.tierHelpers = {
         tierForDueDate: tierForDueDate,
         dueDateForTier: dueDateForTier,
+        tierForFiledDate: tierForFiledDate,
     };
 }

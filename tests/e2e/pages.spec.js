@@ -1089,6 +1089,136 @@ test.describe("Detail panel: edit completed task → unarchive (#148)", () => {
         }
     });
 
+    test("#386: an input-only date event (iOS picker) routes the tier dropdown", async ({
+        page, request,
+    }) => {
+        // The iOS Safari date picker can commit a value without a timely
+        // "change". Dispatch ONLY "input" and the dropdown must follow.
+        const create = await request.post("/api/tasks", {
+            data: { title: "BUG386 input-only", type: "work", tier: "inbox" },
+        });
+        const task = await create.json();
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const card = page.locator(`.task-card[data-id="${task.id}"]`);
+            await card.locator(".task-title").click({ position: { x: 4, y: 4 } });
+            await expect(page.locator("#detailPanel")).toBeVisible({ timeout: 2000 });
+            const expected = await page.locator("#detailDueDate").evaluate((el) => {
+                const d = new Date(); d.setDate(d.getDate() + 3);
+                const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                el.value = iso;
+                el.dispatchEvent(new Event("input", { bubbles: true }));
+                return window.tierHelpers.tierForDueDate(iso);
+            });
+            expect(expected).not.toBe("inbox");
+            await expect(page.locator("#detailTier")).toHaveValue(expected);
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("#386: an overdue date on an Inbox task files to Today, not Backlog", async ({
+        page, request,
+    }) => {
+        // tierForDueDate maps last month to "backlog"; from Inbox the
+        // user chose Today so an overdue task stays in sight.
+        const create = await request.post("/api/tasks", {
+            data: { title: "BUG386 overdue", type: "work", tier: "inbox" },
+        });
+        const task = await create.json();
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const card = page.locator(`.task-card[data-id="${task.id}"]`);
+            await card.locator(".task-title").click({ position: { x: 4, y: 4 } });
+            await expect(page.locator("#detailPanel")).toBeVisible({ timeout: 2000 });
+            await page.locator("#detailDueDate").evaluate((el) => {
+                const d = new Date(); d.setDate(d.getDate() - 30);
+                el.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                el.dispatchEvent(new Event("input", { bubbles: true }));
+            });
+            await expect(page.locator("#detailTier")).toHaveValue("today");
+            const saved = page.waitForResponse((r) =>
+                r.url().includes(`/api/tasks/${task.id}`) && r.request().method() === "PATCH");
+            await page.locator("#detailForm button[type=submit]").click();
+            expect((await saved).status()).toBe(200);
+            const after = await (await request.get(`/api/tasks/${task.id}`)).json();
+            expect(after.tier).toBe("today");
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("#386: saving an Inbox task with a new date leaves Inbox even if no date event fired", async ({
+        page, request,
+    }) => {
+        // Worst case for the picker: the value changes with NO event, so
+        // the dropdown still says Inbox at Save. The server must route.
+        const create = await request.post("/api/tasks", {
+            data: { title: "BUG386 silent picker", type: "work", tier: "inbox" },
+        });
+        const task = await create.json();
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const card = page.locator(`.task-card[data-id="${task.id}"]`);
+            await card.locator(".task-title").click({ position: { x: 4, y: 4 } });
+            await expect(page.locator("#detailPanel")).toBeVisible({ timeout: 2000 });
+            const expected = await page.locator("#detailDueDate").evaluate((el) => {
+                const d = new Date(); d.setDate(d.getDate() + 1);
+                const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                el.value = iso;  // no event on purpose
+                return window.tierHelpers.tierForDueDate(iso);
+            });
+            await expect(page.locator("#detailTier")).toHaveValue("inbox");
+            const saved = page.waitForResponse((r) =>
+                r.url().includes(`/api/tasks/${task.id}`) && r.request().method() === "PATCH");
+            await page.locator("#detailForm button[type=submit]").click();
+            expect((await saved).status()).toBe(200);
+            const after = await (await request.get(`/api/tasks/${task.id}`)).json();
+            expect(after.tier).toBe(expected);
+            expect(after.tier).not.toBe("inbox");
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("#386: /calendar empty-cell New Task opens on the date's section and saves there", async ({
+        page, request,
+    }) => {
+        // #270 pre-fills the date by code (no "change"), which used to
+        // leave the dropdown — and the saved task — in Inbox.
+        const title = `BUG386 calendar ${Date.now()}`;
+        let createdId = null;
+        try {
+            await page.goto("/calendar?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const { iso, expected } = await page.evaluate(() => {
+                const d = new Date(); d.setDate(d.getDate() + 2);
+                const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                return { iso, expected: window.tierHelpers.tierForDueDate(iso) };
+            });
+            expect(expected).not.toBe("inbox");
+            await page.locator(`.calendar-cell[data-date="${iso}"] .calendar-cell-header`).click();
+            await expect(page.locator("#detailPanel")).toBeVisible({ timeout: 2000 });
+            await expect(page.locator("#detailDueDate")).toHaveValue(iso);
+            await expect(page.locator("#detailTier")).toHaveValue(expected);
+            await page.fill("#detailTitle", title);
+            const posted = page.waitForResponse((r) =>
+                r.url().endsWith("/api/tasks") && r.request().method() === "POST");
+            await page.locator("#detailForm button[type=submit]").click();
+            const resp = await posted;
+            expect(resp.status()).toBe(201);
+            const body = await resp.json();
+            createdId = body.id;
+            expect(body.tier).toBe(expected);
+            expect(body.due_date).toBe(iso);
+        } finally {
+            if (createdId) await request.delete(`/api/tasks/${createdId}`);
+        }
+    });
+
     test("no-op save on completed task does NOT un-archive", async ({
         page, request,
     }) => {

@@ -420,6 +420,12 @@ Report.
      #377: focus a card line, press Enter — focus lands on the panel's ✕;
      press Enter again — focus is back on that line. After a save, focus
      lands on the re-rendered line (card and side list alike).
+     #386: ➕ New Task with a due date next week → it lands in Next Week,
+     not Inbox; the same with NO date still lands in Inbox (the quiet
+     case — easy to regress). On /calendar, click an empty future cell —
+     the panel's Section already matches that date, and Save files it
+     there. A dated task moved to Inbox via the bulk toolbar STAYS in
+     Inbox (a deliberate placement is respected).
   7. **Goals page**: verify goal cards show progress bars with correct task
      counts. Filter by category/priority/status, verify results change.
      Expand a card's `Projects (N)` toggle, drag a project chip onto
@@ -504,6 +510,10 @@ Report.
   Tasks: project assign persists PASS         Tasks: project assign persists PASS
   Tasks: tier button move       PASS          Tasks: tier button move       PASS
   Tasks: repeat dropdown        PASS          Tasks: repeat dropdown        PASS
+  Tasks: dated task skips Inbox PASS          Tasks: dated task skips Inbox PASS
+  Tasks: undated stays in Inbox PASS          Tasks: undated stays in Inbox PASS
+  Tasks: calendar cell section  PASS          Tasks: calendar cell section  PASS
+  Tasks: moved-to-Inbox sticks  PASS          Tasks: moved-to-Inbox sticks  PASS
   Goals: progress bars          PASS          Goals: progress bars          PASS
   Goals: filter category        PASS          Goals: filter category        PASS
   Goals: filter priority        PASS          Goals: filter priority        PASS

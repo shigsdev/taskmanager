@@ -33,6 +33,7 @@ from models import (
     Tier,
     db,
 )
+from task_service import tier_for_candidate
 
 logger = logging.getLogger(__name__)
 
@@ -1398,6 +1399,10 @@ def create_tasks_from_candidates(
                 due_date = _date.fromisoformat(due_raw)
             except ValueError:
                 due_date = None
+
+        # #386: a dated candidate is filed by its date, whatever section
+        # was proposed (reflection / scan / voice all land here).
+        tier = tier_for_candidate(tier, due_date)
 
         # #37: honor inferred project_id + goal_id. Already resolved
         # to UUIDs by _normalise_voice_candidates; validated here

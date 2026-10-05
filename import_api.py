@@ -134,7 +134,7 @@ def upload_tasks_xlsx(email: str):  # noqa: ARG001
 @login_required
 @validate_json_body
 def confirm_tasks(email: str):  # noqa: ARG001
-    """Confirm task candidates and create them in Inbox.
+    """Confirm task candidates and create them (Inbox; a dated row by its date, #386).
 
     Expects JSON body:
     {

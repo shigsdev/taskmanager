@@ -553,7 +553,7 @@ flowchart TD
     Render --> Confirm{User clicks<br/>Confirm?}
     Confirm -- No --> Discard([Discarded])
     Confirm -- Yes --> POST2[POST /api/voice-memo/confirm]
-    POST2 --> Create[create_tasks_from_candidates:<br/>INSERT Task rows]
+    POST2 --> Create[create_tasks_from_candidates:<br/>dated → tier from due date<br/>INSERT Task rows]
     Create --> Final([Tasks live in your tiers])
 
     classDef startNode fill:#221f1c,stroke:#6d9fe8,color:#ece4d5

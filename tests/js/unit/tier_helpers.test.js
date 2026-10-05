@@ -18,7 +18,7 @@
  */
 "use strict";
 
-const { tierForDueDate, dueDateForTier } = require("../../../static/tier_helpers");
+const { tierForDueDate, dueDateForTier, tierForFiledDate } = require("../../../static/tier_helpers");
 
 // Helper: build a Date for "YYYY-MM-DD" in LOCAL time so it equality-
 // matches what tierForDueDate parses.
@@ -160,5 +160,36 @@ describe("dueDateForTier — inverse helper", () => {
         const today = localDate("2026-01-05");
         expect(dueDateForTier("today", today)).toBe("2026-01-05");
         expect(dueDateForTier("tomorrow", today)).toBe("2026-01-06");
+    });
+});
+
+describe("tierForFiledDate — #386 overdue files to today", () => {
+    // Today = Wed 2026-05-06 (this week Mon 05-04 .. Sun 05-10).
+    const today = localDate("2026-05-06");
+
+    test("yesterday (earlier this week) → 'today', not 'this_week'", () => {
+        expect(tierForDueDate("2026-05-05", today)).toBe("this_week");
+        expect(tierForFiledDate("2026-05-05", today)).toBe("today");
+    });
+    test("last month → 'today', not 'backlog'", () => {
+        expect(tierForDueDate("2026-04-01", today)).toBe("backlog");
+        expect(tierForFiledDate("2026-04-01", today)).toBe("today");
+    });
+    test("today / tomorrow / later agree with tierForDueDate", () => {
+        for (const d of ["2026-05-06", "2026-05-07", "2026-05-09", "2026-05-13", "2026-06-30"]) {
+            expect(tierForFiledDate(d, today)).toBe(tierForDueDate(d, today));
+        }
+    });
+    test("accepts a Date as well as an ISO string", () => {
+        expect(tierForFiledDate(localDate("2026-05-01"), today)).toBe("today");
+        expect(tierForFiledDate(localDate("2026-05-12"), today)).toBe("next_week");
+    });
+    test("year boundary: Dec 31 is overdue on Jan 2", () => {
+        expect(tierForFiledDate("2025-12-31", localDate("2026-01-02"))).toBe("today");
+    });
+    test("invalid input → null", () => {
+        expect(tierForFiledDate("", today)).toBeNull();
+        expect(tierForFiledDate("not-a-date", today)).toBeNull();
+        expect(tierForFiledDate(null, today)).toBeNull();
     });
 });

@@ -271,19 +271,56 @@ def _tier_for_due_date(due_date: date) -> Tier:
     return Tier.BACKLOG
 
 
-def _auto_promote_tier_on_due_today(task: Task, data: dict) -> None:
+def _tier_for_filed_date(due_date: date) -> Tier:
+    """#386: like `_tier_for_due_date`, but an overdue date files to TODAY.
+
+    `_tier_for_due_date` maps a past date to THIS_WEEK or BACKLOG, which
+    would file an overdue task out of sight. On the #386 paths (a dated
+    candidate, an Inbox task getting a date) the user chose Today — the
+    same "keep the nag visible" call #170 makes for the 00:03 realign.
+    """
+    if due_date < _local_today_date():
+        return Tier.TODAY
+    return _tier_for_due_date(due_date)
+
+
+def tier_for_candidate(tier: Tier, due_date: date | None) -> Tier:
+    """#386: the tier for a task created from a reviewed candidate
+    (reflection / scan / voice / import).
+
+    The date always wins on these paths — over the proposed or
+    review-screen section, Freezer included (user decision 2026-10-05,
+    docs/design/386-dated-tasks-skip-inbox.md §8); an overdue date files
+    to TODAY. With no date the candidate keeps its section.
+    """
+    if due_date is None:
+        return tier
+    return _tier_for_filed_date(due_date)
+
+
+def _auto_promote_tier_on_due_today(
+    task: Task, data: dict, *, due_changed: bool = True
+) -> None:
     """#74 (2026-04-26): when due_date changes, auto-route the tier to
     match the date's natural bucket. Always overwrites unless the
     caller is also explicit about tier, the task is FREEZER, or the
     task is non-ACTIVE.
+
+    #386: an explicit ``tier: "inbox"`` does NOT count as explicit when
+    the date changed in the same write — the task panel and every
+    create default to Inbox, so the server can't tell an Inbox the user
+    picked from the default. ``due_changed`` is always True on create;
+    update_task passes whether the date actually moved, so a deliberate
+    move of an already-dated task into Inbox is respected.
 
     Function name kept for backwards-compat with call sites; the body
     now covers ALL date-to-tier mappings, not just today.
     """
     if "due_date" not in data:
         return
-    # Caller explicit about both: respect the combination.
-    if "tier" in data:
+    # Caller explicit about both: respect the combination — unless the
+    # explicit tier is Inbox and the date just changed (#386).
+    if "tier" in data and not (task.tier == Tier.INBOX and due_changed):
         return
     if task.due_date is None:
         return
@@ -294,7 +331,12 @@ def _auto_promote_tier_on_due_today(task: Task, data: dict) -> None:
     # not ACTIVE (archived/cancelled/deleted).
     if task.status is not None and task.status != TaskStatus.ACTIVE:
         return
-    task.tier = _tier_for_due_date(task.due_date)
+    # #386: an Inbox task getting an overdue date files to TODAY, not out
+    # of sight in THIS_WEEK / BACKLOG. Other tiers keep the #74 mapping.
+    if task.tier == Tier.INBOX:
+        task.tier = _tier_for_filed_date(task.due_date)
+    else:
+        task.tier = _tier_for_due_date(task.due_date)
 
 
 # --- Repeat helpers ----------------------------------------------------------
@@ -602,6 +644,9 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
     # subtasks that still mirror the parent's old value (see below).
     old_goal_id = task.goal_id
     old_project_id = task.project_id
+    # #386: whether this write moved the date decides if an explicit
+    # tier=inbox still routes (see _auto_promote_tier_on_due_today).
+    old_due_date = task.due_date
 
     # Weekly-planner ignore flag is "stop suggesting until I touch the
     # task again". Any meaningful field change resets it so the next
@@ -747,7 +792,9 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
     # AND the tier is in {THIS_WEEK, NEXT_WEEK, BACKLOG} (and they
     # didn't also explicitly set tier), promote tier to TODAY. The
     # mid-day complement to the 00:02 promote_due_today_tasks cron.
-    _auto_promote_tier_on_due_today(task, data)
+    _auto_promote_tier_on_due_today(
+        task, data, due_changed=task.due_date != old_due_date
+    )
 
     unknown = set(data) - _UPDATABLE_FIELDS
     if unknown:

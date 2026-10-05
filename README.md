@@ -14,7 +14,10 @@ work and personal life, with a regulated (air-gapped) work environment.
   page; drop a task on a day cell to set its `due_date` (tier auto-routes to
   match). Auto-scrolls the page when dragging near the viewport edge.
 - **Due-date → tier auto-route** — setting a `due_date` automatically moves the
-  task to the matching tier (today → Today, this week → This Week, etc.)
+  task to the matching tier (today → Today, this week → This Week, etc.).
+  A task created with a due date never lands in Inbox, and tasks created
+  from a reflection, scan, voice memo or import are filed by their date
+  when they have one (#386)
 - **Goals** — grouped by category (Health, Work, Personal Growth, Relationships,
   BAU) with priority ranking, progress tracking, and linked tasks.
   `Active only / Archived / All` filter with an Archive ↔ Unarchive toggle and

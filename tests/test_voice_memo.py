@@ -1441,18 +1441,23 @@ class TestVoiceCreateTasksFromCandidates:
     tier + due_date from the voice review screen."""
 
     def test_inferred_tier_and_due_date_land_in_task(self, app):
-        from datetime import date
+        # #386: a dated candidate is filed by its date, so the date must
+        # agree with the tier here — the old fixed "2026-04-22" is now in
+        # the past and would (correctly) route to Backlog.
+        from datetime import timedelta
 
         from models import TaskType, Tier
         from scan_service import create_tasks_from_candidates
+        from task_service import _local_today_date
         with app.app_context():
+            tomorrow = _local_today_date() + timedelta(days=1)
             tasks = create_tasks_from_candidates(
                 [
                     {
                         "title": "Pick up meds",
                         "type": "personal",
                         "tier": "tomorrow",
-                        "due_date": "2026-04-22",
+                        "due_date": tomorrow.isoformat(),
                         "included": True,
                     }
                 ],
@@ -1463,7 +1468,7 @@ class TestVoiceCreateTasksFromCandidates:
             assert t.title == "Pick up meds"
             assert t.type == TaskType.PERSONAL
             assert t.tier == Tier.TOMORROW
-            assert t.due_date == date(2026, 4, 22)
+            assert t.due_date == tomorrow
 
     def test_missing_tier_defaults_to_inbox(self, app):
         """Existing image-OCR candidates don't set `tier` — must not

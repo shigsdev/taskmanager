@@ -205,7 +205,10 @@ component is added, a data flow changes, or a security boundary shifts.
   regress image parsing. Candidates flow to the review UI (new
   tier + date controls per row), user edits/accepts, confirm
   payload flows to `create_tasks_from_candidates` which now
-  honours tier + due_date from the candidate dict. Fallback
+  honours tier + due_date from the candidate dict — except that a
+  dated candidate is filed by its date via
+  `task_service.tier_for_candidate` (#386; same rule in
+  `import_service.create_tasks_from_import`). Fallback
   chain if Claude fails: structured → title-only → 422 with
   transcript preserved. Records land with `source_prefix="voice"`
   in ImportLog so the recycle bin can undo the whole memo as a
