@@ -8,6 +8,7 @@ tree right now.
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -91,17 +92,24 @@ TEXT_SUFFIXES = {".py", ".js", ".css", ".html", ".md", ".sh", ".json", ".yml", "
 SKIP_DIRS = {
     ".git", "node_modules", ".venv", "venv", "__pycache__", ".pytest_cache",
     "htmlcov", "test-results", "playwright-report", ".claude", "instance",
-    "migrations/__pycache__",
 }
 
 
-def _tracked_text_files():
-    for path in REPO_ROOT.rglob("*"):
-        if path.suffix not in TEXT_SUFFIXES or not path.is_file():
-            continue
-        if SKIP_DIRS & set(path.relative_to(REPO_ROOT).parts):
-            continue
-        yield path
+def _is_skipped_dir(name):
+    # Any `.venv*` dir is a virtualenv (#389: `.venv-mac` on the OneDrive
+    # copy) - matched by prefix so the next per-machine venv is covered too.
+    return name in SKIP_DIRS or name.startswith(".venv")
+
+
+def _tracked_text_files(root=REPO_ROOT):
+    # Prune skipped dirs during the walk so nothing under them is even
+    # listed - reading a cloud-only OneDrive placeholder raises OSError.
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not _is_skipped_dir(d)]
+        for name in filenames:
+            path = Path(dirpath) / name
+            if path.suffix in TEXT_SUFFIXES:
+                yield path
 
 
 def test_no_nul_bytes_in_text_sources():
@@ -119,6 +127,27 @@ def test_no_nul_bytes_in_text_sources():
         "Python bytes literal) instead of embedding it - a raw NUL makes "
         "git and grep treat the file as binary and hides it from diffs."
     )
+
+
+def test_text_file_walk_never_enters_a_virtualenv(tmp_path):
+    """#389: a local virtualenv (`.venv-mac` on the OneDrive copy) is
+    third-party code. Reading it failed the gate whenever OneDrive held
+    those files as cloud-only placeholders, so any `.venv*` dir must be
+    pruned from the walk, not merely filtered after it."""
+    files = {
+        "src/ok.py": b"x = 1\n",
+        ".venv-mac/lib/site.py": b"raw \x00 nul\n",
+        ".venv-linux/x.py": b"",
+        ".venv/y.py": b"",
+        "node_modules/z.js": b"",
+    }
+    for rel, data in files.items():
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+
+    found = {p.relative_to(tmp_path).as_posix() for p in _tracked_text_files(tmp_path)}
+    assert found == {"src/ok.py"}
 
 
 # --- Browser-JS syntax (#338) ----------------------------------------------
