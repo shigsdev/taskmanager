@@ -469,6 +469,12 @@ Report.
      button reads Undo again. Undo on an import with NO templates must
      show the plain confirm with no "pause" line.
   10. **Import page**: verify buttons render and are clickable.
+      #390: in the task preview a row WITH a due date shows its Tier
+      locked to the date's section with "Set by due date"; clearing the
+      date unlocks it and restores the row's own tier; an undated row is
+      never locked. Same on the **voice memo** review screen (stub the
+      recorder + `/api/voice-memo` — see the #390 Playwright test) — and
+      check the voice row stays inside the viewport at desktop width.
   11. **Scan page**: verify radio buttons toggle and upload area is tappable.
   12. **Recycle bin**: verify batch entries show, Empty Bin button is visible.
   13. **Print view**: verify tasks are listed with correct tier grouping.
@@ -545,6 +551,8 @@ Report.
   Settings: undo names paused tmpl PASS       Settings: undo names paused tmpl PASS
   Settings: no-tmpl undo quiet  PASS          Settings: no-tmpl undo quiet  PASS
   Import: button click          PASS          Import: button click          PASS
+  Import: dated row tier locked PASS          Import: dated row tier locked PASS
+  Voice: dated row tier locked  PASS          Voice: dated row tier locked  PASS
   Scan: radio toggle            PASS          Scan: radio toggle            PASS
   Scan: upload area             PASS          Scan: upload area             PASS
   Recycle bin: batch entries    PASS          Recycle bin: batch entries    PASS

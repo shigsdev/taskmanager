@@ -18,7 +18,7 @@
  */
 "use strict";
 
-const { tierForDueDate, dueDateForTier, tierForFiledDate } = require("../../../static/tier_helpers");
+const { tierForDueDate, dueDateForTier, tierForFiledDate, candidateSection } = require("../../../static/tier_helpers");
 
 // Helper: build a Date for "YYYY-MM-DD" in LOCAL time so it equality-
 // matches what tierForDueDate parses.
@@ -191,5 +191,35 @@ describe("tierForFiledDate — #386 overdue files to today", () => {
         expect(tierForFiledDate("", today)).toBeNull();
         expect(tierForFiledDate("not-a-date", today)).toBeNull();
         expect(tierForFiledDate(null, today)).toBeNull();
+    });
+});
+
+describe("candidateSection — #390 review-screen Section control", () => {
+    // Today = Wed 2026-05-06 (this week Mon 05-04 .. Sun 05-10).
+    const today = localDate("2026-05-06");
+
+    test("a dated row shows the date's section and is locked", () => {
+        expect(candidateSection("this_week", "2026-06-30", today))
+            .toEqual({ tier: "backlog", setByDate: true });
+        expect(candidateSection("inbox", "2026-05-07", today))
+            .toEqual({ tier: "tomorrow", setByDate: true });
+    });
+    test("overdue → today (same as the server's filed-date rule)", () => {
+        expect(candidateSection("backlog", "2026-04-01", today))
+            .toEqual({ tier: "today", setByDate: true });
+    });
+    test("Freezer loses to the date on these paths", () => {
+        expect(candidateSection("freezer", "2026-05-12", today))
+            .toEqual({ tier: "next_week", setByDate: true });
+    });
+    test("no date → the row's own section, unlocked", () => {
+        for (const d of [null, undefined, ""]) {
+            expect(candidateSection("freezer", d, today))
+                .toEqual({ tier: "freezer", setByDate: false });
+        }
+    });
+    test("unparseable date → own section, unlocked", () => {
+        expect(candidateSection("today", "soon", today))
+            .toEqual({ tier: "today", setByDate: false });
     });
 });

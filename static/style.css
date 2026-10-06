@@ -3754,6 +3754,10 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .voice-cost-hint { font-size: 0.85rem; color: var(--text-muted); }
 .voice-candidate {
     display: flex;
+    /* #390: wrap at every width. The row grew past one line as controls
+       were added (category, repeat, now the "Set by due date" hint), and
+       without wrap they ran off-screen at desktop width (1406px on 1280). */
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     padding: 8px 0;
@@ -3774,6 +3778,16 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 /* Backlog #36: tier + due_date controls from the NLP inference. */
 .voice-candidate-tier { padding: 6px 4px; flex-shrink: 0; }
 .voice-candidate-date { padding: 5px 6px; flex-shrink: 0; min-width: 135px; }
+/* #390: beside a review-screen Section dropdown that a due date has
+   locked (voice memo + import preview). */
+.candidate-tier-hint {
+    font-size: 0.75rem;
+    font-style: italic;
+    color: var(--text-muted, #6b7280);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.candidate-tier-hint[hidden] { display: none; }
 /* Backlog #37: project + goal dropdowns per candidate + hint text
    when Claude cited a name that didn't match any DB record.
    #215 (2026-05-24): voice-candidate-category was added by #172 in
@@ -3823,7 +3837,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 /* Mobile: the 5-column row gets tight on 375px — wrap naturally
    instead of forcing horizontal scroll. */
 @media (max-width: 600px) {
-    .voice-candidate { flex-wrap: wrap; }
+    /* .voice-candidate wraps at every width since #390. */
     .voice-candidate-title { flex: 1 1 100%; }
 }
 .voice-review-actions, .voice-done-actions, .voice-error-actions {

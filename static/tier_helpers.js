@@ -142,6 +142,23 @@ function tierForFiledDate(dueDate, todayOverride) {
     return dueIso < todayIso ? "today" : natural;
 }
 
+/**
+ * #390: what a review-screen row's Section control should show.
+ * Mirrors `task_service.tier_for_candidate`: on the reflection / scan /
+ * voice / import paths a dated row is filed by its date (overdue → today,
+ * Freezer included), so the control shows that and is locked.
+ *
+ * @param {string} tier the row's own section (user / model choice)
+ * @param {Date|string|null} dueDate
+ * @param {Date} [todayOverride] for testing only
+ * @returns {{tier: string, setByDate: boolean}}
+ */
+function candidateSection(tier, dueDate, todayOverride) {
+    const filed = dueDate ? tierForFiledDate(dueDate, todayOverride) : null;
+    if (filed === null) return { tier: tier, setByDate: false };
+    return { tier: filed, setByDate: true };
+}
+
 // Local YYYY-MM-DD. Deliberately NOT a call to dueDateForTier: every
 // static/*.js shares one global scope, and inbox_categorize_helpers.js
 // declares its own global `dueDateForTier(tier, todayISO)` that loads
@@ -159,11 +176,13 @@ if (typeof module !== "undefined" && module.exports) {
         tierForDueDate: tierForDueDate,
         dueDateForTier: dueDateForTier,
         tierForFiledDate: tierForFiledDate,
+        candidateSection: candidateSection,
     };
 } else if (typeof window !== "undefined") {
     window.tierHelpers = {
         tierForDueDate: tierForDueDate,
         dueDateForTier: dueDateForTier,
         tierForFiledDate: tierForFiledDate,
+        candidateSection: candidateSection,
     };
 }

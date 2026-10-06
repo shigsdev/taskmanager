@@ -652,15 +652,43 @@
             tierSel.addEventListener("change", function () {
                 currentCandidates[i].tier = tierSel.value;
             });
-            fieldsRow1.appendChild(_labeledField("Tier", tierSel));
+            var tierField = _labeledField("Tier", tierSel);
+            // #390: a dated row is filed by its date (server:
+            // tier_for_candidate, #386), so the dropdown shows that
+            // section, locked, with a hint. Clearing the date unlocks it
+            // and restores the row's own tier — the date never overwrites it.
+            var tierHint = document.createElement("span");
+            tierHint.className = "candidate-tier-hint";
+            tierHint.id = "import-tier-hint-" + i;
+            tierHint.textContent = "Set by due date";
+            tierField.appendChild(tierHint);
+            fieldsRow1.appendChild(tierField);
+            var syncTierToDate = function () {
+                var cc = currentCandidates[i];
+                var st = window.tierHelpers.candidateSection(cc.tier || "inbox", cc.due_date);
+                tierSel.value = st.tier;
+                tierSel.disabled = st.setByDate;
+                tierHint.hidden = !st.setByDate;
+                if (st.setByDate) {
+                    tierSel.title = "Set by due date — clear the date to choose a section";
+                    tierSel.setAttribute("aria-describedby", tierHint.id);
+                } else {
+                    tierSel.removeAttribute("title");
+                    tierSel.removeAttribute("aria-describedby");
+                }
+            };
 
             var dueInput = document.createElement("input");
             dueInput.type = "date";
             dueInput.value = c.due_date || "";
-            dueInput.addEventListener("input", function () {
+            var onDueEdit = function () {
                 currentCandidates[i].due_date = dueInput.value;
-            });
+                syncTierToDate();
+            };
+            dueInput.addEventListener("input", onDueEdit);
+            dueInput.addEventListener("change", onDueEdit);
             fieldsRow1.appendChild(_labeledField("Due date", dueInput));
+            syncTierToDate();
 
             expanded.appendChild(fieldsRow1);
 

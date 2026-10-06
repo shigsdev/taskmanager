@@ -603,7 +603,7 @@ https://example.com/foo
                 <li>Server pipeline: Whisper transcribes → Claude parses the transcript into one or more task candidates.</li>
                 <li>Each candidate comes back with inferred title, type, section, and due date, plus optional project/goal hints.</li>
                 <li>You review each candidate in a list, tweak any field, and then Add All or Add Selected.</li>
-                <li>A candidate with a due date is filed by that date (overdue or today → Today, tomorrow → Tomorrow, this week → This Week, next week → Next Week, later → Backlog). The Section you see on the review screen is only used for candidates without a date.</li>
+                <li>A candidate with a due date is filed by that date (overdue or today → Today, tomorrow → Tomorrow, this week → This Week, next week → Next Week, later → Backlog). On the review screen a dated candidate's Section shows where its date files it, can't be changed, and reads <em>Set by due date</em>; clear the date to pick a section yourself.</li>
                 <li>Non-task items (reflections, asides) are grouped in a collapsed "Reflections" section, unchecked by default.</li>
             </ul>
 
@@ -1440,7 +1440,10 @@ Skip this line (too short)</pre>
                 or an <strong>import</strong> are always filed by their
                 due date when they have one (an overdue date files to
                 Today) — the section on the review screen, Freezer
-                included, is only used for items without a date.
+                included, is only used for items without a date. On the
+                voice-memo and import review screens a dated row's
+                Section already shows where it will land and is locked
+                (<em>Set by due date</em>); clearing the date unlocks it.
             </p>
             <p>
                 Moving a task back out of Today/Tomorrow does NOT

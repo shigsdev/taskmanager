@@ -490,6 +490,30 @@
         });
         row.appendChild(tierSel);
 
+        // #390: a dated candidate is filed by its date (server:
+        // tier_for_candidate, #386), so the dropdown shows that section,
+        // locked, with a hint. Clearing the date unlocks it and restores
+        // the row's own section — the date never overwrites .tier.
+        const tierHint = document.createElement("span");
+        tierHint.className = "candidate-tier-hint";
+        tierHint.id = "voice-tier-hint-" + idx;
+        tierHint.textContent = "Set by due date";
+        row.appendChild(tierHint);
+        const syncTierToDate = function () {
+            const c = currentCandidates[idx];
+            const st = window.tierHelpers.candidateSection(c.tier || "inbox", c.due_date);
+            tierSel.value = st.tier;
+            tierSel.disabled = st.setByDate;
+            tierHint.hidden = !st.setByDate;
+            if (st.setByDate) {
+                tierSel.title = "Set by due date — clear the date to choose a section";
+                tierSel.setAttribute("aria-describedby", tierHint.id);
+            } else {
+                tierSel.removeAttribute("title");
+                tierSel.removeAttribute("aria-describedby");
+            }
+        };
+
         // #36: due-date input. Empty string means "no date set."
         // Native <input type="date"> on mobile gives the iOS wheel
         // picker for free.
@@ -497,10 +521,14 @@
         dateInput.type = "date";
         dateInput.className = "voice-candidate-date";
         dateInput.value = candidate.due_date || "";
-        dateInput.addEventListener("input", function () {
+        const onDateEdit = function () {
             currentCandidates[idx].due_date = dateInput.value || null;
-        });
+            syncTierToDate();
+        };
+        dateInput.addEventListener("input", onDateEdit);
+        dateInput.addEventListener("change", onDateEdit);
         row.appendChild(dateInput);
+        syncTierToDate();
 
         // #37: project dropdown. Options = "(no project)" + every
         // active project matching the candidate's type (#221 — was

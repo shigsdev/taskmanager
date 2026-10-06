@@ -1150,6 +1150,84 @@ test.describe("Detail panel: edit completed task → unarchive (#148)", () => {
         }
     });
 
+    test("#390: import preview locks a dated row's Section to its date", async ({ page }) => {
+        // Server files a dated import row by its date (#386); the preview
+        // must show that, not the row's own Tier.
+        const isoIn = (n) => {
+            const d = new Date(); d.setDate(d.getDate() + n);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        };
+        await page.route("**/api/import/tasks/parse", (route) => route.fulfill({
+            json: {
+                total: 2,
+                candidates: [
+                    { title: "BUG390 dated", type: "work", tier: "this_week", due_date: isoIn(40) },
+                    { title: "BUG390 undated", type: "work", tier: "backlog" },
+                ],
+            },
+        }));
+        await page.goto("/import?nosw=1");
+        await page.click("#importTasksBtn");
+        await page.fill("#importText", "stubbed");
+        await page.click("#importParseTasksBtn");
+        const rows = page.locator(".import-candidate");
+        await expect(rows).toHaveCount(2);
+        const datedSel = rows.nth(0).locator(".import-fields-row").first().locator("select").first();
+        const datedHint = rows.nth(0).locator(".candidate-tier-hint");
+        await expect(datedSel).toBeDisabled();
+        await expect(datedSel).toHaveValue("backlog");  // 40 days out
+        await expect(datedHint).toBeVisible();
+        // Clearing the date unlocks it and restores the row's own tier.
+        await rows.nth(0).locator('input[type="date"]').fill("");
+        await expect(datedSel).toBeEnabled();
+        await expect(datedSel).toHaveValue("this_week");
+        await expect(datedHint).toBeHidden();
+        // The undated row was never locked.
+        const undatedSel = rows.nth(1).locator(".import-fields-row").first().locator("select").first();
+        await expect(undatedSel).toBeEnabled();
+        await expect(undatedSel).toHaveValue("backlog");
+        await expect(rows.nth(1).locator(".candidate-tier-hint")).toBeHidden();
+    });
+
+    test("#390: voice memo review locks a dated candidate's Section to its date", async ({ page }) => {
+        // Real MediaRecorder on the fake mic (FAKE_MEDIA_ARGS); only the
+        // upload/parse response is stubbed.
+        const isoIn = (n) => {
+            const d = new Date(); d.setDate(d.getDate() + n);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        };
+        await page.route("**/api/voice-memo", (route) => route.fulfill({
+            json: {
+                transcript: "stubbed",
+                candidates: [
+                    { title: "BUG390 overdue", type: "work", tier: "backlog", due_date: isoIn(-5), route: "task", is_task: true },
+                    { title: "BUG390 undated", type: "work", tier: "next_week", due_date: null, route: "task", is_task: true },
+                ],
+            },
+        }));
+        await page.goto("/voice-memo?nosw=1");
+        await page.click("#voiceRecordBtn");
+        await expect(page.locator("#voiceStopBtn")).toBeVisible({ timeout: 5000 });
+        await page.waitForTimeout(600);
+        await page.click("#voiceStopBtn");
+        const rows = page.locator("#voiceCandidates .voice-candidate");
+        await expect(rows).toHaveCount(2, { timeout: 10000 });
+        const overdueSel = rows.nth(0).locator(".voice-candidate-tier");
+        await expect(overdueSel).toBeDisabled();
+        await expect(overdueSel).toHaveValue("today");  // overdue → Today
+        await expect(rows.nth(0).locator(".candidate-tier-hint")).toBeVisible();
+        await rows.nth(0).locator(".voice-candidate-date").fill("");
+        await expect(overdueSel).toBeEnabled();
+        await expect(overdueSel).toHaveValue("backlog");
+        const undatedSel = rows.nth(1).locator(".voice-candidate-tier");
+        await expect(undatedSel).toBeEnabled();
+        await expect(undatedSel).toHaveValue("next_week");
+        // Giving the undated row a date locks it.
+        await rows.nth(1).locator(".voice-candidate-date").fill(isoIn(1));
+        await expect(undatedSel).toBeDisabled();
+        await expect(undatedSel).toHaveValue("tomorrow");
+    });
+
     test("#386: saving an Inbox task with a new date leaves Inbox even if no date event fired", async ({
         page, request,
     }) => {
