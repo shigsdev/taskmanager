@@ -783,8 +783,36 @@ component is added, a data flow changes, or a security boundary shifts.
   if present, sends only that section to Claude (option (a) — "trust the
   pre-extracted bullets") otherwise sends the whole transcript → returns
   task candidates with `source="transcript_import"` in `ImportLog`.
-- **GitHub → Railway**: push to `main` triggers rebuild + deploy via Nixpacks;
-  `release` phase runs `flask db upgrade`.
+- **GitHub → Railway**: push to `main` triggers rebuild + deploy via Nixpacks
+  (unless every changed path is excluded by the service's Watch Paths); the
+  start command runs `flask db upgrade` before gunicorn. See
+  [Deploy configuration](#deploy-configuration).
+
+### Deploy configuration
+
+Since #388 (2026-10-05) the deploy settings live **only in the Railway
+dashboard** — project *Task Manager* → environment *production* → service
+**`web`** → Settings. There is no `railway.toml` / `railway.json` (Railway
+stopped reading Config-as-Code files on 2026-12-01; `tests/test_deployment.py`
+guards against re-adding one) and no `.railway/railway.ts` (Railway IaC was
+rejected: it can't express builder / watch paths / restart policy, and it is
+applied by the CLI, not read on deploy). Spec:
+`docs/design/388-railway-config-off-railway-toml.md`.
+
+| Dashboard field | Value | Why |
+|---|---|---|
+| Builder | Nixpacks | `nixpacks.toml` forces the Python provider (`package.json` exists only for Jest) |
+| Watch Paths | `**`, `!BACKLOG.md`, `!docs/**`, `!tests/**`, `!.github/**`, `!.gitignore`, `!.gitattributes`, `!.pre-commit-config.yaml`, `!README.md`, `!CLAUDE.md`, `!ARCHITECTURE.md` | #246 — doc/test-only pushes and the audit bot's autofile commits don't restart prod |
+| Custom Start Command | `flask db upgrade && gunicorn app:app -c gunicorn.conf.py` | the only place alembic runs on deploy |
+| Healthcheck Path | `/healthz` | rolling deploy promotes a container only when `/healthz` is 200 (503 on critical fails, incl. migrations behind head) |
+| Healthcheck Timeout | `120` | boot budget (ADR-033) |
+| Restart Policy | On Failure | crash → restart |
+
+**Re-checking them:** `railway config pull --json` (read-only, from a
+linked checkout) shows `build.builder`, `deploy.startCommand` and
+`deploy.healthcheckPath`; Watch Paths, timeout and restart policy are only
+visible in the dashboard. A docs-only push that does NOT change prod's
+`/healthz` `started_at` proves the Watch Paths still work.
 
 ---
 

@@ -303,8 +303,10 @@ Report.
   5. If the `git_sha` matches but any check is `"fail:"`, STOP and
      investigate. Common failures and what they mean:
      - `database: fail` — DB connection broken (check DATABASE_URL)
-     - `migrations: fail: at X expected Y` — alembic never ran; check
-       railway.toml `startCommand` includes `flask db upgrade`
+     - `migrations: fail: at X expected Y` — alembic never ran; check the
+       Railway dashboard `web` service's Custom Start Command still begins
+       with `flask db upgrade` (#388 — there is no railway.toml any more;
+       see ARCHITECTURE.md "Deploy configuration")
      - `migrations: fail: alembic_version table missing` — fresh DB that
        never had a migration; run `flask db upgrade` manually
      - `tables: fail: missing ...` — schema drift or wrong database

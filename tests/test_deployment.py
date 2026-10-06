@@ -5,8 +5,9 @@ can boot correctly for Railway hosting.
 
 Key testing concepts:
 - **Procfile** — tells Railway/Heroku which processes to run.
-  The 'web' process starts gunicorn; the 'release' process
-  runs database migrations before each deploy.
+  The 'web' process starts gunicorn. Migrations do NOT run in a
+  release phase: they run in the start command set on the Railway
+  dashboard (#388, ARCHITECTURE.md "Deploy configuration").
 - **Gunicorn** — a production WSGI server that serves the Flask app.
   Unlike Flask's dev server, gunicorn handles multiple concurrent
   requests via worker processes.
@@ -39,27 +40,40 @@ class TestDeploymentFiles:
         assert "web:" in content
         assert "gunicorn" in content
 
-    def test_startcommand_runs_migrations(self):
-        """Migrations run in startCommand, not Procfile release phase.
-
-        The release phase runs during Docker build when there is no
-        network access to the database. Migrations run at container
-        start via railway.toml startCommand instead.
+    def test_no_railway_config_as_code_file(self):
+        """#388: deploy settings live in the Railway dashboard. Railway
+        stopped reading railway.toml / railway.json on 2026-12-01, so a
+        re-added file would look authoritative while doing nothing.
         """
-        content = (PROJECT_ROOT / "railway.toml").read_text()
-        assert "flask db upgrade" in content
+        for name in ("railway.toml", "railway.json"):
+            assert not (PROJECT_ROOT / name).exists(), (
+                f"{name} is Config-as-Code, which Railway no longer reads — "
+                "change the setting in the Railway dashboard instead and "
+                "update ARCHITECTURE.md 'Deploy configuration' (#388)."
+            )
 
-    def test_railway_toml_exists(self):
-        toml = PROJECT_ROOT / "railway.toml"
-        assert toml.exists(), "railway.toml configures Railway deployment"
+    def test_nixpacks_forces_python_provider(self):
+        """The dashboard builder is Nixpacks; without this file the
+        Jest-only package.json makes Nixpacks build a Node app."""
+        content = (PROJECT_ROOT / "nixpacks.toml").read_text()
+        assert 'providers = ["python"]' in content
 
-    def test_railway_toml_uses_nixpacks(self):
-        content = (PROJECT_ROOT / "railway.toml").read_text()
-        assert "nixpacks" in content
-
-    def test_railway_toml_has_start_command(self):
-        content = (PROJECT_ROOT / "railway.toml").read_text()
-        assert "gunicorn" in content
+    def test_architecture_records_dashboard_deploy_settings(self):
+        """#388: the six dashboard values are no longer in git, so
+        ARCHITECTURE.md is the reviewable record. Migrations must run
+        in the start command (the Procfile release phase has no DB
+        network access during the build)."""
+        text = (PROJECT_ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8")
+        section = text.split("### Deploy configuration", 1)[1].split("\n## ", 1)[0]
+        for expected in (
+            "Nixpacks",
+            "`flask db upgrade && gunicorn app:app -c gunicorn.conf.py`",
+            "`/healthz`",
+            "`120`",
+            "On Failure",
+            "`!BACKLOG.md`",
+        ):
+            assert expected in section, f"Deploy configuration lacks {expected}"
 
     def test_runtime_txt_exists(self):
         runtime = PROJECT_ROOT / "runtime.txt"
