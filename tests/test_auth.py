@@ -486,3 +486,73 @@ class TestRunDevBypassScript:
         monkeypatch.setattr(module, "BYPASS_ENV_FILE", tmp_path / "nope.env")
         result = module.main()
         assert result == 2
+
+    def test_script_turns_rate_limiting_off_before_flask_starts(
+        self, monkeypatch, tmp_path,
+    ):
+        """#385: the local bypass server is a test fixture every Playwright
+        test shares from one IP, so prod's per-route limits (200/min default)
+        tripped 429s once the suite ran ~2x faster. The script switches the
+        shared limiter off before `flask run` imports the app; prod is
+        untouched (the app's own init path never runs this script)."""
+        import importlib.util
+        import sys
+        from pathlib import Path
+
+        import flask.cli
+
+        from rate_limit import limiter
+
+        repo_root = Path(__file__).resolve().parent.parent
+        script_path = repo_root / "scripts" / "run_dev_bypass.py"
+        spec = importlib.util.spec_from_file_location("run_dev_bypass", script_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        for var in ("RAILWAY_PROJECT_ID", "RAILWAY_ENVIRONMENT_NAME", "RAILWAY_SERVICE_ID"):
+            monkeypatch.delenv(var, raising=False)
+        bypass_file = tmp_path / ".env.dev-bypass"
+        bypass_file.write_text("LOCAL_DEV_BYPASS_AUTH=1\n", encoding="utf-8")
+        monkeypatch.setattr(module, "BYPASS_ENV_FILE", bypass_file)
+        # Keep the real .env out of this process, and let monkeypatch restore
+        # every variable main() sets so no bypass flag leaks to later tests.
+        monkeypatch.setattr(module, "PROJECT_ROOT", tmp_path)
+        monkeypatch.setenv("LOCAL_DEV_BYPASS_AUTH", "0")
+        monkeypatch.setenv("FLASK_ENV", "testing")
+        monkeypatch.setattr(sys, "argv", list(sys.argv))
+
+        monkeypatch.setattr(limiter, "enabled", True)
+        seen = {}
+        monkeypatch.setattr(
+            flask.cli, "main", lambda: seen.setdefault("enabled", limiter.enabled),
+        )
+
+        assert module.main() == 0
+        assert seen == {"enabled": False}
+
+    def test_rate_limit_switch_works_from_a_real_launch(self, tmp_path):
+        """A real `python scripts/run_dev_bypass.py` has scripts/ — not the
+        repo root — on sys.path, so `import rate_limit` failed there even
+        though the in-process test above passed. Run the helper in a fresh
+        interpreter from an unrelated cwd to cover that."""
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        script_path = (
+            Path(__file__).resolve().parent.parent / "scripts" / "run_dev_bypass.py"
+        )
+        code = (
+            "import importlib.util, sys\n"
+            f"spec = importlib.util.spec_from_file_location('rdb', {str(script_path)!r})\n"
+            "m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)\n"
+            "m._disable_rate_limiting()\n"
+            "import rate_limit; print(rate_limit.limiter.enabled)\n"
+        )
+        env = {k: v for k, v in __import__("os").environ.items() if k != "PYTHONPATH"}
+        result = subprocess.run(  # noqa: S603 — fixed interpreter + literal code
+            [sys.executable, "-c", code],
+            cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "False"

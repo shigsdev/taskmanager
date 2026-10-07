@@ -42,8 +42,43 @@ YELLOW=$'\033[33m'
 BOLD=$'\033[1m'
 NC=$'\033[0m'
 
-banner() {
+# #385: every top-level `banner` opens a timed section; the previous one is
+# closed with a `⏱ <section>: Ns` line, and the green path ends with a
+# per-section table so the next speed-up is driven by numbers, not guesses.
+# `heading` prints the same banner WITHOUT starting a section (used for the
+# per-scanner output inside the parallel-scanner join phase).
+GATE_SECTION=""
+GATE_SECTION_START=0
+GATE_TIMES=()
+
+heading() {
     printf "\n${BOLD}==== %s ====${NC}\n" "$1"
+}
+
+close_section() {
+    if [ -n "$GATE_SECTION" ]; then
+        local secs=$((SECONDS - GATE_SECTION_START))
+        GATE_TIMES+=("${secs}|${GATE_SECTION}")
+        printf "⏱ %s: %ss\n" "$GATE_SECTION" "$secs"
+        GATE_SECTION=""
+    fi
+}
+
+banner() {
+    close_section
+    heading "$1"
+    GATE_SECTION="$1"
+    GATE_SECTION_START=$SECONDS
+}
+
+print_gate_times() {
+    close_section
+    heading "Gate timings"
+    local entry
+    for entry in "${GATE_TIMES[@]}"; do
+        printf "  %6ss  %s\n" "${entry%%|*}" "${entry#*|}"
+    done
+    printf "  %6ss  %s\n" "$SECONDS" "TOTAL"
 }
 
 pass() {
@@ -111,7 +146,7 @@ scan_await() {
 scan_join() {
     # Usage: scan_join <key> <label> <fail-line> [more-fail-lines...]
     local key="$1" label="$2"; shift 2
-    banner "scanner result: $label"
+    heading "scanner result: $label"
     cat "$SCAN_TMP/$key.out" 2>/dev/null || true
     local rc
     rc="$(cat "$SCAN_TMP/$key.rc" 2>/dev/null || echo 1)"
@@ -186,7 +221,7 @@ banner "4. Local Playwright"
 BYPASS_STARTED_BY_US=0
 BYPASS_PID=""
 
-if curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://localhost:5111/healthz 2>/dev/null | grep -qE "^[23456][0-9][0-9]$"; then
+if curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://127.0.0.1:5111/healthz 2>/dev/null | grep -qE "^[23456][0-9][0-9]$"; then
     pass "bypass server already running on :5111, reusing"
 else
     printf "${YELLOW}…${NC} no bypass server on :5111, starting one\n"
@@ -222,7 +257,7 @@ else
     # take 15-25s cold, plus the import_migrations scan runs on boot.
     # 60s gives plenty of headroom on slow machines.
     for i in $(seq 1 60); do
-        if curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://localhost:5111/healthz 2>/dev/null | grep -qE "^[23456][0-9][0-9]$"; then
+        if curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://127.0.0.1:5111/healthz 2>/dev/null | grep -qE "^[23456][0-9][0-9]$"; then
             pass "bypass server ready after ${i}s"
             break
         fi
@@ -503,6 +538,7 @@ fi
 
 # --- Summary ----------------------------------------------------------------
 
+print_gate_times
 banner "ALL GATES GREEN"
 printf "${GREEN}${BOLD}Ready to commit.${NC}\n"
 printf "\nNext steps (not automated — human judgment required):\n"

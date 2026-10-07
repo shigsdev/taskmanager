@@ -30,6 +30,14 @@ const FAKE_MEDIA_ARGS = [
     "--use-fake-device-for-media-stream",
 ];
 
+// #385: the local projects reach the dev-bypass server at 127.0.0.1, NOT
+// `localhost`. The server listens on IPv4 only; Chromium on Windows tries
+// ::1 first for `localhost` and falls back after ~300 ms on EVERY new
+// connection (~28 per page load). Measured 2026-10-07: page load 1552 ->
+// 294 ms, 29 pages.spec.js tests 2.2 -> 1.0 min. Don't "tidy" this back —
+// tests/js/unit/playwright_config.test.js guards it.
+const LOCAL_BASE_URL = "http://127.0.0.1:5111";
+
 const PROD_BASE_URL =
     process.env.TASKMANAGER_PROD_URL ||
     "https://web-production-3e3ae.up.railway.app";
@@ -64,7 +72,7 @@ module.exports = defineConfig({
             name: "chromium",
             testDir: "./tests/e2e",
             use: {
-                baseURL: "http://localhost:5111",
+                baseURL: LOCAL_BASE_URL,
                 headless: true,
                 browserName: "chromium",
                 actionTimeout: 10000,
@@ -90,7 +98,7 @@ module.exports = defineConfig({
             // with Defender on can take 30s+. Bump the per-test budget.
             timeout: 90_000,
             use: {
-                baseURL: "http://localhost:5111",
+                baseURL: LOCAL_BASE_URL,
                 headless: true,
                 browserName: "chromium",
                 actionTimeout: 30_000,  // SW install + first paint takes longer
@@ -126,7 +134,7 @@ module.exports = defineConfig({
             testDir: "./tests/e2e",
             grepInvert: /@noviewport/,
             use: {
-                baseURL: "http://localhost:5111",
+                baseURL: LOCAL_BASE_URL,
                 headless: true,
                 browserName: "chromium",
                 actionTimeout: 10000,
