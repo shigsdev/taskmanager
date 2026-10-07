@@ -283,10 +283,11 @@ def create_app(config: dict | None = None) -> Flask:
     if not app.config.get("TESTING") and os.environ.get("FLASK_ENV") != "development":
         csp = {
             "default-src": "'self'",
-            # cdn.jsdelivr.net: Mermaid v10 ESM module loaded only on
-            # the /architecture page (#42). Pinned-version URL hashed
-            # via SRI in the template, so CDN tampering can't substitute
-            # arbitrary code. ADR-028.
+            # cdn.jsdelivr.net: Mermaid v11 ESM module loaded only on
+            # the /architecture page (#42, #391). Exact-version pinned
+            # URL; there is no SRI hash (an ES `import` statement can't
+            # carry one), so the guards are the pin + this host
+            # allowlist. ADR-028.
             "script-src": "'self' 'unsafe-inline' https://cdn.jsdelivr.net",
             # fonts.googleapis.com: #224 Soft Concrete font CSS (Fraunces /
             # IBM Plex Sans / JetBrains Mono). style-src only — it serves the

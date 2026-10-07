@@ -32,6 +32,29 @@ const { test, expect } = require("@playwright/test");
 
 const COOKIE_VALUE = process.env.TASKMANAGER_SESSION_COOKIE;
 
+/**
+ * #391: every `pre.mermaid` on the page rendered an SVG, and none of them
+ * is Mermaid's "Syntax error in text" output. The ER diagram shipped as a
+ * syntax error for months because the checks below only looked at the
+ * FIRST SVG and a total count — and an error message is itself an SVG.
+ */
+async function expectEveryMermaidDiagramRendered(page) {
+    const blocks = page.locator("pre.mermaid");
+    const total = await blocks.count();
+    expect(total).toBeGreaterThanOrEqual(10);
+    // Mermaid sets data-processed on each block it has handled (error or
+    // not), so this waits for final output, not a half-rendered page.
+    await expect(page.locator('pre.mermaid[data-processed="true"]'))
+        .toHaveCount(total, { timeout: 20_000 });
+    for (let i = 0; i < total; i++) {
+        const block = blocks.nth(i);
+        await expect(block.locator("svg"), `diagram #${i + 1} has no SVG`)
+            .toHaveCount(1);
+        await expect(block, `diagram #${i + 1} is a Mermaid syntax error`)
+            .not.toContainText("Syntax error");
+    }
+}
+
 // Inject the cookie into every test's browser context. We add it under
 // BOTH names so the same env var works regardless of credential format:
 //
@@ -192,6 +215,7 @@ test.describe("Prod smoke — page renders", () => {
         // headroom for content changes without breaking the gate.
         const svgCount = await page.locator("pre.mermaid svg").count();
         expect(svgCount).toBeGreaterThanOrEqual(5);
+        await expectEveryMermaidDiagramRendered(page);
 
         expect(errors).toEqual([]);
     });
@@ -242,6 +266,7 @@ test.describe("Prod smoke — page renders", () => {
 
         const svgCount = await page.locator("pre.mermaid svg").count();
         expect(svgCount).toBeGreaterThanOrEqual(5);
+        await expectEveryMermaidDiagramRendered(page);
 
         expect(errors).toEqual([]);
     });

@@ -49,8 +49,9 @@ class TestArchitectureRoute:
         body = resp.get_data(as_text=True)
         assert "cdn.jsdelivr.net/npm/mermaid" in body
         # Sanity: the version we pinned in the template is the one that
-        # actually got rendered (catches a stale-cache-of-template bug)
-        assert "mermaid@10" in body
+        # actually got rendered (catches a stale-cache-of-template bug).
+        # #391: exact pin — 10.9.1 couldn't parse the generated ER diagram.
+        assert "mermaid@11.17.2/" in body
 
     def test_page_renders_route_catalog_table(self, authed_client):
         resp = authed_client.get("/architecture")

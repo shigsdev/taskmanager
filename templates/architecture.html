@@ -1134,9 +1134,11 @@ npm run test:e2e:prod</pre>
 </div>
 
 {# Mermaid loaded only on this page. Pinned version — CSP allows
-   cdn.jsdelivr.net for script-src per ADR-028. #}
+   cdn.jsdelivr.net for script-src per ADR-028. 11.x since #391: 10.9.1's
+   erDiagram grammar rejected the generated ER source (enum commas,
+   classDef). #}
 <script type="module">
-    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.esm.min.mjs";
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.esm.min.mjs";
     mermaid.initialize({
         startOnLoad: true,
         /* #224: dark theme to match the rest of the page. Mermaid's
@@ -1144,6 +1146,10 @@ npm run test:e2e:prod</pre>
            backgrounds for nodes/edges. */
         theme: "dark",
         flowchart: { curve: "basis" },
+        /* #391: the ER diagram is ~4000px wide; fit-to-width shrank it to
+           ~19% (unreadable). Draw it at natural size and let its
+           pre.mermaid box (overflow: auto) scroll it. */
+        er: { useMaxWidth: false },
     });
 </script>
 {% endblock %}

@@ -76,6 +76,15 @@ diagram rendering defaults; pinning a known-good version means our
 hand-written diagrams won't randomly re-arrange between deploys.
 Bump in a separate ship after visual verification.
 
+> **Amended 2026-10-06 (#391):** the pin is now **mermaid 11.17.2**.
+> 10.9.1's `erDiagram` grammar rejected the generated ER source — commas
+> in the enum type tokens and the `classDef` / `class` colour-group lines
+> — so the ER diagram rendered "Syntax error in text", probably ever
+> since #43. 11.x parses the generator's output unchanged. Done as the
+> separate, visually-verified ship this section asks for: all 10 diagrams
+> checked at desktop + mobile, and the prod smoke test now fails on any
+> block holding no SVG or the error text, not just the first one.
+
 Rejected alternatives:
 
 - **Self-host Mermaid** — adds a 70 KB file to the repo + an

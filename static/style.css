@@ -4513,6 +4513,12 @@ pre.mermaid svg {
     max-width: 100%;
     height: auto;
 }
+/* #391: the ER diagram is ~4000px wide; squeezed to 100% its labels were
+   ~3px. Mermaid draws it at natural size (er.useMaxWidth: false in
+   architecture.html) and the pre's overflow-x scrolls it — don't clamp. */
+#schema pre.mermaid svg {
+    max-width: none;
+}
 
 /* Source-of-truth notes under each auto-generated section heading.
    Muted grey + italic so users know this is meta-info, not content. */
