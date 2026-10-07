@@ -33,6 +33,35 @@ _limiter.enabled = False
 
 
 @pytest.fixture(autouse=True)
+def _isolate_audit_autofile(monkeypatch):
+    """#362: no test writes audit results into the real BACKLOG.md or
+    dispatches a real GitHub workflow.
+
+    Every audit runner in ``utilities_api`` ends with
+    ``backlog_autofile.run_for_audit``, which rewrites ``BACKLOG_PATH`` —
+    the repo's real BACKLOG.md. Route tests reached it unmocked, so every
+    gate run rewrote two audit rows with fake findings. Point it at a file
+    inside a directory that is never created: an unrelated test that
+    reaches the autofile hits the existing FileNotFoundError handling
+    (logged and swallowed) and writes nothing. Tests that want a real
+    upsert set their own path after this runs (``temp_backlog`` in
+    test_backlog_autofile.py).
+
+    The same routes then POST a ``workflow_dispatch`` when
+    ``GITHUB_DISPATCH_TOKEN`` is set; drop it so a test run can never
+    fire real Actions runs. Tests that exercise dispatch ``setenv`` it.
+    """
+    from scripts import backlog_autofile
+
+    monkeypatch.setattr(
+        backlog_autofile, "BACKLOG_PATH",
+        Path(tempfile.gettempdir()) / f"tm_test_no_backlog_{os.getpid()}"
+        / "BACKLOG.md",
+    )
+    monkeypatch.delenv("GITHUB_DISPATCH_TOKEN", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _reset_digest_heartbeat(monkeypatch):
     """Isolate the two process-global digest-check inputs per test.
 

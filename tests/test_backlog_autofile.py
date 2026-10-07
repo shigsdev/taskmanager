@@ -367,3 +367,80 @@ class TestCliEntryPoint:
         assert "inserted=1" in out
         text = temp_backlog.read_text(encoding="utf-8")
         assert "tech-debt/dependency-drift/cryptography" in text
+
+
+class TestRealBacklogIsolation:
+    """#362: no test may write audit results into the repo's real BACKLOG.md.
+
+    The audit runners in utilities_api end with `run_for_audit`, and several
+    route tests reached it unmocked — so every gate run rewrote two audit
+    rows with fake findings. `conftest.py`'s autouse fixture now points
+    BACKLOG_PATH away from the real file for every test; these guard it.
+    """
+
+    REAL_BACKLOG = backlog_autofile.PROJECT_ROOT / "BACKLOG.md"
+
+    def test_autofile_never_points_at_the_real_backlog(self):
+        assert backlog_autofile.BACKLOG_PATH.resolve() != self.REAL_BACKLOG.resolve()
+
+    def test_audit_runners_leave_real_backlog_untouched(
+        self, authed_client, monkeypatch, tmp_path,
+    ):
+        import json
+        import subprocess
+
+        import utilities_api
+        from scripts import check_bug_patterns as bp_mod
+
+        sentinel = "tests/362-sentinel-never-in-backlog.css"
+        before = self.REAL_BACKLOG.read_bytes()
+        try:
+            # Bug-pattern route with a synthetic finding at a unique path.
+            monkeypatch.setattr(bp_mod, "CHECKS", [(
+                "bare-1fr-grids",
+                lambda: [bp_mod.Finding(
+                    check_id="bare-1fr-grids", path=sentinel, line_num=1,
+                    line=".x { grid-template-columns: 1fr; }",
+                    message="bare 1fr",
+                )],
+            )])
+            resp = authed_client.post("/api/utilities/run-bug-pattern-scan")
+            assert resp.status_code == 200
+
+            # Coverage runner with a fabricated drift payload.
+            payload = {
+                "total": 1,
+                "per_check": [{"label": "overall-coverage-drift", "count": 1}],
+                "findings": [{
+                    "check_id": "overall-coverage-drift", "path": sentinel,
+                    "line_num": 0, "message": "1.0% < baseline",
+                }],
+                "overall": 1.0,
+            }
+            json_path = tmp_path / "result.json"
+            json_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            class FakeProc:
+                returncode = 1
+                stdout = ""
+                stderr = ""
+
+            monkeypatch.setattr(subprocess, "run", lambda *a, **kw: FakeProc())
+            utilities_api._run_coverage_audit_subprocess(str(json_path))
+
+            after = self.REAL_BACKLOG.read_bytes()
+            assert sentinel.encode() not in after
+            assert after == before
+        finally:
+            # Never leave the real file dirty, even when this test is red.
+            if self.REAL_BACKLOG.read_bytes() != before:
+                self.REAL_BACKLOG.write_bytes(before)
+            utilities_api._write_coverage_job_state({
+                "status": "idle", "started_at": None, "finished_at": None,
+                "duration_seconds": None, "result": None, "error": None,
+            })
+
+    def test_tests_never_hold_a_github_dispatch_token(self):
+        # With a token, the inline-scan routes POST a real workflow_dispatch.
+        import os
+        assert "GITHUB_DISPATCH_TOKEN" not in os.environ
