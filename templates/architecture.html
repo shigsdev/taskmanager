@@ -202,12 +202,22 @@ flowchart LR
         <section id="schema" class="docs-section">
             <h2>What the database stores</h2>
 
+            {# #393: derived from the same data as the per-table cards below
+               (build_per_table_schema), so the count, the legend and the
+               summary can't drift from the models again — the old
+               hand-written intro said "Seven tables", showed an Auth swatch
+               and listed 6 of 14 tables. The summary is a compact map
+               (table -> the tables it links to); each table's plain-English
+               description lives in its card below (user choice). #}
+            {% set group_labels = {'core': 'Core (things you create)', 'ops': 'Operational (system records)', 'auth': 'Auth (sign-in tokens)'} %}
+            {% set present_groups = [] %}
+            {% for g in ['core', 'ops', 'auth'] %}{% if per_table_schema | selectattr('group', 'equalto', g) | list %}{% set _ = present_groups.append(g) %}{% endif %}{% endfor %}
             <p>
-                Seven tables. Three groups, color-coded:
+                {{ per_table_schema | length }} tables, in {{ present_groups | length }} group{{ '' if present_groups | length == 1 else 's' }}, color-coded:
                 <span class="legend-inline">
-                    <span class="legend-swatch core"></span> Core (things you create)
-                    <span class="legend-swatch ops"></span> Operational (system records)
-                    <span class="legend-swatch auth"></span> Auth (sign-in tokens)
+                    {% for g in present_groups %}
+                    <span class="legend-swatch {{ g }}"></span> {{ group_labels[g] }}
+                    {% endfor %}
                 </span>
             </p>
 
@@ -215,52 +225,16 @@ flowchart LR
                 <thead>
                     <tr>
                         <th>Table</th>
-                        <th>What it stores</th>
-                        <th>One row is</th>
-                        <th>Linked to</th>
+                        <th>Links to</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr class="group-core">
-                        <td>tasks</td>
-                        <td>Your to-do items, including completed and cancelled ones</td>
-                        <td>One task on your board</td>
-                        <td>A goal (optional), a project (optional), a parent task (for subtasks), a recurring template (if spawned)</td>
+                    {% for t in per_table_schema %}
+                    <tr class="group-{{ t.group }}">
+                        <td>{{ t.name }}</td>
+                        <td>{{ t.links_to | join(", ") if t.links_to else "—" }}</td>
                     </tr>
-                    <tr class="group-core">
-                        <td>goals</td>
-                        <td>Your strategic objectives — the "why" tasks roll up to</td>
-                        <td>One goal you're working toward</td>
-                        <td>Tasks and projects link to it</td>
-                    </tr>
-                    <tr class="group-core">
-                        <td>projects</td>
-                        <td>Work or personal areas that group related tasks</td>
-                        <td>One project area (e.g. "Q2 OKRs")</td>
-                        <td>A goal (optional); tasks link to it</td>
-                    </tr>
-                    <tr class="group-core">
-                        <td>recurring_tasks</td>
-                        <td>Templates for tasks that repeat (daily, weekly, monthly)</td>
-                        <td>One repeat template</td>
-                        <td>A goal (optional), a project (optional); spawns into <code>tasks</code></td>
-                    </tr>
-                    <tr class="group-ops">
-                        <td>app_logs</td>
-                        <td>System-generated log events (errors, warnings, requests)</td>
-                        <td>One logged event</td>
-                        <td>—</td>
-                    </tr>
-                    <tr class="group-ops">
-                        <td>import_log</td>
-                        <td>History of bulk imports (OneNote, Excel, scans)</td>
-                        <td>One import batch (for recycle-bin undo)</td>
-                        <td>Tasks/goals created by an import reference it</td>
-                    </tr>
-                    {# #188 (2026-05-22): the `flask_dance_oauth` row was
-                       removed — no such table exists. Flask-Dance uses its
-                       default session storage; OAuth identity lives in the
-                       signed Flask session cookie, not a DB row. #}
+                    {% endfor %}
                 </tbody>
             </table>
 
@@ -825,7 +799,7 @@ flowchart TD
                     <tr><td>1</td><td><code>ruff check</code></td><td>Python lint (style, unused imports, line length, import order, ~700 rules)</td></tr>
                     <tr><td>2</td><td><code>pytest --cov</code></td><td>Python unit + route tests, 80% coverage floor (currently ~86%). The Postgres-enum bug class slips past here because tests run on SQLite (#53)</td></tr>
                     <tr><td>3</td><td><code>npm test</code> (Jest)</td><td>JavaScript unit tests — capture parser, day-of-week grouper, etc.</td></tr>
-                    <tr><td>4</td><td><code>npm run test:e2e</code> (Playwright local)</td><td>23 browser E2E tests — service worker lifecycle, Web Speech API, real DOM interaction. Auto-manages a bypass server. Currently broken on Mac (#41)</td></tr>
+                    <tr><td>4</td><td><code>npm run test:e2e:local</code> (Playwright local)</td><td>~500 browser E2E tests in three projects — desktop (Playwright’s default 1280×720), service-worker-active, and mobile 375×812 — covering real DOM interaction, the service-worker lifecycle and the Web Speech API. Auto-manages two throwaway local dev-bypass servers: desktop + SW on <code>127.0.0.1:5111</code>, mobile on <code>:5112</code> with a copy of the dev DB, run side by side (#385, #394); <code>PLAYWRIGHT_WORKERS=1</code> uses one server. Not runnable on the old Mac (#41)</td></tr>
                     <tr><td>5</td><td><code>bandit</code></td><td>Python security antipatterns at LOW/LOW threshold (#20) — subprocess shell injection, weak hashes, etc.</td></tr>
                     <tr><td>6</td><td><code>pip-audit</code></td><td>Known CVEs in <code>requirements.txt</code> — fails on any HIGH+ severity</td></tr>
                     <tr><td>7</td><td><code>npm audit</code></td><td>Known CVEs in <code>package.json</code> — fails on HIGH+ only (LOW/MED warn)</td></tr>

@@ -221,6 +221,19 @@ class TestBuildRouteCatalog:
 
 class TestBuildPerTableSchema:
 
+    def test_links_to_lists_each_linked_table_once_in_column_order(self, app):
+        """#393: the summary table's "Links to" column comes from the
+        columns' fk_target ("goals.id", "tasks.id (self-reference)",
+        "reflections"), reduced to distinct table names."""
+        from architecture_service import build_per_table_schema
+        with app.app_context():
+            by_name = {e["name"]: e for e in build_per_table_schema()}
+        assert by_name["tasks"]["links_to"] == [
+            "projects", "goals", "import_log", "tasks", "recurring_tasks",
+        ]
+        assert by_name["workout_sets"]["links_to"] == ["workout_sessions"]
+        assert by_name["app_logs"]["links_to"] == []
+
     def test_returns_one_entry_per_known_table(self, app):
         from architecture_service import build_per_table_schema
         with app.app_context():
@@ -558,3 +571,59 @@ class TestRenderArchitectureMd:
         # ARCHITECTURE.md is known to start with
         assert len(html) > 1000
         assert "<h1>" in html or "<h2>" in html
+
+
+class TestSchemaIntroMatchesModels:
+    """#393: the hand-written intro to "What the database stores" said
+    "Seven tables", showed an "Auth (sign-in tokens)" swatch and summarised
+    6 tables, while the models define 14 in two groups and no auth table has
+    existed since #188. The intro is now derived from the same data as the
+    per-table cards; these pin it to the model registry."""
+
+    @staticmethod
+    def _schema_section(authed_client):
+        import re
+
+        body = authed_client.get("/architecture").get_data(as_text=True)
+        m = re.search(r'<section id="schema".*?</section>', body, re.S)
+        assert m, "#schema section missing"
+        return m.group(0)
+
+    def test_intro_states_the_real_table_count(self, authed_client, app):
+        from architecture_service import build_per_table_schema
+
+        with app.app_context():
+            n = len(build_per_table_schema())
+        section = self._schema_section(authed_client)
+        assert f"{n} tables" in section
+        assert "Seven tables" not in section
+
+    def test_legend_shows_only_groups_that_have_tables(self, authed_client, app):
+        from architecture_service import build_per_table_schema
+
+        with app.app_context():
+            groups = {t["group"] for t in build_per_table_schema()}
+        section = self._schema_section(authed_client)
+        for g in ("core", "ops", "auth"):
+            swatch = f'legend-swatch {g}"'
+            assert (swatch in section) == (g in groups), g
+
+    def test_summary_table_lists_exactly_the_model_tables(self, authed_client, app):
+        import re
+
+        from architecture_service import build_per_table_schema
+
+        with app.app_context():
+            names = [t["name"] for t in build_per_table_schema()]
+        section = self._schema_section(authed_client)
+        summary = re.search(r'<table class="schema-table">.*?</table>', section, re.S)
+        assert summary, "summary table missing"
+        rows = re.findall(r'<tr class="group-[a-z]+">\s*<td>([a-z_]+)</td>', summary.group(0))
+        assert rows == names
+
+    def test_playwright_gate_row_names_the_command_the_gates_run(self, authed_client):
+        # #393: the row named `npm run test:e2e` (desktop only) and "23
+        # browser E2E tests"; run_all_gates.sh runs test:e2e:local.
+        body = authed_client.get("/architecture").get_data(as_text=True)
+        assert "npm run test:e2e:local" in body
+        assert "23 browser E2E tests" not in body

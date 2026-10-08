@@ -432,6 +432,8 @@ def build_per_table_schema() -> list[dict[str, Any]]:
     - ``columns``: list of {name, desc, notes, fk_target?} dicts in
       definition order, excluding `_HIDDEN_ER_COLUMNS` AND any column
       that has a description marked "skip" (none currently)
+    - ``links_to``: distinct table names this table's columns point at
+      (from ``fk_target``), in column order (#393 summary table)
 
     Per-column drift is enforced by `test_every_column_has_a_description`
     — if a model gains a column without a matching entry in
@@ -489,12 +491,23 @@ def build_per_table_schema() -> list[dict[str, Any]]:
                     "is_fk": bool(col_meta.get("fk_target")),
                 })
 
+        # #393: distinct linked tables, in column order, for the summary
+        # table's "Links to" column. fk_target reads "goals.id",
+        # "tasks.id (self-reference)" or a bare "reflections".
+        links_to: list[str] = []
+        for c in cols_out:
+            if c["fk_target"]:
+                target = c["fk_target"].split(".", 1)[0].split(" ", 1)[0]
+                if target not in links_to:
+                    links_to.append(target)
+
         out.append({
             "name": table_name,
             "group": _ER_TABLE_GROUPS.get(table_name, "core"),
             "blurb": meta.get("blurb", ""),
             "pk_label": meta.get("pk_label", _PK_LABEL_DEFAULT),
             "columns": cols_out,
+            "links_to": links_to,
         })
 
     return out
