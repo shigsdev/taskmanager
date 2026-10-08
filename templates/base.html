@@ -212,8 +212,19 @@
                     }
                 });
 
-            // Reload once the new SW takes over (guarded against double-fire)
+            // Reload once a NEW SW takes over from an old one (guarded
+            // against double-fire). #396: not on a first install — sw.js's
+            // activate calls clients.claim(), which also fires
+            // controllerchange on a page that had no controller; reloading
+            // then threw away the user's first seconds on the page. The
+            // first SW just starts controlling; a later update in this
+            // same page still reloads.
+            var hadController = !!navigator.serviceWorker.controller;
             navigator.serviceWorker.addEventListener("controllerchange", function () {
+                if (!hadController) {
+                    hadController = true;
+                    return;
+                }
                 if (reloading) return;
                 reloading = true;
                 window.location.reload();

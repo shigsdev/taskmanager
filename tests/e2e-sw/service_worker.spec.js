@@ -216,3 +216,44 @@ test.describe("Service worker — old-cache cleanup on activate", () => {
         expect(afterKeys.some((k) => /^taskmanager-v\d+$/.test(k))).toBe(true);
     });
 });
+
+// #396 (2026-10-08): base.html reloaded on EVERY `controllerchange`,
+// including the first install — sw.js's activate calls clients.claim(),
+// which fires controllerchange on a page that had no controller. That
+// reload is only meant for UPDATES (a new SW replacing an old one). On a
+// first visit it threw away whatever the user had started and raced
+// tests ("Execution context was destroyed" in prod smoke, #205, #383).
+test.describe("Service worker — reload only on update (#396)", () => {
+    test("a first visit is not reloaded when the SW takes control", async ({ page }) => {
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.evaluate(async () => {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map((r) => r.unregister()));
+        });
+
+        let loads = 0;
+        page.on("load", () => { loads += 1; });
+        await page.goto("/");
+        await page.waitForFunction(
+            () => navigator.serviceWorker.controller !== null,
+            null,
+            { timeout: 30_000 },
+        );
+        // Give a (wrong) controllerchange -> reload time to happen.
+        await page.waitForTimeout(2000);
+        await page.waitForLoadState("networkidle");
+        expect(loads).toBe(1);
+    });
+
+    test("an update still reloads a page that was already controlled", async ({ page }) => {
+        await primeSw(page); // SW controlled this page from the start of its load
+        const navigated = page.waitForEvent("load", { timeout: 10_000 });
+        // A real update ends in controllerchange on an already-controlled
+        // page; firing the event exercises exactly the guard in base.html.
+        await page.evaluate(() => {
+            navigator.serviceWorker.dispatchEvent(new Event("controllerchange"));
+        });
+        await navigated;
+    });
+});
