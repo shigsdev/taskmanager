@@ -42,9 +42,11 @@ async function expectEveryMermaidDiagramRendered(page) {
     const blocks = page.locator("pre.mermaid");
     const total = await blocks.count();
     expect(total).toBeGreaterThanOrEqual(10);
-    // Mermaid sets data-processed on each block it has handled (error or
-    // not), so this waits for final output, not a half-rendered page.
-    await expect(page.locator('pre.mermaid[data-processed="true"]'))
+    // #395: wait for every block's FINISHED svg (a direct child — mermaid's
+    // last step), never for data-processed: mermaid sets that when it STARTS
+    // a diagram and renders into a temporary div#dmermaid-N > svg first, so
+    // an error message rendered at the end could otherwise be missed.
+    await expect(page.locator("pre.mermaid > svg"))
         .toHaveCount(total, { timeout: 20_000 });
     for (let i = 0; i < total; i++) {
         const block = blocks.nth(i);
