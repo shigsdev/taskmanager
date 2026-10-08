@@ -38,6 +38,17 @@ const FAKE_MEDIA_ARGS = [
 // tests/js/unit/playwright_config.test.js guards it.
 const LOCAL_BASE_URL = "http://127.0.0.1:5111";
 
+// #394: run_all_gates.sh runs desktop and mobile SIDE BY SIDE, each on its
+// own throwaway LOCAL server (mobile on :5112 with a copy of the dev DB) —
+// nothing on Railway. It opts in by exporting PW_WORKERS=2 and
+// PW_MOBILE_BASE_URL. Without them (a manual `npx playwright test`) this
+// stays serial on one server, exactly as before. Each local project is
+// capped at one worker, so tests within a project never overlap on one DB.
+// Probe 2026-10-07: 17.1 -> ~9.3 min. PLAYWRIGHT_WORKERS=1 on the gate
+// script turns it off when RAM is tight.
+const LOCAL_WORKERS = Number(process.env.PW_WORKERS || 1);
+const MOBILE_BASE_URL = process.env.PW_MOBILE_BASE_URL || LOCAL_BASE_URL;
+
 const PROD_BASE_URL =
     process.env.TASKMANAGER_PROD_URL ||
     "https://web-production-3e3ae.up.railway.app";
@@ -45,7 +56,7 @@ const PROD_BASE_URL =
 module.exports = defineConfig({
     timeout: 30000,
     retries: 0,
-    workers: 1, // sequential
+    workers: LOCAL_WORKERS, // #394 — 1 unless the gate script provides server B
     reporter: [["list"]],
 
     // Workaround for Playwright apiRequestContext hanging on macOS when
@@ -71,6 +82,7 @@ module.exports = defineConfig({
         {
             name: "chromium",
             testDir: "./tests/e2e",
+            workers: 1, // #394: serial within the project
             use: {
                 baseURL: LOCAL_BASE_URL,
                 headless: true,
@@ -94,6 +106,8 @@ module.exports = defineConfig({
             // WITHOUT ?nosw=1.
             name: "chromium-sw",
             testDir: "./tests/e2e-sw",
+            workers: 1, // #394: serial within the project; shares server A
+
             // PR40 #106: cold SW install + addAll (13 files) on Windows
             // with Defender on can take 30s+. Bump the per-test budget.
             timeout: 90_000,
@@ -133,8 +147,10 @@ module.exports = defineConfig({
             name: "chromium-mobile",
             testDir: "./tests/e2e",
             grepInvert: /@noviewport/,
+            workers: 1, // #394: serial within the project
             use: {
-                baseURL: LOCAL_BASE_URL,
+                baseURL: MOBILE_BASE_URL, // #394: server B when the gates run
+
                 headless: true,
                 browserName: "chromium",
                 actionTimeout: 10000,

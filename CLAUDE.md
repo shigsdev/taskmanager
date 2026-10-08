@@ -83,6 +83,15 @@ python scripts/stop_dev_bypass.py                 # canonical teardown
   `--basetemp` deletes and recreates the directory it is given, so point it at
   a dedicated subdir, never a directory holding anything you want to keep.
   Cite "all passed, <coverage>%" in commit trailers, not a raw count.
+- **Local Playwright runs desktop + mobile side by side on two throwaway
+  LOCAL servers (#394).** `run_all_gates.sh` starts a second dev-bypass
+  server on `:5112` with a copy of the dev DB (`scripts/clone_dev_db.py`)
+  and tears both down on exit — nothing on Railway. It roughly halves the
+  Playwright gate but costs RAM (free memory hit 88 MB in the probe on a
+  7.3 GB machine). If RAM is tight or a run dies with worker crashes, use
+  `PLAYWRIGHT_WORKERS=1 bash scripts/run_all_gates.sh` — the old
+  single-server run, same tests. If `:5112` is already taken the gate
+  refuses to start rather than reuse an unknown process.
 - **Worktree/main trap.** If `main` gets checked out in a `.claude/worktrees/*`
   worktree, the primary repo is stuck on a feature branch and `main` looks
   "behind." Fix: `git worktree remove <path>` (or `git worktree prune` if the

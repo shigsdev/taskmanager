@@ -17,6 +17,9 @@
 #
 # Usage:
 #   bash scripts/run_all_gates.sh
+#   PLAYWRIGHT_WORKERS=1 bash scripts/run_all_gates.sh   # #394: low-RAM mode —
+#       one local server, desktop then mobile (default 2 = side by side on
+#       two throwaway local servers, :5111 + :5112)
 #
 # On Windows (git bash), the script needs node/npm on PATH. If not,
 # prepend Node before invoking:
@@ -270,12 +273,86 @@ else
     done
 fi
 
+# #394: desktop and mobile run SIDE BY SIDE, each on its own throwaway LOCAL
+# server — server A above (:5111, the dev DB) and server B here (:5112, a
+# consistent copy of it). Nothing on Railway. Each Playwright project is
+# capped at one worker (playwright.config.js), so tests within a project
+# still never overlap on one DB. Probe 2026-10-07: 17.1 -> ~9.3 min, but
+# free RAM fell to 88 MB on a 7.3 GB machine — so PLAYWRIGHT_WORKERS=1
+# gives exactly the old single-server run. Like PYTEST_WORKERS, it is a
+# resource knob, not a skip flag: every test still runs.
+PLAYWRIGHT_WORKERS="${PLAYWRIGHT_WORKERS:-2}"
+MOBILE_PORT=5112
+MOBILE_PID=""
+MOBILE_DB_REL="instance/dev-mobile.db"
+
+kill_port() {
+    # Stop whatever still listens on $1 — lsof on Unix, netstat+taskkill on
+    # Windows git-bash (where a backgrounded python may outlive `kill`).
+    if command -v lsof >/dev/null 2>&1; then
+        local pids; pids=$(lsof -ti:"$1" 2>/dev/null || true)
+        [ -n "$pids" ] && kill -9 $pids 2>/dev/null || true
+    elif command -v netstat >/dev/null 2>&1 && command -v taskkill >/dev/null 2>&1; then
+        local pid
+        for pid in $(netstat -ano 2>/dev/null | awk -v p=":$1" '$2 ~ p"$" && $4=="LISTENING" {print $5}' | sort -u); do
+            taskkill //F //PID "$pid" >/dev/null 2>&1 || true
+        done
+    fi
+}
+
+cleanup_mobile() {
+    if [ -n "$MOBILE_PID" ]; then
+        kill "$MOBILE_PID" 2>/dev/null || true
+        kill_port "$MOBILE_PORT"
+        MOBILE_PID=""
+    fi
+    rm -f "$MOBILE_DB_REL" "$MOBILE_DB_REL-wal" "$MOBILE_DB_REL-shm" "$MOBILE_DB_REL-journal"
+}
+
+case "$PLAYWRIGHT_WORKERS" in
+    1)
+        printf "${YELLOW}…${NC} PLAYWRIGHT_WORKERS=1 — one local server, desktop then mobile (serial)\n"
+        ;;
+    2)
+        if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:${MOBILE_PORT}/healthz" 2>/dev/null; then
+            fail "something is already listening on :${MOBILE_PORT} — refusing to use an unknown process as the mobile test server. Stop it, or run with PLAYWRIGHT_WORKERS=1."
+            exit 1
+        fi
+        trap 'cleanup_mobile; if declare -F cleanup_bypass >/dev/null; then cleanup_bypass; fi' EXIT INT TERM
+        if ! MOBILE_DB_ABS="$(python scripts/clone_dev_db.py "$MOBILE_DB_REL")"; then
+            fail "could not copy the dev DB for the mobile server (scripts/clone_dev_db.py)"
+            exit 1
+        fi
+        DATABASE_URL="sqlite:///${MOBILE_DB_ABS}" python scripts/run_dev_bypass.py --port "$MOBILE_PORT" \
+            > /tmp/run_all_gates_bypass_mobile.log 2>&1 &
+        MOBILE_PID=$!
+        for i in $(seq 1 60); do
+            if curl -s -o /dev/null -w "%{http_code}" --max-time 2 "http://127.0.0.1:${MOBILE_PORT}/healthz" 2>/dev/null | grep -qE "^[23456][0-9][0-9]$"; then
+                pass "mobile bypass server ready on :${MOBILE_PORT} after ${i}s (own DB copy) — desktop + mobile run side by side"
+                break
+            fi
+            sleep 1
+            if [ "$i" -eq 60 ]; then
+                fail "mobile bypass server did not come up in 60s — check /tmp/run_all_gates_bypass_mobile.log"
+                cat /tmp/run_all_gates_bypass_mobile.log >&2 || true
+                exit 1
+            fi
+        done
+        export PW_WORKERS=2
+        export PW_MOBILE_BASE_URL="http://127.0.0.1:${MOBILE_PORT}"
+        ;;
+    *)
+        fail "PLAYWRIGHT_WORKERS must be 1 or 2 (got '${PLAYWRIGHT_WORKERS}')"
+        exit 1
+        ;;
+esac
+
 # #274 (2026-05-31): run all three local projects in ONE `playwright test`
 # invocation (test:e2e:local) instead of three sequential `npm run` calls.
 # Each separate invocation paid its own Node + Playwright + browser
 # cold-start (~3-5s each); one process pays it once and Playwright schedules
-# all three projects (workers:1 keeps them serial = same DB-safety as
-# before). Covers:
+# all three projects (#394: up to 2 at once, one worker per project, mobile on
+# its own server — see above). Covers:
 #   - chromium        — desktop 1280×800, ?nosw=1 (tests/e2e)
 #   - chromium-sw     — SW-active path (tests/e2e-sw) — PR39 audit E2: the
 #                       entire service-worker code path was otherwise only
@@ -283,7 +360,7 @@ fi
 #   - chromium-mobile — 375×812 re-run (#141) MINUS @noviewport-tagged
 #                       viewport-independent groups (#274)
 if npm run test:e2e:local; then
-    pass "local Playwright (chromium + sw + mobile, one run)"
+    pass "local Playwright (chromium + sw + mobile, one run, ${PLAYWRIGHT_WORKERS} worker(s))"
 else
     fail "local Playwright failed"
     exit 1
