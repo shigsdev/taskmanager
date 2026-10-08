@@ -11,8 +11,18 @@
  */
 const { test, expect } = require("@playwright/test");
 
+// True when the link is the element actually under its own midpoint —
+// i.e. on screen AND not covered by the sticky header (.nav, z-index 100).
+// toBeInViewport() alone missed the header: Phase 6 found the TOC's first
+// link sitting at y≈68, inside the window but under the 91px header.
+function linkIsUncovered(link) {
+    const r = link.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + 5, r.top + r.height / 2);
+    return hit === link || link.contains(hit);
+}
+
 test.describe("#397 /docs TOC scrolls on its own", () => {
-    test("the sidebar fits the window and its last link can be reached mid-page", async ({ page, viewport }) => {
+    test("the sidebar sits below the header, fits the window, and its first and last links can be reached mid-page", async ({ page, viewport }) => {
         test.skip(viewport.width < 700, "desktop-only: the TOC is static on mobile");
 
         await page.goto("/docs?nosw=1");
@@ -25,19 +35,26 @@ test.describe("#397 /docs TOC scrolls on its own", () => {
         const m = await toc.evaluate((el) => {
             const r = el.getBoundingClientRect();
             return { top: r.top, bottom: r.bottom, innerHeight: window.innerHeight,
+                     headerBottom: document.querySelector(".nav").getBoundingClientRect().bottom,
                      scrollable: el.scrollHeight > el.clientHeight };
         });
-        // Pinned and fully inside the window...
-        expect(m.top).toBeGreaterThanOrEqual(0);
+        // Pinned below the sticky header and fully inside the window...
+        expect(m.top).toBeGreaterThanOrEqual(m.headerBottom);
         expect(m.bottom).toBeLessThanOrEqual(m.innerHeight);
-        // ...so a TOC taller than the window must scroll by itself.
+        // ...so a TOC taller than that must scroll by itself.
         expect(m.scrollable).toBe(true);
 
-        // The last link can be brought into view without moving the page.
         const pageY = await page.evaluate(() => window.scrollY);
+        const first = toc.locator("a").first();
         const last = toc.locator("a").last();
+
+        // At the top of the TOC, the first link is visible, not under the header.
+        await toc.evaluate((el) => { el.scrollTop = 0; });
+        expect(await first.evaluate(linkIsUncovered)).toBe(true);
+
+        // At its end, the last link is visible — and the page never moved.
         await toc.evaluate((el) => { el.scrollTop = el.scrollHeight; });
-        await expect(last).toBeInViewport();
+        expect(await last.evaluate(linkIsUncovered)).toBe(true);
         expect(await page.evaluate(() => window.scrollY)).toBe(pageY);
     });
 

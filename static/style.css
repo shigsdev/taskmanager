@@ -4341,16 +4341,22 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .docs-toc {
     position: sticky;
-    top: 16px;
+    /* #397: stick BELOW the sticky .nav header (91px on desktop — its tab
+       row scrolls sideways rather than wrapping, so the height is fixed)
+       plus a 16px gap. At `top: 16px` the header covered the TOC's top
+       ~75px mid-page, hiding its heading and first link. If the header's
+       height changes, tests/e2e/docs_toc.spec.js goes red. */
+    top: 107px;
     align-self: start;
     font-size: 0.9rem;
     line-height: 1.5;
     /* #397: the /docs TOC grew taller than the window (~1065px). Sticky
        with no height cap kept it pinned while its lower links sat
-       off-screen until the end of a 42,000px page. Cap it to the window
-       and let it scroll on its own; at its end the wheel carries on into
-       the page, as everywhere else. The mobile rule below resets. */
-    max-height: calc(100vh - 32px);
+       off-screen until the end of a 42,000px page. Cap it to the space
+       under the header (top 107px + 16px bottom gap) and let it scroll on
+       its own; at its end the wheel carries on into the page, as
+       everywhere else. The mobile rule below resets. */
+    max-height: calc(100vh - 123px);
     overflow-y: auto;
 }
 .docs-toc h2 {
