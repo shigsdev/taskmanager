@@ -581,47 +581,13 @@ def create_app(config: dict | None = None) -> Flask:
     @app.route("/api/export")
     @login_required
     def export_data(email: str):  # noqa: ARG001
-        """Download a full JSON backup of all tasks, goals, and projects."""
-        from goal_service import list_goals
-        from project_service import list_projects
-        from task_service import serialize_task
-
-        all_tasks = list_tasks(status=None)  # all statuses
-        all_goals = list_goals()
-        all_projects = list_projects()
-
-        def serialize_goal(g):
-            return {
-                "id": str(g.id), "title": g.title,
-                "category": g.category.value, "priority": g.priority.value,
-                "priority_rank": g.priority_rank, "actions": g.actions,
-                "target_quarter": g.target_quarter,
-                "status": g.status.value, "notes": g.notes,
-                "created_at": g.created_at.isoformat(),
-                "updated_at": g.updated_at.isoformat(),
-            }
-
-        def serialize_project(p):
-            return {
-                "id": str(p.id), "name": p.name, "color": p.color,
-                "type": p.type.value, "is_active": p.is_active,
-                "created_at": p.created_at.isoformat(),
-            }
+        """Download every user-data table as JSON (#366 — see export_service)."""
+        from export_service import build_export
 
         # Audit fix #180 (2026-05-20): use DIGEST_TZ today, not server UTC —
         # a 9pm ET backup would otherwise stamp tomorrow's date.
         today = local_today_date()
-        backup = {
-            "exported_at": today.isoformat(),
-            # #200: canonical export serializer derives its keys from
-            # Task.__table__.columns, so a full backup includes EVERY
-            # column — the old inline serializer silently dropped
-            # parent_id, cancellation_reason, last_reviewed, batch_id,
-            # recurring_task_id and planner_ignore.
-            "tasks": [serialize_task(t, view="export") for t in all_tasks],
-            "goals": [serialize_goal(g) for g in all_goals],
-            "projects": [serialize_project(p) for p in all_projects],
-        }
+        backup = {"exported_at": today.isoformat(), **build_export()}
         resp = _jsonify(backup)
         resp.headers["Content-Disposition"] = (
             f"attachment; filename=taskmanager-backup-{today}.json"

@@ -982,7 +982,13 @@ time is in the future today. See ADR-033 for the full design.
   sequence flows (recurring spawn, voice memo, auth). Backed by
   `architecture_service.py`. Tab labeled "Architecture" in the nav.
   ADR-028.
-- `/api/export` — download user data
+- `/api/export` — download user data as JSON (#366): `export_service.py`
+  walks `db.Model.registry` and emits every table, every column and every
+  row (archived goals/projects included), except the ops tables in
+  `EXPORT_EXCLUDED_TABLES` (`app_logs`, `cron_audit`). API-only — no UI
+  calls it, nothing restores from it; the backup of record is the daily
+  encrypted `pg_dump` (#154). `tests/test_export.py` fails if a new table
+  is neither exported nor excluded.
 
 ### API endpoints
 
