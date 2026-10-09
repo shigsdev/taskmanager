@@ -3414,6 +3414,11 @@ input[type="time"]::-webkit-calendar-picker-indicator {
         flex-basis: 100%;
         max-width: none;
     }
+    /* #399: the type select (33px) and text input (34px) sat beside 44px
+       icon-btns, under the 44px tap floor. Height only — the row's width
+       (the 2026-04-18 overflow incident) is untouched. */
+    .capture-bar select,
+    .capture-bar input[type="text"] { min-height: 44px; }
     .nav-links {
         gap: 4px;
         overflow-x: auto;
@@ -5154,8 +5159,12 @@ table.quality-gates code {
     .weekly-focus-slot-plan,
     .weekly-focus-slot-clear {
         order: 3;
-        min-height: 40px;
+        min-height: 44px; /* #399: was 40px */
     }
+    /* #399: the goal select and text input were 34px — the whole slot row
+       now meets the 44px tap floor. */
+    .weekly-focus-slot-goal,
+    .weekly-focus-slot-input { min-height: 44px; }
 }
 
 /* Plan-for-focus review modal */
@@ -6090,6 +6099,10 @@ table.quality-gates code {
     min-width: 0;
 }
 .pg-clear { flex: 0 0 auto; }
+@media (max-width: 600px) {
+    /* #399: the reassign select was 21px beside a 44px Clear button. */
+    .pg-goal-select { min-height: 44px; }
+}
 
 /* ============================================================
    #224 Soft Concrete — MOTION + ATMOSPHERE layer

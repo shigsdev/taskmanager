@@ -13,9 +13,14 @@ const SURFACES = [
     { path: "/architecture", selector: ".docs-toc a", min: 11 },
     { path: "/goals", selector: ".goals-filters select", min: 5 },
     { path: "/projects", selector: ".projects-filters select", min: 3 },
+    // #399: the rest of the sub-44px selects, and the inputs/buttons sharing
+    // their rows (measured 33/34/40/21px at 375x812 before the fix).
+    { path: "/", selector: ".capture-bar select, .capture-bar input[type=\"text\"]", min: 2 },
+    { path: "/", selector: ".weekly-focus-slot select, .weekly-focus-slot input, .weekly-focus-slot button", min: 6 },
+    { path: "/utilities", selector: ".pg-goal-select", min: 1 },
 ];
 
-test.describe("#398 + #354 mobile tap targets", () => {
+test.describe("#398 + #354 + #399 mobile tap targets", () => {
     for (const { path, selector, min } of SURFACES) {
         test(`${path}: every ${selector} is at least 44px tall`, async ({ page, viewport }) => {
             test.skip(viewport.width >= 700, "mobile-only: desktop targets are mouse targets");
