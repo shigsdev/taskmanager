@@ -44,6 +44,15 @@ python scripts/stop_dev_bypass.py                 # canonical teardown
   self-disables and reports "No tests found" unless `TASKMANAGER_SESSION_COOKIE`
   is set (see Commands). The value is the validator token in
   `~/.taskmanager-session-cookie`.
+- **Playwright "worker process exited unexpectedly (code=3221226505)" = an
+  affected Node, not a test bug (#348).** Node 24.x before 24.16 (and 25.x,
+  26.0.x) bundles a libuv with a Windows loopback-connect stack-cookie bug
+  (libuv#5274): every Playwright `request.*` to localhost can fail-fast the
+  worker with 0xC0000409 on a random test, ~6 min into a run. Proven from a
+  dump on 2026-10-08 (`docs/design/348-playwright-worker-crash.md`).
+  `tests/playwright-globalSetup.js` now refuses an affected Node on Windows
+  before any test runs; the fix is `winget upgrade OpenJS.NodeJS.LTS`.
+  Don't chase the named test, and don't "fix" it with retries.
 - **Network gates are wall-clock-capped (`124` = re-run, not a real vuln).**
   `pip-audit` (gate 6) and `npm audit` (gate 7) hit external advisory DBs
   (OSV / PyPI / npm registry) and can stall indefinitely on a transient

@@ -64,6 +64,12 @@ if (!dns.promises.lookup.__noV6Patched) {
     dns.lookup.__noV6Patched = true;
 }
 
+const { nodeLoopbackBugReason } = require("./node_version_guard");
+
 module.exports = async () => {
-    // No-op exported function — the patch is applied at require-time above.
+    // The DNS patch is applied at require-time above.
+    // #348: stop before any test on a Node whose libuv kills workers mid-run
+    // on Windows, instead of flaking ~6 minutes in.
+    const reason = nodeLoopbackBugReason(process.version, process.platform);
+    if (reason) throw new Error(reason);
 };
