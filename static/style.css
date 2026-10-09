@@ -3560,6 +3560,10 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     }
     .goals-toolbar h1 { margin-bottom: 4px; }
     .goals-filters { flex-wrap: wrap; }
+    /* #354: the filter selects were 31px (/goals) and 32px (/projects),
+       under the 44px tap floor. One rule for both bars so they can't drift. */
+    .goals-filters select,
+    .projects-filters select { min-height: 44px; }
     .goal-card { padding: 12px; }
 
     /* Project filter bar: scroll horizontally */
@@ -4463,6 +4467,22 @@ input[type="time"]::-webkit-calendar-picker-indicator {
         padding: 12px;
         background: var(--bg-subtle, #f6f8fa);
         border-radius: 6px;
+    }
+    /* #398: the TOC links were 20px tall, ~5px apart — under the 44px tap
+       floor. Two columns of 44px rows keep the /docs TOC no taller than
+       before (~1004px vs 1048; one 44px column would be ~1620px).
+       `minmax(0, 1fr)` lets two-line titles wrap instead of overflowing. */
+    .docs-toc ul {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        column-gap: 12px;
+    }
+    .docs-toc li { margin: 0; }
+    .docs-toc a {
+        display: flex;
+        align-items: center;
+        min-height: 44px;
+        line-height: 1.25;
     }
 }
 
