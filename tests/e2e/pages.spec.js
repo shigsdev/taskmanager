@@ -7081,9 +7081,37 @@ test.describe("#372 behaviours with direct tests (#378)", () => {
             await page.waitForLoadState("networkidle");
             const line = page.locator(
                 `.project-card-task[data-task-id="${task.id}"]`);
-            await line.dragTo(
-                page.locator(`.project-card[data-project-id="${to.id}"]`),
-                { targetPosition: { x: 8, y: 8 } });
+            const target = page.locator(
+                `.project-card[data-project-id="${to.id}"]`);
+            // #401: not `dragTo`. Its default single mousemove gives the
+            // target ONE throttled dragover before the release — a race
+            // that failed this test 4 runs in a row one morning — and on
+            // mobile it scrolls the page mid-drag to reach the target.
+            // Instead: scroll once BEFORE the press (the two cards were
+            // created back to back, so they sit together), drive the real
+            // mouse by coordinates, and release only once the card has
+            // accepted the drop. `project-card-drop-ok` is added in the
+            // same dragover handler that calls preventDefault()
+            // (projects.js onCardTaskDragOver), without which no drop fires.
+            await line.evaluate((el) => el.scrollIntoView({ block: "center" }));
+            const a = await line.boundingBox();
+            const b = await target.boundingBox();
+            const sx = a.x + a.width / 2;
+            const sy = a.y + a.height / 2;
+            const tx = b.x + 12;
+            const ty = b.y + 12;
+            expect(ty).toBeLessThan(page.viewportSize().height);
+            await page.mouse.move(sx, sy);
+            await page.mouse.down();
+            await page.mouse.move(sx, sy + 10, { steps: 3 }); // past the drag threshold
+            await page.mouse.move(tx, ty, { steps: 5 });
+            let nudge = 0;
+            await expect.poll(async () => {
+                await page.mouse.move(tx + (nudge++ % 2), ty);
+                return target.evaluate(
+                    (el) => el.classList.contains("project-card-drop-ok"));
+            }).toBe(true);
+            await page.mouse.up();
             await page.waitForTimeout(800);
             await expect(page.locator("#detailOverlay")).toBeHidden();
             // Chromium's real-mouse HTML5 drag does fire #344's handlers,
