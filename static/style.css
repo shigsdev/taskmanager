@@ -4486,6 +4486,16 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     }
 }
 
+/* #400: an anchor jump (TOC click, or a /docs#section URL) scrolled the
+   target to top: 0 — under the sticky .nav, hiding the section's own
+   heading. Stop it 16px below the header instead: 91px header on desktop,
+   165px at <=600px, where the nav's own mobile rule stacks it. If the
+   header's height changes, tests/e2e/docs_toc.spec.js goes red. */
+.docs-page [id] { scroll-margin-top: 107px; }
+@media (max-width: 600px) {
+    .docs-page [id] { scroll-margin-top: 181px; }
+}
+
 /* --- Architecture page (#42) --- */
 
 /* The auto-generated route catalog can run 50+ rows; let the table

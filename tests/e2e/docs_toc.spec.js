@@ -80,3 +80,29 @@ test.describe("#397 /docs TOC scrolls on its own", () => {
         await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before);
     });
 });
+
+// #400 (2026-10-09): a TOC jump scrolled the section to top: 0, under the
+// sticky .nav (91px desktop, 165px at <=600px), hiding the section's own
+// heading — the first visible line was the next sub-heading. Both viewports:
+// the header covers the target on mobile too.
+test.describe("#400 a TOC jump lands with the section heading visible", () => {
+    for (const path of ["/docs", "/architecture"]) {
+        test(`${path}: the target heading is below the header, not under it`, async ({ page }) => {
+            await page.goto(`${path}?nosw=1`);
+            const links = page.locator(".docs-toc a");
+            const n = await links.count();
+            for (const i of [Math.floor(n / 2), n - 1]) {
+                const href = await links.nth(i).getAttribute("href");
+                await links.nth(i).click();
+                await expect.poll(() => page.evaluate((sel) => {
+                    const heading = document.querySelector(sel).querySelector("h2, h3")
+                        || document.querySelector(sel);
+                    const navBottom = document.querySelector(".nav").getBoundingClientRect().bottom;
+                    const r = heading.getBoundingClientRect();
+                    const hit = document.elementFromPoint(r.left + 5, r.top + r.height / 2);
+                    return r.top >= navBottom && (hit === heading || heading.contains(hit));
+                }, href), { message: `${href} heading hidden under the header` }).toBe(true);
+            }
+        });
+    }
+});
