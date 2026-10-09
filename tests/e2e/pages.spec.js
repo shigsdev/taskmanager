@@ -15,7 +15,7 @@
 // `ECONNREFUSED ::1:5111` when Happy Eyeballs picks IPv6 first.
 // Matches the pattern smoke.spec.js uses (per globalSetup comment).
 require("../playwright-globalSetup");
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./lane"); // #402: per-worker lane server
 
 // #274: pure page-load console-error checks — ui_audit.spec.js audits the
 // SAME routes for console errors (plus overflow + touch targets) at 375px,

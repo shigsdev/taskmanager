@@ -17,9 +17,10 @@
 #
 # Usage:
 #   bash scripts/run_all_gates.sh
-#   PLAYWRIGHT_WORKERS=1 bash scripts/run_all_gates.sh   # #394: low-RAM mode —
-#       one local server, desktop then mobile (default 2 = side by side on
-#       two throwaway local servers, :5111 + :5112)
+#   PLAYWRIGHT_WORKERS=N bash scripts/run_all_gates.sh   # #402: N local
+#       Playwright lanes (1-8, default 4), each its own throwaway server +
+#       DB copy on :5111..:5111+N-1. PLAYWRIGHT_WORKERS=1 = one server,
+#       serial (low RAM). Above 4 runs out of loopback ports on Windows (#403).
 #
 # On Windows (git bash), the script needs node/npm on PATH. If not,
 # prepend Node before invoking:
@@ -273,18 +274,24 @@ else
     done
 fi
 
-# #394: desktop and mobile run SIDE BY SIDE, each on its own throwaway LOCAL
-# server — server A above (:5111, the dev DB) and server B here (:5112, a
-# consistent copy of it). Nothing on Railway. Each Playwright project is
-# capped at one worker (playwright.config.js), so tests within a project
-# still never overlap on one DB. Probe 2026-10-07: 17.1 -> ~9.3 min, but
-# free RAM fell to 88 MB on a 7.3 GB machine — so PLAYWRIGHT_WORKERS=1
-# gives exactly the old single-server run. Like PYTEST_WORKERS, it is a
-# resource knob, not a skip flag: every test still runs.
-PLAYWRIGHT_WORKERS="${PLAYWRIGHT_WORKERS:-2}"
-MOBILE_PORT=5112
-MOBILE_PID=""
-MOBILE_DB_REL="instance/dev-mobile.db"
+# #402 (generalises #394): local Playwright runs on N "lanes" — N throwaway
+# LOCAL dev-bypass servers on :5111..:5111+N-1, each on its own DB (lane 0 is
+# server A above, on the dev DB; lanes 1..N-1 run on consistent copies).
+# Nothing on Railway. tests/e2e/lane.js points worker parallelIndex i at
+# port 5111+i, so no two concurrent workers ever share a server or a DB,
+# and the desktop + mobile projects run fully parallel across lanes.
+# PLAYWRIGHT_WORKERS=1 is exactly the old single-server serial run. Like
+# PYTEST_WORKERS, it is a resource knob, not a skip flag: every test runs.
+# Default 4 is the measured ceiling, not a CPU/RAM pick: Werkzeug's dev
+# server closes every connection, so each request leaves a loopback port in
+# TIME_WAIT. 4 lanes peaked at 10.2k of Windows' 16,384 ephemeral ports, 6 at
+# 14.1k, and 8 ran out (net::ERR_ADDRESS_IN_USE, 14 failures). Raising it
+# needs a keep-alive server (#403).
+# Spec: docs/design/402-parallel-playwright-lanes.md.
+PLAYWRIGHT_WORKERS="${PLAYWRIGHT_WORKERS:-4}"
+LANE_BASE_PORT=5111
+LANE_MAX=8
+LANE_PIDS=()
 
 kill_port() {
     # Stop whatever still listens on $1 — lsof on Unix, netstat+taskkill on
@@ -300,52 +307,63 @@ kill_port() {
     fi
 }
 
-cleanup_mobile() {
-    if [ -n "$MOBILE_PID" ]; then
-        kill "$MOBILE_PID" 2>/dev/null || true
-        kill_port "$MOBILE_PORT"
-        MOBILE_PID=""
-    fi
-    rm -f "$MOBILE_DB_REL" "$MOBILE_DB_REL-wal" "$MOBILE_DB_REL-shm" "$MOBILE_DB_REL-journal"
+lane_db() { echo "instance/dev-lane-$1.db"; }
+
+cleanup_lanes() {
+    local i
+    for pid in "${LANE_PIDS[@]}"; do kill "$pid" 2>/dev/null || true; done
+    LANE_PIDS=()
+    for ((i = 1; i < ${PLAYWRIGHT_WORKERS:-1}; i++)); do
+        kill_port "$((LANE_BASE_PORT + i))"
+        local db; db="$(lane_db "$i")"
+        rm -f "$db" "$db-wal" "$db-shm" "$db-journal"
+    done
 }
 
-case "$PLAYWRIGHT_WORKERS" in
-    1)
-        printf "${YELLOW}…${NC} PLAYWRIGHT_WORKERS=1 — one local server, desktop then mobile (serial)\n"
-        ;;
-    2)
-        if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:${MOBILE_PORT}/healthz" 2>/dev/null; then
-            fail "something is already listening on :${MOBILE_PORT} — refusing to use an unknown process as the mobile test server. Stop it, or run with PLAYWRIGHT_WORKERS=1."
+if ! [[ "$PLAYWRIGHT_WORKERS" =~ ^[0-9]+$ ]] || [ "$PLAYWRIGHT_WORKERS" -lt 1 ] || [ "$PLAYWRIGHT_WORKERS" -gt "$LANE_MAX" ]; then
+    fail "PLAYWRIGHT_WORKERS must be a whole number from 1 to ${LANE_MAX} (got '${PLAYWRIGHT_WORKERS}')"
+    exit 1
+fi
+
+if [ "$PLAYWRIGHT_WORKERS" -eq 1 ]; then
+    printf "${YELLOW}…${NC} PLAYWRIGHT_WORKERS=1 — one local server, one worker (serial)\n"
+else
+    for ((i = 1; i < PLAYWRIGHT_WORKERS; i++)); do
+        port=$((LANE_BASE_PORT + i))
+        if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:${port}/healthz" 2>/dev/null; then
+            fail "something is already listening on :${port} — refusing to use an unknown process as a lane server. Stop it, or lower PLAYWRIGHT_WORKERS."
             exit 1
         fi
-        trap 'cleanup_mobile; if declare -F cleanup_bypass >/dev/null; then cleanup_bypass; fi' EXIT INT TERM
-        if ! MOBILE_DB_ABS="$(python scripts/clone_dev_db.py "$MOBILE_DB_REL")"; then
-            fail "could not copy the dev DB for the mobile server (scripts/clone_dev_db.py)"
+    done
+    trap 'cleanup_lanes; if declare -F cleanup_bypass >/dev/null; then cleanup_bypass; fi' EXIT INT TERM
+    for ((i = 1; i < PLAYWRIGHT_WORKERS; i++)); do
+        port=$((LANE_BASE_PORT + i))
+        if ! db_abs="$(python scripts/clone_dev_db.py "$(lane_db "$i")")"; then
+            fail "could not copy the dev DB for lane ${i} (scripts/clone_dev_db.py)"
             exit 1
         fi
-        DATABASE_URL="sqlite:///${MOBILE_DB_ABS}" python scripts/run_dev_bypass.py --port "$MOBILE_PORT" \
-            > /tmp/run_all_gates_bypass_mobile.log 2>&1 &
-        MOBILE_PID=$!
-        for i in $(seq 1 60); do
-            if curl -s -o /dev/null -w "%{http_code}" --max-time 2 "http://127.0.0.1:${MOBILE_PORT}/healthz" 2>/dev/null | grep -qE "^[23456][0-9][0-9]$"; then
-                pass "mobile bypass server ready on :${MOBILE_PORT} after ${i}s (own DB copy) — desktop + mobile run side by side"
+        DATABASE_URL="sqlite:///${db_abs}" python scripts/run_dev_bypass.py --port "$port" \
+            > "/tmp/run_all_gates_bypass_lane${i}.log" 2>&1 &
+        LANE_PIDS+=($!)
+    done
+    for ((i = 1; i < PLAYWRIGHT_WORKERS; i++)); do
+        port=$((LANE_BASE_PORT + i))
+        for t in $(seq 1 60); do
+            if curl -s -o /dev/null -w "%{http_code}" --max-time 2 "http://127.0.0.1:${port}/healthz" 2>/dev/null | grep -qE "^[23456][0-9][0-9]$"; then
                 break
             fi
             sleep 1
-            if [ "$i" -eq 60 ]; then
-                fail "mobile bypass server did not come up in 60s — check /tmp/run_all_gates_bypass_mobile.log"
-                cat /tmp/run_all_gates_bypass_mobile.log >&2 || true
+            if [ "$t" -eq 60 ]; then
+                fail "lane ${i} server (:${port}) did not come up in 60s — check /tmp/run_all_gates_bypass_lane${i}.log"
+                cat "/tmp/run_all_gates_bypass_lane${i}.log" >&2 || true
                 exit 1
             fi
         done
-        export PW_WORKERS=2
-        export PW_MOBILE_BASE_URL="http://127.0.0.1:${MOBILE_PORT}"
-        ;;
-    *)
-        fail "PLAYWRIGHT_WORKERS must be 1 or 2 (got '${PLAYWRIGHT_WORKERS}')"
-        exit 1
-        ;;
-esac
+    done
+    pass "${PLAYWRIGHT_WORKERS} lane servers ready on :${LANE_BASE_PORT}-:$((LANE_BASE_PORT + PLAYWRIGHT_WORKERS - 1)) (own DB copies)"
+    export PW_WORKERS="$PLAYWRIGHT_WORKERS"
+    export PW_LANE_BASE_PORT="$LANE_BASE_PORT"
+fi
 
 # #274 (2026-05-31): run all three local projects in ONE `playwright test`
 # invocation (test:e2e:local) instead of three sequential `npm run` calls.

@@ -6,7 +6,7 @@
  * and error handling.
  */
 // @ts-check
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./lane"); // #402: per-worker lane server
 
 // #274: every block in this file asserts browser-API / DOM-state behavior
 // that is independent of viewport width — tag @noviewport so the

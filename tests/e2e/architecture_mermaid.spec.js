@@ -18,7 +18,7 @@
  * Mermaid loads from cdn.jsdelivr.net, so this test needs network — the
  * same dependency the prod smoke check already has.
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./lane"); // #402: per-worker lane server
 
 // Every block holds its finished svg as a DIRECT child (mermaid's final
 // `element.innerHTML = svg`). Returns the block count.

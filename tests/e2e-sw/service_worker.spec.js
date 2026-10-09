@@ -22,7 +22,7 @@
  *   - controllerchange reload loop (#55 family).
  */
 // @ts-check
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("../e2e/lane"); // #402: per-worker lane server
 
 /**
  * PR40 #106: prime the SW + wait for any controllerchange-triggered

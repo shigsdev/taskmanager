@@ -92,15 +92,20 @@ python scripts/stop_dev_bypass.py                 # canonical teardown
   `--basetemp` deletes and recreates the directory it is given, so point it at
   a dedicated subdir, never a directory holding anything you want to keep.
   Cite "all passed, <coverage>%" in commit trailers, not a raw count.
-- **Local Playwright runs desktop + mobile side by side on two throwaway
-  LOCAL servers (#394).** `run_all_gates.sh` starts a second dev-bypass
-  server on `:5112` with a copy of the dev DB (`scripts/clone_dev_db.py`)
-  and tears both down on exit — nothing on Railway. It roughly halves the
-  Playwright gate but costs RAM (free memory hit 88 MB in the probe on a
-  7.3 GB machine). If RAM is tight or a run dies with worker crashes, use
-  `PLAYWRIGHT_WORKERS=1 bash scripts/run_all_gates.sh` — the old
-  single-server run, same tests. If `:5112` is already taken the gate
-  refuses to start rather than reuse an unknown process.
+- **Local Playwright runs in 4 parallel "lanes" on throwaway LOCAL servers
+  (#402, was 2 in #394).** `run_all_gates.sh` starts one dev-bypass server
+  per lane on `:5111..:5114` (lanes 1–3 on copies of the dev DB via
+  `scripts/clone_dev_db.py`) and tears them all down on exit — nothing on
+  Railway. Each Playwright worker talks only to its own lane
+  (`tests/e2e/lane.js`). Gate run 8m27s → ~4m53s. Knob:
+  `PLAYWRIGHT_WORKERS=N` (1–8); `=1` is the old single-server serial run
+  for a low-RAM machine, same tests. **Don't raise the default past 4**:
+  Werkzeug closes every connection, so each request parks a loopback port
+  in TIME_WAIT, and 8 lanes ran Windows out of ports
+  (`net::ERR_ADDRESS_IN_USE` on random `/goals` tests — not a test bug).
+  Going higher needs a keep-alive server (#403). If any lane port is
+  already taken the gate refuses to start rather than reuse an unknown
+  process — including a second gate run you forgot was still going.
 - **Worktree/main trap.** If `main` gets checked out in a `.claude/worktrees/*`
   worktree, the primary repo is stuck on a feature branch and `main` looks
   "behind." Fix: `git worktree remove <path>` (or `git worktree prune` if the

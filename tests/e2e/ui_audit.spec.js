@@ -28,7 +28,7 @@
  * skipped because window.print() can hang Playwright; the page
  * itself is covered by the pages.spec.js Print: tier grouping test.
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./lane"); // #402: per-worker lane server
 
 // Every page route under the @login_required decorator. Sorted to
 // match the order they appear in app.py for easy lookup.

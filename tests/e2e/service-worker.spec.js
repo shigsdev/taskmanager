@@ -7,7 +7,7 @@
  * Tests run against the local bypass server on port 5111.
  */
 // @ts-check
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./lane"); // #402: per-worker lane server
 
 /**
  * Register a fresh SW and wait for the install+activate+claim cycle to

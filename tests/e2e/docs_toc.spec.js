@@ -9,7 +9,7 @@
  * page. User report: "on the left side of the page you cannot scroll up
  * and down". Desktop only: under 700px the TOC is a static block.
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./lane"); // #402: per-worker lane server
 
 // True when the link is the element actually under its own midpoint —
 // i.e. on screen AND not covered by the sticky header (.nav, z-index 100).

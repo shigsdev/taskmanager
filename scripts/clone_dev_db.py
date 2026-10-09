@@ -1,11 +1,11 @@
-"""Copy the local dev SQLite database for a second local test server (#394).
+"""Copy the local dev SQLite database for an extra local test server (#394, #402).
 
 Usage:
     python scripts/clone_dev_db.py <destination>
 
-``run_all_gates.sh`` runs mobile Playwright on a second throwaway local
-server (port 5112) so it can run side by side with desktop on 5111. That
-server needs its own database, so this makes a copy of the one the app uses:
+``run_all_gates.sh`` runs Playwright on N throwaway local "lane" servers
+(ports 5111..5111+N-1, #402) so workers run side by side. Every lane after
+the first needs its own database, so this makes a copy of the one the app uses:
 
 - Same resolution as the app: ``DATABASE_URL`` from the environment, else
   from ``.env``, else ``sqlite:///dev.db``. A relative SQLite path resolves

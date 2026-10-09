@@ -8,15 +8,16 @@
  * slower (29 pages.spec.js tests: 2.2 min via localhost, 1.0 min via
  * 127.0.0.1). This guards against a well-meaning revert.
  *
- * #394: desktop and mobile run side by side ONLY when run_all_gates.sh
- * provides a second local server (PW_WORKERS + PW_MOBILE_BASE_URL). With no
- * env — e.g. a manual `npx playwright test` — the config stays serial on
- * one server, exactly as before. Each local project is capped at one
- * worker, so tests within a project never overlap on one database.
+ * #402 (replaces #394's "mobile on server B"): the gates run N workers,
+ * each on its own lane server (tests/e2e/lane.js maps parallelIndex to a
+ * port), so desktop and mobile spread across workers (fullyParallel) without
+ * ever sharing a database. With no env — a manual `npx playwright test` — it
+ * stays one worker on one server, exactly as before. The SW project stays
+ * capped at one worker.
  */
 const CONFIG_PATH = "../../../playwright.config.js";
 const LOCAL_PROJECTS = ["chromium", "chromium-sw", "chromium-mobile"];
-const ENV_KEYS = ["PW_WORKERS", "PW_MOBILE_BASE_URL"];
+const ENV_KEYS = ["PW_WORKERS", "PW_MOBILE_BASE_URL", "PW_LANE_BASE_PORT"];
 
 function loadConfig(env = {}) {
     const saved = {};
@@ -63,30 +64,32 @@ describe("playwright.config.js base URLs (#385)", () => {
     });
 });
 
-describe("playwright.config.js workers (#394)", () => {
-    test("with no env it stays serial on one server", () => {
+describe("playwright.config.js workers (#402 lanes)", () => {
+    test("with no env it stays one worker on one server", () => {
         const config = loadConfig();
         expect(config.workers).toBe(1);
-        expect(new URL(project(config, "chromium-mobile").use.baseURL).port).toBe("5111");
-    });
-
-    test("the gate script's env runs mobile on its own server, 2 workers", () => {
-        const config = loadConfig({
-            PW_WORKERS: "2",
-            PW_MOBILE_BASE_URL: "http://127.0.0.1:5112",
-        });
-        expect(config.workers).toBe(2);
-        const mobile = new URL(project(config, "chromium-mobile").use.baseURL);
-        expect(mobile.hostname).toBe("127.0.0.1");
-        expect(mobile.port).toBe("5112");
-        // Desktop + SW stay on server A.
-        for (const name of ["chromium", "chromium-sw"]) {
+        for (const name of LOCAL_PROJECTS) {
             expect(new URL(project(config, name).use.baseURL).port).toBe("5111");
         }
     });
 
-    test.each(LOCAL_PROJECTS)("%s is capped at one worker", (name) => {
-        const config = loadConfig({ PW_WORKERS: "2" });
-        expect(project(config, name).workers).toBe(1);
+    test("the gate's PW_WORKERS sets the total worker count", () => {
+        expect(loadConfig({ PW_WORKERS: "6" }).workers).toBe(6);
+    });
+
+    test.each(["chromium", "chromium-mobile"])(
+        "%s is spread across lanes: fully parallel, no per-project cap", (name) => {
+            const p = project(loadConfig({ PW_WORKERS: "6" }), name);
+            expect(p.fullyParallel).toBe(true);
+            expect(p.workers).toBeUndefined();
+        });
+
+    test("the SW project stays on one worker", () => {
+        expect(project(loadConfig({ PW_WORKERS: "6" }), "chromium-sw").workers).toBe(1);
+    });
+
+    test("server B is retired: mobile ignores PW_MOBILE_BASE_URL (lanes pick the port)", () => {
+        const config = loadConfig({ PW_WORKERS: "2", PW_MOBILE_BASE_URL: "http://127.0.0.1:5112" });
+        expect(new URL(project(config, "chromium-mobile").use.baseURL).port).toBe("5111");
     });
 });

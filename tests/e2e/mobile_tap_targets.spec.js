@@ -6,7 +6,7 @@
  * /projects filter selects 32px. CLAUDE.md's floor for tappable controls on
  * mobile is 44px. Mobile only: on desktop these are mouse targets.
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./lane"); // #402: per-worker lane server
 
 const SURFACES = [
     { path: "/docs", selector: ".docs-toc a", min: 30 },
