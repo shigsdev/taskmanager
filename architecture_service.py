@@ -27,6 +27,7 @@ Cross-reference ADR-028 for the source-of-truth design.
 from __future__ import annotations
 
 import enum
+import re
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,8 @@ def render_architecture_md(path: Path | str) -> Markup:
     backtick code blocks, including the ASCII-art components diagram)
     and ``tables`` (for the threat-model table). Bare invocation,
     no plugins beyond the two required by ARCHITECTURE.md content.
+    ```mermaid fences are then re-wrapped as ``<pre class="mermaid">`` so
+    the page's Mermaid loader draws them (#404).
 
     Returns a ``Markup`` object so Jinja renders it as HTML without
     requiring the ``| safe`` filter at the call site (semgrep flags
@@ -57,14 +60,27 @@ def render_architecture_md(path: Path | str) -> Markup:
     that trust is anchored to the repo, not the request.
     """
     text = Path(path).read_text(encoding="utf-8")
+    html = _MERMAID_FENCE_HTML.sub(
+        r'<pre class="mermaid">\1</pre>',
+        md_lib.markdown(text, extensions=["fenced_code", "tables"]),
+    )
     # S704: input is a repo-tracked .md file (caller passes
     # ARCHITECTURE.md), never user-controlled content. Markup wraps the
     # markdown lib's HTML output so Jinja renders it without `| safe`
     # in the template — that filter trips semgrep's xss audit even on
     # this trusted-source case. ADR-028 covers the trust boundary.
-    return Markup(  # noqa: S704
-        md_lib.markdown(text, extensions=["fenced_code", "tables"]),
-    )  # nosec B704 — input is repo-tracked ARCHITECTURE.md, not user data; ADR-028
+    return Markup(html)  # noqa: S704  # nosec B704 — input is repo-tracked ARCHITECTURE.md, not user data; ADR-028
+
+
+# #404: fenced_code renders ```mermaid as <pre><code class="language-mermaid">,
+# which the page's Mermaid loader (startOnLoad: draws <pre class="mermaid">)
+# skips, so ARCHITECTURE.md's diagrams showed as source text. Re-wrap them.
+# The captured source is fenced_code's output, i.e. already HTML-escaped
+# (`<br/>` is `&lt;br/&gt;`); it is moved, never unescaped — Mermaid decodes
+# the entities itself when it reads the block.
+_MERMAID_FENCE_HTML = re.compile(
+    r'<pre><code class="language-mermaid">(.*?)</code></pre>', re.DOTALL,
+)
 
 
 # --- Route catalog ----------------------------------------------------------

@@ -72,6 +72,39 @@ test.describe("#391 /architecture Mermaid diagrams", () => {
         expect(errors).toEqual([]);
     });
 
+    test("#404: ARCHITECTURE.md's own diagrams draw, readably", async ({ page }) => {
+        // render_architecture_md re-wraps ```mermaid fences as
+        // <pre class="mermaid">; before #404 they were <code> source text.
+        // The /scan diagram was also flowchart LR: 3416px wide, fitted to
+        // 762px = ~3.6px labels, so "it has an svg" is not enough here.
+        await page.goto("/architecture?nosw=1");
+        await waitForFinishedDiagrams(page);
+        const md = page.locator(".architecture-md");
+        await expect(md.locator("code.language-mermaid"), "a diagram is still shown as source")
+            .toHaveCount(0);
+        const blocks = md.locator("pre.mermaid");
+        expect(await blocks.count()).toBeGreaterThanOrEqual(2);
+        await md.evaluate((el) => { el.closest("details").open = true; });
+        const drawn = await blocks.evaluateAll((pres) => pres.map((pre) => {
+            const svg = pre.querySelector(":scope > svg");
+            const label = svg.querySelector(".nodeLabel");
+            const scale = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
+            return {
+                error: /Syntax error/.test(pre.textContent),
+                fontPx: parseFloat(getComputedStyle(label).fontSize) * scale,
+            };
+        }));
+        const desktop = page.viewportSize().width >= 1000;
+        drawn.forEach((d, i) => {
+            expect(d.error, `ARCHITECTURE.md diagram #${i + 1} is a syntax error`).toBe(false);
+            // Mobile fits every diagram to ~330px; pinch-zoom covers it there.
+            if (desktop) {
+                expect(d.fontPx, `ARCHITECTURE.md diagram #${i + 1} labels ~${d.fontPx.toFixed(1)}px`)
+                    .toBeGreaterThanOrEqual(10);
+            }
+        });
+    });
+
     test("the ER diagram draws at full size, scrolling inside its own box", async ({ page }) => {
         await page.goto("/architecture?nosw=1");
         await waitForFinishedDiagrams(page);

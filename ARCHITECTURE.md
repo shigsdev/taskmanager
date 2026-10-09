@@ -1279,7 +1279,7 @@ scan together so the recycle bin can undo the whole scan in one click.
 ### Mermaid
 
 ```mermaid
-flowchart LR
+flowchart TD
     A[Browser /scan page<br/>Parse as: Tasks / Goals] -->|image + parse_as| B[scan_api.upload]
     B --> C[Google Vision OCR<br/>server-side]
     C --> D{parse_as?}

@@ -546,6 +546,63 @@ class TestRenderArchitectureMd:
         assert "<pre>" in html
         assert "<code>" in html
 
+    def test_mermaid_fence_becomes_a_drawable_mermaid_block(self, tmp_path):
+        """#404: the page's Mermaid loader draws only <pre class="mermaid">.
+        fenced_code turns ```mermaid into <pre><code class="language-mermaid">,
+        which was shown as source text on /architecture."""
+        from architecture_service import render_architecture_md
+        f = tmp_path / "a.md"
+        f.write_text(
+            "```mermaid\nflowchart LR\n    A[x<br/>y] --> B[(db)]\n```\n",
+            encoding="utf-8",
+        )
+        html = str(render_architecture_md(f))
+        assert '<pre class="mermaid">flowchart LR' in html
+        assert "language-mermaid" not in html
+        assert "<code" not in html
+
+    def test_mermaid_source_stays_html_escaped(self, tmp_path):
+        """The diagram source is handed to Mermaid as escaped text (Mermaid
+        decodes entities itself) — never re-parsed as page HTML, even for a
+        fence that contains markup."""
+        from architecture_service import render_architecture_md
+        f = tmp_path / "a.md"
+        f.write_text(
+            "```mermaid\nflowchart LR\n    A[x<br/>y] --> B[<script>alert(1)</script>]\n```\n",
+            encoding="utf-8",
+        )
+        html = str(render_architecture_md(f))
+        assert "x&lt;br/&gt;y" in html
+        assert "&lt;script&gt;" in html
+        assert "<script>" not in html
+        assert "--&gt;" in html
+
+    def test_other_fences_are_untouched(self, tmp_path):
+        """ASCII-art and language fences stay ordinary code blocks."""
+        from architecture_service import render_architecture_md
+        f = tmp_path / "a.md"
+        f.write_text(
+            "```\nascii\n```\n\n```python\nx = 1\n```\n",
+            encoding="utf-8",
+        )
+        html = str(render_architecture_md(f))
+        assert "<pre><code>ascii\n</code></pre>" in html
+        assert '<pre><code class="language-python">x = 1\n</code></pre>' in html
+        assert 'class="mermaid"' not in html
+
+    def test_every_mermaid_fence_in_architecture_md_is_drawable(self):
+        """The real file: as many drawable blocks as ```mermaid fences, and
+        none left as source."""
+        from pathlib import Path
+
+        from architecture_service import render_architecture_md
+        path = Path(__file__).resolve().parent.parent / "ARCHITECTURE.md"
+        fences = path.read_text(encoding="utf-8").count("```mermaid")
+        html = str(render_architecture_md(path))
+        assert fences >= 1
+        assert html.count('<pre class="mermaid">') == fences
+        assert "language-mermaid" not in html
+
     def test_renders_table(self, tmp_path):
         """The tables extension must be active so the threat-model table
         in ARCHITECTURE.md renders as a real <table>."""
