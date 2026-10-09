@@ -64,33 +64,30 @@ python scripts/stop_dev_bypass.py                 # canonical teardown
   re-run" hint. If you see it, just re-run; it's not a CVE. (pip-audit's
   own `--timeout` is only a per-socket read timeout, so it does NOT bound
   the total operation — the wall-clock cap is the real guard.)
-- **Windows pytest teardown can FAIL the gate with nothing broken.** A
-  post-suite `PermissionError: [WinError 5]` on
-  `%LOCALAPPDATA%\Temp\pytest-of-<user>\pytest-current` lands in
-  `pytest_sessionfinish` *before* pytest-cov's terminal summary — so there is
-  no `N passed` line, **no coverage table, and a non-zero exit**, and
-  `run_all_gates.sh` prints `✗ pytest failed or coverage below floor` even
-  though the suite reached `[100%]` with zero failures and the floor was never
-  evaluated. Do NOT "trust the exit code" here (the pre-2026-10-01 advice) and
-  do not go hunting a phantom test failure: confirm by grepping the log for
-  `[100%]` plus the ABSENCE of `FAILED` / `=== FAILURES ===`. Not a OneDrive
-  problem — the temp root is in `AppData`; the cause is `pytest-current`
-  becoming a broken reparse point (empty `LinkType`/`Target`), which pytest
-  treats as a dead symlink and `os.unlink`s. Clearing it by hand does not work
-  (`cmd /c rmdir` is denied too). **Fix — bypass the numbered-dir machinery
-  with `--basetemp`, no script edit needed:**
+- **Windows pytest teardown can fail a run with nothing broken — the gate is
+  immune since #360, ad-hoc runs are not.** A post-suite `PermissionError:
+  [WinError 5]` on `%LOCALAPPDATA%\Temp\pytest-of-<user>\pytest-current`
+  lands in `pytest_sessionfinish` *before* pytest-cov's terminal summary — no
+  `N passed` line, no coverage table, non-zero exit, with every test passing.
+  Cause: `pytest-current` becomes a broken reparse point (empty
+  `LinkType`/`Target`), which pytest treats as a dead symlink and
+  `os.unlink`s; it can't be cleared by hand (`cmd /c rmdir` is denied too).
+  Not a OneDrive problem — the temp root is in `AppData`.
+  **`run_all_gates.sh` now passes its own `--basetemp`** (a per-run dir from
+  `scripts/pytest_basetemp.py`, deleted afterwards), which skips the
+  numbered-dir machinery, so a red pytest gate is a real red again. If you
+  set `--basetemp` in `PYTEST_ADDOPTS` yourself, the gate uses yours.
+  **For an ad-hoc `python -m pytest …`** on an affected machine, pass a
+  basetemp yourself:
   ```
-  export PYTEST_ADDOPTS='--basetemp=C:/Users/.../scratchpad/pytest-basetemp'
-  bash scripts/run_all_gates.sh > /tmp/gates.log 2>&1
+  python -m pytest tests/test_x.py --no-cov -q --basetemp="$(python scripts/pytest_basetemp.py adhoc)"
   ```
-  **Forward slashes are mandatory** — `PYTEST_ADDOPTS` is split with POSIX
-  `shlex`, which eats `\` as an escape, silently collapsing the path to a
-  RELATIVE one so pytest builds its whole basetemp tree inside the repo. That
-  then reds the Jest gate, because `testMatch: ["**/tests/js/**/*.test.js"]`
-  is a deliberately relative glob and picks up the `tests/js/foo.test.js`
-  fixture that `test_bug_pattern_scan.py` writes into its tmp dir. Also note
-  `--basetemp` deletes and recreates the directory it is given, so point it at
-  a dedicated subdir, never a directory holding anything you want to keep.
+  Two traps if you hand-roll one instead: `--basetemp` deletes and recreates
+  the directory it is given (dedicated subdir only), and a path inside the
+  repo reds the Jest gate (its relative `**/tests/js/**/*.test.js` testMatch
+  picks up the fixture `test_bug_pattern_scan.py` writes). Via
+  `PYTEST_ADDOPTS`, use forward slashes — it is split with POSIX `shlex`,
+  which eats `\` and turns the path relative, i.e. into the repo.
   Cite "all passed, <coverage>%" in commit trailers, not a raw count.
 - **Local Playwright runs in 8 parallel "lanes" on throwaway LOCAL servers
   (#402/#403, was 2 in #394).** `run_all_gates.sh` starts one dev-bypass

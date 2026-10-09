@@ -198,7 +198,34 @@ if python -c "import xdist" >/dev/null 2>&1; then
 else
     printf "${YELLOW}!${NC} pytest-xdist not installed — running pytest serially (slower). Install: pip install pytest-xdist\n" >&2
 fi
-if python -m pytest ${PYTEST_PARALLEL} --cov -q; then
+# #360: give pytest its own --basetemp so it never touches its numbered dirs
+# or the pytest-of-<user>/pytest-current link. On Windows that link can turn
+# into a broken reparse point; pytest's end-of-session cleanup then raises
+# PermissionError [WinError 5] — exit 1 with every test passing and no
+# coverage table, i.e. a false "failed or coverage below floor". The helper
+# picks a dedicated per-run dir under the system temp dir (forward slashes,
+# outside the repo; its docstring says why each matters). An operator's own
+# --basetemp in PYTEST_ADDOPTS wins.
+PYTEST_BASETEMP=""
+PYTEST_BASETEMP_ARG=()
+case " ${PYTEST_ADDOPTS:-} " in
+    *--basetemp*)
+        printf "${YELLOW}…${NC} using --basetemp from PYTEST_ADDOPTS\n" ;;
+    *)
+        if ! PYTEST_BASETEMP="$(python scripts/pytest_basetemp.py "$$")"; then
+            fail "could not choose a pytest --basetemp (scripts/pytest_basetemp.py)"
+            exit 1
+        fi
+        PYTEST_BASETEMP_ARG=(--basetemp="$PYTEST_BASETEMP") ;;
+esac
+PYTEST_RC=0
+python -m pytest ${PYTEST_PARALLEL} ${PYTEST_BASETEMP_ARG[@]+"${PYTEST_BASETEMP_ARG[@]}"} --cov -q || PYTEST_RC=$?
+# The helper only ever returns <temp>/taskmanager-pytest-<token>; check the
+# name anyway before an rm -rf.
+case "$PYTEST_BASETEMP" in
+    */taskmanager-pytest-*) rm -rf "$PYTEST_BASETEMP" ;;
+esac
+if [ "$PYTEST_RC" -eq 0 ]; then
     pass "pytest (coverage floor enforced)"
 else
     fail "pytest failed or coverage below floor"
