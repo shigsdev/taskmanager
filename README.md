@@ -269,7 +269,7 @@ Some UI work needs an actual browser preview to verify (does the radio toggle lo
      Bypass will remain active until this server stops.
    ================================================================
    ```
-4. Every protected route accessed during the session writes a `WARNING` row to the `app_logs` table. Query `/api/debug/logs?level=WARNING` to see the audit trail.
+4. Each bypass server writes two `WARNING` rows to the `app_logs` table: the startup banner and the first protected request it serves (method, path, email). Later requests log at `DEBUG`, which isn't stored by default (#384) — set `APP_LOG_LEVEL=DEBUG` to keep every route. Query `/api/debug/logs?level=WARNING` to see the audit trail.
 
 **To end a bypass session (REQUIRED before any commit):**
 

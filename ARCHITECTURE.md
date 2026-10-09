@@ -1354,9 +1354,11 @@ real Google OAuth. It is the opposite of a security hole: it is gated
 by **four independent checks**, refuses to fire if any single gate
 fails, and the Railway tripwire alone verifies three different
 `RAILWAY_*` variables so a rename of any one of them cannot silently
-disarm it. Every bypass-served request logs a WARNING row to
-`app_logs` so the audit trail matches the audit trail for real
-requests. See `auth._dev_bypass_active` and `scripts/run_dev_bypass.py`.
+disarm it. Each bypass server process writes two WARNING rows to
+`app_logs` — its startup banner and its FIRST bypass-served request
+(method, path, email); later requests log at DEBUG, below the DB
+handler, so a Playwright run doesn't write a row per request (#384,
+ADR-039). See `auth._dev_bypass_active` and `scripts/run_dev_bypass.py`.
 
 ### Mermaid
 
@@ -1380,9 +1382,9 @@ flowchart TD
     G3 -->|no| OAuth
     G3 -->|yes| G4{gate 4:<br/>AUTHORIZED_EMAIL set?}
     G4 -->|no| OAuth
-    G4 -->|yes| Log[logger.warning:<br/>served METHOD PATH as EMAIL]
+    G4 -->|yes| Log[served METHOD PATH as EMAIL:<br/>WARNING on the first request<br/>of the process, DEBUG after]
     Log --> View[view runs as AUTHORIZED_EMAIL]
-    Log --> DBLog[(app_logs table<br/>audit trail)]
+    Log -->|first request only| DBLog[(app_logs table<br/>audit trail)]
     OAuth --> Normal[normal auth flow<br/>email vs AUTHORIZED_EMAIL check]
 ```
 
@@ -1422,9 +1424,10 @@ flowchart TD
      │  gate 3: no RAILWAY_* var set ?    │──no──┤
      │  gate 4: AUTHORIZED_EMAIL set ?    │──no──┤
      │                                    │      │
-     │  ALL PASS  ──▶  logger.warning     │      │
-     │                 "served GET /path  │──▶ app_logs
-     │                  as me@…"          │
+     │  ALL PASS  ──▶  "served GET /path  │      │
+     │                  as me@…"          │      │
+     │   1st request: WARNING ────────────│──▶ app_logs
+     │   later ones:  DEBUG (not stored)  │
      │                                    │      │
      │  view runs as AUTHORIZED_EMAIL     │      │
      └────────────────────────────────────┘      │
@@ -1452,10 +1455,12 @@ flowchart TD
 - **Loud banner.** Every Flask boot with the bypass active prints a
   multi-line stderr banner listing tripwire status and the logged-in
   email. Impossible to leave on by accident without noticing.
-- **Audit trail.** Every bypass-served request writes a WARNING row
-  to `app_logs` including method, path, and email. The startup
-  banner also writes a WARNING row so the start of the session is
-  captured in the same table as the per-request rows.
+- **Audit trail.** Per server process, `app_logs` gets the startup
+  banner's WARNING row and a WARNING row for the FIRST bypass-served
+  request (method, path, email). Later requests log at DEBUG — below
+  the DB handler — so they reach stderr but not the table (#384,
+  ADR-039: per-request rows were 94% of the dev DB's log). Set
+  `APP_LOG_LEVEL=DEBUG` to persist the full per-route trail.
 - **Session-scoped.** The bypass lasts only until the Flask process
   stops. Deleting `.env.dev-bypass` is required before any commit;
   see README "Local browser testing with bypass mode".

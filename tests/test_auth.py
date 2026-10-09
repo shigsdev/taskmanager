@@ -368,24 +368,103 @@ class TestDevBypassRequestFlow:
         assert resp.status_code == 302
         assert "/login/google" in resp.headers["Location"]
 
-    def test_bypass_emits_warning_log_per_request(
+    @pytest.fixture(autouse=True)
+    def _fresh_process(self, monkeypatch):
+        """Each test starts as a newly booted server: no bypass request
+        logged yet. monkeypatch restores the flag afterwards."""
+        monkeypatch.setattr(auth, "_bypass_first_request_logged", False)
+
+    @staticmethod
+    def _served(records, level):
+        return [
+            r for r in records
+            if r.levelno == level and "LOCAL_DEV_BYPASS_AUTH served" in r.getMessage()
+        ]
+
+    def test_first_bypass_request_logs_one_warning_with_audit_fields(
         self, client, monkeypatch, caplog
     ):
-        """Every bypass-served request must log a WARNING for the audit trail."""
+        """#384: the first bypass-served request in a process is the audit
+        row (method + path + email), persisted at WARNING."""
         import logging
 
         self._enable_bypass(monkeypatch)
         monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
-        with caplog.at_level(logging.WARNING, logger="taskmanager.auth"):
+        with caplog.at_level(logging.DEBUG, logger="taskmanager.auth"):
             client.get("/")
-        # The exact message format is asserted to make sure the log row
-        # captures method + path + email — those are the audit fields.
-        bypass_logs = [
-            r for r in caplog.records if "LOCAL_DEV_BYPASS_AUTH served" in r.message
+        warnings = self._served(caplog.records, logging.WARNING)
+        assert len(warnings) == 1
+        msg = warnings[0].getMessage()
+        assert "GET /" in msg
+        assert "me@example.com" in msg
+        assert "DEBUG" in msg, "the row must say where the rest of the trail went"
+
+    def test_later_bypass_requests_log_at_debug_only(
+        self, client, monkeypatch, caplog
+    ):
+        """#384: every request after the first logs at DEBUG — below the
+        DB handler's WARNING level — so a test run no longer writes a
+        SQLite row per request (976 of 1,041 rows in one gate run)."""
+        import logging
+
+        self._enable_bypass(monkeypatch)
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
+        with caplog.at_level(logging.DEBUG, logger="taskmanager.auth"):
+            client.get("/")
+            client.get("/goals")
+            client.get("/projects")
+        assert len(self._served(caplog.records, logging.WARNING)) == 1
+        debug = [r.getMessage() for r in self._served(caplog.records, logging.DEBUG)]
+        assert any("GET /goals" in m for m in debug)
+        assert any("GET /projects" in m for m in debug)
+
+    def test_a_new_process_logs_its_first_request_again(
+        self, client, monkeypatch, caplog
+    ):
+        """The flag is per process: a restarted server (flag back to False)
+        records its first served request again."""
+        import logging
+
+        self._enable_bypass(monkeypatch)
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
+        with caplog.at_level(logging.DEBUG, logger="taskmanager.auth"):
+            client.get("/")
+            monkeypatch.setattr(auth, "_bypass_first_request_logged", False)
+            client.get("/goals")
+        warnings = self._served(caplog.records, logging.WARNING)
+        assert [w.getMessage().split(" as ")[0] for w in warnings] == [
+            "LOCAL_DEV_BYPASS_AUTH served GET /",
+            "LOCAL_DEV_BYPASS_AUTH served GET /goals",
         ]
-        assert len(bypass_logs) >= 1
-        assert "GET" in bypass_logs[0].message
-        assert "me@example.com" in bypass_logs[0].message
+
+    def test_only_one_served_row_reaches_app_logs(self, app, client, monkeypatch):
+        """End to end through a real DBLogHandler (WARNING, the default
+        APP_LOG_LEVEL): three bypass-served requests persist ONE row."""
+        import logging
+
+        from logging_service import DBLogHandler, RequestContextFilter
+        from models import AppLog
+
+        self._enable_bypass(monkeypatch)
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
+        handler = DBLogHandler(app, level=logging.WARNING)
+        handler.addFilter(RequestContextFilter())
+        auth_logger = logging.getLogger("taskmanager.auth")
+        auth_logger.addHandler(handler)
+        old_level = auth_logger.level
+        auth_logger.setLevel(logging.DEBUG)
+        try:
+            for path in ("/", "/goals", "/projects"):
+                assert client.get(path).status_code == 200
+        finally:
+            auth_logger.removeHandler(handler)
+            auth_logger.setLevel(old_level)
+        with app.app_context():
+            rows = AppLog.query.filter(
+                AppLog.message.like("LOCAL_DEV_BYPASS_AUTH served%")
+            ).all()
+        assert len(rows) == 1
+        assert rows[0].level == "WARNING"
 
     def test_bypass_does_not_leak_into_normal_session(
         self, client, monkeypatch

@@ -1,7 +1,9 @@
 # ADR-002: Four-gate dev bypass for local browser testing
 
 Date: 2026-04-10
-Status: ACCEPTED
+Status: ACCEPTED — partly superseded by ADR-039 (2026-10-09): the bypass now
+persists one WARNING row for the first served request per process, not one
+per request. The four gates, tripwire and banner below are unchanged.
 
 ## Context
 
@@ -34,7 +36,8 @@ of any one variable cannot silently disarm the gate — they would
 have to rename all three at once.
 
 When the bypass IS active, every served request emits a WARNING log
-row to `app_logs`, and a loud banner is printed to stderr at startup.
+row to `app_logs` (since ADR-039: only the first per process; the rest
+log at DEBUG), and a loud banner is printed to stderr at startup.
 A `scripts/run_dev_bypass.py` launcher applies the same Railway
 tripwire BEFORE Flask imports, so even shell-injecting the env var
 in a Railway shell wouldn't help.

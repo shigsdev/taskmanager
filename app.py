@@ -266,8 +266,9 @@ def create_app(config: dict | None = None) -> Flask:
     if not app.config.get("TESTING"):
         configure_logging(app)
         # Print the loud bypass banner AFTER logging is configured so the
-        # WARNING row from the banner lands in app_logs alongside future
-        # bypass-served requests. No-op if the bypass is not active.
+        # WARNING row from the banner lands in app_logs alongside the
+        # first bypass-served request's row (#384). No-op if the bypass
+        # is not active.
         log_bypass_startup_banner()
 
     # --- Performance: gzip / brotli compression on responses ---

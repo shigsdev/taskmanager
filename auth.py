@@ -13,17 +13,22 @@ and refuses to activate if ANY of them fail. The Railway tripwire alone
 checks three different RAILWAY_* variables, so a Railway env-var rename
 cannot silently disarm it.
 
-Every bypass-served request emits a WARNING log row to ``app_logs`` so
-the developer can audit exactly which routes were touched while the
-bypass was active. The startup banner (see ``log_bypass_startup_banner``)
-prints to stderr on every Flask boot when the env var is set, so an
-accidental "left it on in .env" mistake is impossible to miss.
+The bypass leaves two WARNING rows in ``app_logs`` per server process:
+the startup banner (``log_bypass_startup_banner``, which also prints to
+stderr on every boot, so an accidental "left it on in .env" mistake is
+impossible to miss) and the FIRST bypass-served request, with its method,
+path and email. Every later bypass-served request logs at DEBUG — below
+the DB handler's default level — so a Playwright run no longer writes a
+SQLite row per request (#384, ADR-039, which supersedes ADR-002's
+per-request audit row). Set ``APP_LOG_LEVEL=DEBUG`` to persist the full
+per-route trail.
 """
 from __future__ import annotations
 
 import logging
 import os
 import sys
+import threading
 from functools import wraps
 
 from flask import current_app, g, jsonify, redirect, render_template, request, session, url_for
@@ -97,11 +102,45 @@ def log_bypass_startup_banner() -> None:
     sys.stderr.write(banner)
     sys.stderr.flush()
     # Also persist to app_logs so the start of every bypass session is
-    # captured in the same audit trail as the per-request bypass logs.
+    # captured in the same audit trail as the first bypass-served request.
     logger.warning(
         "LOCAL_DEV_BYPASS_AUTH startup banner: bypass is ACTIVE for %s",
         email,
     )
+
+
+# #384 / ADR-039: True once this process has persisted its first
+# bypass-served request. The bypass server runs a waitress thread pool
+# (#403), so the check-and-set is under a lock.
+_bypass_first_request_logged = False
+_bypass_log_lock = threading.Lock()
+
+
+def _log_bypass_request(method: str, path: str, email: str) -> None:
+    """Audit a bypass-served request without a DB row per request.
+
+    The first one in a process logs at WARNING (persisted to app_logs
+    by DBLogHandler, with the method / path / email audit fields); every
+    later one logs at DEBUG, below the handler's default level. Per
+    request at WARNING was 94% of the dev DB's app_logs rows — ~7,800
+    SQLite inserts per gate run across the Playwright lanes, inside the
+    requests themselves. ``APP_LOG_LEVEL=DEBUG`` brings the full per-route
+    trail back when it is wanted.
+    """
+    global _bypass_first_request_logged
+    with _bypass_log_lock:
+        first = not _bypass_first_request_logged
+        _bypass_first_request_logged = True
+    if first:
+        logger.warning(
+            "LOCAL_DEV_BYPASS_AUTH served %s %s as %s "
+            "(first request this process; further ones log at DEBUG)",
+            method,
+            path,
+            email,
+        )
+    else:
+        logger.debug("LOCAL_DEV_BYPASS_AUTH served %s %s", method, path)
 
 
 #: Flask-session key holding the email verified at OAuth time. Once set,
@@ -197,12 +236,7 @@ def login_required(view):
                 path = request.path
             except RuntimeError:
                 method, path = "?", "?"
-            logger.warning(
-                "LOCAL_DEV_BYPASS_AUTH served %s %s as %s",
-                method,
-                path,
-                email,
-            )
+            _log_bypass_request(method, path, email)
             return view(*args, email=email, **kwargs)
 
         # --- Validator cookie path (read-only) ---
