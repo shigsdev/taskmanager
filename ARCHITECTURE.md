@@ -1367,7 +1367,7 @@ flowchart TD
     S1 -->|yes| S2{any RAILWAY_*<br/>var set?}
     S2 -->|yes| X2[exit 2<br/>tripwire fires]
     S2 -->|no| S3[load .env + .env.dev-bypass<br/>force FLASK_ENV=development]
-    S3 --> S4[hand off to flask run<br/>in-process]
+    S3 --> S4[rate limiter off, import app,<br/>serve with waitress on 127.0.0.1]
     S4 --> S5[app.py calls<br/>log_bypass_startup_banner]
     S5 --> S6[loud stderr banner<br/>+ WARNING to app_logs]
     S6 --> Req[incoming request]
@@ -1399,7 +1399,7 @@ flowchart TD
  │  ② any RAILWAY_* set?    │──yes──▶ exit 2  (tripwire)
  │  ③ load env files        │            │
  │  ④ FLASK_ENV=development │            │
- │  ⑤ in-process flask run  │            │
+ │  ⑤ serve app (waitress)  │            │
  └────────────┬─────────────┘            │
               ▼                          │
  ┌──────────────────────────┐            │

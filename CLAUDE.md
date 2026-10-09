@@ -92,20 +92,23 @@ python scripts/stop_dev_bypass.py                 # canonical teardown
   `--basetemp` deletes and recreates the directory it is given, so point it at
   a dedicated subdir, never a directory holding anything you want to keep.
   Cite "all passed, <coverage>%" in commit trailers, not a raw count.
-- **Local Playwright runs in 4 parallel "lanes" on throwaway LOCAL servers
-  (#402, was 2 in #394).** `run_all_gates.sh` starts one dev-bypass server
-  per lane on `:5111..:5114` (lanes 1–3 on copies of the dev DB via
+- **Local Playwright runs in 8 parallel "lanes" on throwaway LOCAL servers
+  (#402/#403, was 2 in #394).** `run_all_gates.sh` starts one dev-bypass
+  server per lane on `:5111..:5118` (lanes 1–7 on copies of the dev DB via
   `scripts/clone_dev_db.py`) and tears them all down on exit — nothing on
   Railway. Each Playwright worker talks only to its own lane
-  (`tests/e2e/lane.js`). Gate run 8m27s → ~4m53s. Knob:
+  (`tests/e2e/lane.js`). Gate run 8m27s → ~3m30s. Knob:
   `PLAYWRIGHT_WORKERS=N` (1–8); `=1` is the old single-server serial run
-  for a low-RAM machine, same tests. **Don't raise the default past 4**:
-  Werkzeug closes every connection, so each request parks a loopback port
-  in TIME_WAIT, and 8 lanes ran Windows out of ports
-  (`net::ERR_ADDRESS_IN_USE` on random `/goals` tests — not a test bug).
-  Going higher needs a keep-alive server (#403). If any lane port is
-  already taken the gate refuses to start rather than reuse an unknown
-  process — including a second gate run you forgot was still going.
+  for a low-RAM machine, same tests. **The lane servers must keep
+  connections open**: `run_dev_bypass.py` serves the app with waitress
+  (`requirements-dev.txt`), NOT `flask run`. Werkzeug's dev server closes
+  every connection, so each request parks a loopback port in TIME_WAIT —
+  on it, 8 lanes ran Windows out of ports (`net::ERR_ADDRESS_IN_USE` on
+  random `/goals` tests, not a test bug). On waitress 8 lanes peak at
+  ~6.7k of 16,384. If you see that error, check `netstat -ano | grep -c
+  TIME_WAIT` before suspecting a test. If any lane port is already taken
+  the gate refuses to start rather than reuse an unknown process —
+  including a second gate run you forgot was still going.
 - **Worktree/main trap.** If `main` gets checked out in a `.claude/worktrees/*`
   worktree, the primary repo is stuck on a feature branch and `main` looks
   "behind." Fix: `git worktree remove <path>` (or `git worktree prune` if the

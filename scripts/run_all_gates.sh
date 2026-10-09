@@ -18,9 +18,9 @@
 # Usage:
 #   bash scripts/run_all_gates.sh
 #   PLAYWRIGHT_WORKERS=N bash scripts/run_all_gates.sh   # #402: N local
-#       Playwright lanes (1-8, default 4), each its own throwaway server +
+#       Playwright lanes (1-8, default 8), each its own throwaway server +
 #       DB copy on :5111..:5111+N-1. PLAYWRIGHT_WORKERS=1 = one server,
-#       serial (low RAM). Above 4 runs out of loopback ports on Windows (#403).
+#       serial (low RAM).
 #
 # On Windows (git bash), the script needs node/npm on PATH. If not,
 # prepend Node before invoking:
@@ -282,13 +282,14 @@ fi
 # and the desktop + mobile projects run fully parallel across lanes.
 # PLAYWRIGHT_WORKERS=1 is exactly the old single-server serial run. Like
 # PYTEST_WORKERS, it is a resource knob, not a skip flag: every test runs.
-# Default 4 is the measured ceiling, not a CPU/RAM pick: Werkzeug's dev
-# server closes every connection, so each request leaves a loopback port in
-# TIME_WAIT. 4 lanes peaked at 10.2k of Windows' 16,384 ephemeral ports, 6 at
-# 14.1k, and 8 ran out (net::ERR_ADDRESS_IN_USE, 14 failures). Raising it
-# needs a keep-alive server (#403).
-# Spec: docs/design/402-parallel-playwright-lanes.md.
-PLAYWRIGHT_WORKERS="${PLAYWRIGHT_WORKERS:-4}"
+# Default 8 (#403): the lane servers run on waitress (run_dev_bypass.py),
+# which keeps connections open. On Werkzeug's close-every-request dev server
+# each request parked a loopback port in TIME_WAIT, capping this at 4 — 8
+# lanes ran Windows' 16,384-port pool out (net::ERR_ADDRESS_IN_USE). On
+# waitress 8 lanes peak at ~6.7k (41%). Watch that number before raising
+# LANE_MAX.
+# Specs: docs/design/402-parallel-playwright-lanes.md, 403-keepalive-lane-servers.md.
+PLAYWRIGHT_WORKERS="${PLAYWRIGHT_WORKERS:-8}"
 LANE_BASE_PORT=5111
 LANE_MAX=8
 LANE_PIDS=()

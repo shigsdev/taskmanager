@@ -12,3 +12,10 @@ pre-commit==4.6.0
 # identical coverage. Dev/test-only — the Railway coverage-audit card runs
 # pytest serially and doesn't need it.
 pytest-xdist==3.8.0
+# #403 (2026-10-09): the local dev-bypass / Playwright lane servers
+# (scripts/run_dev_bypass.py) run on waitress instead of `flask run`.
+# Werkzeug's dev server closes every connection, so each request parked a
+# loopback port in TIME_WAIT and 8 parallel lanes exhausted Windows' port
+# pool (#402); waitress keeps HTTP/1.1 connections open. Dev/test-only —
+# Railway serves prod with gunicorn from requirements.txt.
+waitress==3.0.2

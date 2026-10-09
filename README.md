@@ -255,7 +255,7 @@ Some UI work needs an actual browser preview to verify (does the radio toggle lo
 **To start a bypass session:**
 
 1. Copy the template: `cp .env.dev-bypass.example .env.dev-bypass`
-2. Start the bypass server: `python scripts/run_dev_bypass.py` (or, if you use the Claude Preview tool, ask Claude to start the `taskmanager-dev-bypass` server)
+2. Start the bypass server: `python scripts/run_dev_bypass.py [--port 5111]` (or, if you use the Claude Preview tool, ask Claude to start the `taskmanager-dev-bypass` server). It serves the app with **waitress** on `127.0.0.1`, not `flask run` (#403 — waitress keeps connections open, which parallel Playwright needs), so install the dev requirements first: `pip install -r requirements-dev.txt`
 3. Watch for the loud banner in stderr:
    ```
    ================================================================
@@ -273,7 +273,7 @@ Some UI work needs an actual browser preview to verify (does the radio toggle lo
 
 **To end a bypass session (REQUIRED before any commit):**
 
-1. Stop the Flask server (Ctrl+C or `preview_stop`)
+1. Stop the bypass server (Ctrl+C, `preview_stop`, or `python scripts/stop_dev_bypass.py`)
 2. **Delete `.env.dev-bypass`** — the file's existence is the on/off switch
 3. Verify with `ls .env.dev-bypass` (should say "no such file")
 

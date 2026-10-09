@@ -115,6 +115,10 @@ HTTP/1.1 when threaded).
 waiting for a busy machine. Going past 4 needs a keep-alive-capable local
 server (e.g. waitress) for the lane servers: filed as #403.
 
+**Update (#403, same day):** the lane servers now run on waitress; 8 lanes
+peak at 6.7k TIME_WAIT (41%) and the default is 8 (gate run 3m08s–3m40s over 4 runs). See
+`docs/design/403-keepalive-lane-servers.md` §4.
+
 ## 5. Docs
 
 - `CLAUDE.md` "Local-dev gotchas": the #394 bullet becomes the lanes bullet

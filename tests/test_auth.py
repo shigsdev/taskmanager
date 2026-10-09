@@ -487,21 +487,12 @@ class TestRunDevBypassScript:
         result = module.main()
         assert result == 2
 
-    def test_script_turns_rate_limiting_off_before_flask_starts(
-        self, monkeypatch, tmp_path,
-    ):
-        """#385: the local bypass server is a test fixture every Playwright
-        test shares from one IP, so prod's per-route limits (200/min default)
-        tripped 429s once the suite ran ~2x faster. The script switches the
-        shared limiter off before `flask run` imports the app; prod is
-        untouched (the app's own init path never runs this script)."""
+    @staticmethod
+    def _load_script_past_the_gates(monkeypatch, tmp_path):
+        """Load run_dev_bypass.py with every startup gate satisfied, the real
+        .env kept out, and every variable main() sets restored afterwards."""
         import importlib.util
-        import sys
         from pathlib import Path
-
-        import flask.cli
-
-        from rate_limit import limiter
 
         repo_root = Path(__file__).resolve().parent.parent
         script_path = repo_root / "scripts" / "run_dev_bypass.py"
@@ -514,21 +505,111 @@ class TestRunDevBypassScript:
         bypass_file = tmp_path / ".env.dev-bypass"
         bypass_file.write_text("LOCAL_DEV_BYPASS_AUTH=1\n", encoding="utf-8")
         monkeypatch.setattr(module, "BYPASS_ENV_FILE", bypass_file)
-        # Keep the real .env out of this process, and let monkeypatch restore
-        # every variable main() sets so no bypass flag leaks to later tests.
         monkeypatch.setattr(module, "PROJECT_ROOT", tmp_path)
         monkeypatch.setenv("LOCAL_DEV_BYPASS_AUTH", "0")
         monkeypatch.setenv("FLASK_ENV", "testing")
-        monkeypatch.setattr(sys, "argv", list(sys.argv))
+        return module
 
+    def test_script_turns_rate_limiting_off_before_the_server_starts(
+        self, monkeypatch, tmp_path,
+    ):
+        """#385: the local bypass server is a test fixture every Playwright
+        test shares from one IP, so prod's per-route limits (200/min default)
+        tripped 429s once the suite ran ~2x faster. The script switches the
+        shared limiter off before the app is imported and served (#403:
+        by waitress, no longer `flask run`); prod is untouched (the app's own
+        init path never runs this script)."""
+        from rate_limit import limiter
+
+        module = self._load_script_past_the_gates(monkeypatch, tmp_path)
         monkeypatch.setattr(limiter, "enabled", True)
         seen = {}
         monkeypatch.setattr(
-            flask.cli, "main", lambda: seen.setdefault("enabled", limiter.enabled),
+            module, "_serve",
+            lambda port: seen.update(enabled=limiter.enabled, port=port),
         )
 
-        assert module.main() == 0
-        assert seen == {"enabled": False}
+        assert module.main(["--port", "5123"]) == 0
+        assert seen == {"enabled": False, "port": 5123}
+
+    def test_port_defaults_to_5111(self, monkeypatch, tmp_path):
+        """`.claude/launch.json` starts the script with no arguments."""
+        module = self._load_script_past_the_gates(monkeypatch, tmp_path)
+        seen = {}
+        monkeypatch.setattr(module, "_serve", lambda port: seen.update(port=port))
+
+        assert module.main([]) == 0
+        assert seen == {"port": 5111}
+
+    def test_unknown_argument_is_refused_before_serving(self, monkeypatch, tmp_path):
+        """#403: `flask run` accepted flags like --debug or --host; the
+        waitress launcher does not, so it must say so instead of ignoring
+        them (a silently ignored --host would bind somewhere unexpected)."""
+        import pytest
+
+        module = self._load_script_past_the_gates(monkeypatch, tmp_path)
+        served = []
+        monkeypatch.setattr(module, "_serve", lambda port: served.append(port))
+
+        with pytest.raises(SystemExit) as exc:
+            module.main(["--debug"])
+        assert exc.value.code == 2
+        assert served == []
+
+    def test_server_reuses_one_connection_for_many_requests(self, monkeypatch, tmp_path):
+        """#403: the whole point. Werkzeug's dev server closed every
+        connection, so each request burned a loopback port into TIME_WAIT and
+        8 Playwright lanes ran Windows out of ports (#402). The script's own
+        server factory must serve back-to-back requests over ONE socket for
+        the kinds of response the app sends: a page, JSON, a static file.
+        (waitress does close after a chunked no-Content-Length response;
+        nothing in this app streams, so Flask always sets the length.)"""
+        import http.client
+        import threading
+
+        from flask import Flask, jsonify
+
+        module = self._load_script_past_the_gates(monkeypatch, tmp_path)
+
+        static = tmp_path / "static"
+        static.mkdir()
+        (static / "app.js").write_bytes(b"console.log(1);\n")
+        flask_app = Flask(__name__, static_folder=str(static))
+        flask_app.add_url_rule("/page", "page", lambda: "<h1>page</h1>")
+        flask_app.add_url_rule("/api", "api", lambda: jsonify(ok=True))
+
+        server = module._create_server(flask_app, port=0)
+        thread = threading.Thread(target=server.run, daemon=True)
+        thread.start()
+        try:
+            conn = http.client.HTTPConnection(
+                "127.0.0.1", server.effective_port, timeout=10,
+            )
+            conn.request("GET", "/page")
+            assert conn.getresponse().read() == b"<h1>page</h1>"
+            sock = conn.sock
+            assert sock is not None, "server closed the connection after one request"
+            for path, body in (
+                ("/api", b'{"ok":true}\n'),
+                ("/static/app.js", b"console.log(1);\n"),
+                ("/page", b"<h1>page</h1>"),
+            ):
+                conn.request("GET", path)
+                assert conn.getresponse().read() == body
+                assert conn.sock is sock, f"{path} needed a new connection"
+            conn.close()
+        finally:
+            server.close()
+            thread.join(timeout=10)
+
+    def test_server_binds_loopback_only(self, monkeypatch, tmp_path):
+        """Same exposure as `flask run`'s default: never 0.0.0.0."""
+        module = self._load_script_past_the_gates(monkeypatch, tmp_path)
+        server = module._create_server(lambda e, s: [], port=0)
+        try:
+            assert server.effective_host == "127.0.0.1"
+        finally:
+            server.close()
 
     def test_rate_limit_switch_works_from_a_real_launch(self, tmp_path):
         """A real `python scripts/run_dev_bypass.py` has scripts/ — not the
