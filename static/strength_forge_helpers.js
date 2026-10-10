@@ -176,6 +176,28 @@ function planTypesForRole(role) {
     return [];
 }
 
+/**
+ * exerciseSearchLinks — the exercise modal's two "see it done" links (#409).
+ *
+ * The catalog `search` string IS the whole query (nothing is appended — the
+ * old " exercise how to form" suffix doubled words like "exercise exercise").
+ *   images: Google Images (`udm=2`; the old `tbm=isch` is legacy)
+ *   video:  YouTube results for "how to <query>" (prefix not doubled)
+ *
+ *   "pike push up" -> { images: "…google.com/search?q=pike%20push%20up&udm=2",
+ *                       video:  "…youtube.com/results?search_query=how%20to%20pike%20push%20up" }
+ *   "" / null      -> null (render no links)
+ */
+function exerciseSearchLinks(query) {
+    var q = (query == null ? "" : String(query)).replace(/\s+/g, " ").trim();
+    if (!q) return null;
+    var videoQ = /^how to\b/i.test(q) ? q : "how to " + q;
+    return {
+        images: "https://www.google.com/search?q=" + encodeURIComponent(q) + "&udm=2",
+        video: "https://www.youtube.com/results?search_query=" + encodeURIComponent(videoQ),
+    };
+}
+
 var strengthForgeHelpers = {
     defaultSetCount: defaultSetCount,
     buildSetsPayload: buildSetsPayload,
@@ -183,6 +205,7 @@ var strengthForgeHelpers = {
     usesResistance: usesResistance,
     isDraftFresh: isDraftFresh,
     planTypesForRole: planTypesForRole,
+    exerciseSearchLinks: exerciseSearchLinks,
 };
 
 // Browser global

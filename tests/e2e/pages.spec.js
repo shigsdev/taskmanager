@@ -7946,3 +7946,32 @@ test.describe("#381 Escape closes the top side panel; Tab stays inside it", () =
         await expect(page.locator("#recurEditOverlay")).toBeHidden();
     });
 });
+
+// #409: the exercise modal offers Google Images (udm=2) + YouTube links built
+// from the curated query — nothing appended, both open in a new tab.
+test.describe("Strength Forge search links (#409)", () => {
+    test("exercise modal: Photos → Google Images, Videos → YouTube", async ({ page }) => {
+        await page.goto("/strength-forge?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const row = page.locator(".sf-exrow", { hasText: "Band Seated Row" }).first();
+        await row.locator(".sf-exrow-info").click();
+        await expect(page.locator(".sf-modal-title")).toHaveText("Band Seated Row");
+
+        const photos = page.locator(".sf-modal-link-photos");
+        const video = page.locator(".sf-modal-link-video");
+        await expect(photos).toBeVisible();
+        await expect(video).toBeVisible();
+
+        const img = new URL(await photos.getAttribute("href"));
+        expect(img.hostname).toBe("www.google.com");
+        expect(img.searchParams.get("q")).toBe("resistance band seated row");
+        expect(img.searchParams.get("udm")).toBe("2");
+        const vid = new URL(await video.getAttribute("href"));
+        expect(vid.hostname).toBe("www.youtube.com");
+        expect(vid.searchParams.get("search_query")).toBe("how to resistance band seated row");
+        for (const a of [photos, video]) {
+            await expect(a).toHaveAttribute("target", "_blank");
+            await expect(a).toHaveAttribute("rel", /noopener/);
+        }
+    });
+});

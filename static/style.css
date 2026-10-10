@@ -6558,6 +6558,12 @@ table.quality-gates code {
     text-decoration: none; background: linear-gradient(135deg, var(--copper), var(--copper-dim)); color: var(--slate-0); font-weight: 700; font-size: 0.82rem; }
 .sf-modal-google-link:hover { background: linear-gradient(135deg, var(--copper-bright), var(--copper)); }
 .sf-modal-google-arrow { opacity: 0.7; }
+/* #409: Photos (Google) + Videos (YouTube) side by side; the video link is the
+   outlined secondary button so the two read as a pair, not a duplicate. */
+.sf-modal-links { display: flex; gap: 8px; }
+.sf-modal-links .sf-modal-google-link { flex: 1 1 0; min-width: 0; min-height: 44px; gap: 6px; padding: 10px 8px; }
+.sf-modal-links .sf-modal-link-video { background: transparent; color: var(--copper-bright); box-shadow: inset 0 0 0 1.5px var(--copper); }
+.sf-modal-links .sf-modal-link-video:hover { background: rgba(255, 255, 255, 0.04); }
 .sf-modal-google-note { text-align: center; margin-top: 6px; font-size: 0.62rem; font-family: var(--font-mono); color: var(--cream-faint); }
 .sf-modal-info { padding: 13px 16px; }
 .sf-modal-safe { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 20px; margin-bottom: 10px;

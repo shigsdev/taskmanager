@@ -79,19 +79,31 @@
       }
     }
 
-    // Google Images link (real photos / GIFs)
-    var googleWrap = el("div", { cls: "sf-modal-google" }, [
-      el("a", {
-        cls: "sf-modal-google-link",
-        attrs: { href: SF.googleLink(data.search || data.title || ""), target: "_blank", rel: "noopener noreferrer" },
-      }, [
-        el("span", { text: "🔍" }),
-        el("span", { text: "See Real Photos — Google Images" }),
-        el("span", { cls: "sf-modal-google-arrow", text: "↗" }),
-      ]),
-      el("div", { cls: "sf-modal-google-note", text: "opens in browser · real photos & GIFs" }),
-    ]);
-    modalBody.appendChild(googleWrap);
+    // #409: "see it done" links — Google Images photos + YouTube videos.
+    // URLs come from the unit-tested helper (the catalog query is the whole
+    // search; back-safe variants are named in it).
+    var links = window.strengthForgeHelpers
+      ? window.strengthForgeHelpers.exerciseSearchLinks(data.search || data.title || "")
+      : null;
+    if (links) {
+      var linkBtn = function (cls, href, icon, label) {
+        return el("a", {
+          cls: "sf-modal-google-link " + cls,
+          attrs: { href: href, target: "_blank", rel: "noopener noreferrer" },
+        }, [
+          el("span", { text: icon }),
+          el("span", { text: label }),
+          el("span", { cls: "sf-modal-google-arrow", text: "↗" }),
+        ]);
+      };
+      modalBody.appendChild(el("div", { cls: "sf-modal-google" }, [
+        el("div", { cls: "sf-modal-links" }, [
+          linkBtn("sf-modal-link-photos", links.images, "🔍", "Photos — Google"),
+          linkBtn("sf-modal-link-video", links.video, "▶", "Videos — YouTube"),
+        ]),
+        el("div", { cls: "sf-modal-google-note", text: "opens in a new tab · real photos & how-to videos" }),
+      ]));
+    }
 
     var info = el("div", { cls: "sf-modal-info" });
     if (data.safe && SF.SAFE_LABELS[data.safe]) {

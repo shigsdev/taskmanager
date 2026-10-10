@@ -12,6 +12,7 @@ const {
     usesResistance,
     isDraftFresh,
     planTypesForRole,
+    exerciseSearchLinks,
 } = require("../../../static/strength_forge_helpers");
 
 describe("defaultSetCount", () => {
@@ -269,5 +270,48 @@ describe("planTypesForRole (#313 — full-plan print)", () => {
                 expect(known.has(key)).toBe(true);
             }
         }
+    });
+});
+
+
+// #409: the modal's "Photos — Google" and "Videos — YouTube" links.
+describe("exerciseSearchLinks", () => {
+    test("Google Images uses udm=2 (tbm=isch is legacy) with the query as-is", () => {
+        const { images } = exerciseSearchLinks("resistance band face pull");
+        const u = new URL(images);
+        expect(u.origin + u.pathname).toBe("https://www.google.com/search");
+        expect(u.searchParams.get("q")).toBe("resistance band face pull");
+        expect(u.searchParams.get("udm")).toBe("2");
+        expect(u.searchParams.has("tbm")).toBe(false);
+    });
+
+    test("nothing is appended to the image query (no doubled words)", () => {
+        const q = new URL(exerciseSearchLinks("glute bridge form").images).searchParams.get("q");
+        expect(q).toBe("glute bridge form");
+    });
+
+    test("YouTube searches 'how to <query>'", () => {
+        const u = new URL(exerciseSearchLinks("pike push up").video);
+        expect(u.origin + u.pathname).toBe("https://www.youtube.com/results");
+        expect(u.searchParams.get("search_query")).toBe("how to pike push up");
+    });
+
+    test("'how to' is not doubled when the query already starts with it", () => {
+        const u = new URL(exerciseSearchLinks("How to box breathe").video);
+        expect(u.searchParams.get("search_query")).toBe("How to box breathe");
+    });
+
+    test("whitespace is collapsed and special characters are encoded", () => {
+        const links = exerciseSearchLinks("  90/90   hip & stretch ");
+        expect(new URL(links.images).searchParams.get("q")).toBe("90/90 hip & stretch");
+        expect(links.images).toContain("90%2F90");
+        expect(links.images).toContain("%26");
+    });
+
+    test("an empty or missing query gives no links", () => {
+        expect(exerciseSearchLinks("")).toBeNull();
+        expect(exerciseSearchLinks("   ")).toBeNull();
+        expect(exerciseSearchLinks(null)).toBeNull();
+        expect(exerciseSearchLinks(undefined)).toBeNull();
     });
 });

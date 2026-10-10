@@ -233,3 +233,41 @@ describe("split routine core work is disc-safe (#320)", () => {
     }
   });
 });
+
+
+// #409: the search query IS the whole search now (nothing is appended), so
+// every query has to stand on its own — and must not surface a variant the
+// plan forbids for L4/L5 · L5/S1.
+describe("search queries", () => {
+  const catalog = Object.entries(SF.exercises).map(([id, ex]) => [id, ex.search]);
+  const flare = SF.flarePhases.flatMap((ph) =>
+    ph.exercises.map((fx) => [`${ph.id}:${fx.name}`, fx.search]));
+  const all = catalog.concat(flare);
+
+  test("every catalog and flare exercise has a query", () => {
+    expect(catalog.length).toBeGreaterThanOrEqual(43);
+    expect(flare.length).toBeGreaterThanOrEqual(13);
+    for (const [id, q] of all) {
+      expect(typeof q === "string" && q.trim().length > 0 ? id : `${id}: empty`).toBe(id);
+    }
+  });
+
+  test("no query repeats a word back-to-back or carries the old suffix", () => {
+    for (const [id, q] of all) {
+      const words = q.toLowerCase().split(/\s+/);
+      const dup = words.find((w, i) => i > 0 && /^[a-z]+$/.test(w) && w === words[i - 1]);
+      expect(dup ? `${id}: "${dup} ${dup}"` : id).toBe(id);
+      expect(/exercise how to form/i.test(q) ? `${id}: old suffix` : id).toBe(id);
+    }
+  });
+
+  test("moves with a common bent-over variant ask for the standing one", () => {
+    expect(SF.exercises["band-rear-delt-fly"].search).toMatch(/standing/);
+    expect(SF.exercises["band-rear-delt-fly"].search).toMatch(/upright/);
+    expect(SF.exercises["band-tricep-kickback"].search).toMatch(/standing/);
+  });
+
+  test("the old link builder is gone (links come from the tested helper)", () => {
+    expect(SF.googleLink).toBeUndefined();
+  });
+});
