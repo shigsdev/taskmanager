@@ -461,6 +461,14 @@ Report.
      card on /tier/<name> and /completed), scroll to the very bottom — the
      last card sits fully ABOVE the toolbar and a click on it selects it.
      Hide the toolbar and the extra room under the page goes away.
+     #381: open a task (board, a tier page, /completed, /calendar) and
+     press Escape — it closes, exactly like ✕. Shift+Tab from ✕ lands on
+     the panel's last control and Tab from there comes back to ✕; focus
+     never reaches the page behind. On /projects, open a project, then a
+     task from its list: the first Escape closes only the task (focus back
+     on its line), the second closes the project. On /recurring, + New
+     template then Escape closes the editor. Click ✕ and the backdrop
+     too — the mouse paths must be unchanged.
   7. **Goals page**: verify goal cards show progress bars with correct task
      counts. Filter by category/priority/status, verify results change.
      Expand a card's `Projects (N)` toggle, drag a project chip onto
@@ -494,6 +502,8 @@ Report.
      #377: Enter on a focused linked row puts focus on the panel's ✕;
      closing returns it to that row, and after a save to the re-rendered
      row. A mouse or tap open shows no focus ring.
+     #381: with a linked task open on top of the goal, Escape closes only
+     the task (focus back on its row); a second Escape closes the goal.
      #375: under Linked Tasks, "Completed (N)" matches the card's "N of M
      tasks done"; opening it loads the done rows (checkbox ticked and
      disabled) newest first, and one opens the task panel.
@@ -566,6 +576,9 @@ Report.
   Tasks: calendar cell section  PASS          Tasks: calendar cell section  PASS
   Tasks: moved-to-Inbox sticks  PASS          Tasks: moved-to-Inbox sticks  PASS
   Tasks: last row clears toolbar PASS         Tasks: last row clears toolbar PASS
+  Tasks: Escape closes panel    PASS          Tasks: Escape closes panel    PASS
+  Tasks: Tab stays in panel     PASS          Tasks: Tab stays in panel     PASS
+  Recurring: Escape closes editor PASS        Recurring: Escape closes editor PASS
   Goals: progress bars          PASS          Goals: progress bars          PASS
   Goals: filter category        PASS          Goals: filter category        PASS
   Goals: filter priority        PASS          Goals: filter priority        PASS
@@ -584,6 +597,7 @@ Report.
   Goals: linked task opens panel PASS         Goals: linked task opens panel PASS
   Goals: panel focus in and back PASS         Goals: panel focus in and back PASS
   Goals: completed section     PASS          Goals: completed section     PASS
+  Goals: Escape closes top panel PASS         Goals: Escape closes top panel PASS
   Projects: drag task to card   PASS          Projects: drag task to card   PASS
   Projects: archive pauses tmpl PASS          Projects: archive pauses tmpl PASS
   Projects: no-tmpl archive quiet PASS        Projects: no-tmpl archive quiet PASS
@@ -592,6 +606,7 @@ Report.
   Projects: active/done counts PASS          Projects: active/done counts PASS
   Projects: completed section  PASS          Projects: completed section  PASS
   Projects: last row clears toolbar PASS      Projects: last row clears toolbar PASS
+  Projects: Escape closes top panel PASS      Projects: Escape closes top panel PASS
   Review: Keep                  PASS          Review: Keep                  PASS
   Review: Freeze                PASS          Review: Freeze                PASS
   Review: Snooze                PASS          Review: Snooze                PASS

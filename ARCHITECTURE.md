@@ -478,7 +478,13 @@ component is added, a data flow changes, or a security boundary shifts.
   re-rendered row that opened it: on open the panel remembers the focused
   opener (plus its `data-task-id` and nearest container id) and focuses
   its close button; on close it refocuses that row, finding it again by
-  `[data-task-id]` after a re-render. Tier headings on the board are clickable links into
+  `[data-task-id]` after a re-render. Keyboard for every `.detail-overlay`
+  side panel (task, goal, project, `/recurring` editor) lives in
+  `static/panel_keys.js` (#381), loaded once from `base.html`: one
+  document `keydown` listener. Escape clicks the top-most open panel's
+  `[data-panel-close]` ✕ (the later one in the DOM, since they share
+  z-index 200), so a task panel stacked on a goal/project panel closes
+  first. Tab / Shift+Tab wrap inside that panel. Tier headings on the board are clickable links into
   these pages. Capture bar on a tier page defaults new tasks to the
   current tier via `data-default-tier`.
 - **Day-of-week grouping** (#23, ADR-010): `static/day_group.js` is a

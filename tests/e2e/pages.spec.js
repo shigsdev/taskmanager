@@ -7808,3 +7808,141 @@ test.describe("#365 the bulk toolbar never covers the last row", () => {
         await expect.poll(() => bodyPadding(page)).toBe("0px");
     });
 });
+
+test.describe("#381 Escape closes the top side panel; Tab stays inside it", () => {
+    // Before #381, Escape did nothing on any panel and Tab walked out from
+    // behind the backdrop into the page. Now Escape works like the top-most
+    // panel's ✕ (#372: a task panel stacked on a goal/project panel closes
+    // first), and Tab / Shift+Tab wrap inside that panel.
+    const stamp = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    const activeIn = (page, sel) =>
+        page.evaluate((s) => !!document.activeElement && !!document.activeElement.closest(s), sel);
+    const activeTaskId = (page) =>
+        page.evaluate(() => (document.activeElement && document.activeElement.dataset.taskId) || null);
+
+    test("board: Escape closes the task panel", async ({ page, request }) => {
+        const task = await (await request.post("/api/tasks", {
+            data: { title: `E2E 381 board ${stamp()}`, type: "work", tier: "today" } })).json();
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator(`.task-card[data-id="${task.id}"] .task-title`)
+                .click({ position: { x: 4, y: 4 } });
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+            await page.keyboard.press("Escape");
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("task panel: Tab and Shift+Tab never leave it", async ({ page, request }) => {
+        const task = await (await request.post("/api/tasks", {
+            data: { title: `E2E 381 trap ${stamp()}`, type: "work", tier: "today" } })).json();
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator(`.task-card[data-id="${task.id}"] .task-title`)
+                .click({ position: { x: 4, y: 4 } });
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+            await page.locator("#detailClose").focus();
+
+            // Shift+Tab from ✕ wraps to the panel's last control...
+            await page.keyboard.press("Shift+Tab");
+            expect(await activeIn(page, "#detailOverlay")).toBe(true);
+            expect(await page.evaluate(() => document.activeElement.id)).not.toBe("detailClose");
+            // ...and Tab from there comes back round to ✕.
+            await page.keyboard.press("Tab");
+            expect(await page.evaluate(() => document.activeElement.id)).toBe("detailClose");
+
+            // A full lap forwards never escapes the panel.
+            for (let i = 0; i < 60; i++) {
+                await page.keyboard.press("Tab");
+                expect(await activeIn(page, "#detailOverlay")).toBe(true);
+            }
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("/goals: Escape closes the stacked task panel first, then the goal panel", async ({
+        page, request,
+    }) => {
+        const s = stamp();
+        const goal = await (await request.post("/api/goals", {
+            data: { title: `E2E 381 goal ${s}`, category: "work", priority: "should" } })).json();
+        const task = await (await request.post("/api/tasks", {
+            data: { title: `E2E 381 task ${s}`, type: "work", tier: "today", goal_id: goal.id } })).json();
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator(`.goal-card[data-goal-id="${goal.id}"]`)
+                .click({ position: { x: 8, y: 8 } });
+            await expect(page.locator("#goalDetailOverlay")).toBeVisible();
+            const row = page.locator(`#linkedTasksList .linked-task-row[data-task-id="${task.id}"]`);
+            await row.focus();
+            await page.keyboard.press("Enter");
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+
+            await page.keyboard.press("Escape");
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+            await expect(page.locator("#goalDetailOverlay")).toBeVisible();
+            expect(await activeTaskId(page)).toBe(task.id);   // #377 focus return
+
+            await page.keyboard.press("Escape");
+            await expect(page.locator("#goalDetailOverlay")).toBeHidden();
+        } finally {
+            await request.patch(`/api/tasks/${task.id}`, { data: { goal_id: null } });
+            await request.delete(`/api/tasks/${task.id}`);
+            await request.delete(`/api/goals/${goal.id}`);
+            await request.delete(`/api/goals/${goal.id}/permanent`);
+        }
+    });
+
+    test("/projects: Escape closes the stacked task panel first, then the project panel", async ({
+        page, request,
+    }) => {
+        const s = stamp();
+        const project = await (await request.post("/api/projects", {
+            data: { name: `E2E 381 project ${s}`, type: "work" } })).json();
+        const task = await (await request.post("/api/tasks", {
+            data: { title: `E2E 381 task ${s}`, type: "work", tier: "today", project_id: project.id } })).json();
+        try {
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator(`.project-card[data-project-id="${project.id}"]`)
+                .click({ position: { x: 8, y: 8 } });
+            await expect(page.locator("#projectDetailOverlay")).toBeVisible();
+            const line = page.locator(`#projectTaskList .project-side-task[data-task-id="${task.id}"]`);
+            await line.focus();
+            await page.keyboard.press("Enter");
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+
+            await page.keyboard.press("Escape");
+            await expect(page.locator("#detailOverlay")).toBeHidden();
+            await expect(page.locator("#projectDetailOverlay")).toBeVisible();
+            expect(await activeTaskId(page)).toBe(task.id);
+
+            await page.keyboard.press("Escape");
+            await expect(page.locator("#projectDetailOverlay")).toBeHidden();
+        } finally {
+            await request.patch(`/api/tasks/${task.id}`, { data: { project_id: null } });
+            await request.delete(`/api/tasks/${task.id}`);
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+
+    test("/recurring: Escape closes the editor; Tab stays inside it", async ({ page }) => {
+        await page.goto("/recurring?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator("#recurringNew").click();
+        await expect(page.locator("#recurEditOverlay")).toBeVisible();
+        for (let i = 0; i < 40; i++) {
+            await page.keyboard.press("Tab");
+            expect(await activeIn(page, "#recurEditOverlay")).toBe(true);
+        }
+        await page.keyboard.press("Escape");
+        await expect(page.locator("#recurEditOverlay")).toBeHidden();
+    });
+});

@@ -188,6 +188,7 @@ EXPECTED_STATIC_FILES = (
     "static/diagram_zoom.js",  # #405 — /architecture full-screen diagram view
     "static/completed_tasks_helpers.js",  # #375 — Completed (N) section, project count label
     "static/bulk_toolbar_helpers.js",  # #365 — room under the page while a bulk toolbar shows
+    "static/panel_keys.js",  # #381 — Escape closes the top side panel; Tab stays inside it
     "static/manifest.json",
     "static/favicon.svg",  # #45 — browser tab icon
 )

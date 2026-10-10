@@ -45,6 +45,10 @@
        day early → tasks due today flagged as overdue. Pure local-date helper here,
        loaded globally before page-specific scripts run. #}
     <script src="{{ url_for('static', filename='date_helpers.js') }}"></script>
+    {# #381: Escape closes the top-most side panel (.detail-overlay) via its
+       [data-panel-close] ✕, and Tab stays inside it. One document listener;
+       a no-op on pages with no panel open. #}
+    <script src="{{ url_for('static', filename='panel_keys.js') }}"></script>
 </head>
 <body>
     <header class="nav">
