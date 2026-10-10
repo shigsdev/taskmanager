@@ -182,3 +182,57 @@ def test_browser_js_files_parse():
             )
             broken.append(f"{path.name}: {detail}")
     assert not broken, "static JS failed to parse:\n  " + "\n  ".join(broken)
+
+
+# --- One global scope for every page script (#359) -------------------------
+
+import re  # noqa: E402
+
+# Column-0 declarations only: code inside an IIFE / function body is
+# indented, so it never matches. sw.js runs in the service worker's own
+# scope, never alongside page scripts.
+_TOP_LEVEL_DECL = re.compile(
+    r"^(?:async\s+)?(?:const|let|var|function\*?|class)\s+([A-Za-z_$][\w$]*)", re.M,
+)
+_OWN_SCOPE_JS = frozenset({"sw.js"})
+
+
+def _duplicate_js_globals(sources):
+    """{filename: source} → {name: [filenames]} for every top-level name
+    declared in more than one file."""
+    seen = {}
+    for name, text in sources.items():
+        for decl in set(_TOP_LEVEL_DECL.findall(text)):
+            seen.setdefault(decl, []).append(name)
+    return {k: sorted(v) for k, v in seen.items() if len(v) > 1}
+
+
+def test_duplicate_global_detector_catches_a_collision():
+    found = _duplicate_js_globals({
+        "a.js": "const _api = {};\nfunction helper() {}\n",
+        "b.js": "var _api = 1;\n(function () {\n  var helper = 2;\n})();\n",
+        "c.js": "async function load() {}\nclass Panel {}\n",
+        "d.js": "function load() {}\n",
+    })
+    # `helper` inside b.js's IIFE is indented, so it is not a global.
+    assert found == {"_api": ["a.js", "b.js"], "load": ["c.js", "d.js"]}
+
+
+def test_no_two_static_js_files_declare_the_same_global():
+    """Every static/*.js is a CLASSIC script sharing ONE global scope. A
+    second `const`/`let`/`class` of a name throws "Identifier has already
+    been declared" and kills the later file outright (#355: `_api` took
+    down inbox_categorize_helpers.js on the home board); a second
+    `function` silently replaces the first, whatever its signature
+    (`dueDateForTier` in tier_helpers.js vs inbox_categorize_helpers.js).
+    Jest loads files in isolation and can't see either. Wrap new
+    top-level helpers in the module's exported object, or name them
+    uniquely."""
+    sources = {
+        p.name: p.read_text(encoding="utf-8")
+        for p in sorted((REPO_ROOT / "static").glob("*.js"))
+        if p.name not in _OWN_SCOPE_JS
+    }
+    dupes = _duplicate_js_globals(sources)
+    assert not dupes, "top-level names declared in more than one static/*.js:\n  " + \
+        "\n  ".join(f"{k}: {', '.join(v)}" for k, v in sorted(dupes.items()))

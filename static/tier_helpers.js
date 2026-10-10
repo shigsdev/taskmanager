@@ -159,11 +159,11 @@ function candidateSection(tier, dueDate, todayOverride) {
     return { tier: filed, setByDate: true };
 }
 
-// Local YYYY-MM-DD. Deliberately NOT a call to dueDateForTier: every
-// static/*.js shares one global scope, and inbox_categorize_helpers.js
-// declares its own global `dueDateForTier(tier, todayISO)` that loads
-// later and wins any bare-name call (#386 Phase 6 / Playwright caught
-// it; Jest can't, it loads files in isolation — see #359).
+// Local YYYY-MM-DD. Kept separate from dueDateForTier: until #359,
+// inbox_categorize_helpers.js declared a second global `dueDateForTier`
+// (ISO-string signature) that loaded later and won any bare-name call
+// (#386 Phase 6 caught it). It is now `categorizeDueDateForTier`, and
+// test_repo_hygiene fails on any cross-file duplicate global.
 function _tierHelpersIsoDate(d) {
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, "0");

@@ -858,6 +858,11 @@ flowchart TD
                         <td>Cross-platform exec failures from Windows autocrlf rewriting hook shebangs (#39). NUL check added #329 after a test wrote a literal NUL instead of an escape and silently turned the whole spec file binary to git, grep and diff. JS parse check added #338: Jest never loads the browser-only files, so a broken string literal in <code>reflection.js</code> stayed invisible until Playwright ran 14 minutes later and took nine unrelated tests down with it</td>
                     </tr>
                     <tr>
+                        <td><code>test_no_two_static_js_files_declare_the_same_global</code></td>
+                        <td>No top-level <code>const</code> / <code>let</code> / <code>var</code> / <code>function</code> / <code>class</code> name is declared in more than one <code>static/*.js</code> (all page scripts share one global scope; <code>sw.js</code> excluded)</td>
+                        <td>#355: a second <code>_api</code> threw "already declared" and killed <code>inbox_categorize_helpers.js</code> on the home board; <code>dueDateForTier</code> was defined twice with different signatures, the later silently winning (#359). Jest loads files in isolation and saw neither</td>
+                    </tr>
+                    <tr>
                         <td><code>_build_enum_repair_statements</code></td>
                         <td>Auto-derives <code>ALTER TYPE … ADD VALUE</code> for every Python enum member at boot — no manual list to drift behind</td>
                         <td>Same as above (#53). Layer A complement to <code>check_enum_coverage</code></td>

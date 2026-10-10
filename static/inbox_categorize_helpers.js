@@ -55,7 +55,10 @@ function addDaysIso(iso, days) {
  * @returns {string|null} ISO date string, or null when the tier has
  *   no auto-fill.
  */
-function dueDateForTier(tier, todayISO) {
+// #359: named uniquely — every static/*.js shares one global scope, and
+// tier_helpers.js has its own `dueDateForTier(tier, todayOverride: Date)`.
+// Still exported as `dueDateForTier` (an object key can't collide).
+function categorizeDueDateForTier(tier, todayISO) {
     if (tier === "today") { return todayISO; }
     if (tier === "tomorrow") { return addDaysIso(todayISO, 1); }
     return null;
@@ -80,7 +83,7 @@ function resolveDueForTier(explicitValue, tier, todayISO) {
     if (explicitValue) {
         return { value: explicitValue, auto: false };
     }
-    var derived = dueDateForTier(tier, todayISO);
+    var derived = categorizeDueDateForTier(tier, todayISO);
     return { value: derived || "", auto: derived !== null };
 }
 
@@ -100,7 +103,7 @@ function shouldSendDue(value, auto) {
 
 var _api = {
     addDaysIso: addDaysIso,
-    dueDateForTier: dueDateForTier,
+    dueDateForTier: categorizeDueDateForTier,
     resolveDueForTier: resolveDueForTier,
     shouldSendDue: shouldSendDue,
 };
