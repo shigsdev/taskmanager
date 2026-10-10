@@ -457,6 +457,11 @@ component is added, a data flow changes, or a security boundary shifts.
   on every card and a sticky bottom toolbar with type / tier / due date /
   goal / project / status / delete dropdowns. Status dropdown supports
   Mark complete · Mark cancelled (with shared-reason prompt) · Mark active.
+  The toolbar is `position: fixed`, so while any `.bulk-toolbar` shows
+  (board, `/tier/<name>`, `/completed`, `/projects`)
+  `static/bulk_toolbar_helpers.js` (#365) gives `<body>` bottom padding of
+  the toolbar's height + offset via a `ResizeObserver`, applied a frame
+  later, so the last row can always scroll clear of it.
 - **Tier detail pages** (#22, ADR-009): `/tier/<name>` route renders one
   tier in full-page layout (404 on invalid slug). Reuses the board's
   `renderBoard()` dispatch via a shared else-branch, with the

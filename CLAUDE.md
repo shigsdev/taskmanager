@@ -457,6 +457,10 @@ Report.
      nothing loads until you open it; then its done tasks list newest
      first and one opens the task panel. A project with nothing completed
      shows no Completed section at all.
+     #365: with the bulk toolbar showing (/projects Select, or a ticked
+     card on /tier/<name> and /completed), scroll to the very bottom — the
+     last card sits fully ABOVE the toolbar and a click on it selects it.
+     Hide the toolbar and the extra room under the page goes away.
   7. **Goals page**: verify goal cards show progress bars with correct task
      counts. Filter by category/priority/status, verify results change.
      Expand a card's `Projects (N)` toggle, drag a project chip onto
@@ -561,6 +565,7 @@ Report.
   Tasks: undated stays in Inbox PASS          Tasks: undated stays in Inbox PASS
   Tasks: calendar cell section  PASS          Tasks: calendar cell section  PASS
   Tasks: moved-to-Inbox sticks  PASS          Tasks: moved-to-Inbox sticks  PASS
+  Tasks: last row clears toolbar PASS         Tasks: last row clears toolbar PASS
   Goals: progress bars          PASS          Goals: progress bars          PASS
   Goals: filter category        PASS          Goals: filter category        PASS
   Goals: filter priority        PASS          Goals: filter priority        PASS
@@ -586,6 +591,7 @@ Report.
   Projects: panel focus in and back PASS      Projects: panel focus in and back PASS
   Projects: active/done counts PASS          Projects: active/done counts PASS
   Projects: completed section  PASS          Projects: completed section  PASS
+  Projects: last row clears toolbar PASS      Projects: last row clears toolbar PASS
   Review: Keep                  PASS          Review: Keep                  PASS
   Review: Freeze                PASS          Review: Freeze                PASS
   Review: Snooze                PASS          Review: Snooze                PASS

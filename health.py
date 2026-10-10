@@ -187,6 +187,7 @@ EXPECTED_STATIC_FILES = (
     "static/strength_forge_helpers.js",  # #287 — per-set log form logic
     "static/diagram_zoom.js",  # #405 — /architecture full-screen diagram view
     "static/completed_tasks_helpers.js",  # #375 — Completed (N) section, project count label
+    "static/bulk_toolbar_helpers.js",  # #365 — room under the page while a bulk toolbar shows
     "static/manifest.json",
     "static/favicon.svg",  # #45 — browser tab icon
 )

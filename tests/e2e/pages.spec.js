@@ -7740,3 +7740,71 @@ test.describe("#375 completed tasks on /projects and /goals", () => {
         }
     });
 });
+
+test.describe("#365 the bulk toolbar never covers the last row", () => {
+    // The toolbar is position:fixed at the bottom of the viewport. Before
+    // #365 nothing made room for it, so at maximum scroll the last row sat
+    // under it and a click on that card hit the toolbar instead. Runs at
+    // desktop here and at 375×812 in chromium-mobile, where the toolbar
+    // wraps to 2–3 lines.
+    const stamp = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    // Scroll to the bottom, then: is the lowest card's centre hit-testable,
+    // and does the card end above the toolbar?
+    function lastCardClear(page, cardSel, toolbarSel) {
+        return page.evaluate(([cardSel, toolbarSel]) => {
+            window.scrollTo(0, document.documentElement.scrollHeight);
+            const cards = [...document.querySelectorAll(cardSel)].filter((e) => e.offsetParent);
+            const last = cards.reduce((a, b) =>
+                (b.getBoundingClientRect().bottom > a.getBoundingClientRect().bottom ? b : a));
+            const r = last.getBoundingClientRect();
+            const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            const top = document.querySelector(toolbarSel).getBoundingClientRect().top;
+            return last.contains(hit) && r.bottom <= top;
+        }, [cardSel, toolbarSel]);
+    }
+
+    const bodyPadding = (page) =>
+        page.evaluate(() => getComputedStyle(document.body).paddingBottom);
+
+    test("/tier/today: the last card clears the toolbar; the room goes when it hides", async ({
+        page, request,
+    }) => {
+        // Enough cards that the page scrolls at either viewport.
+        const s = stamp();
+        const tasks = [];
+        for (let i = 0; i < 12; i++) {
+            const r = await request.post("/api/tasks", {
+                data: { title: `E2E 365 card ${i} ${s}`, type: "work", tier: "today" },
+            });
+            expect(r.ok()).toBe(true);
+            tasks.push(await r.json());
+        }
+        try {
+            await page.goto("/tier/today?nosw=1");
+            await page.locator(".task-card .bulk-select-check").first().check();
+            await expect(page.locator("#bulkToolbar")).toBeVisible();
+            await expect.poll(() => lastCardClear(page, ".task-card", "#bulkToolbar")).toBe(true);
+
+            await page.locator("#bulkClearSelection").click();
+            await expect(page.locator("#bulkToolbar")).toBeHidden();
+            await expect.poll(() => bodyPadding(page)).toBe("0px");
+        } finally {
+            for (const t of tasks) await request.delete(`/api/tasks/${t.id}`);
+        }
+    });
+
+    test("/projects Select mode: the last card clears the toolbar; Cancel removes the room", async ({
+        page,
+    }) => {
+        await page.goto("/projects?nosw=1");
+        await expect(page.locator(".project-card").first()).toBeVisible();
+        await page.locator("#projectsBulkToggle").click();
+        await expect(page.locator("#projectsBulkToolbar")).toBeVisible();
+        await expect.poll(() => lastCardClear(page, ".project-card", "#projectsBulkToolbar")).toBe(true);
+
+        await page.locator("#projectsBulkCancel").click();
+        await expect(page.locator("#projectsBulkToolbar")).toBeHidden();
+        await expect.poll(() => bodyPadding(page)).toBe("0px");
+    });
+});
