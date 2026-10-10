@@ -2101,6 +2101,18 @@ Skip this line (too short)</pre>
                 below).
             </p>
 
+            <h3>Active and done counts</h3>
+            <p>
+                Each project card shows how many of its tasks are active and
+                how many are done, for example <em>4 active · 12 done</em>.
+                Cancelled tasks aren't counted. The card itself lists the
+                active tasks. In an open project, the finished ones are under
+                <strong>Completed (N)</strong> at the bottom of its task list:
+                open it to load them, newest first, 50 at a time
+                (<strong>Show more</strong> for the rest), and click (or tap)
+                one to open it in the task panel.
+            </p>
+
             <h3>Drag to reorder</h3>
             <p>
                 On the <a href="{{ url_for('projects_page') }}">/projects</a>
@@ -2229,7 +2241,11 @@ Skip this line (too short)</pre>
                 closing it brings you back to the goal, and the list
                 updates without a reload. The checkbox on each row still
                 completes the task in one click. The list shows active
-                tasks.
+                tasks; the goal's finished ones are under
+                <strong>Completed (N)</strong> below it, where N matches the
+                card's progress bar. Open it to load them, newest first, 50
+                at a time (<strong>Show more</strong> for the rest); each
+                opens in the task panel too.
             </p>
 
             <h3>Drag a project to another goal</h3>

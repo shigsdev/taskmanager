@@ -721,3 +721,97 @@ class TestProjectLinkedTasksData:
         no_proj = [t for t in all_tasks if t["title"] == "NoProj"]
         assert len(no_proj) == 1
         assert no_proj[0]["project_id"] is None
+
+
+# --- #375: per-project task counts ---------------------------------------
+
+
+class TestProjectTaskCounts:
+    """/projects' card label read `N active / N total` with the same number
+    twice, because the page counted the ACTIVE-only /api/tasks list. The
+    projects API now carries `task_counts: {active, done}` per project, with
+    goal progress's rule: done = archived, cancelled and deleted in neither,
+    subtasks included."""
+
+    def _tasks(self, app, pid, *statuses, parent=False):
+        from models import Task, TaskStatus, TaskType, Tier
+
+        with app.app_context():
+            parent_id = None
+            if parent:
+                p = Task(title="Parent", type=TaskType.WORK, tier=Tier.INBOX,
+                         status=TaskStatus.ACTIVE, project_id=pid)
+                db.session.add(p)
+                db.session.flush()
+                parent_id = p.id
+            for i, st in enumerate(statuses):
+                db.session.add(Task(
+                    title=f"T{i}", type=TaskType.WORK, tier=Tier.INBOX,
+                    status=TaskStatus(st), project_id=pid, parent_id=parent_id,
+                ))
+            db.session.commit()
+
+    def test_list_counts_active_and_done_only(self, app, authed_client):
+        pid = uuid.UUID(authed_client.post("/api/projects", json={"name": "P"}).get_json()["id"])
+        self._tasks(app, pid, "active", "active", "archived", "archived", "archived",
+                    "cancelled", "deleted")
+        row = next(p for p in authed_client.get("/api/projects").get_json()
+                   if p["id"] == str(pid))
+        assert row["task_counts"] == {"active": 2, "done": 3}
+
+    def test_subtasks_count_like_goal_progress(self, app, authed_client):
+        pid = uuid.UUID(authed_client.post("/api/projects", json={"name": "P"}).get_json()["id"])
+        self._tasks(app, pid, "archived", "active", parent=True)  # parent + 2 subtasks
+        row = next(p for p in authed_client.get("/api/projects").get_json()
+                   if p["id"] == str(pid))
+        assert row["task_counts"] == {"active": 2, "done": 1}
+
+    def test_project_with_no_tasks_is_zero_zero(self, authed_client):
+        created = authed_client.post("/api/projects", json={"name": "Empty"}).get_json()
+        row = next(p for p in authed_client.get("/api/projects").get_json()
+                   if p["id"] == created["id"])
+        assert row["task_counts"] == {"active": 0, "done": 0}
+
+    def test_counts_stay_per_project(self, app, authed_client):
+        a = uuid.UUID(authed_client.post("/api/projects", json={"name": "A"}).get_json()["id"])
+        b = uuid.UUID(authed_client.post("/api/projects", json={"name": "B"}).get_json()["id"])
+        self._tasks(app, a, "active")
+        self._tasks(app, b, "archived", "archived")
+        rows = {p["id"]: p["task_counts"] for p in authed_client.get("/api/projects").get_json()}
+        assert rows[str(a)] == {"active": 1, "done": 0}
+        assert rows[str(b)] == {"active": 0, "done": 2}
+
+    def test_show_carries_counts_too(self, app, authed_client):
+        pid = uuid.UUID(authed_client.post("/api/projects", json={"name": "P"}).get_json()["id"])
+        self._tasks(app, pid, "active", "archived")
+        body = authed_client.get(f"/api/projects/{pid}").get_json()
+        assert body["task_counts"] == {"active": 1, "done": 1}
+
+    def test_archived_projects_get_counts_with_is_active_all(self, app, authed_client):
+        pid = uuid.UUID(authed_client.post("/api/projects", json={"name": "Old"}).get_json()["id"])
+        self._tasks(app, pid, "archived")
+        authed_client.patch(f"/api/projects/{pid}", json={"is_active": False})
+        rows = {p["id"]: p for p in authed_client.get("/api/projects?is_active=all").get_json()}
+        assert rows[str(pid)]["task_counts"] == {"active": 0, "done": 1}
+
+    def test_list_counts_in_one_query(self, app, authed_client):
+        """Batched like goal_progress_batch (PR69): the count query count
+        must not grow with the number of projects."""
+        from sqlalchemy import event
+
+        for i in range(6):
+            created = authed_client.post("/api/projects", json={"name": f"P{i}"}).get_json()
+            pid = uuid.UUID(created["id"])
+            self._tasks(app, pid, "active", "archived")
+        seen = []
+        with app.app_context():
+            engine = db.engine
+        def count_task_queries(conn, cursor, statement, params, context, executemany):  # noqa: ARG001
+            if "FROM tasks" in statement and "count(" in statement.lower():
+                seen.append(statement)
+        event.listen(engine, "before_cursor_execute", count_task_queries)
+        try:
+            assert authed_client.get("/api/projects").status_code == 200
+        finally:
+            event.remove(engine, "before_cursor_execute", count_task_queries)
+        assert len(seen) == 1

@@ -451,6 +451,12 @@ Report.
      the panel's Section already matches that date, and Save files it
      there. A dated task moved to Inbox via the bulk toolbar STAYS in
      Inbox (a deliberate placement is respected).
+     #375: a project card's label reads "N active · M done" with two
+     DIFFERENT real numbers for a project that has completed tasks (it
+     used to repeat one number). Open it: "Completed (M)" is collapsed and
+     nothing loads until you open it; then its done tasks list newest
+     first and one opens the task panel. A project with nothing completed
+     shows no Completed section at all.
   7. **Goals page**: verify goal cards show progress bars with correct task
      counts. Filter by category/priority/status, verify results change.
      Expand a card's `Projects (N)` toggle, drag a project chip onto
@@ -484,6 +490,9 @@ Report.
      #377: Enter on a focused linked row puts focus on the panel's ✕;
      closing returns it to that row, and after a save to the re-rendered
      row. A mouse or tap open shows no focus ring.
+     #375: under Linked Tasks, "Completed (N)" matches the card's "N of M
+     tasks done"; opening it loads the done rows (checkbox ticked and
+     disabled) newest first, and one opens the task panel.
   8. **Review page**: click Keep/Freeze/Snooze, verify the card advances
      and the progress counter updates.
   9. **Settings page**: verify stats reflect the seeded data counts.
@@ -569,11 +578,14 @@ Report.
   Goals: no-tmpl archive quiet  PASS          Goals: no-tmpl archive quiet  PASS
   Goals: linked task opens panel PASS         Goals: linked task opens panel PASS
   Goals: panel focus in and back PASS         Goals: panel focus in and back PASS
+  Goals: completed section     PASS          Goals: completed section     PASS
   Projects: drag task to card   PASS          Projects: drag task to card   PASS
   Projects: archive pauses tmpl PASS          Projects: archive pauses tmpl PASS
   Projects: no-tmpl archive quiet PASS        Projects: no-tmpl archive quiet PASS
   Projects: task line opens panel PASS        Projects: task line opens panel PASS
   Projects: panel focus in and back PASS      Projects: panel focus in and back PASS
+  Projects: active/done counts PASS          Projects: active/done counts PASS
+  Projects: completed section  PASS          Projects: completed section  PASS
   Review: Keep                  PASS          Review: Keep                  PASS
   Review: Freeze                PASS          Review: Freeze                PASS
   Review: Snooze                PASS          Review: Snooze                PASS

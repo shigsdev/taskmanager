@@ -15,6 +15,7 @@ from project_service import (
     delete_project,
     get_project,
     list_projects,
+    project_task_counts_batch,
     reorder_projects,
     seed_default_projects,
     update_project,
@@ -24,8 +25,8 @@ from utils import validate_json_body
 bp = Blueprint("projects_api", __name__, url_prefix="/api/projects")
 
 
-def _serialize(project: Project) -> dict:
-    return {
+def _serialize(project: Project, task_counts: dict | None = None) -> dict:
+    d = {
         "id": str(project.id),
         "name": project.name,
         "type": project.type.value,
@@ -40,6 +41,11 @@ def _serialize(project: Project) -> dict:
         "priority": project.priority.value if project.priority else None,
         "created_at": project.created_at.isoformat(),
     }
+    # #375: {active, done} for the /projects card label and the panel's
+    # Completed section. Only the read routes attach it (batched on list).
+    if task_counts is not None:
+        d["task_counts"] = task_counts
+    return d
 
 
 @bp.get("")
@@ -62,7 +68,8 @@ def index(email: str):  # noqa: ARG001
             return jsonify({"error": f"invalid type: {type_arg}"}), 422
 
     projects = list_projects(is_active=is_active, project_type=project_type)
-    return jsonify([_serialize(p) for p in projects])
+    counts = project_task_counts_batch([p.id for p in projects])
+    return jsonify([_serialize(p, counts[p.id]) for p in projects])
 
 
 @bp.post("")
@@ -83,7 +90,7 @@ def show(email: str, project_id: uuid.UUID):  # noqa: ARG001
     project = get_project(project_id)
     if project is None:
         return jsonify({"error": "not found"}), 404
-    return jsonify(_serialize(project))
+    return jsonify(_serialize(project, project_task_counts_batch([project.id])[project.id]))
 
 
 @bp.patch("/<uuid:project_id>")

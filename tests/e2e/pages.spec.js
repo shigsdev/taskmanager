@@ -6629,20 +6629,27 @@ test.describe("Projects - a linked task opens the task panel (#372)", () => {
     test("completing from the panel refreshes the side list", async ({
         page, request,
     }) => {
-        // The page lists active tasks only, so a completed task must
-        // leave the side list and the summary count must drop.
+        // The active list loses the task and the count moves from active
+        // to done (#375: real counts from the server), and the task is now
+        // in the panel's Completed section.
         const fx = await fixture(request);
         try {
             await openProjects(page);
             await openProjectPanel(page, fx.project.id);
-            await expect(page.locator("#projectTaskCount")).toHaveText("1");
+            await expect(page.locator("#projectTaskCount")).toHaveText("1 active · 0 done");
+            await expect(page.locator("#projectCompletedTasks details")).toHaveCount(0);
             await sideLine(page, fx.task.title).click();
             await page.locator("#detailComplete").click();
 
             await expect.poll(async () =>
                 (await apiTask(request, fx.task.id)).status).toBe("archived");
             await expect(sideLine(page, fx.task.title)).toHaveCount(0);
-            await expect(page.locator("#projectTaskCount")).toHaveText("0");
+            await expect(page.locator("#projectTaskCount")).toHaveText("0 active · 1 done");
+            const completed = page.locator("#projectCompletedTasks details");
+            await expect(completed.locator("summary")).toHaveText("Completed (1)");
+            await completed.locator("summary").click();
+            await expect(completed.locator(".project-side-task.done"))
+                .toHaveText([fx.task.title]);
         } finally {
             await cleanup(request, fx);
         }
@@ -7543,6 +7550,190 @@ test.describe("Keyboard focus moves into the task panel and back (#377)", () => 
             expect(errors).toEqual([]);
         } finally {
             await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+});
+
+test.describe("#375 completed tasks on /projects and /goals", () => {
+    // Both pages load only ACTIVE tasks; prod has 1,355 completed tasks
+    // (821 KB), up to 356 on one project and 422 on one goal. So the counts
+    // come from the server and a project's / goal's completed tasks load
+    // only when its Completed section is opened.
+    const stamp = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    // Completes tasks one at a time, a second apart, so the newest-first
+    // order (by updated_at) is known.
+    async function makeTasks(request, link, s, { active, done, cancelled = 0 }) {
+        const make = async (title) => {
+            const r = await request.post("/api/tasks", {
+                data: { title, type: "work", tier: "today", ...link },
+            });
+            expect(r.ok()).toBe(true);
+            return r.json();
+        };
+        const tasks = [];
+        for (let i = 0; i < active; i++) tasks.push(await make(`E2E 375 active ${i} ${s}`));
+        const doneTitles = [];
+        for (let i = 0; i < done; i++) {
+            const t = await make(`E2E 375 done ${i} ${s}`);
+            await new Promise((r) => setTimeout(r, 1100));
+            const patched = await request.patch(`/api/tasks/${t.id}`, { data: { status: "archived" } });
+            expect(patched.ok()).toBe(true);
+            tasks.push(t);
+            doneTitles.push(t.title);
+        }
+        for (let i = 0; i < cancelled; i++) {
+            const t = await make(`E2E 375 cancelled ${i} ${s}`);
+            const patched = await request.patch(`/api/tasks/${t.id}`, { data: { status: "cancelled" } });
+            expect(patched.ok()).toBe(true);
+            tasks.push(t);
+        }
+        return { tasks, newestFirst: doneTitles.reverse() };
+    }
+
+    // DELETE on a task is a soft delete that keeps the link, so null it first.
+    async function unlinkAndDelete(request, tasks, field) {
+        for (const t of tasks) {
+            await request.patch(`/api/tasks/${t.id}`, { data: { [field]: null } });
+            await request.delete(`/api/tasks/${t.id}`);
+        }
+    }
+
+    function completedFetches(page, param) {
+        const urls = [];
+        page.on("request", (req) => {
+            const u = req.url();
+            if (u.includes("/api/tasks?status=archived") && u.includes(param)) urls.push(u);
+        });
+        return urls;
+    }
+
+    test("/projects: real counts on the card, Completed loads on open, newest first", async ({ page, request }) => {
+        const s = stamp();
+        const project = await (await request.post("/api/projects", {
+            data: { name: `E2E 375 project ${s}`, type: "work" },
+        })).json();
+        const fx = await makeTasks(request, { project_id: project.id }, s, { active: 2, done: 3, cancelled: 1 });
+        try {
+            const fetched = completedFetches(page, `project_id=${project.id}`);
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const card = page.locator(`.project-card[data-project-id="${project.id}"]`);
+            await expect(card.locator(".progress-label")).toHaveText("2 active · 3 done");
+            // Cards still list active tasks only.
+            await expect(card.locator(".project-card-task.done")).toHaveCount(0);
+
+            await card.click({ position: { x: 8, y: 8 } });
+            await expect(page.locator("#projectDetailOverlay")).toBeVisible();
+            await expect(page.locator("#projectTaskCount")).toHaveText("2 active · 3 done");
+            const section = page.locator("#projectCompletedTasks details");
+            await expect(section.locator("summary")).toHaveText("Completed (3)");
+            await expect(section).not.toHaveAttribute("open", "");
+            expect(fetched, "completed tasks fetched before the section was opened").toEqual([]);
+
+            await section.locator("summary").click();
+            await expect(section.locator(".project-side-task.done")).toHaveText(fx.newestFirst);
+            expect(fetched).toHaveLength(1);
+
+            await section.locator(".project-side-task.done").first().click();
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+            await expect(page.locator("#detailTitle")).toHaveValue(fx.newestFirst[0]);
+        } finally {
+            await unlinkAndDelete(request, fx.tasks, "project_id");
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+
+    test("/projects: past 50 completed tasks, Show more pages the rest", async ({ page, request }) => {
+        const s = stamp();
+        const project = await (await request.post("/api/projects", {
+            data: { name: `E2E 375 paging ${s}`, type: "work" },
+        })).json();
+        const fx = await makeTasks(request, { project_id: project.id }, s, { active: 0, done: 1 });
+        // 60 completed rows from a stubbed fetch — the paging is the subject.
+        const rows = Array.from({ length: 60 }, (_, i) => ({
+            ...fx.tasks[0],
+            id: `stub-${i}`,
+            title: `Stub done ${String(i).padStart(2, "0")}`,
+            status: "archived",
+            updated_at: new Date(Date.UTC(2026, 0, 1, 0, 60 - i)).toISOString(),
+        }));
+        await page.route(
+            (url) => url.href.includes(`/api/tasks?status=archived&project_id=${project.id}`),
+            (route) => route.fulfill({ json: rows }),
+        );
+        try {
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator(`.project-card[data-project-id="${project.id}"]`)
+                .click({ position: { x: 8, y: 8 } });
+            const section = page.locator("#projectCompletedTasks details");
+            await section.locator("summary").click();
+            const doneRows = section.locator(".project-side-task.done");
+            await expect(doneRows).toHaveCount(50);
+            await expect(doneRows.first()).toHaveText("Stub done 00");
+            const more = section.locator(".completed-tasks-more");
+            await expect(more).toHaveText("Show 10 more");
+            await more.click();
+            await expect(doneRows).toHaveCount(60);
+            await expect(more).toBeHidden();
+        } finally {
+            await unlinkAndDelete(request, fx.tasks, "project_id");
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+
+    test("/goals: the goal's Completed section matches its bar and loads on open", async ({ page, request }) => {
+        const s = stamp();
+        const goal = await (await request.post("/api/goals", {
+            data: { title: `E2E 375 goal ${s}`, category: "work", priority: "should" },
+        })).json();
+        const fx = await makeTasks(request, { goal_id: goal.id }, s, { active: 1, done: 2 });
+        try {
+            const fetched = completedFetches(page, `goal_id=${goal.id}`);
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const card = page.locator(`.goal-card[data-goal-id="${goal.id}"]`);
+            await expect(card).toContainText("2 of 3 tasks done");
+            await card.click();
+            await expect(page.locator("#goalDetailOverlay")).toBeVisible();
+            await expect(page.locator("#linkedTaskCount")).toHaveText("1");
+            const section = page.locator("#linkedCompletedTasks details");
+            await expect(section.locator("summary")).toHaveText("Completed (2)");
+            expect(fetched).toEqual([]);
+
+            await section.locator("summary").click();
+            const doneRows = section.locator(".linked-task-row");
+            await expect(doneRows.locator(".linked-task-title.completed")).toHaveText(fx.newestFirst);
+            await expect(doneRows.locator("input[type=checkbox]:checked:disabled")).toHaveCount(2);
+            expect(fetched).toHaveLength(1);
+
+            await doneRows.first().click();
+            await expect(page.locator("#detailOverlay")).toBeVisible();
+            await expect(page.locator("#detailTitle")).toHaveValue(fx.newestFirst[0]);
+        } finally {
+            await unlinkAndDelete(request, fx.tasks, "goal_id");
+            await request.delete(`/api/goals/${goal.id}`);
+            await request.delete(`/api/goals/${goal.id}/permanent`);
+        }
+    });
+
+    test("a project with nothing completed shows no Completed section", async ({ page, request }) => {
+        const s = stamp();
+        const project = await (await request.post("/api/projects", {
+            data: { name: `E2E 375 none ${s}`, type: "work" },
+        })).json();
+        const fx = await makeTasks(request, { project_id: project.id }, s, { active: 1, done: 0 });
+        try {
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator(`.project-card[data-project-id="${project.id}"]`)
+                .click({ position: { x: 8, y: 8 } });
+            await expect(page.locator("#projectTaskCount")).toHaveText("1 active · 0 done");
+            await expect(page.locator("#projectCompletedTasks details")).toHaveCount(0);
+        } finally {
+            await unlinkAndDelete(request, fx.tasks, "project_id");
+            await request.delete(`/api/projects/${project.id}`);
         }
     });
 });

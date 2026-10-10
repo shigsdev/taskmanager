@@ -559,17 +559,16 @@ function projectCardEl(project) {
         }
     }
 
-    // Task count.
+    // Task count. #375: real active / done counts come from the server
+    // (`task_counts`) — this page only loads ACTIVE tasks, so counting its
+    // own list read the same number twice.
     const counts = projectTaskCounts[project.id] || { total: 0, active: 0 };
     const countRow = document.createElement("div");
     countRow.className = "goal-progress-row";
     const countLabel = document.createElement("span");
-    countLabel.className = "progress-label" + (counts.total === 0 ? " muted" : "");
-    if (counts.total === 0) {
-        countLabel.textContent = "No tasks linked";
-    } else {
-        countLabel.textContent = `${counts.active} active / ${counts.total} total`;
-    }
+    const label = window.completedTasksHelpers.projectCountLabel(project.task_counts, counts.active);
+    countLabel.className = "progress-label" + (label === "No tasks linked" ? " muted" : "");
+    countLabel.textContent = label;
     countRow.appendChild(countLabel);
     card.appendChild(countRow);
 
@@ -757,6 +756,12 @@ function projectDetailNew() {
     document.getElementById("projectPriority").value = "";
     populateGoalDropdown(null);
     document.getElementById("projectTaskSummary").style.display = "none";
+    // #375: a new project has no tasks — don't leave the last opened
+    // project's list or its Completed section showing.
+    document.getElementById("projectTaskListWrap").style.display = "none";
+    document.getElementById("projectTaskList").replaceChildren();
+    document.getElementById("projectCompletedTasks").replaceChildren();
+    _projectCompletedSection = null;
     // No archive on a project that doesn't exist yet.
     document.getElementById("projectArchiveToggle").style.display = "none";
     document.getElementById("projectDetailOverlay").style.display = "";
@@ -788,39 +793,64 @@ function projectDetailOpen(project) {
 
 // Task summary + the panel's task list. Split out of projectDetailOpen
 // (#372) so a save from the stacked task panel can refresh just this part.
+// #375: the list shows active tasks; completed ones sit in a collapsed
+// "Completed (N)" section that loads this project's completed tasks on
+// first open (prod: up to 356 for one project, so never with the page).
+let _projectCompletedSection = null;  // { projectId, section }
+
+function projectSideTaskRow(t) {
+    const li = document.createElement("li");
+    li.className = "project-side-task" + (t.status === "archived" ? " done" : "");
+    // #377: lets the task panel find this line again after a
+    // re-render and hand focus back to it.
+    li.dataset.taskId = t.id;
+    li.textContent = t.title;
+    li.title = t.title;
+    // #372: opens the task panel, stacked on this one. Not
+    // draggable, so no long-press guard.
+    li.addEventListener("click", () => taskDetailOpen(t));
+    projectTaskLineAffordance(li, t, () => taskDetailOpen(t));
+    return li;
+}
+
 function projectRenderSideTasks(projectId) {
-    const counts = projectTaskCounts[projectId] || { total: 0, active: 0 };
+    const helpers = window.completedTasksHelpers;
+    const project = _projectsById(projectId);
+    const tasks = projectTasksById[projectId] || [];
+    const taskCounts = (project && project.task_counts) || null;
+    const done = taskCounts ? taskCounts.done : 0;
+    const label = helpers.projectCountLabel(taskCounts, tasks.length);
     const summary = document.getElementById("projectTaskSummary");
-    document.getElementById("projectTaskCount").textContent = counts.total;
-    document.getElementById("projectTaskPlural").textContent = counts.total === 1 ? "" : "s";
-    summary.style.display = counts.total > 0 ? "" : "none";
+    document.getElementById("projectTaskCount").textContent = label;
+    summary.style.display = label === "No tasks linked" ? "none" : "";
 
     // #95 (PR33): full task list in the side panel — no collapse, since
     // the panel scrolls anyway and the user opened it specifically to
     // see project detail.
     const taskListWrap = document.getElementById("projectTaskListWrap");
     const taskList = document.getElementById("projectTaskList");
-    const tasks = projectTasksById[projectId] || [];
     taskList.replaceChildren();
-    if (tasks.length > 0) {
-        for (const t of tasks) {
-            const li = document.createElement("li");
-            li.className = "project-side-task" + (t.status === "archived" ? " done" : "");
-            // #377: lets the task panel find this line again after a
-            // re-render and hand focus back to it.
-            li.dataset.taskId = t.id;
-            li.textContent = t.title;
-            li.title = t.title;
-            // #372: opens the task panel, stacked on this one. Not
-            // draggable, so no long-press guard.
-            li.addEventListener("click", () => taskDetailOpen(t));
-            projectTaskLineAffordance(li, t, () => taskDetailOpen(t));
-            taskList.appendChild(li);
-        }
-        taskListWrap.style.display = "";
-    } else {
-        taskListWrap.style.display = "none";
+    for (const t of tasks) taskList.appendChild(projectSideTaskRow(t));
+
+    // Rebuilt on every render (the count may have moved); a section the
+    // user had open on this same project stays open and re-fetches.
+    const holder = document.getElementById("projectCompletedTasks");
+    const wasOpen = _projectCompletedSection
+        && _projectCompletedSection.projectId === projectId
+        && _projectCompletedSection.section.element.open;
+    holder.replaceChildren();
+    const section = helpers.createCompletedSection({
+        doc: document,
+        count: done,
+        load: () => apiFetch(helpers.completedTasksUrl("project", projectId)),
+        renderRow: projectSideTaskRow,
+    });
+    _projectCompletedSection = section ? { projectId, section } : null;
+    if (section) {
+        holder.appendChild(section.element);
+        if (wasOpen) section.element.open = true;
     }
+    taskListWrap.style.display = tasks.length > 0 || section ? "" : "none";
 }
 
 function projectDetailClose() {

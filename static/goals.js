@@ -384,66 +384,98 @@ async function goalsAfterTaskSave() {
     if (goal) _goalRefreshHardDeleteState(goal);
 }
 
+// #375: the list shows a goal's ACTIVE tasks (this page loads only those);
+// its completed ones sit in a collapsed "Completed (N)" section that loads
+// on first open — N is the goal's own progress.completed, so it always
+// matches the card's bar (prod: up to 422 for one goal).
+let _goalCompletedSection = null;  // { goalId, section }
+
+function goalLinkedTaskRow(task, goalId) {
+    const row = document.createElement("div");
+    row.className = "linked-task-row";
+    // #377: lets the task panel find this row again after a re-render
+    // and hand focus back to it.
+    row.dataset.taskId = task.id;
+    // #372: the row opens the task detail panel, stacked on top.
+    row.tabIndex = 0;
+    row.setAttribute("role", "button");
+    row.setAttribute("aria-label", `Open task: ${task.title}`);
+    row.addEventListener("click", () => taskDetailOpen(task));
+    row.addEventListener("keydown", (e) => {
+        // Only keys aimed at the row itself: Space on the focused
+        // checkbox bubbles here and must tick the box, not open.
+        if (e.target !== row) return;
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        taskDetailOpen(task);
+    });
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = task.status === "archived";
+    cb.disabled = task.status === "archived";
+    cb.addEventListener("change", async () => {
+        await apiFetch(`/api/tasks/${task.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ status: "archived" }),
+        });
+        await goalsLoad();
+        goalRenderLinkedTasks(goalId);
+    });
+    // The checkbox only completes; its click must not reach the row.
+    cb.addEventListener("click", (e) => e.stopPropagation());
+    row.appendChild(cb);
+
+    const label = document.createElement("span");
+    label.className = "linked-task-title";
+    if (task.status === "archived") label.classList.add("completed");
+    label.textContent = task.title;
+    row.appendChild(label);
+
+    const tierBadge = document.createElement("span");
+    tierBadge.className = "badge badge-project";
+    tierBadge.textContent = task.tier.replace("_", " ");
+    row.appendChild(tierBadge);
+    return row;
+}
+
 function goalRenderLinkedTasks(goalId) {
+    const helpers = window.completedTasksHelpers;
     const list = document.getElementById("linkedTasksList");
     const countEl = document.getElementById("linkedTaskCount");
     const tasks = goalTasks[goalId] || [];
+    const goal = goalsData.find((g) => g.id === goalId);
+    const done = (goal && goal.progress && goal.progress.completed) || 0;
     countEl.textContent = tasks.length;
-    list.innerHTML = "";
+    list.replaceChildren();
 
     if (tasks.length === 0) {
-        list.innerHTML = '<div class="muted" style="padding:8px 0;font-size:0.85rem">No tasks linked yet.</div>';
-        return;
+        const empty = document.createElement("div");
+        empty.className = "muted";
+        empty.style.cssText = "padding:8px 0;font-size:0.85rem";
+        empty.textContent = done > 0 ? "No open tasks." : "No tasks linked yet.";
+        list.appendChild(empty);
     }
+    for (const task of tasks) list.appendChild(goalLinkedTaskRow(task, goalId));
 
-    for (const task of tasks) {
-        const row = document.createElement("div");
-        row.className = "linked-task-row";
-        // #377: lets the task panel find this row again after a re-render
-        // and hand focus back to it.
-        row.dataset.taskId = task.id;
-        // #372: the row opens the task detail panel, stacked on top.
-        row.tabIndex = 0;
-        row.setAttribute("role", "button");
-        row.setAttribute("aria-label", `Open task: ${task.title}`);
-        row.addEventListener("click", () => taskDetailOpen(task));
-        row.addEventListener("keydown", (e) => {
-            // Only keys aimed at the row itself: Space on the focused
-            // checkbox bubbles here and must tick the box, not open.
-            if (e.target !== row) return;
-            if (e.key !== "Enter" && e.key !== " ") return;
-            e.preventDefault();
-            taskDetailOpen(task);
-        });
-
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.checked = task.status === "archived";
-        cb.disabled = task.status === "archived";
-        cb.addEventListener("change", async () => {
-            await apiFetch(`/api/tasks/${task.id}`, {
-                method: "PATCH",
-                body: JSON.stringify({ status: "archived" }),
-            });
-            await goalsLoad();
-            goalRenderLinkedTasks(goalId);
-        });
-        // The checkbox only completes; its click must not reach the row.
-        cb.addEventListener("click", (e) => e.stopPropagation());
-        row.appendChild(cb);
-
-        const label = document.createElement("span");
-        label.className = "linked-task-title";
-        if (task.status === "archived") label.classList.add("completed");
-        label.textContent = task.title;
-        row.appendChild(label);
-
-        const tierBadge = document.createElement("span");
-        tierBadge.className = "badge badge-project";
-        tierBadge.textContent = task.tier.replace("_", " ");
-        row.appendChild(tierBadge);
-
-        list.appendChild(row);
+    // Rebuilt on every render (the count may have moved); a section the
+    // user had open on this same goal stays open and re-fetches.
+    const holder = document.getElementById("linkedCompletedTasks");
+    const wasOpen = _goalCompletedSection
+        && _goalCompletedSection.goalId === goalId
+        && _goalCompletedSection.section.element.open;
+    holder.replaceChildren();
+    const section = helpers.createCompletedSection({
+        doc: document,
+        count: done,
+        load: () => apiFetch(helpers.completedTasksUrl("goal", goalId)),
+        renderRow: (task) => goalLinkedTaskRow(task, goalId),
+        listTag: "div",
+    });
+    _goalCompletedSection = section ? { goalId, section } : null;
+    if (section) {
+        holder.appendChild(section.element);
+        if (wasOpen) section.element.open = true;
     }
 }
 

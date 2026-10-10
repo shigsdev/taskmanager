@@ -160,6 +160,8 @@
         <div class="linked-tasks-section" id="linkedTasksSection" style="display:none">
             <h4>Linked Tasks <span id="linkedTaskCount" class="tier-count"></span></h4>
             <div id="linkedTasksList"></div>
+            {# #375: collapsed "Completed (N)", loaded on first open. #}
+            <div id="linkedCompletedTasks"></div>
             <div class="add-linked-task">
                 <input type="text" id="linkedTaskInput" placeholder="Add a task to this goal…">
                 <select id="linkedTaskType" title="Task type">
@@ -194,6 +196,7 @@
 <script src="{{ url_for('static', filename='project_task_drag_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='goal_project_drag_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='goal_archive_helpers.js') }}"></script>
+<script src="{{ url_for('static', filename='completed_tasks_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='goals.js') }}"></script>
 <script src="{{ url_for('static', filename='parse_capture.js') }}"></script>
 <script src="{{ url_for('static', filename='capture.js') }}"></script>

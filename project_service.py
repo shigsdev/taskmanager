@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from models import (
     Project,
@@ -13,6 +13,7 @@ from models import (
     ProjectType,
     RecurringTask,
     Task,
+    TaskStatus,
     db,
 )
 from recurring_service import cascade_parent_archive
@@ -155,6 +156,30 @@ def list_projects(
         stmt = stmt.where(Project.type == project_type)
     stmt = stmt.order_by(Project.priority_order.asc(), Project.name.asc())
     return list(db.session.scalars(stmt))
+
+
+def project_task_counts_batch(project_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
+    """Return ``{project_id: {"active": n, "done": m}}`` (#375).
+
+    Same rule as ``goal_service.goal_progress_batch``: every task row on the
+    project, subtasks included; done = ARCHIVED; CANCELLED and DELETED are
+    in neither. One ``GROUP BY`` for the whole batch, so the /projects list
+    costs one query however many projects there are (PR69's lesson).
+    /projects used to count the ACTIVE-only /api/tasks list client-side, so
+    its card label read the same number twice.
+    """
+    if not project_ids:
+        return {}
+    out = {pid: {"active": 0, "done": 0} for pid in project_ids}
+    rows = db.session.execute(
+        select(Task.project_id, Task.status, func.count())
+        .where(Task.project_id.in_(project_ids))
+        .where(Task.status.in_([TaskStatus.ACTIVE, TaskStatus.ARCHIVED]))
+        .group_by(Task.project_id, Task.status)
+    ).all()
+    for pid, status, count in rows:
+        out[pid]["active" if status == TaskStatus.ACTIVE else "done"] = count
+    return out
 
 
 def reorder_projects(ordered_ids: list[uuid.UUID]) -> int:

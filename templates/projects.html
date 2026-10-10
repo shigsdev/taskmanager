@@ -147,9 +147,9 @@
                 <button type="button" class="icon-btn voice-btn" data-voice-target="projectNotes" title="Voice input">🎤</button>
             </div>
 
+            {# #375: "4 active · 356 done" from the server's task_counts. #}
             <div class="project-task-summary" id="projectTaskSummary" style="display:none">
-                <span id="projectTaskCount">0</span> task<span id="projectTaskPlural">s</span>
-                linked to this project.
+                Tasks linked to this project: <span id="projectTaskCount"></span>
             </div>
 
             {# #95 (PR33): full task list for the open project. Each item
@@ -157,6 +157,8 @@
             <div class="project-task-list-wrap" id="projectTaskListWrap" style="display:none">
                 <h4>Linked tasks</h4>
                 <ul class="project-task-list" id="projectTaskList"></ul>
+                {# #375: collapsed "Completed (N)", loaded on first open. #}
+                <div id="projectCompletedTasks"></div>
             </div>
 
             <div class="detail-actions">
@@ -188,6 +190,7 @@
     <script src="{{ url_for('static', filename='goal_filter_helpers.js') }}"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 <script src="{{ url_for('static', filename='project_task_drag_helpers.js') }}"></script>
+<script src="{{ url_for('static', filename='completed_tasks_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='projects.js') }}"></script>
 <script src="{{ url_for('static', filename='parse_capture.js') }}"></script>
 <script src="{{ url_for('static', filename='capture.js') }}"></script>

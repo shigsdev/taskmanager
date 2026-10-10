@@ -489,6 +489,18 @@ component is added, a data flow changes, or a security boundary shifts.
   Backed by the existing `projects_api.py` (no new endpoints). Single
   soft-delete action exposed as Archive ⇄ Unarchive (DELETE endpoint
   is identical to PATCH `is_active=false`).
+- **Active / done counts + on-demand Completed lists** (#375,
+  2026-10-10): `GET /api/projects` and `/api/projects/<id>` carry
+  `task_counts: {active, done}` from `project_service.
+  project_task_counts_batch` (one `GROUP BY` for the whole list, same
+  rule as `goal_service.goal_progress_batch`: done = archived; cancelled
+  and deleted excluded). The card label reads it; the page still loads
+  only ACTIVE tasks. The project panel and the goal panel's Linked Tasks
+  end with a collapsed "Completed (N)" section
+  (`static/completed_tasks_helpers.js`) that fetches
+  `/api/tasks?status=archived&project_id=…` (or `goal_id=`) on first
+  open, newest first by `updated_at`, 50 at a time — prod had 1,355
+  completed tasks (821 KB) vs 73 active, so they never load with the page.
 - **Task drag between project cards** (#344, 2026-09-30): each project
   card already listed its tasks inline (#95/PR33, collapsed past
   `PROJECT_TASKS_INLINE_LIMIT = 5`); those lines are now drag sources
