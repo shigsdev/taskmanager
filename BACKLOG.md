@@ -997,6 +997,8 @@ The script preserves operator-added prose across re-renders. -->
 | `security/pat-inventory/pat-placeholder-populate-when-you-next-rotate-a-pat-last_used_at-2026-05-26-is-94-days-ago-cap-at-60-days-consider-revoking-if-abandoned` | PAT '(placeholder) — populate when you next rotate a PAT': last_used_at 2026-05-26 is 94 days ago (cap at 60 days — consider revoking if abandoned) | 2026-08-28 | 2026-08-28 | 🟢 auto-detected resolved 2026-09-01 |
 <!-- audit-row: security/pat-inventory/pat-placeholder-populate-when-you-next-rotate-a-pat-last_used_at-2026-05-26-is-98-days-ago-cap-at-60-days-consider-revoking-if-abandoned -->
 | `security/pat-inventory/pat-placeholder-populate-when-you-next-rotate-a-pat-last_used_at-2026-05-26-is-98-days-ago-cap-at-60-days-consider-revoking-if-abandoned` | PAT '(placeholder) — populate when you next rotate a PAT': last_used_at 2026-05-26 is 98 days ago (cap at 60 days — consider revoking if abandoned) | 2026-09-01 | 2026-09-01 | 🟢 auto-detected resolved 2026-09-04 |
+<!-- audit-row: tech-debt/code-duplication/architecture.md-markdown -->
+| `tech-debt/code-duplication/architecture.md-markdown` | **ARCHITECTURE.md:markdown** — 78-line duplicate block: ARCHITECTURE.md:markdown:1294-1371 <-> ARCHITECTURE.md:markdown:1378-1459 — extract to a shared helper or rationalise the divergence. | 2026-10-10 | 2026-10-10 |  |
 <!-- audit-row: tech-debt/code-duplication/static-calendar.js -->
 | `tech-debt/code-duplication/static-calendar.js` | **static/calendar.js** — 37-line duplicate block: static/calendar.js:162-198 <-> static/calendar.js:383-405 — extract to a shared helper or rationalise the divergence. | 2026-07-14 | 2026-07-14 | 🟢 auto-detected resolved 2026-07-18 |
 <!-- audit-row: tech-debt/dependency-drift/npm-dep-jscpd-stuck-at-4.2.4-latest-is-5.0.11-1-major-version-s-behind -->
@@ -1020,13 +1022,15 @@ The script preserves operator-added prose across re-renders. -->
 <!-- audit-row: tech-debt/dependency-drift/pip-dep-gunicorn-stuck-at-22.0.0-latest-is-26.0.0-4-major-version-s-behind -->
 | `tech-debt/dependency-drift/pip-dep-gunicorn-stuck-at-22.0.0-latest-is-26.0.0-4-major-version-s-behind` | pip dep 'gunicorn' stuck at 22.0.0 — latest is 26.0.0 (4 major version(s) behind) | 2026-05-28 | 2026-05-28 | 🟢 auto-detected resolved 2026-05-30 |
 <!-- audit-row: tech-debt/stale-tests/tests-test_checklist_notes.py -->
-| `tech-debt/stale-tests/tests-test_checklist_notes.py` | **tests/test_checklist_notes.py** — last touched 2026-04-05 (181 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-03 | 2026-10-03 |  |
+| `tech-debt/stale-tests/tests-test_checklist_notes.py` | **tests/test_checklist_notes.py** — last touched 2026-04-05 (188 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-03 | 2026-10-10 |  |
 <!-- audit-row: tech-debt/stale-tests/tests-test_inbox_triage.py -->
-| `tech-debt/stale-tests/tests-test_inbox_triage.py` | **tests/test_inbox_triage.py** — last touched 2026-04-05 (181 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-03 | 2026-10-03 |  |
+| `tech-debt/stale-tests/tests-test_inbox_triage.py` | **tests/test_inbox_triage.py** — last touched 2026-04-05 (188 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-03 | 2026-10-10 |  |
+<!-- audit-row: tech-debt/stale-tests/tests-test_mobile_css.py -->
+| `tech-debt/stale-tests/tests-test_mobile_css.py` | **tests/test_mobile_css.py** — last touched 2026-04-10 (183 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-10 | 2026-10-10 |  |
 <!-- audit-row: tech-debt/stale-tests/tests-test_models.py -->
-| `tech-debt/stale-tests/tests-test_models.py` | **tests/test_models.py** — last touched 2026-04-05 (181 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-03 | 2026-10-03 |  |
+| `tech-debt/stale-tests/tests-test_models.py` | **tests/test_models.py** — last touched 2026-04-05 (188 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-03 | 2026-10-10 |  |
 <!-- audit-row: tech-debt/stale-tests/tests-test_smoke.py -->
-| `tech-debt/stale-tests/tests-test_smoke.py` | **tests/test_smoke.py** — last touched 2026-04-05 (181 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-03 | 2026-10-03 |  |
+| `tech-debt/stale-tests/tests-test_smoke.py` | **tests/test_smoke.py** — last touched 2026-04-05 (188 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-03 | 2026-10-10 |  |
 <!-- autofile-section-end -->
 
 ## Resolved (newest first)
