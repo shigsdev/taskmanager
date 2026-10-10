@@ -236,3 +236,57 @@ def test_no_two_static_js_files_declare_the_same_global():
     dupes = _duplicate_js_globals(sources)
     assert not dupes, "top-level names declared in more than one static/*.js:\n  " + \
         "\n  ".join(f"{k}: {', '.join(v)}" for k, v in sorted(dupes.items()))
+
+
+# --- Every CSS custom property used is defined somewhere (#411) ------------
+
+_CSS_VAR_USE = re.compile(r"var\(\s*(--[A-Za-z0-9_-]+)\s*(,)?")
+_CSS_VAR_DEF = re.compile(r"(--[A-Za-z0-9_-]+)\s*:")
+_JS_VAR_DEF = re.compile(r"""setProperty\(\s*["'](--[A-Za-z0-9_-]+)""")
+
+
+def _undefined_css_vars(stylesheets, definers):
+    """Names used as ``var(--x)`` WITHOUT a fallback in ``stylesheets``
+    that no stylesheet, template (inline ``style``) or script defines.
+    A ``var(--x, fallback)`` is allowed to be undefined — that's what the
+    fallback is for."""
+    defined = set()
+    for text in list(stylesheets.values()) + list(definers.values()):
+        defined |= set(_CSS_VAR_DEF.findall(text))
+        defined |= set(_JS_VAR_DEF.findall(text))
+    missing = {}
+    for name, text in stylesheets.items():
+        for var, has_fallback in _CSS_VAR_USE.findall(text):
+            if not has_fallback and var not in defined:
+                missing.setdefault(var, set()).add(name)
+    return {k: sorted(v) for k, v in missing.items()}
+
+
+def test_undefined_css_var_detector():
+    found = _undefined_css_vars(
+        {"a.css": ":root { --slate-200: #222; }\n"
+                  ".card { background: var(--slate-50); color: var(--slate-200); }\n"
+                  ".x { border-color: var(--maybe, red); width: calc(var(--p) * 1%); }\n"},
+        {"page.html": '<span style="--p:0"></span>'},
+    )
+    # --slate-50 is the real #411 bug; --maybe has a fallback; --p is set inline.
+    assert found == {"--slate-50": ["a.css"]}
+
+
+def test_every_css_custom_property_used_is_defined():
+    """A ``var(--name)`` with no fallback and no definition anywhere
+    resolves to nothing: the property silently falls back to its initial
+    value. #411: `.sf-logform { background: var(--slate-50) }` — a token
+    that never existed — rendered the workout log card TRANSPARENT for
+    months. CSS has no compile step and Playwright asserts behaviour, not
+    paint, so nothing else would notice."""
+    stylesheets = {p.name: p.read_text(encoding="utf-8")
+                   for p in sorted((REPO_ROOT / "static").glob("*.css"))}
+    definers = {str(p.relative_to(REPO_ROOT)): p.read_text(encoding="utf-8")
+                for p in list((REPO_ROOT / "templates").rglob("*.html"))
+                + list((REPO_ROOT / "static").glob("*.js"))}
+    missing = _undefined_css_vars(stylesheets, definers)
+    listing = "\n  ".join(f"{k} in {', '.join(v)}" for k, v in sorted(missing.items()))
+    assert not missing, (
+        "CSS var() used but never defined (add it to :root or give a fallback):\n  " + listing
+    )

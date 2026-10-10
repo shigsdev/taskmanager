@@ -863,6 +863,11 @@ flowchart TD
                         <td>#355: a second <code>_api</code> threw "already declared" and killed <code>inbox_categorize_helpers.js</code> on the home board; <code>dueDateForTier</code> was defined twice with different signatures, the later silently winning (#359). Jest loads files in isolation and saw neither</td>
                     </tr>
                     <tr>
+                        <td><code>test_every_css_custom_property_used_is_defined</code></td>
+                        <td>Every <code>var(--name)</code> without a fallback in <code>static/*.css</code> is defined somewhere — a stylesheet, an inline <code>style</code> in a template, or a script's <code>setProperty</code></td>
+                        <td>#411: <code>.sf-logform</code> used <code>var(--slate-50)</code>, a token that never existed, so the workout log card rendered transparent from #287 until #410's Phase 6 caught it. CSS has no compile step; Playwright checks behaviour, not paint</td>
+                    </tr>
+                    <tr>
                         <td><code>_build_enum_repair_statements</code></td>
                         <td>Auto-derives <code>ALTER TYPE … ADD VALUE</code> for every Python enum member at boot — no manual list to drift behind</td>
                         <td>Same as above (#53). Layer A complement to <code>check_enum_coverage</code></td>
