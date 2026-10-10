@@ -14,6 +14,8 @@ const {
     MAX_NAMED,
 } = require("../../../static/project_archive_helpers.js");
 
+// #374: the closing sentence follows the count.
+const ONE = "It resumes when you unarchive the project.";
 const TAIL = "They resume when you unarchive the project.";
 
 function rt(id, title, projectId, isActive = true) {
@@ -53,9 +55,9 @@ describe("archiveConfirmMessage", () => {
         expect(archiveConfirmMessage([])).toBe("");
     });
 
-    test("one template uses the singular", () => {
+    test("one template uses the singular, closing sentence too (#374)", () => {
         expect(archiveConfirmMessage([{ title: "A" }])).toBe(
-            `This will pause 1 repeating task: "A". ${TAIL}`,
+            `This will pause 1 repeating task: "A". ${ONE}`,
         );
     });
 
@@ -75,28 +77,36 @@ describe("archiveConfirmMessage", () => {
 
     test("titles render verbatim — confirm() is plain text, not HTML", () => {
         expect(archiveConfirmMessage([{ title: 'say "hi" <b>now</b>' }])).toBe(
-            `This will pause 1 repeating task: "say "hi" <b>now</b>". ${TAIL}`,
+            `This will pause 1 repeating task: "say "hi" <b>now</b>". ${ONE}`,
         );
     });
 
     // #369: the Settings import-undo confirm reuses this builder with its
-    // own tail; /projects keeps the default.
-    describe("optional tail (#369)", () => {
-        const UNDO_TAIL = "They resume if you restore this import from the Recycle Bin.";
+    // own tail — a {one, many} pair since #374; /projects keeps the default.
+    describe("optional tail (#369, #374)", () => {
+        const UNDO_TAIL = {
+            one: "It resumes if you restore this import from the Recycle Bin.",
+            many: "They resume if you restore this import from the Recycle Bin.",
+        };
 
-        test("a custom tail replaces the project tail", () => {
+        test("a custom tail replaces the project tail, picked by count", () => {
             expect(archiveConfirmMessage([{ title: "A" }], UNDO_TAIL)).toBe(
-                `This will pause 1 repeating task: "A". ${UNDO_TAIL}`,
+                `This will pause 1 repeating task: "A". ${UNDO_TAIL.one}`,
+            );
+            expect(archiveConfirmMessage([{ title: "A" }, { title: "B" }], UNDO_TAIL)).toBe(
+                `This will pause 2 repeating tasks: "A", "B". ${UNDO_TAIL.many}`,
             );
         });
 
-        test("omitted or empty tail keeps the project tail", () => {
-            expect(archiveConfirmMessage([{ title: "A" }])).toBe(
-                `This will pause 1 repeating task: "A". ${TAIL}`,
-            );
-            expect(archiveConfirmMessage([{ title: "A" }], "")).toBe(
-                `This will pause 1 repeating task: "A". ${TAIL}`,
-            );
+        test("omitted, empty or malformed tail keeps the project tail", () => {
+            for (const tail of [undefined, "", "a plain string", {}, { one: "x" }, null]) {
+                expect(archiveConfirmMessage([{ title: "A" }], tail)).toBe(
+                    `This will pause 1 repeating task: "A". ${ONE}`,
+                );
+                expect(archiveConfirmMessage([{ title: "A" }, { title: "B" }], tail)).toBe(
+                    `This will pause 2 repeating tasks: "A", "B". ${TAIL}`,
+                );
+            }
         });
 
         test("nothing pausing is still \"\" with a tail", () => {

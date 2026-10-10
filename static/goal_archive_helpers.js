@@ -182,8 +182,10 @@ function goalArchivePauseMessage(paused) {
     }).join(", ");
     var more = n > GOAL_PAUSE_MAX_NAMED ? " and " + (n - GOAL_PAUSE_MAX_NAMED) + " more" : "";
     var noun = n === 1 ? "repeating task" : "repeating tasks";
-    return "This will pause " + n + " " + noun + ": " + names + more + ". "
-        + "They resume when you unarchive the goal.";
+    // #374: one task "resumes", not "They resume".
+    var end = n === 1 ? "It resumes when you unarchive the goal."
+        : "They resume when you unarchive the goal.";
+    return "This will pause " + n + " " + noun + ": " + names + more + ". " + end;
 }
 
 if (typeof module !== "undefined" && module.exports) {

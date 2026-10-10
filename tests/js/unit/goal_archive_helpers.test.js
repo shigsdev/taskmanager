@@ -275,11 +275,12 @@ describe("templatesPausedByGoal", () => {
 
 describe("goalArchivePauseMessage", () => {
     const named = (n) => Array.from({ length: n }, (_, i) => ({ title: String.fromCharCode(65 + i) }));
+    const ONE = "It resumes when you unarchive the goal.";
     const TAIL = "They resume when you unarchive the goal.";
 
-    test("one template, singular", () => {
+    test("one template, singular — closing sentence too (#374)", () => {
         expect(goalArchivePauseMessage(named(1))).toBe(
-            `This will pause 1 repeating task: "A". ${TAIL}`);
+            `This will pause 1 repeating task: "A". ${ONE}`);
     });
 
     test("two templates, plural", () => {

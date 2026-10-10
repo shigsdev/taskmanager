@@ -5736,7 +5736,9 @@ test.describe("Archiving a project pauses its repeating tasks (#353) @noviewport
 
     const stamp = () =>
         `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const TAIL = "They resume when you unarchive the project.";
+    // #374: the closing sentence follows the count — one task "resumes".
+    const TAIL = "It resumes when you unarchive the project.";
+    const TAIL_MANY = "They resume when you unarchive the project.";
 
     async function projectWith(request, { templates = 0 } = {}) {
         const s = stamp();
@@ -5876,6 +5878,7 @@ test.describe("Archiving a project pauses its repeating tasks (#353) @noviewport
             expect(shown[0]).toContain("Archive 2 project(s)?");
             expect(shown[0]).toContain(`"${a.templates[0].title}"`);
             expect(shown[0]).toContain(`"${b.templates[0].title}"`);
+            expect(shown[0]).toContain(TAIL_MANY);
             expect(await templateActive(request, a.templates[0].id)).toBe(false);
         } finally {
             await cleanup(request, [a, b]);
@@ -5948,7 +5951,7 @@ test.describe("Archiving a goal pauses its repeating tasks (#368) @noviewport", 
 
     const stamp = () =>
         `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const TAIL = "They resume when you unarchive the goal.";
+    const TAIL = "It resumes when you unarchive the goal.";  // one template (#374)
 
     async function goalWith(request, { templates = 0 } = {}) {
         const s = stamp();
@@ -6087,7 +6090,7 @@ test.describe("Import undo names the repeating tasks it pauses (#369) @noviewpor
 
     const stamp = () =>
         `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const TAIL = "They resume if you restore this import from the Recycle Bin.";
+    const TAIL = "It resumes if you restore this import from the Recycle Bin.";  // one template (#374)
 
     // One imported project (its own batch), plus an optional template on it.
     async function importWith(request, { template = false } = {}) {

@@ -22,7 +22,11 @@
     "use strict";
 
     var MAX_NAMED = 5;
-    var TAIL = "They resume when you unarchive the project.";
+    // The closing sentence, by count (#374: one task "resumes", not "They").
+    var TAIL = {
+        one: "It resumes when you unarchive the project.",
+        many: "They resume when you unarchive the project.",
+    };
 
     /**
      * The templates that archiving `projectIds` will pause: active ones whose
@@ -40,8 +44,9 @@
 
     /**
      * Confirm text for the templates `templatesPausedBy` returned.
-     * `tail` (optional) replaces the closing sentence: #369's Settings
-     * import-undo confirm passes its own, /projects uses the default.
+     * `tail` (optional) replaces the closing sentence: a `{one, many}` pair,
+     * picked by count (#374). #369's Settings import-undo confirm passes its
+     * own; /projects uses the default, as does anything that isn't a pair.
      */
     function archiveConfirmMessage(paused, tail) {
         if (!Array.isArray(paused) || paused.length === 0) return "";
@@ -51,7 +56,9 @@
         }).join(", ");
         var more = n > MAX_NAMED ? " and " + (n - MAX_NAMED) + " more" : "";
         var noun = n === 1 ? "repeating task" : "repeating tasks";
-        var end = typeof tail === "string" && tail ? tail : TAIL;
+        var pair = tail && typeof tail.one === "string" && typeof tail.many === "string"
+            ? tail : TAIL;
+        var end = n === 1 ? pair.one : pair.many;
         return "This will pause " + n + " " + noun + ": " + names + more + ". " + end;
     }
 

@@ -193,8 +193,11 @@
         });
     }
 
-    // #369: closing line of the "this will pause…" paragraph.
-    var UNDO_PAUSE_TAIL = "They resume if you restore this import from the Recycle Bin.";
+    // #369: closing line of the "this will pause…" paragraph, by count (#374).
+    var UNDO_PAUSE_TAIL = {
+        one: "It resumes if you restore this import from the Recycle Bin.",
+        many: "They resume if you restore this import from the Recycle Bin.",
+    };
 
     // #369: the repeating tasks this undo would pause, as confirm text, or
     // "" when there are none. Any failure → "": the server cascade is the
