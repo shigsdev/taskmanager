@@ -7,12 +7,22 @@ This corresponds to the spec's "Inbox (Default Landing View)" section.
 Key terms:
 - Triage: the act of reviewing inbox items and deciding where they go
   (Today, This Week, Backlog, or Freezer).
-- Tier: one of the five buckets a task can live in (inbox, today,
-  this_week, backlog, freezer).
+- Tier: one of the seven buckets a task can live in (inbox, today,
+  tomorrow, this_week, next_week, backlog, freezer) — the tests below
+  iterate ``Tier`` itself, so a new tier is covered automatically.
+
+A task created WITH a due date files by that date instead of landing in
+Inbox (#386) — that rule lives in ``tests/test_dated_task_skips_inbox.py``.
+#413 refreshed this file (it had last changed in April, when there were
+five tiers and bulk triage was one PATCH per task).
 """
 from __future__ import annotations
 
+import pytest
+
 from models import Task, TaskStatus, TaskType, Tier, db
+
+_TRIAGE_TARGETS = [t.value for t in Tier if t is not Tier.INBOX]
 
 
 def _make_task(**overrides) -> Task:
@@ -60,49 +70,23 @@ class TestInboxDefaults:
 class TestTriageSingleTask:
     """Verify triaging (moving) a single task from inbox to another tier."""
 
-    def test_move_inbox_to_today(self, authed_client, app):
+    @pytest.mark.parametrize("target", _TRIAGE_TARGETS)
+    def test_move_inbox_to_every_other_tier(self, authed_client, app, target):
         with app.app_context():
             task = _make_task(title="Triage me", tier=Tier.INBOX)
             task_id = str(task.id)
 
-        # Triage: move from inbox to today
-        resp = authed_client.patch(
-            f"/api/tasks/{task_id}", json={"tier": "today"}
-        )
+        resp = authed_client.patch(f"/api/tasks/{task_id}", json={"tier": target})
         assert resp.status_code == 200
-        assert resp.get_json()["tier"] == "today"
+        assert resp.get_json()["tier"] == target
 
-        # Confirm it's no longer in inbox
-        resp = authed_client.get("/api/tasks?tier=inbox")
-        inbox_ids = [t["id"] for t in resp.get_json()]
+        # ...and it has left the inbox.
+        inbox_ids = [t["id"] for t in authed_client.get("/api/tasks?tier=inbox").get_json()]
         assert task_id not in inbox_ids
 
-    def test_move_inbox_to_this_week(self, authed_client, app):
-        with app.app_context():
-            task = _make_task(tier=Tier.INBOX)
-            task_id = str(task.id)
-        resp = authed_client.patch(
-            f"/api/tasks/{task_id}", json={"tier": "this_week"}
-        )
-        assert resp.get_json()["tier"] == "this_week"
-
-    def test_move_inbox_to_backlog(self, authed_client, app):
-        with app.app_context():
-            task = _make_task(tier=Tier.INBOX)
-            task_id = str(task.id)
-        resp = authed_client.patch(
-            f"/api/tasks/{task_id}", json={"tier": "backlog"}
-        )
-        assert resp.get_json()["tier"] == "backlog"
-
-    def test_move_inbox_to_freezer(self, authed_client, app):
-        with app.app_context():
-            task = _make_task(tier=Tier.INBOX)
-            task_id = str(task.id)
-        resp = authed_client.patch(
-            f"/api/tasks/{task_id}", json={"tier": "freezer"}
-        )
-        assert resp.get_json()["tier"] == "freezer"
+    def test_every_tier_is_a_triage_target(self):
+        # Guards the parametrization above against a tier being skipped.
+        assert set(_TRIAGE_TARGETS) | {"inbox"} == {t.value for t in Tier}
 
 
 # --- Bulk triage: moving multiple tasks at once --------------------------------
@@ -111,10 +95,9 @@ class TestTriageSingleTask:
 class TestBulkTriage:
     """Verify that multiple inbox tasks can be triaged in batch.
 
-    In the UI, the user checks several inbox items and assigns them
-    all to the same tier at once. Under the hood, this sends one
-    PATCH request per task (the JS does this in parallel). We test
-    the same pattern here.
+    In the UI, the user ticks several inbox items and assigns them all to
+    one tier. The board sends ONE ``PATCH /api/tasks/bulk`` call
+    (``static/app.js`` bulk toolbar) — the same path these tests drive.
     """
 
     def test_bulk_move_three_tasks_to_today(self, authed_client, app):
@@ -124,12 +107,11 @@ class TestBulkTriage:
             t3 = _make_task(title="Bulk 3", tier=Tier.INBOX)
             ids = [str(t1.id), str(t2.id), str(t3.id)]
 
-        # Move all three to today (simulating bulk triage)
-        for task_id in ids:
-            resp = authed_client.patch(
-                f"/api/tasks/{task_id}", json={"tier": "today"}
-            )
-            assert resp.status_code == 200
+        resp = authed_client.patch("/api/tasks/bulk", json={
+            "task_ids": ids, "updates": {"tier": "today"},
+        })
+        assert resp.status_code == 200
+        assert resp.get_json()["updated"] == 3
 
         # Inbox should now be empty
         resp = authed_client.get("/api/tasks?tier=inbox")
@@ -149,8 +131,12 @@ class TestBulkTriage:
             t2 = _make_task(title="Goes backlog", tier=Tier.INBOX)
             id1, id2 = str(t1.id), str(t2.id)
 
-        authed_client.patch(f"/api/tasks/{id1}", json={"tier": "today"})
-        authed_client.patch(f"/api/tasks/{id2}", json={"tier": "backlog"})
+        # One bulk call per destination tier, as the toolbar does.
+        for task_id, tier in ((id1, "today"), (id2, "backlog")):
+            resp = authed_client.patch("/api/tasks/bulk", json={
+                "task_ids": [task_id], "updates": {"tier": tier},
+            })
+            assert resp.get_json()["updated"] == 1
 
         resp = authed_client.get("/api/tasks?tier=inbox")
         assert resp.get_json() == []
@@ -173,31 +159,23 @@ class TestInboxFiltering:
         titles = [t["title"] for t in resp.get_json()]
         assert titles == ["In inbox"]
 
-    def test_inbox_excludes_deleted_tasks(self, authed_client, app):
+    @pytest.mark.parametrize("status", [
+        TaskStatus.DELETED, TaskStatus.ARCHIVED, TaskStatus.CANCELLED,
+    ])
+    def test_inbox_lists_only_active_tasks(self, authed_client, app, status):
         with app.app_context():
             _make_task(title="Active inbox", tier=Tier.INBOX)
-            _make_task(
-                title="Deleted inbox",
-                tier=Tier.INBOX,
-                status=TaskStatus.DELETED,
-            )
+            _make_task(title=f"{status.value} inbox", tier=Tier.INBOX, status=status)
 
         resp = authed_client.get("/api/tasks?tier=inbox")
         titles = [t["title"] for t in resp.get_json()]
         assert titles == ["Active inbox"]
 
-    def test_inbox_excludes_archived_tasks(self, authed_client, app):
-        with app.app_context():
-            _make_task(title="Active", tier=Tier.INBOX)
-            _make_task(
-                title="Archived",
-                tier=Tier.INBOX,
-                status=TaskStatus.ARCHIVED,
-            )
-
-        resp = authed_client.get("/api/tasks?tier=inbox")
-        titles = [t["title"] for t in resp.get_json()]
-        assert titles == ["Active"]
+    def test_every_non_active_status_is_excluded(self):
+        # Guards the parametrization above against a new status.
+        assert {s for s in TaskStatus if s is not TaskStatus.ACTIVE} == {
+            TaskStatus.DELETED, TaskStatus.ARCHIVED, TaskStatus.CANCELLED,
+        }
 
 
 # --- Complete from inbox (skip triage) ----------------------------------------

@@ -1,4 +1,4 @@
-"""Tests for SQLAlchemy models — CRUD + constraint validation."""
+"""Tests for SQLAlchemy models — CRUD, constraint validation, enum boundaries."""
 from __future__ import annotations
 
 from datetime import date
@@ -13,6 +13,8 @@ from models import (
     GoalStatus,
     ImportLog,
     Project,
+    ProjectPriority,
+    ProjectStatus,
     ProjectType,
     RecurringFrequency,
     RecurringTask,
@@ -246,6 +248,90 @@ def test_import_log_source_required(db):
     with pytest.raises(IntegrityError):
         db.session.commit()
     db.session.rollback()
+
+
+# --- Enum boundaries (#413) --------------------------------------------------
+#
+# CLAUDE.md asks model tests to cover enum boundaries. Every member of every
+# enum used as a column must round-trip through the DB — iterating the enum
+# itself, so a member added later (TOMORROW / NEXT_WEEK tiers, CANCELLED
+# status, a new goal category or recurring frequency) is covered the day it
+# lands. The Postgres side of the same risk is /healthz enum_coverage.
+
+
+def _goal(**kw):
+    fields = {"title": "G", "category": GoalCategory.WORK, "priority": GoalPriority.MUST}
+    fields.update(kw)
+    return Goal(**fields)
+
+
+def _round_trip(db, row, attr):
+    db.session.add(row)
+    db.session.commit()
+    value = getattr(row, attr)
+    db.session.expire_all()
+    return value, getattr(db.session.get(type(row), row.id), attr)
+
+
+@pytest.mark.parametrize("tier", list(Tier))
+def test_every_tier_round_trips(db, tier):
+    sent, got = _round_trip(db, Task(title="t", type=TaskType.WORK, tier=tier), "tier")
+    assert got is sent is tier
+
+
+@pytest.mark.parametrize("status", list(TaskStatus))
+def test_every_task_status_round_trips(db, status):
+    _, got = _round_trip(db, Task(title="t", type=TaskType.WORK, status=status), "status")
+    assert got is status
+
+
+@pytest.mark.parametrize("task_type", list(TaskType))
+def test_every_task_type_round_trips(db, task_type):
+    _, got = _round_trip(db, Task(title="t", type=task_type), "type")
+    assert got is task_type
+
+
+@pytest.mark.parametrize("category", list(GoalCategory))
+def test_every_goal_category_round_trips(db, category):
+    _, got = _round_trip(db, _goal(category=category), "category")
+    assert got is category
+
+
+@pytest.mark.parametrize("priority", list(GoalPriority))
+def test_every_goal_priority_round_trips(db, priority):
+    _, got = _round_trip(db, _goal(priority=priority), "priority")
+    assert got is priority
+
+
+@pytest.mark.parametrize("status", list(GoalStatus))
+def test_every_goal_status_round_trips(db, status):
+    _, got = _round_trip(db, _goal(status=status), "status")
+    assert got is status
+
+
+@pytest.mark.parametrize("ptype", list(ProjectType))
+def test_every_project_type_round_trips(db, ptype):
+    _, got = _round_trip(db, Project(name="p", type=ptype), "type")
+    assert got is ptype
+
+
+@pytest.mark.parametrize("pstatus", list(ProjectStatus))
+def test_every_project_status_round_trips(db, pstatus):
+    _, got = _round_trip(db, Project(name="p", status=pstatus), "status")
+    assert got is pstatus
+
+
+@pytest.mark.parametrize("ppriority", list(ProjectPriority))
+def test_every_project_priority_round_trips(db, ppriority):
+    _, got = _round_trip(db, Project(name="p", priority=ppriority), "priority")
+    assert got is ppriority
+
+
+@pytest.mark.parametrize("freq", list(RecurringFrequency))
+def test_every_recurring_frequency_round_trips(db, freq):
+    row = RecurringTask(title="r", frequency=freq, type=TaskType.WORK)
+    _, got = _round_trip(db, row, "frequency")
+    assert got is freq
 
 
 # --- URL normalization -------------------------------------------------------

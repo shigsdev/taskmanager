@@ -1,5 +1,9 @@
 """Integration tests for mobile-responsive CSS (Step 11).
 
+Rendered-layout checks at 375px (horizontal overflow, real tap-target
+sizes) live in tests/e2e/ui_audit.spec.js (#274); this file checks the
+markup and stylesheet hooks those rules depend on.
+
 These tests verify that the HTML templates contain the elements and
 attributes needed for mobile responsiveness:
 
@@ -14,6 +18,8 @@ attributes needed for mobile responsiveness:
   rules (like @media queries and .swiped class).
 """
 from __future__ import annotations
+
+import pytest
 
 import auth
 
@@ -30,15 +36,19 @@ class TestViewportMeta:
     because the browser thinks it's on a desktop.
     """
 
-    def test_index_has_viewport_meta(self, client, monkeypatch):
+    # #413: every page, not just "/" and "/goals" — a page template that
+    # stops extending base.html would lose the tag and render zoomed-out.
+    @pytest.mark.parametrize("path", [
+        "/", "/goals", "/projects", "/calendar", "/completed", "/tier/today",
+        "/recurring", "/review", "/settings", "/import", "/scan", "/reflection",
+        "/strength-forge", "/recycle-bin", "/print", "/docs", "/architecture",
+        "/utilities", "/voice-memo", "/plan",
+    ])
+    def test_every_page_has_viewport_meta(self, client, monkeypatch, path):
         monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
-        html = client.get("/").data.decode()
-        assert 'name="viewport"' in html
-        assert "width=device-width" in html
-
-    def test_goals_has_viewport_meta(self, client, monkeypatch):
-        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
-        html = client.get("/goals").data.decode()
+        resp = client.get(path)
+        assert resp.status_code == 200
+        html = resp.data.decode()
         assert 'name="viewport"' in html
         assert "width=device-width" in html
 

@@ -54,22 +54,45 @@ def test_healthz_no_auth(client):
     assert resp.get_json()["status"] == "ok"
 
 
+# #413: refreshed — the April versions named 4 blueprints and 6 routes;
+# the app now registers 22 blueprints and ~20 pages. A blueprint or page
+# that silently stops registering (a botched import, a removed
+# register_blueprint line) fails here first.
+EXPECTED_BLUEPRINTS = {
+    "auth_api", "debug_api", "digest_api", "goals_api", "google",
+    "import_api", "inbox_categorize_api", "planner_api", "projects_api",
+    "recurring_api", "recycle_api", "reflection_api", "review_api",
+    "scan_api", "settings_api", "strength_forge_api", "tasks_api",
+    "triage_api", "utilities_api", "voice_api", "voice_review_api",
+    "weekly_focus_api",
+}
+
+EXPECTED_PAGES = {
+    "/", "/architecture", "/calendar", "/completed", "/docs", "/goals",
+    "/healthz", "/import", "/login", "/plan", "/print", "/projects",
+    "/recurring", "/recycle-bin", "/reflection", "/review", "/scan",
+    "/settings", "/strength-forge", "/tier/<name>", "/utilities",
+    "/voice-memo",
+}
+
+
 def test_all_blueprints_registered(app):
-    names = set(app.blueprints.keys())
-    assert "google" in names
-    assert "tasks_api" in names
-    assert "goals_api" in names
-    assert "projects_api" in names
+    missing = EXPECTED_BLUEPRINTS - set(app.blueprints)
+    assert not missing, f"blueprints not registered: {sorted(missing)}"
 
 
 def test_expected_routes_exist(app):
-    rules = [r.rule for r in app.url_map.iter_rules()]
-    assert "/api/tasks" in rules
-    assert "/api/goals" in rules
-    assert "/goals" in rules
-    assert "/healthz" in rules
-    assert "/login" in rules
-    assert "/logout" in rules
+    rules = {r.rule for r in app.url_map.iter_rules()}
+    missing = (EXPECTED_PAGES | {"/api/tasks", "/api/goals", "/logout"}) - rules
+    assert not missing, f"routes not registered: {sorted(missing)}"
+
+
+def test_logout_is_never_a_get(app):
+    """#185/#190: a state-mutating GET is a CSRF surface (SameSite=Lax
+    doesn't block a cross-site <img src=...>)."""
+    methods = {m for r in app.url_map.iter_rules() if r.rule == "/logout" for m in r.methods}
+    assert "POST" in methods
+    assert "GET" not in methods
 
 
 # --- PostgreSQL-specific (skipped unless DATABASE_URL is a real PG) ----------

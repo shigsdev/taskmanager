@@ -16,6 +16,8 @@ a round-trip (write to database → read back unchanged).
 """
 from __future__ import annotations
 
+import pytest
+
 from models import Task, TaskType, db
 
 
@@ -338,27 +340,29 @@ class TestNotes:
 # --- View integration: HTML elements exist ------------------------------------
 
 
+# #413: the detail panel became a shared partial
+# (templates/_task_detail_panel.html) included on six pages; the April
+# versions of these checks only loaded "/".
+_PANEL_PAGES = ["/", "/tier/today", "/completed", "/calendar", "/projects", "/goals"]
+
+
 class TestChecklistNotesViews:
-    """Verify the HTML has the elements the JavaScript needs to render
-    checklists and notes in the detail panel."""
+    """Verify every page that hosts the task detail panel has the elements
+    the JavaScript needs to render checklists and notes."""
 
-    def test_detail_panel_has_notes_field(self, client, monkeypatch):
-        import auth
+    @pytest.mark.parametrize("path", _PANEL_PAGES)
+    @pytest.mark.parametrize("element_id", ["detailNotes", "checklistItems", "addChecklistItem"])
+    def test_detail_panel_elements_on_every_host_page(self, authed_client, path, element_id):
+        resp = authed_client.get(path)
+        assert resp.status_code == 200
+        assert f'id="{element_id}"' in resp.data.decode()
 
-        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
-        html = client.get("/").data.decode()
-        assert 'id="detailNotes"' in html
-
-    def test_detail_panel_has_checklist_container(self, client, monkeypatch):
-        import auth
-
-        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
-        html = client.get("/").data.decode()
-        assert 'id="checklistItems"' in html
-
-    def test_detail_panel_has_add_checklist_button(self, client, monkeypatch):
-        import auth
-
-        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
-        html = client.get("/").data.decode()
-        assert 'id="addChecklistItem"' in html
+    def test_panel_pages_list_matches_the_templates(self):
+        """Guards _PANEL_PAGES: every template that includes the panel is
+        one of the pages above (6 templates, 6 pages)."""
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent / "templates"
+        hosts = sorted(p.name for p in root.glob("*.html")
+                       if "_task_detail_panel.html" in p.read_text(encoding="utf-8"))
+        assert hosts == ["calendar.html", "completed.html", "goals.html",
+                         "index.html", "projects.html", "tier.html"]
