@@ -639,11 +639,9 @@
       });
       order.forEach(function (eid) {
         var g = groups[eid];
-        var setsText = g.rows.map(function (st) {
-          var r = (st.reps != null ? st.reps + " reps" : "");
-          var res = st.resistance ? ((r ? " @ " : "") + st.resistance) : "";
-          return (r + res) || "—";
-        }).join(", ");
+        // #410: per-side sets read "L 10 · R 9 @ Medium" (helper, unit-tested).
+        var setsText = window.strengthForgeHelpers
+          ? window.strengthForgeHelpers.summarizeSets(g.rows) : "";
         mount.appendChild(el("div", { cls: "sf-track-detail-ex" }, [
           el("span", { cls: "sf-track-detail-name", text: g.name }),
           el("span", { cls: "sf-track-detail-sets", text: setsText }),
@@ -771,12 +769,19 @@
     }
     var blanks = el("div", { cls: "sf-print-blanks" });
     var n = setCount(item.sets);
+    var perSide = !!window.strengthForgeHelpers
+      && window.strengthForgeHelpers.isPerSide(item, SF.exercises);
     for (var i = 1; i <= n; i++) {
-      var blankKids = [
-        el("span", { cls: "sf-print-blank-n", text: "S" + i }),
-        el("span", { cls: "sf-print-blank-lbl", text: "reps" }),
-        el("span", { cls: "sf-print-blank-line" + (showResist ? "" : " wide") }),
-      ];
+      var blankKids = [el("span", { cls: "sf-print-blank-n", text: "S" + i })];
+      if (perSide) {  // #410: a write-in cell per side
+        blankKids.push(el("span", { cls: "sf-print-blank-lbl", text: "L" }));
+        blankKids.push(el("span", { cls: "sf-print-blank-line" }));
+        blankKids.push(el("span", { cls: "sf-print-blank-lbl", text: "R" }));
+        blankKids.push(el("span", { cls: "sf-print-blank-line" }));
+      } else {
+        blankKids.push(el("span", { cls: "sf-print-blank-lbl", text: "reps" }));
+        blankKids.push(el("span", { cls: "sf-print-blank-line" + (showResist ? "" : " wide") }));
+      }
       if (showResist) {
         blankKids.push(el("span", { cls: "sf-print-blank-lbl", text: "resistance" }));
         blankKids.push(el("span", { cls: "sf-print-blank-line wide" }));
@@ -1071,17 +1076,29 @@
   }
 
   // saved (optional): { reps, resistance } to prefill from a restored draft.
-  function addSet(container, hintResist, showResist, saved) {
+  // #410 perSide: the row gets a Left and a Right reps box (one shared
+  // resistance). A draft saved before #410 restores its single reps into L.
+  function addSet(container, hintResist, showResist, saved, perSide) {
     var row = el("div", {
-      cls: "sf-logform-set" + (showResist ? "" : " sf-logform-set--noresist"),
+      cls: "sf-logform-set" + (showResist ? "" : " sf-logform-set--noresist")
+        + (perSide ? " sf-logform-set--sides" : ""),
     });
-    var reps = el("input", {
-      cls: "sf-logform-reps",
-      attrs: { type: "number", inputmode: "numeric", min: "0", placeholder: "reps", "aria-label": "reps" },
-    });
-    if (saved && saved.reps != null && saved.reps !== "") reps.value = saved.reps;
+    var repsInput = function (cls, placeholder, label, value) {
+      var input = el("input", {
+        cls: "sf-logform-reps" + (cls ? " " + cls : ""),
+        attrs: { type: "number", inputmode: "numeric", min: "0", placeholder: placeholder, "aria-label": label },
+      });
+      if (value != null && value !== "") input.value = value;
+      return input;
+    };
     row.appendChild(el("span", { cls: "sf-logform-setn", text: "Set" }));
-    row.appendChild(reps);
+    if (perSide) {
+      var left = saved ? (saved.repsL != null ? saved.repsL : saved.reps) : null;
+      row.appendChild(repsInput("sf-logform-reps-l", "L reps", "left side reps", left));
+      row.appendChild(repsInput("sf-logform-reps-r", "R reps", "right side reps", saved && saved.repsR));
+    } else {
+      row.appendChild(repsInput("", "reps", "reps", saved && saved.reps));
+    }
     if (showResist) {
       // Placeholder shows last-used resistance as a reference without
       // recording it — the row stays blank until the user actually types.
@@ -1108,6 +1125,8 @@
   function exerciseBlock(item, savedRows) {
     var container = el("div", { cls: "sf-logform-sets" });
     var showResist = usesResist(item);
+    var perSide = !!window.strengthForgeHelpers
+      && window.strengthForgeHelpers.isPerSide(item, SF.exercises);
     var last = lastResistance[item.id];
     var hint = showResist && last && last.resistance ? last.resistance : "";
     var head = el("div", { cls: "sf-logform-ex-head" }, [
@@ -1118,6 +1137,9 @@
       var lastLbl = lastResistLabel(item.id);
       if (lastLbl) head.appendChild(el("div", { cls: "sf-logform-ex-last", text: lastLbl }));
     }
+    if (perSide) {
+      head.appendChild(el("div", { cls: "sf-logform-ex-sides", text: "each side — log Left and Right" }));
+    }
     var block = el("div", {
       cls: "sf-logform-ex",
       attrs: { "data-exercise-id": item.id, "data-name": item.name },
@@ -1127,15 +1149,15 @@
       el("button", {
         cls: "sf-logform-addset", text: "+ add set",
         attrs: { type: "button" },
-        on: { click: function () { addSet(container, hint, showResist); scheduleDraftSave(); } },
+        on: { click: function () { addSet(container, hint, showResist, null, perSide); scheduleDraftSave(); } },
       }),
     ]);
     if (savedRows && savedRows.length) {
-      savedRows.forEach(function (r) { addSet(container, hint, showResist, r); });
+      savedRows.forEach(function (r) { addSet(container, hint, showResist, r, perSide); });
     } else {
       var count = window.strengthForgeHelpers
         ? window.strengthForgeHelpers.defaultSetCount(item.sets) : 1;
-      for (var i = 0; i < count; i++) addSet(container, hint, showResist);
+      for (var i = 0; i < count; i++) addSet(container, hint, showResist, null, perSide);
     }
     return block;
   }
@@ -1169,12 +1191,16 @@
       var sets = [];
       var rows = b.querySelectorAll(".sf-logform-set");
       Array.prototype.forEach.call(rows, function (r) {
-        var repsEl = r.querySelector(".sf-logform-reps");
         var resistEl = r.querySelector(".sf-logform-resist");
-        sets.push({
-          reps: repsEl ? repsEl.value : "",
-          resistance: resistEl ? resistEl.value : "",
-        });
+        var resistance = resistEl ? resistEl.value : "";
+        var leftEl = r.querySelector(".sf-logform-reps-l");
+        if (leftEl) {  // #410 per-side row
+          var rightEl = r.querySelector(".sf-logform-reps-r");
+          sets.push({ repsL: leftEl.value, repsR: rightEl ? rightEl.value : "", resistance: resistance });
+          return;
+        }
+        var repsEl = r.querySelector(".sf-logform-reps");
+        sets.push({ reps: repsEl ? repsEl.value : "", resistance: resistance });
       });
       exercises.push({
         exercise_id: b.getAttribute("data-exercise-id"),
@@ -1250,8 +1276,9 @@
   function draftHasContent(exercises) {
     return exercises.some(function (ex) {
       return ex.sets.some(function (s) {
-        return (s.reps != null && String(s.reps).trim() !== "")
-          || (s.resistance != null && String(s.resistance).trim() !== "");
+        return [s.reps, s.repsL, s.repsR, s.resistance].some(function (v) {
+          return v != null && String(v).trim() !== "";
+        });
       });
     });
   }

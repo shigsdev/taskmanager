@@ -43,36 +43,116 @@ function defaultSetCount(prescribed) {
  *
  * Input shape (array of exercises):
  *   [{ exercise_id, name, sets: [{ reps, resistance }, ...] }, ...]
+ *   #410: a per-side exercise's rows are { repsL, repsR, resistance }.
  * Output (array of set entries, set_number 1-based per exercise):
  *   [{ exercise_id, name, set_number, reps, resistance }, ...]
+ *   #410: a per-side row yields one entry per filled side, each with
+ *   `side: "L" | "R"`, sharing set_number and the one resistance. A per-side
+ *   row with a resistance but no reps yields ONE side-less entry (it still
+ *   records the band for the "last used" reference).
  *
  * reps: parsed to a non-negative int or null. resistance: trimmed or "".
  */
+function parseReps(raw) {
+    if (raw === "" || raw == null) return null;
+    var parsed = parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
 function buildSetsPayload(exercises) {
     var out = [];
     if (!Array.isArray(exercises)) return out;
     exercises.forEach(function (ex) {
         if (!ex || !Array.isArray(ex.sets)) return;
         var n = 0;
+        var base = function (setNumber) {
+            return { exercise_id: ex.exercise_id || "", name: ex.name || "", set_number: setNumber };
+        };
         ex.sets.forEach(function (row) {
             var resistance = (row && row.resistance ? String(row.resistance) : "").trim();
-            var reps = null;
-            if (row && row.reps !== "" && row.reps != null) {
-                var parsed = parseInt(row.reps, 10);
-                if (Number.isFinite(parsed) && parsed >= 0) reps = parsed;
+            var perSide = !!row && ("repsL" in row || "repsR" in row);
+            if (perSide) {
+                var l = parseReps(row.repsL), r = parseReps(row.repsR);
+                if (l == null && r == null && !resistance) return; // blank row
+                n += 1;
+                if (l == null && r == null) {
+                    var only = base(n);
+                    only.reps = null;
+                    only.resistance = resistance;
+                    out.push(only);
+                    return;
+                }
+                [["L", l], ["R", r]].forEach(function (pair) {
+                    if (pair[1] == null) return;
+                    var e = base(n);
+                    e.side = pair[0];
+                    e.reps = pair[1];
+                    e.resistance = resistance;
+                    out.push(e);
+                });
+                return;
             }
+            var reps = parseReps(row && row.reps);
             if (reps == null && !resistance) return; // blank row — skip
             n += 1;
-            out.push({
-                exercise_id: ex.exercise_id || "",
-                name: ex.name || "",
-                set_number: n,
-                reps: reps,
-                resistance: resistance,
-            });
+            var entry = base(n);
+            entry.reps = reps;
+            entry.resistance = resistance;
+            out.push(entry);
         });
     });
     return out;
+}
+
+/**
+ * isPerSide — does this plan item log Left and Right reps separately? (#410)
+ * An explicit catalog flag (`perSide: true`), never parsed from "each" —
+ * "10 each direction" on arm circles is not per side. An item-level flag wins.
+ */
+function isPerSide(item, catalog) {
+    if (!item) return false;
+    if (item.perSide) return true;
+    if (!catalog || !item.id || !catalog[item.id]) return false;
+    return !!catalog[item.id].perSide;
+}
+
+/**
+ * summarizeSets — one exercise's logged rows as the history-strip text.
+ *
+ *   per-side:  [{set 1, L, 10, Medium}, {set 1, R, 9, Medium}] -> "L 10 · R 9 @ Medium"
+ *   bilateral: [{set 1, 12, Light}, {set 2, null, Heavy}]       -> "12 reps @ Light, Heavy"
+ *   empty row -> "—"; no rows -> ""
+ * Sets are joined with ", " in the order given (the API returns them by
+ * set_number).
+ */
+function summarizeSets(rows) {
+    if (!Array.isArray(rows) || !rows.length) return "";
+    var groups = [], bySet = {};
+    rows.forEach(function (st) {
+        var sided = st.side === "L" || st.side === "R";
+        var key = sided ? "s" + st.set_number : "row" + groups.length;
+        if (!bySet[key]) {
+            bySet[key] = { n: st.set_number || 0, rows: [] };
+            groups.push(bySet[key]);
+        }
+        bySet[key].rows.push(st);
+    });
+    return groups.map(function (g) {
+        var sided = g.rows.filter(function (st) { return st.side === "L" || st.side === "R"; });
+        var resistance = "";
+        g.rows.forEach(function (st) { if (!resistance && st.resistance) resistance = st.resistance; });
+        var reps;
+        if (sided.length) {
+            reps = ["L", "R"].map(function (s) {
+                var hit = sided.filter(function (st) { return st.side === s; })[0];
+                return hit && hit.reps != null ? s + " " + hit.reps : "";
+            }).filter(Boolean).join(" · ");
+        } else {
+            reps = g.rows[0].reps != null ? g.rows[0].reps + " reps" : "";
+        }
+        var res = resistance ? ((reps ? " @ " : "") + resistance) : "";
+        return (reps + res) || "—";
+    }).join(", ");
 }
 
 /**
@@ -206,6 +286,8 @@ var strengthForgeHelpers = {
     isDraftFresh: isDraftFresh,
     planTypesForRole: planTypesForRole,
     exerciseSearchLinks: exerciseSearchLinks,
+    isPerSide: isPerSide,
+    summarizeSets: summarizeSets,
 };
 
 // Browser global

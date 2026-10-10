@@ -271,3 +271,26 @@ describe("search queries", () => {
     expect(SF.googleLink).toBeUndefined();
   });
 });
+
+
+// #410: per-side exercises are flagged explicitly — never parsed from "each"
+// ("10 each direction" on arm circles is not per side).
+describe("per-side flags", () => {
+  const PER_SIDE = [
+    "pallof-press", "dead-bug", "lateral-walk", "band-leg-curl",
+    "band-glute-kickback", "band-concentration-curl", "band-tricep-kickback",
+    "reverse-lunge", "glute-bridge-single", "leg-swings",
+  ];
+
+  test("exactly the per-side moves carry perSide: true", () => {
+    const flagged = Object.keys(SF.exercises).filter((id) => SF.exercises[id].perSide).sort();
+    expect(flagged).toEqual([...PER_SIDE].sort());
+  });
+
+  test("every plan item of a per-side move is prescribed per side", () => {
+    for (const it of allItems()) {
+      if (!PER_SIDE.includes(it.id)) continue;
+      expect(/each/.test(it.sets) ? it.id : `${it.id}: "${it.sets}"`).toBe(it.id);
+    }
+  });
+});

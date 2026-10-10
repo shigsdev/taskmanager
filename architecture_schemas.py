@@ -284,6 +284,7 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "set_number":         {"desc": "1-based set index within the exercise"},
             "reps":               {"desc": "Reps performed in this set", "notes": "Nullable — time-based moves (planks/breathing) can log resistance with blank reps"},
             "resistance":         {"desc": "Band level / load for this set (free text + Light/Medium/Heavy quick-picks)", "notes": "Nullable"},
+            "side":               {"desc": "Which side a per-side exercise's set was (L or R) — each side is its own row sharing set_number (#410)", "notes": "Nullable — bilateral moves and logs from before #410 have no side"},
         },
     },
     "flare_states": {

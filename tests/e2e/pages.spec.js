@@ -7975,3 +7975,49 @@ test.describe("Strength Forge search links (#409)", () => {
         }
     });
 });
+
+// #410: per-side exercises log Left and Right reps per set (one band).
+test.describe("Strength Forge per-side logging (#410)", () => {
+    test("Pallof Press logs an L and an R row; the strip shows both", async ({ page, request }) => {
+        await page.goto("/strength-forge?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.getByRole("button", { name: "🔁 Split" }).click();
+        const panel = page.locator('.sf-panel[data-tab="split"]');
+        await panel.locator(".sf-log-detail-btn").click();
+        await expect(page.locator(".sf-logform-overlay")).toBeVisible();
+
+        const pallof = page.locator('.sf-logform-ex[data-exercise-id="pallof-press"]');
+        const set1 = pallof.locator(".sf-logform-set").first();
+        await expect(set1.locator(".sf-logform-reps-l")).toBeVisible();
+        await expect(set1.locator(".sf-logform-reps-r")).toBeVisible();
+        // A bilateral move on the same form keeps its single reps box.
+        const press = page.locator('.sf-logform-ex[data-exercise-id="band-chest-press"] .sf-logform-set').first();
+        await expect(press.locator(".sf-logform-reps-l")).toHaveCount(0);
+        await expect(press.locator(".sf-logform-reps")).toHaveCount(1);
+
+        await set1.locator(".sf-logform-reps-l").fill("10");
+        await set1.locator(".sf-logform-reps-r").fill("9");
+        await set1.locator(".sf-logform-resist").fill("Medium");
+        const [resp] = await Promise.all([
+            page.waitForResponse((r) => r.url().includes("/api/strength-forge/sessions")
+                && r.request().method() === "POST"),
+            page.locator(".sf-logform-save").click(),
+        ]);
+        expect(resp.status()).toBe(201);
+        const { id } = await resp.json();
+        try {
+            const detail = await (await request.get(`/api/strength-forge/sessions/${id}`)).json();
+            const rows = detail.sets.filter((s) => s.exercise_id === "pallof-press");
+            expect(rows.map((s) => [s.side, s.set_number, s.reps, s.resistance]).sort())
+                .toEqual([["L", 1, 10, "Medium"], ["R", 1, 9, "Medium"]]);
+            expect(detail.set_count).toBe(1);
+
+            const label = page.locator(".sf-track-expandable", { hasText: "1 set" }).first();
+            await label.click();
+            await expect(page.locator(".sf-track-detail-sets", { hasText: "L 10 · R 9 @ Medium" }))
+                .toBeVisible();
+        } finally {
+            await request.delete(`/api/strength-forge/sessions/${id}`);
+        }
+    });
+});

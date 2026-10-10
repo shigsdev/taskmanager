@@ -367,6 +367,73 @@ class TestWorkoutSetService:
             assert WorkoutSet.query.count() == 0  # children cascade-deleted
 
 
+class TestPerSideSets:
+    """#410: per-side exercises log a Left and a Right row per set."""
+
+    def test_side_is_stored_per_row(self, app):
+        with app.app_context():
+            session = svc.log_detailed_session("split-1", [
+                {"exercise_id": "pallof-press", "name": "Pallof Press",
+                 "set_number": 1, "side": "L", "reps": 10, "resistance": "Medium"},
+                {"exercise_id": "pallof-press", "name": "Pallof Press",
+                 "set_number": 1, "side": "R", "reps": 9, "resistance": "Medium"},
+            ])
+            got = sorted((s.side, s.set_number, s.reps) for s in session.sets)
+            assert got == [("L", 1, 10), ("R", 1, 9)]
+
+    def test_side_is_serialized(self, app):
+        with app.app_context():
+            session = svc.log_detailed_session("split-1", [
+                {"exercise_id": "dead-bug", "name": "Dead Bug",
+                 "set_number": 1, "side": "R", "reps": 10, "resistance": ""},
+            ])
+            detail = svc.session_detail(session.id)
+            assert detail["sets"][0]["side"] == "R"
+
+    @pytest.mark.parametrize("raw", ["left", "x", "", None, 1, "l"])
+    def test_anything_but_L_or_R_is_stored_as_no_side(self, app, raw):
+        with app.app_context():
+            session = svc.log_detailed_session("split-1", [
+                {"exercise_id": "dead-bug", "name": "Dead Bug",
+                 "set_number": 1, "side": raw, "reps": 10, "resistance": ""},
+            ])
+            assert session.sets[0].side is None
+
+    def test_a_per_side_set_counts_once(self, app):
+        with app.app_context():
+            session = svc.log_detailed_session("split-1", [
+                {"exercise_id": "pallof-press", "name": "Pallof Press",
+                 "set_number": 1, "side": "L", "reps": 10, "resistance": ""},
+                {"exercise_id": "pallof-press", "name": "Pallof Press",
+                 "set_number": 1, "side": "R", "reps": 10, "resistance": ""},
+                {"exercise_id": "pallof-press", "name": "Pallof Press",
+                 "set_number": 2, "side": "L", "reps": 9, "resistance": ""},
+                {"exercise_id": "band-chest-press", "name": "Chest Press",
+                 "set_number": 1, "reps": 12, "resistance": "Medium"},
+            ])
+            assert svc.serialize(session)["set_count"] == 3
+
+    def test_entries_without_a_side_are_unchanged(self, app):
+        with app.app_context():
+            session = svc.log_detailed_session("band-a", _sets(("band-squat", 12, "Medium")))
+            assert session.sets[0].side is None
+            assert svc.session_detail(session.id)["sets"][0]["side"] is None
+
+    def test_api_round_trip_keeps_sides(self, authed_client):
+        created = authed_client.post("/api/strength-forge/sessions", json={
+            "plan_type": "split-3", "sets": [
+                {"exercise_id": "band-leg-curl", "name": "Hamstring Curl",
+                 "set_number": 1, "side": "L", "reps": 12, "resistance": "Light"},
+                {"exercise_id": "band-leg-curl", "name": "Hamstring Curl",
+                 "set_number": 1, "side": "R", "reps": 11, "resistance": "Light"},
+            ],
+        })
+        assert created.status_code == 201
+        body = authed_client.get(
+            f"/api/strength-forge/sessions/{created.get_json()['id']}").get_json()
+        assert sorted((s["side"], s["reps"]) for s in body["sets"]) == [("L", 12), ("R", 11)]
+
+
 class TestLastResistance:
     def test_empty_when_no_logs(self, app):
         with app.app_context():

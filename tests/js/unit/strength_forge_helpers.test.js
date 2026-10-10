@@ -13,6 +13,8 @@ const {
     isDraftFresh,
     planTypesForRole,
     exerciseSearchLinks,
+    isPerSide,
+    summarizeSets,
 } = require("../../../static/strength_forge_helpers");
 
 describe("defaultSetCount", () => {
@@ -313,5 +315,89 @@ describe("exerciseSearchLinks", () => {
         expect(exerciseSearchLinks("   ")).toBeNull();
         expect(exerciseSearchLinks(null)).toBeNull();
         expect(exerciseSearchLinks(undefined)).toBeNull();
+    });
+});
+
+
+// #410: per-side exercises log Left + Right reps with one shared band.
+describe("isPerSide", () => {
+    const catalog = { "pallof-press": { perSide: true }, "band-squat": {} };
+    test("catalog flag decides", () => {
+        expect(isPerSide({ id: "pallof-press" }, catalog)).toBe(true);
+        expect(isPerSide({ id: "band-squat" }, catalog)).toBe(false);
+    });
+    test("an item-level flag wins; unknown ids and bad input are bilateral", () => {
+        expect(isPerSide({ id: "band-squat", perSide: true }, catalog)).toBe(true);
+        expect(isPerSide({ id: "nope" }, catalog)).toBe(false);
+        expect(isPerSide(null, catalog)).toBe(false);
+        expect(isPerSide({ id: "pallof-press" }, null)).toBe(false);
+    });
+});
+
+describe("buildSetsPayload — per-side rows", () => {
+    const ex = (sets) => [{ exercise_id: "pallof-press", name: "Pallof Press", sets }];
+
+    test("both sides → an L and an R entry sharing the set number and band", () => {
+        expect(buildSetsPayload(ex([{ repsL: "10", repsR: "9", resistance: " Medium " }]))).toEqual([
+            { exercise_id: "pallof-press", name: "Pallof Press", set_number: 1, side: "L", reps: 10, resistance: "Medium" },
+            { exercise_id: "pallof-press", name: "Pallof Press", set_number: 1, side: "R", reps: 9, resistance: "Medium" },
+        ]);
+    });
+
+    test("only one side filled → just that side", () => {
+        const out = buildSetsPayload(ex([{ repsL: "", repsR: "8", resistance: "" }]));
+        expect(out).toEqual([
+            { exercise_id: "pallof-press", name: "Pallof Press", set_number: 1, side: "R", reps: 8, resistance: "" },
+        ]);
+    });
+
+    test("resistance but no reps → one side-less entry (keeps the band reference)", () => {
+        const out = buildSetsPayload(ex([{ repsL: "", repsR: "", resistance: "Heavy" }]));
+        expect(out).toEqual([
+            { exercise_id: "pallof-press", name: "Pallof Press", set_number: 1, reps: null, resistance: "Heavy" },
+        ]);
+    });
+
+    test("blank per-side rows are skipped and set numbers stay dense", () => {
+        const out = buildSetsPayload(ex([
+            { repsL: "", repsR: "", resistance: "" },
+            { repsL: "10", repsR: "10", resistance: "" },
+        ]));
+        expect(out.map((e) => [e.set_number, e.side])).toEqual([[1, "L"], [1, "R"]]);
+    });
+
+    test("bilateral rows still produce a single side-less entry", () => {
+        const out = buildSetsPayload([{ exercise_id: "band-squat", name: "Squat", sets: [{ reps: "12", resistance: "Light" }] }]);
+        expect(out).toEqual([{ exercise_id: "band-squat", name: "Squat", set_number: 1, reps: 12, resistance: "Light" }]);
+        expect("side" in out[0]).toBe(false);
+    });
+});
+
+describe("summarizeSets", () => {
+    test("pairs L and R of the same set", () => {
+        expect(summarizeSets([
+            { set_number: 1, side: "L", reps: 10, resistance: "Medium" },
+            { set_number: 1, side: "R", reps: 9, resistance: "Medium" },
+            { set_number: 2, side: "L", reps: 10, resistance: "Medium" },
+            { set_number: 2, side: "R", reps: 10, resistance: "Medium" },
+        ])).toBe("L 10 · R 9 @ Medium, L 10 · R 10 @ Medium");
+    });
+
+    test("one side only", () => {
+        expect(summarizeSets([{ set_number: 1, side: "R", reps: 8, resistance: "" }])).toBe("R 8");
+    });
+
+    test("bilateral and legacy rows keep the old format", () => {
+        expect(summarizeSets([
+            { set_number: 1, reps: 12, resistance: "Light" },
+            { set_number: 2, reps: null, resistance: "Heavy" },
+            { set_number: 3, side: null, reps: 10, resistance: "" },
+        ])).toBe("12 reps @ Light, Heavy, 10 reps");
+    });
+
+    test("an empty row shows a dash; no rows → empty string", () => {
+        expect(summarizeSets([{ set_number: 1, reps: null, resistance: "" }])).toBe("—");
+        expect(summarizeSets([])).toBe("");
+        expect(summarizeSets(null)).toBe("");
     });
 });

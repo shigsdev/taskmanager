@@ -89,14 +89,23 @@ def delete_session(session_id) -> bool:
     return True
 
 
+def _set_count(session: WorkoutSession) -> int:
+    """Sets as the user did them: a per-side set's L and R rows (#410) share
+    one set_number and count once; every side-less row is its own set."""
+    seen = set()
+    for ws in session.sets:
+        seen.add((ws.exercise_id, ws.set_number) if ws.side else ("row", id(ws)))
+    return len(seen)
+
+
 def serialize(session: WorkoutSession) -> dict:
     return {
         "id": str(session.id),
         "plan_type": session.plan_type,
         "label": PLAN_LABELS.get(session.plan_type, session.plan_type),
         "session_date": session.session_date.isoformat(),
-        # #287: how many per-set rows this session carries (0 = quick-logged).
-        "set_count": len(session.sets),
+        # #287: how many sets this session carries (0 = quick-logged).
+        "set_count": _set_count(session),
     }
 
 
@@ -137,12 +146,17 @@ def _clean_set_entry(entry: dict) -> WorkoutSet | None:
     except (TypeError, ValueError):
         set_number = 1
     set_number = max(1, min(set_number, 99))
+    # #410: per-side exercises send one entry per side; anything other than
+    # exactly "L" / "R" is treated as a bilateral (side-less) set.
+    side = entry.get("side")
+    side = side if side in ("L", "R") else None
     return WorkoutSet(
         exercise_id=exercise_id,
         exercise_name=exercise_name,
         set_number=set_number,
         reps=reps,
         resistance=resistance,
+        side=side,
     )
 
 
@@ -174,6 +188,7 @@ def serialize_set(ws: WorkoutSet) -> dict:
         "set_number": ws.set_number,
         "reps": ws.reps,
         "resistance": ws.resistance,
+        "side": ws.side,
     }
 
 

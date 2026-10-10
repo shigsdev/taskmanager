@@ -802,6 +802,9 @@ class WorkoutSet(db.Model):
     set_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     reps: Mapped[int | None] = mapped_column(Integer, nullable=True)
     resistance: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # #410: 'L' / 'R' for a per-side exercise (each side is its own row,
+    # sharing set_number); NULL = a bilateral move, or a log from before #410.
+    side: Mapped[str | None] = mapped_column(String(1), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     session: Mapped[WorkoutSession] = relationship(back_populates="sets")

@@ -6364,20 +6364,25 @@ table.quality-gates code {
 /* #287: per-set logging form (modal) */
 .sf-logform-overlay { position: fixed; inset: 0; background: rgba(8,7,6,0.62); display: flex; align-items: flex-start; justify-content: center; padding: 24px 14px; overflow-y: auto; z-index: 1000; }
 .sf-logform-overlay[hidden] { display: none; }
-.sf-logform { width: 100%; max-width: 560px; background: var(--slate-50); border: 1px solid var(--rule); border-radius: var(--radius-l); box-shadow: 0 24px 60px rgba(0,0,0,0.45); margin: auto; }
+.sf-logform { width: 100%; max-width: 560px; background: var(--slate-200); border: 1px solid var(--rule); border-radius: var(--radius-l); box-shadow: 0 24px 60px rgba(0,0,0,0.45); margin: auto; }
 .sf-logform-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--rule-soft); }
 .sf-logform-title { font-family: var(--font-display); font-size: 1rem; font-weight: 700; color: var(--cream); }
 .sf-logform-close { background: none; border: none; color: var(--cream-faint); font-size: 1.1rem; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
 .sf-logform-close:hover { color: var(--cream); background: var(--slate-100); }
 .sf-logform-body { padding: 8px 18px; max-height: 62vh; overflow-y: auto; }
 .sf-logform-ex { padding: 12px 0; border-bottom: 1px solid var(--rule-soft); }
-.sf-logform-ex-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.sf-logform-ex-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 10px; margin-bottom: 8px; }
 .sf-logform-ex-name { font-weight: 700; font-size: 0.84rem; color: var(--cream); }
 .sf-logform-ex-hint { font-family: var(--font-mono); font-size: 0.62rem; color: var(--cream-faint); white-space: nowrap; }
 .sf-logform-sets { display: flex; flex-direction: column; gap: 6px; }
 .sf-logform-set { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.4fr) auto; align-items: center; gap: 8px; }
 /* No-resistance moves (bodyweight / stretch / breathing): reps only. */
 .sf-logform-set--noresist { grid-template-columns: auto minmax(0, 1fr) auto; }
+/* #410 per-side moves: Left + Right reps boxes, then the one shared band. */
+.sf-logform-set--sides { grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.3fr) auto; gap: 6px; }
+.sf-logform-set--sides.sf-logform-set--noresist { grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto; }
+.sf-logform-set--sides .sf-logform-reps, .sf-logform-set--sides .sf-logform-resist { padding: 8px 6px; }
+.sf-logform-ex-sides { flex-basis: 100%; font-family: var(--font-mono); font-size: 0.62rem; color: var(--copper-bright); }
 .sf-logform-setn { font-family: var(--font-mono); font-size: 0.6rem; color: var(--cream-faint); white-space: nowrap; }
 .sf-logform-reps, .sf-logform-resist { min-width: 0; min-height: 44px; padding: 8px 10px; border-radius: var(--radius-s); border: 1px solid var(--rule); background: var(--slate-100); color: var(--cream); font-size: 0.82rem; }
 .sf-logform-reps:focus, .sf-logform-resist:focus { outline: none; border-color: color-mix(in srgb, var(--copper) 55%, transparent); }
