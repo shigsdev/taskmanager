@@ -889,3 +889,409 @@ def _pelvic_tilt():
 DIAGRAMS["pelvic-tilt"] = _pelvic_tilt()
 
 DIAGRAMS["dead-bug-arms"] = _dead_bug(arms_only=True)
+
+
+# ── #408: the 18 catalog exercises that had no diagram ──
+def _top_view(hands, ghost=False, head=(160, 74), elbows=(1, -1)):
+    """A person seen from ABOVE: head, shoulder line, arms to ``hands``.
+    For moves whose motion is horizontal (flys) — in any side or front view
+    the arms would sweep straight toward the viewer."""
+    sh = [(head[0] - 26, head[1]), (head[0] + 26, head[1])]
+    dash = "6 4" if ghost else None
+    arms = ""
+    for i, target in enumerate(hands):
+        el, hand = _ik(sh[i], target, UARM, FARM, elbows[i])
+        arms += _poly([sh[i], el, hand], FIG, STROKE, dash)
+    body = (_line(sh[0], sh[1], FIG, STROKE, dash) + arms
+            + _circle(head, HEAD_R, FIG, STROKE, dash, "none" if ghost else BG))
+    return f'<g opacity="0.4">{body}</g>' if ghost else body
+
+
+def _band_glute_bridge():
+    g, b, j = _bridge((145, 148), ghost_hip=(144, 165))
+    knee = j["knee0"]
+    parts = [
+        _floor(172), g, b,
+        _circle((knee[0] - 6, knee[1] + 4), 6, BAND, 3),
+        _arr((214, 152), (214, 120)),
+        _t(150, 96, "PRESS KNEES OUT"),
+    ]
+    return _diagram("BAND GLUTE BRIDGE", H_GHOST, parts,
+                    ["Band above knees · push knees out all set",
+                     "Drive hips up · hold 1s · 3×15"], ghost=True)
+
+
+DIAGRAMS["band-glute-bridge"] = _band_glute_bridge()
+
+
+def _hip_90_90():
+    head = (160, 84)
+    pelvis_l, pelvis_r = (148, 112), (172, 112)
+    parts = [
+        _t(160, 40, "view from above", CAP),
+        _line((134, 84), (186, 84), FIG),
+        _line((160, 84), (160, 112), FIG),
+        _line(pelvis_l, pelvis_r, FIG),
+        _poly([pelvis_l, (148, 144), (184, 144)], FIG),
+        _poly([pelvis_r, (204, 112), (204, 80)], FAR),
+        _circle(head, HEAD_R, FIG, STROKE, fill=BG),
+        _t(160, 164, "FRONT SHIN"),
+        _t(214, 72, "BACK LEG", anchor="start"),
+    ]
+    return _diagram("90/90 HIP STRETCH", H, parts,
+                    ["Both knees at 90° · hinge forward, spine tall",
+                     "Hold 45s · switch sides"])
+
+
+DIAGRAMS["hip-90-90"] = _hip_90_90()
+
+
+def _quad_stretch():
+    body, _ = _person((150, 112), -90, hands=[(132, 120), (198, 100)],
+                      feet=[((150, 144), (130, 122)), (153, 176)], elbows=(1, -1))
+    parts = [
+        _rect(206, 92, 10, 84),
+        _floor(176),
+        body,
+        _t(76, 104, "HEEL TO GLUTE"),
+    ]
+    return _diagram("STANDING QUAD STRETCH", H, parts,
+                    ["Knees together · hips slightly forward",
+                     ("Don't arch your lower back · 45s each", WARN)])
+
+
+DIAGRAMS["quad-stretch"] = _quad_stretch()
+
+
+def _chest_stretch():
+    body, _ = _person((162, 112), -86, hands=[((138, 74), (138, 50)), (170, 124)],
+                      feet=[(180, 176), (148, 176)], knees=(-1, -1))
+    parts = [
+        _rect(126, 32, 10, 144),
+        _floor(176),
+        body,
+        _arr((196, 86), (228, 86)),
+        _t(248, 70, "STEP THROUGH"),
+    ]
+    return _diagram("DOORWAY CHEST STRETCH", H, parts,
+                    ["Forearm on frame, elbow at shoulder height",
+                     "Core braced · 30s each side"])
+
+
+DIAGRAMS["chest-stretch"] = _chest_stretch()
+
+
+def _band_chest_fly():
+    ghost = _top_view([(96, 84), (224, 84)], ghost=True)
+    body = _top_view([(154, 132), (166, 132)], elbows=(-1, 1))
+    parts = [
+        _t(160, 40, "view from above", CAP),
+        _rect(98, 50, 10, 10),
+        _rect(212, 50, 10, 10),
+        ghost,
+        _band((103, 60), (154, 132)),
+        _band((217, 60), (166, 132)),
+        body,
+        _quad((92, 100), (100, 140), (140, 150), MOVE, 2.5),
+        _quad((228, 100), (220, 140), (180, 150), MOVE, 2.5),
+        _t(160, 170, "HUG ARC"),
+    ]
+    return _diagram("STANDING BAND CHEST FLY", H_GHOST, parts,
+                    ["Wide hugging arc · squeeze 1s · stand tall",
+                     "Don't arch your lower back · 3×12"], ghost=True)
+
+
+DIAGRAMS["band-chest-fly"] = _band_chest_fly()
+
+
+def _band_low_fly():
+    ghost, _ = _standing(150, ghost=True, hands=[(148, 122), (150, 122)])
+    body, j = _standing(150, hands=[(194, 70), (196, 72)])
+    parts = [
+        _rect(40, 160, 14, 10),
+        _floor(176),
+        ghost,
+        _band((54, 164), j["hand0"]),
+        body,
+        _quad((176, 132), (214, 124), (210, 88), MOVE, 2.5),
+        _arr((211, 96), (210, 86)),
+        _t(256, 70, "SCOOP UP"),
+    ]
+    return _diagram("BAND LOW-TO-HIGH FLY", H_GHOST, parts,
+                    ["Low by your hips → up to shoulder height",
+                     "Stay tall, no leaning back · 3×12"], ghost=True)
+
+
+DIAGRAMS["band-low-fly"] = _band_low_fly()
+
+
+def _band_lat_pulldown():
+    hip = (160, 128)
+    legs = [((152, 162), (152, 166)), ((168, 162), (168, 166))]
+    ghost, _ = _person(hip, -90, hands=[(140, 36), (180, 36)], feet=legs,
+                       front=True, ghost=True)
+    body, j = _person(hip, -90, hands=[(130, 68), (190, 68)], feet=legs,
+                      elbows=(1, -1), front=True)
+    parts = [
+        _rect(148, 27, 24, 7),
+        _floor(166),
+        ghost,
+        _band((160, 34), j["hand0"]),
+        _band((160, 34), j["hand1"]),
+        body,
+        _arr((102, 50), (102, 84)),
+        _arr((218, 50), (218, 84)),
+    ]
+    return _diagram("BAND LAT PULLDOWN", H_GHOST, parts,
+                    ["Pull elbows down toward your ribs",
+                     "Kneel tall · torso upright · 3×12"], ghost=True)
+
+
+DIAGRAMS["band-lat-pulldown"] = _band_lat_pulldown()
+
+
+def _band_straight_arm_pulldown():
+    ghost, _ = _standing(150, ghost=True, hands=[(186, 34), (188, 36)])
+    body, j = _standing(150, hands=[(162, 124), (164, 124)])
+    parts = [
+        _rect(224, 26, 14, 8),
+        _floor(176),
+        ghost,
+        _band((231, 34), j["hand0"]),
+        body,
+        _quad((206, 54), (232, 100), (184, 124), MOVE, 2.5),
+        _arr((192, 122), (182, 125)),
+        _t(76, 100, "ARMS STRAIGHT"),
+    ]
+    return _diagram("BAND STRAIGHT-ARM PULLDOWN", H_GHOST, parts,
+                    ["Sweep straight arms down to your thighs",
+                     "Move from the shoulders, not the back"], ghost=True)
+
+
+DIAGRAMS["band-straight-arm-pulldown"] = _band_straight_arm_pulldown()
+
+
+def _band_lateral_raise():
+    ghost, _ = _standing(160, ghost=True, front=True)
+    body, j = _standing(160, front=True, hands=[(98, 80), (222, 80)], elbows=(1, -1))
+    parts = [
+        _floor(176),
+        ghost,
+        _band((j["hand0"][0] + 34, 176), j["hand0"]),
+        _band((j["hand1"][0] - 34, 176), j["hand1"]),
+        body,
+        _arr((96, 116), (96, 84)),
+        _arr((224, 116), (224, 84)),
+    ]
+    return _diagram("BAND LATERAL RAISE", H_GHOST, parts,
+                    ["Raise to shoulder height · lead w/ elbows",
+                     "No swinging · lower slowly · 3×15"], ghost=True)
+
+
+DIAGRAMS["band-lateral-raise"] = _band_lateral_raise()
+
+
+def _band_front_raise():
+    ghost, _ = _standing(150, ghost=True, hands=[(158, 120), (160, 120)])
+    body, j = _standing(150, hands=[(200, 72), (202, 74)])
+    parts = [
+        _floor(176),
+        ghost,
+        _band((160, 176), j["hand0"]),
+        body,
+        _quad((176, 124), (210, 118), (214, 86), MOVE, 2.5),
+        _arr((214, 94), (214, 84)),
+        _t(76, 100, "ARMS STRAIGHT"),
+    ]
+    return _diagram("BAND FRONT RAISE", H_GHOST, parts,
+                    ["Straight arms up to shoulder height",
+                     "Brace — don't lean back · 3×12"], ghost=True)
+
+
+DIAGRAMS["band-front-raise"] = _band_front_raise()
+
+
+def _band_rear_delt_fly():
+    ghost = _top_view([(154, 130), (166, 130)], ghost=True, elbows=(-1, 1))
+    body = _top_view([(84, 84), (236, 84)])
+    parts = [
+        _t(160, 40, "view from above", CAP),
+        _rect(153, 160, 14, 10),
+        ghost,
+        _band((158, 160), (86, 84)),
+        _band((162, 160), (234, 84)),
+        body,
+        _arr((136, 116), (100, 104)),
+        _arr((184, 116), (220, 104)),
+    ]
+    return _diagram("STANDING BAND REAR DELT FLY", H_GHOST, parts,
+                    ["Pull wide · squeeze rear shoulders · 3×15",
+                     ("Stand upright — do NOT bend forward", WARN)], ghost=True)
+
+
+DIAGRAMS["band-rear-delt-fly"] = _band_rear_delt_fly()
+
+
+def _band_hammer_curl():
+    elbow = (161, 97)
+    ghost, _ = _standing(160, ghost=True, hands=[(elbow, (163, 120))] * 2)
+    body, j = _standing(160, hands=[(elbow, (180, 84))] * 2)
+    parts = [
+        _floor(176),
+        ghost,
+        _band((196, 176), j["hand0"]),
+        body,
+        _arr((222, 120), (222, 84)),
+        _t(84, 100, "THUMBS UP"),
+    ]
+    return _diagram("BAND HAMMER CURL", H_GHOST, parts,
+                    ["Palms face each other · elbows pinned",
+                     "3s lower · no swinging · 3×12"], ghost=True)
+
+
+DIAGRAMS["band-hammer-curl"] = _band_hammer_curl()
+
+
+def _band_concentration_curl():
+    hip = (126, 128)
+    feet = [((158, 130), (160, 164)), ((162, 130), (164, 164))]
+    elbow = (150, 113)
+    ghost, _ = _person(hip, -70, hands=[(elbow, (154, 135))], feet=feet, ghost=True)
+    body, j = _person(hip, -70, hands=[(elbow, (166, 96))], feet=feet)
+    parts = [
+        _rect(100, 132, 46, 7),
+        _line((106, 139), (106, 164), PROP, 3),
+        _line((140, 139), (140, 164), PROP, 3),
+        _floor(164),
+        ghost,
+        _band((166, 164), j["hand0"]),
+        body,
+        _arr((200, 130), (200, 98)),
+        _t(236, 80, "ELBOW ON THIGH"),
+    ]
+    return _diagram("SEATED BAND CONCENTRATION CURL", H_GHOST, parts,
+                    ["Upper arm braced on your inner thigh",
+                     "Squeeze, lower slowly · 3×10 each side"], ghost=True)
+
+
+DIAGRAMS["band-concentration-curl"] = _band_concentration_curl()
+
+
+def _band_overhead_tricep():
+    elbow = (164, 64)
+    ghost, _ = _standing(150, ghost=True, hands=[(elbow, (150, 46))] * 2, foot_y=190)
+    body, j = _standing(150, hands=[(elbow, (166, 41))] * 2, foot_y=190)
+    parts = [
+        _floor(190),
+        ghost,
+        _band((140, 190), (132, 120), j["hand0"]),
+        body,
+        _arr((206, 76), (206, 44)),
+        _t(84, 66, "ELBOWS UP"),
+    ]
+    return _diagram("BAND OVERHEAD TRICEP EXTENSION", H_GHOST + 14, parts,
+                    ["Extend overhead · elbows stay by your ears",
+                     ("Brace — do NOT arch your lower back", WARN)], ghost=True)
+
+
+DIAGRAMS["band-overhead-tricep"] = _band_overhead_tricep()
+
+
+def _band_tricep_kickback():
+    hip = (150, 114)
+    torso = -72
+    feet = [(176, 176), (126, 176)]
+    neck = _go(hip, TORSO, torso)
+    sh = _go(neck, SHOULDER_DROP, torso + 180)
+    elbow = (sh[0] - 6, sh[1] + 24)
+    ghost, _ = _person(hip, torso, hands=[(elbow, (elbow[0] + 12, elbow[1] + 19))],
+                       feet=feet, ghost=True)
+    body, j = _person(hip, torso, hands=[(elbow, (elbow[0] - 23, elbow[1] + 3)),
+                                         (174, 140)], feet=feet, knees=(-1, -1))
+    parts = [
+        _rect(236, 162, 14, 10),
+        _floor(176),
+        ghost,
+        _band((236, 166), j["hand0"]),
+        body,
+        _arr((118, 82), (90, 84)),
+        _t(64, 64, "EXTEND BACK"),
+    ]
+    return _diagram("BAND TRICEP KICKBACK", H_GHOST, parts,
+                    ["Elbow tucked · extend straight back",
+                     "Slight hinge only, back flat · 3×12 each"], ghost=True)
+
+
+DIAGRAMS["band-tricep-kickback"] = _band_tricep_kickback()
+
+
+def _band_leg_curl():
+    hip = (150, 112)
+    wall_hand = (198, 96)
+    ghost, _ = _person(hip, -90, hands=[wall_hand], feet=[(151, 176), (153, 176)],
+                       ghost=True)
+    body, j = _person(hip, -90, hands=[wall_hand],
+                      feet=[((150, 144), (124, 122)), (153, 176)])
+    parts = [
+        _rect(206, 60, 10, 116),
+        _rect(236, 164, 14, 10),
+        _floor(176),
+        ghost,
+        _band((236, 168), j["foot0"]),
+        body,
+        _arr((104, 162), (102, 128)),
+        _t(64, 100, "HEEL UP"),
+    ]
+    return _diagram("STANDING BAND HAMSTRING CURL", H_GHOST, parts,
+                    ["Thigh stays vertical · heel toward glute",
+                     "Hold a wall · 3×12 each leg"], ghost=True)
+
+
+DIAGRAMS["band-leg-curl"] = _band_leg_curl()
+
+
+def _band_glute_kickback():
+    hip = (150, 112)
+    wall_hand = (198, 96)
+    ghost, _ = _person(hip, -90, hands=[wall_hand], feet=[(151, 176), (153, 176)],
+                       ghost=True)
+    body, j = _person(hip, -90, hands=[wall_hand],
+                      feet=[_go(hip, THIGH + SHIN, 114), (153, 176)])
+    parts = [
+        _rect(206, 60, 10, 116),
+        _rect(236, 164, 14, 10),
+        _floor(176),
+        ghost,
+        _band((236, 168), j["foot0"]),
+        body,
+        _quad((150, 140), (128, 146), (126, 160), WARN, 1.5, "3 3"),
+        _t(70, 132, "20–30° ONLY", WARN),
+    ]
+    return _diagram("STANDING BAND GLUTE KICKBACK", H_GHOST, parts,
+                    ["Push the leg back with your glute · 3×12",
+                     ("Don't arch your lower back for range", WARN)], ghost=True)
+
+
+DIAGRAMS["band-glute-kickback"] = _band_glute_kickback()
+
+
+def _band_calf_raise():
+    ghost, _ = _standing(150, ghost=True, hands=[(154, 120), (156, 120)])
+    ghost_foot = '<g opacity="0.4">' + _line((146, 176), (168, 176), FIG, STROKE, "6 4") + "</g>"
+    body, j = _standing(150, hands=[(154, 106), (156, 106)], foot_y=158)
+    parts = [
+        _floor(176),
+        ghost,
+        ghost_foot,
+        _line((151, 158), (168, 175), FIG),
+        _band((172, 176), j["hand0"]),
+        body,
+        _arr((200, 160), (200, 128)),
+        _t(232, 112, "UP ON TOES"),
+    ]
+    return _diagram("BAND CALF RAISE", H_GHOST, parts,
+                    ["Rise onto the balls of your feet",
+                     "Squeeze at the top · lower slowly · 3×15"], ghost=True)
+
+
+DIAGRAMS["band-calf-raise"] = _band_calf_raise()

@@ -17,8 +17,29 @@ FLARE_DIAGRAM_IDS = {
 
 
 def test_diagram_count():
-    # 25 workout + 5 flare-specific = 30 in the prototype.
-    assert len(sfd.DIAGRAMS) == 30
+    # 25 workout + 5 flare-specific = 30 in the prototype; #408 drew the 18
+    # catalog exercises that had none (Split + Isolation moves) → 48.
+    assert len(sfd.DIAGRAMS) == 48
+
+
+def _catalog_ids():
+    """Every exercise id in the JS catalog (``exercises = { "id": {...}``)."""
+    import pathlib
+    import re
+    src = (pathlib.Path(__file__).resolve().parent.parent
+           / "static" / "strength_forge_data.js").read_text(encoding="utf-8")
+    block = src.split("var exercises = {", 1)[1].split("\n  };", 1)[0]
+    return set(re.findall(r'^    "([a-z0-9-]+)": \{', block, re.M))
+
+
+def test_every_catalog_exercise_has_a_diagram():
+    """#408: 18 exercises shipped with no diagram and nobody noticed — the
+    modal silently skips a missing one. Adding an exercise without drawing
+    it now fails here instead."""
+    ids = _catalog_ids()
+    assert len(ids) >= 43, f"catalog parse looks wrong: {len(ids)} ids"
+    missing = sorted(ids - set(sfd.DIAGRAMS))
+    assert not missing, f"catalog exercises with no diagram: {missing}"
 
 
 def test_every_diagram_is_valid_svg():
