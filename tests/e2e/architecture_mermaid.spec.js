@@ -105,6 +105,133 @@ test.describe("#391 /architecture Mermaid diagrams", () => {
         });
     });
 
+    // #405: open every <details> so each diagram has a real box to measure.
+    async function openAllDetails(page) {
+        await page.evaluate(() => document.querySelectorAll("details").forEach((d) => { d.open = true; }));
+    }
+
+    test("#405 phone: every diagram draws full size and swipes inside its own box", async ({ page }) => {
+        test.skip(page.viewportSize().width > 700, "phone layout only");
+        await page.goto("/architecture?nosw=1");
+        await waitForFinishedDiagrams(page);
+        await openAllDetails(page);
+        const boxes = await page.locator("pre.mermaid").evaluateAll((pres) => pres.map((pre) => {
+            const svg = pre.querySelector(":scope > svg");
+            const label = svg.querySelector(".nodeLabel, .er.entityLabel, text");
+            pre.scrollLeft = 0;
+            const preBox = pre.getBoundingClientRect();
+            const svgBox = svg.getBoundingClientRect();
+            return {
+                fontPx: parseFloat(getComputedStyle(label).fontSize) * svgBox.width / svg.viewBox.baseVal.width,
+                wider: svgBox.width > pre.clientWidth,
+                scrolls: pre.scrollWidth > pre.clientWidth,
+                leftClippedPx: preBox.left - svgBox.left,
+            };
+        }));
+        boxes.forEach((b, i) => {
+            expect(b.fontPx, `diagram #${i + 1} labels ~${b.fontPx.toFixed(1)}px`).toBeGreaterThanOrEqual(10);
+            if (b.wider) expect(b.scrolls, `diagram #${i + 1} is wider than its box but can't scroll`).toBe(true);
+            expect(b.leftClippedPx, `diagram #${i + 1} left edge is cut off`).toBeLessThanOrEqual(0);
+        });
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+        expect(overflow, "the page itself scrolls sideways").toBeLessThanOrEqual(0);
+    });
+
+    test("#405 phone: no diagram opens on an empty first screen", async ({ page }) => {
+        test.skip(page.viewportSize().width > 700, "phone layout only");
+        await page.goto("/architecture?nosw=1");
+        await waitForFinishedDiagrams(page);
+        await openAllDetails(page);
+        // Phase 6 found two that did: "What's running" (#2) starts 947px down
+        // its left column; #11 centres its top nodes ~400px to the right.
+        // Counts drawn nodes inside each box's first screen as scrolled.
+        await expect.poll(() => page.locator("pre.mermaid").evaluateAll((pres) => pres.map((box) => {
+            const origin = box.getBoundingClientRect();
+            const viewH = Math.min(box.clientHeight, window.innerHeight);
+            return [...box.querySelectorAll("g.node, g[id^='entity-']")].filter((g) => {
+                const r = g.getBoundingClientRect();
+                const x = r.left - origin.left;
+                return x < box.clientWidth && x + r.width > 0 && r.top - origin.top < viewH;
+            }).length;
+        })), { timeout: 5000 }).not.toContain(0);
+
+        // The full-screen view starts somewhere with content too.
+        await page.locator(".diagram-zoom-btn").nth(1).click();
+        const inDialog = await page.locator("#diagramZoomBody").evaluate((box) => {
+            const origin = box.getBoundingClientRect();
+            const viewH = Math.min(box.clientHeight, window.innerHeight);
+            return [...box.querySelectorAll("g.node")].filter((g) => {
+                const r = g.getBoundingClientRect();
+                const x = r.left - origin.left;
+                return x < box.clientWidth && x + r.width > 0 && r.top - origin.top < viewH;
+            }).length;
+        });
+        expect(inDialog, "full-screen view opened on an empty screen").toBeGreaterThan(0);
+        await page.keyboard.press("Escape");
+    });
+
+    test("#405 phone: Full screen opens a diagram, Escape and ✕ put it back", async ({ page }) => {
+        test.skip(page.viewportSize().width > 700, "phone layout only");
+        await page.goto("/architecture?nosw=1");
+        const total = await waitForFinishedDiagrams(page);
+        const buttons = page.locator(".diagram-zoom-btn");
+        await expect(buttons).toHaveCount(total);
+        await expect(buttons.first()).toBeVisible();
+        const box = await buttons.first().boundingBox();
+        expect(box.height, "Full screen button under the 44px tap floor").toBeGreaterThanOrEqual(44);
+
+        const dialog = page.locator("#diagramZoom");
+        const firstPre = page.locator("pre.mermaid").first();
+        const naturalW = await firstPre.locator(":scope > svg")
+            .evaluate((svg) => svg.viewBox.baseVal.width);
+
+        for (const how of ["Escape", "close button"]) {
+            await buttons.first().click();
+            await expect(dialog, `${how}: dialog did not open`).toHaveAttribute("open", "");
+            await expect(firstPre.locator(":scope > svg")).toHaveCount(0);
+            const shown = await dialog.locator("#diagramZoomBody > svg")
+                .evaluate((svg) => svg.getBoundingClientRect().width);
+            expect(Math.abs(shown - naturalW), "not shown at natural size").toBeLessThan(2);
+            await expect(page.locator("#diagramZoomClose")).toBeFocused();
+            await expect(page.locator("html")).toHaveClass(/diagram-zoom-open/);
+
+            if (how === "Escape") await page.keyboard.press("Escape");
+            else await page.locator("#diagramZoomClose").click();
+
+            await expect(dialog, `${how}: dialog did not close`).not.toHaveAttribute("open", "");
+            await expect(firstPre.locator(":scope > svg"), `${how}: svg not back in its box`).toHaveCount(1);
+            await expect(buttons.first()).toBeFocused();
+            await expect(page.locator("html")).not.toHaveClass(/diagram-zoom-open/);
+        }
+    });
+
+    test("#405 desktop: no Full-screen buttons, and diagrams still fit their box", async ({ page }) => {
+        test.skip(page.viewportSize().width <= 700, "desktop layout only");
+        await page.goto("/architecture?nosw=1");
+        await waitForFinishedDiagrams(page);
+        await openAllDetails(page);
+        for (const btn of await page.locator(".diagram-zoom-btn").all()) {
+            await expect(btn).toBeHidden();
+        }
+        // What fit-to-width did, and what useMaxWidth: false + CSS must keep
+        // doing on desktop: a flowchart is drawn at min(natural, box) width.
+        const widths = await page.locator("pre.mermaid").evaluateAll((pres) => pres
+            .filter((pre) => !pre.closest("#schema")) // the ER scrolls at natural size (#391)
+            .map((pre) => {
+                const svg = pre.querySelector(":scope > svg");
+                const cs = getComputedStyle(pre);
+                const inner = pre.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+                return {
+                    drawn: svg.getBoundingClientRect().width,
+                    expected: Math.min(svg.viewBox.baseVal.width, inner),
+                };
+            }));
+        widths.forEach((w, i) => {
+            expect(Math.abs(w.drawn - w.expected), `flowchart #${i + 1} drawn ${w.drawn}px, expected ${w.expected}px`)
+                .toBeLessThan(2);
+        });
+    });
+
     test("the ER diagram draws at full size, scrolling inside its own box", async ({ page }) => {
         await page.goto("/architecture?nosw=1");
         await waitForFinishedDiagrams(page);

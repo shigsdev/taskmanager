@@ -5,7 +5,7 @@
  * Bump CACHE_VERSION when deploying new static files.
  */
 
-var CACHE_VERSION = "v276";
+var CACHE_VERSION = "v277";
 var CACHE_NAME = "taskmanager-" + CACHE_VERSION;
 
 // HTML is intentionally NOT pre-cached (see fetch handler below — Bug #56).
@@ -61,6 +61,7 @@ var APP_SHELL = [
     "/static/strength_forge_data.js",  // #282
     "/static/strength_forge.js",       // #282
     "/static/strength_forge_helpers.js",  // #287
+    "/static/diagram_zoom.js",  // #405
     "/static/manifest.json",
     "/static/favicon.svg",
 ];

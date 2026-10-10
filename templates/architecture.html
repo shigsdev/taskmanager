@@ -1109,6 +1109,20 @@ npm run test:e2e:prod</pre>
     </main>
 </div>
 
+{# #405: phone-only full-screen view for a diagram. diagram_zoom.js moves
+   the drawn svg into #diagramZoomBody and back; the "⤢ Full screen"
+   buttons it adds are hidden above 700px (style.css). #}
+<dialog id="diagramZoom" class="diagram-zoom" aria-label="Diagram, full screen">
+    <div class="diagram-zoom-bar">
+        <button type="button" id="diagramZoomClose" class="diagram-zoom-close">✕ Close</button>
+    </div>
+    <div id="diagramZoomBody" class="diagram-zoom-body"></div>
+</dialog>
+<script src="{{ url_for('static', filename='diagram_zoom.js') }}"></script>
+<script>
+    window.diagramZoom.attachDiagramZoom(document);
+</script>
+
 {# Mermaid loaded only on this page. Pinned version — CSP allows
    cdn.jsdelivr.net for script-src per ADR-028. 11.x since #391: 10.9.1's
    erDiagram grammar rejected the generated ER source (enum commas,
@@ -1121,7 +1135,11 @@ npm run test:e2e:prod</pre>
            built-in "dark" theme provides high-contrast strokes + dark
            backgrounds for nodes/edges. */
         theme: "dark",
-        flowchart: { curve: "basis" },
+        /* #405: flowcharts carry their natural width (like the ER one) so
+           a phone can show them full size and scroll them sideways. On
+           desktop style.css's `max-width: 100%; height: auto` still fits a
+           wide one to its box, exactly as fit-to-width did. */
+        flowchart: { curve: "basis", useMaxWidth: false },
         /* #391: the ER diagram is ~4000px wide; fit-to-width shrank it to
            ~19% (unreadable). Draw it at natural size and let its
            pre.mermaid box (overflow: auto) scroll it. */

@@ -501,9 +501,16 @@ Report.
   11. **Scan page**: verify radio buttons toggle and upload area is tappable.
   12. **Recycle bin**: verify batch entries show, Empty Bin button is visible.
   13. **Print view**: verify tasks are listed with correct tier grouping.
+  14. **Architecture page** (#405): at mobile every diagram draws full size
+      (labels ~16px, not 2–8px) and swipes sideways inside its own box —
+      the page itself never scrolls sideways. Tap a diagram's "⤢ Full
+      screen" button: it opens full screen at natural size with focus on
+      ✕; Escape closes it, and so does ✕, and the diagram is back in its
+      box with focus on its button. At desktop there are NO Full-screen
+      buttons and the diagrams look exactly as before.
 
   **Cleanup:**
-  14. Stop the bypass server and delete `.env.dev-bypass` before committing.
+  15. Stop the bypass server and delete `.env.dev-bypass` before committing.
       The canonical teardown is `python scripts/stop_dev_bypass.py`
       (cross-platform: Windows netstat + Unix lsof; finds any
       process on port 5111, kills it, removes the marker file).
@@ -581,6 +588,8 @@ Report.
   Recycle bin: batch entries    PASS          Recycle bin: batch entries    PASS
   Recycle bin: Empty Bin btn    PASS          Recycle bin: Empty Bin btn    PASS
   Print: tier grouping          PASS          Print: tier grouping          PASS
+  Architecture: diagrams readable PASS        Architecture: diagrams readable PASS
+  Architecture: no zoom buttons PASS          Architecture: full-screen view PASS
   Viewport parity (sw≤iw)       PASS          Viewport parity (sw≤iw)       PASS
 
   Status: ALL PASS | <N> FAIL (list failures)
@@ -605,9 +614,9 @@ Report.
 
   When a new feature adds a page, UI element, or user interaction, you
   MUST add corresponding functional check lines to the checklist above
-  (steps 6–13) AND to the Regression Test Report template. This ensures
+  (steps 6–14) AND to the Regression Test Report template. This ensures
   every feature is tested on every future change. Examples:
-  - New "Calendar" page → add step 14 and two report rows
+  - New "Calendar" page → add the next step number and two report rows
   - New "drag to reorder" interaction on Tasks → add a line under step 6
   - New filter on Goals → add a line under step 7
 

@@ -4570,6 +4570,84 @@ pre.mermaid svg {
     max-width: none;
 }
 
+/* #405: on a phone every diagram draws at natural size (16px labels, not
+   the 2-8px fit-to-width gave) and scrolls sideways inside its own box —
+   the page itself never does. Flowcharts carry their natural width since
+   useMaxWidth: false (architecture.html); desktop keeps the rule above. */
+.diagram-zoom-btn {
+    display: none;
+}
+@media (max-width: 700px) {
+    pre.mermaid svg {
+        max-width: none;
+    }
+    .diagram-zoom-btn {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+        padding: 0 14px;
+        margin: 4px 0 6px;
+        background: var(--surface-raised);
+        color: var(--text);
+        border: 1px solid var(--border-strong);
+        border-radius: 6px;
+        font: inherit;
+        font-size: 0.9rem;
+        cursor: pointer;
+    }
+}
+
+/* #405: the full-screen view (a modal <dialog>, diagram_zoom.js). */
+dialog.diagram-zoom {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: var(--bg);
+    color: var(--text);
+}
+dialog.diagram-zoom[open] {
+    display: flex;
+    flex-direction: column;
+}
+dialog.diagram-zoom::backdrop {
+    background: rgba(0, 0, 0, 0.85);
+}
+.diagram-zoom-bar {
+    display: flex;
+    justify-content: flex-end;
+    padding: 8px;
+    border-bottom: 1px solid var(--border);
+}
+.diagram-zoom-close {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0 16px;
+    background: var(--surface-raised);
+    color: var(--text);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    font: inherit;
+    cursor: pointer;
+}
+.diagram-zoom-body {
+    flex: 1;
+    overflow: auto;
+    padding: 16px;
+}
+.diagram-zoom-body svg {
+    max-width: none;
+    height: auto;
+}
+html.diagram-zoom-open,
+html.diagram-zoom-open body {
+    overflow: hidden;
+}
+
 /* Source-of-truth notes under each auto-generated section heading.
    Muted grey + italic so users know this is meta-info, not content. */
 .docs-source-note {
