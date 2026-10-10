@@ -93,6 +93,7 @@ _JSCPD_MIN_LINES = 30
 # generated. HTML is excluded via `--formats` rather than `--ignore`
 # because Jinja2 `{% include %}` partials get detected as duplicates
 # in every parent template — semantic-false-positive noise.
+_JSCPD_CODE_SUFFIXES = (".py", ".js")
 _JSCPD_IGNORE_GLOBS = (
     "node_modules/**", "tests/**", "migrations/**", "docs/**",
     "coverage-js/**", ".venv/**", "__pycache__/**",
@@ -464,7 +465,11 @@ def check_code_duplication() -> list[Finding]:
                     # Restrict to Python + JS — HTML duplicates via
                     # Jinja2 `{% include %}` are semantic false
                     # positives (the partial isn't actually inlined;
-                    # jscpd matches structural shape).
+                    # jscpd matches structural shape). #412: `--format`
+                    # is what RESTRICTS; `--formats-exts` only maps
+                    # extensions, and on jscpd 5 alone it let Markdown
+                    # (ARCHITECTURE.md) through.
+                    "--format", "python,javascript",
                     "--formats-exts", "python:py;javascript:js",
                     "--output", tmpdir,
                     "--ignore", ignore_arg,
@@ -494,6 +499,10 @@ def check_code_duplication() -> list[Finding]:
         b = dup.get("secondFile") or {}
         a_name = a.get("name") or "?"
         b_name = b.get("name") or "?"
+        # #412: belt-and-braces with --format — only code counts, so a
+        # future jscpd option change can't bring back doc "duplicates".
+        if not (a_name.endswith(_JSCPD_CODE_SUFFIXES) and b_name.endswith(_JSCPD_CODE_SUFFIXES)):
+            continue
         a_start = a.get("start")
         a_end = a.get("end")
         b_start = b.get("start")

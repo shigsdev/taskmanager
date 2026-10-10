@@ -581,6 +581,45 @@ class TestCodeDuplicationCheck:
         assert "recurring_service.py:50-100" in f.detail
         assert "extract to a shared helper" in f.detail
 
+    def test_non_code_duplicates_are_ignored(self, with_project_root, monkeypatch):
+        # #412: jscpd 5 scans Markdown even with --formats-exts (that flag
+        # only MAPS extensions), and flagged two ARCHITECTURE.md sections
+        # that share a Mermaid + ASCII-art layout. Only .py / .js count.
+        self._mock_jscpd(monkeypatch, report_data={
+            "duplicates": [
+                {"lines": 78,
+                 "firstFile": {"name": "ARCHITECTURE.md", "start": 1294, "end": 1371},
+                 "secondFile": {"name": "ARCHITECTURE.md", "start": 1378, "end": 1459}},
+                {"lines": 40,
+                 "firstFile": {"name": "static/app.js", "start": 1, "end": 41},
+                 "secondFile": {"name": "README.md", "start": 1, "end": 41}},
+                {"lines": 40,
+                 "firstFile": {"name": "static/calendar.js", "start": 10, "end": 50},
+                 "secondFile": {"name": "static/app.js", "start": 10, "end": 50}},
+            ],
+        })
+        findings = td_mod.check_code_duplication()
+        assert [f.path for f in findings] == ["static/calendar.js"]
+
+    def test_jscpd_is_restricted_to_python_and_js(self, with_project_root, monkeypatch):
+        # #412: the restriction has to be --format; --formats-exts alone
+        # let Markdown through.
+        seen = {}
+        self._mock_jscpd(monkeypatch, report_data={"duplicates": []})
+
+        class _Result:
+            returncode = 0
+            stdout = stderr = ""
+
+        def fake_run(argv, *a, **kw):
+            seen["argv"] = argv
+            return _Result()
+
+        monkeypatch.setattr(td_mod.subprocess, "run", fake_run)
+        td_mod.check_code_duplication()
+        argv = seen["argv"]
+        assert argv[argv.index("--format") + 1] == "python,javascript"
+
     def test_duplicate_below_threshold_skipped(
         self, with_project_root, monkeypatch,
     ):
