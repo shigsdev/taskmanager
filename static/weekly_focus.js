@@ -41,6 +41,9 @@
     // Pending changes from the last ✨ Plan call. Rendered into the
     // modal; checked rows get applied on click of Apply.
     var pendingChanges = [];
+    // #418: the dialog is shared by every plan, so each answer must still
+    // own it when it lands. begin() on open, cancel() on close.
+    var planGuard = window.requestGuardHelpers.createRequestGuard();
 
     document.addEventListener("DOMContentLoaded", function () {
         panel = document.getElementById("weeklyFocusPanel");
@@ -356,6 +359,7 @@
     // Shared runner for the per-slot and whole-week planners: opens the
     // modal, POSTs to `url`, renders the returned changes for review.
     async function _runPlan(url, focusLabel) {
+        var mine = planGuard.begin();
         modal.style.display = "";
         modalFocus.textContent = focusLabel;
         modalLoading.style.display = "";
@@ -363,11 +367,13 @@
         modalEmpty.style.display = "none";
         modalChanges.replaceChildren();
         modalApply.style.display = "none";
+        modalApply.disabled = false;   // an older apply may still be running
         pendingChanges = [];
         try {
             var result = await window.apiFetch(
                 url, { method: "POST", body: JSON.stringify({}) }
             );
+            if (!planGuard.isCurrent(mine)) return;  // closed or replaced
             modalLoading.style.display = "none";
             pendingChanges = result.changes || [];
             if (pendingChanges.length === 0) {
@@ -378,6 +384,7 @@
             modalApply.style.display = "";
             modalApply.textContent = "Apply (" + pendingChanges.length + ")";
         } catch (err) {
+            if (!planGuard.isCurrent(mine)) return;
             modalLoading.style.display = "none";
             modalError.style.display = "";
             modalError.textContent =
@@ -386,6 +393,7 @@
     }
 
     function closeModal() {
+        planGuard.cancel();
         modal.style.display = "none";
         modalChanges.innerHTML = "";
         pendingChanges = [];
@@ -456,12 +464,15 @@
     }
 
     async function applyPlan() {
+        // #418: work on the list the user approved. Closing mid-apply
+        // doesn't stop it part-way, and a newer plan's rows are never read.
+        var mine = planGuard.begin();
+        var approved = pendingChanges.filter(function (c) { return c._applied !== false; });
         modalApply.disabled = true;
         modalApply.textContent = "Applying…";
         var failed = 0;
-        for (var i = 0; i < pendingChanges.length; i++) {
-            var c = pendingChanges[i];
-            if (c._applied === false) continue;
+        for (var i = 0; i < approved.length; i++) {
+            var c = approved[i];
             try {
                 if (c.action === "promote_today") {
                     await _patchTask(c.task_id, { tier: "today" });
@@ -484,10 +495,12 @@
                 console.error("apply failed for", c, e);
             }
         }
+        if (typeof window.loadTasks === "function") window.loadTasks();
+        // Closed or replaced meanwhile: the dialog isn't ours to touch.
+        if (!planGuard.isCurrent(mine)) return;
         modalApply.disabled = false;
         if (failed === 0) {
             closeModal();
-            if (typeof window.loadTasks === "function") window.loadTasks();
         } else {
             modalApply.textContent = "Apply remaining (" + failed + " failed)";
         }

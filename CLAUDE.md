@@ -475,6 +475,9 @@ Report.
      Strength Forge how-to (ℹ️), log form and print sheet. Each closes on
      Escape WITHOUT running its action (nothing purged, set or applied),
      and Tab / Shift+Tab never leave it.
+     #418: on the board, ✨ Plan one slot, close it while it still says it's
+     thinking, then ✨ Plan another — only the second slot's name and rows
+     show, however long the first takes to answer.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -592,6 +595,7 @@ Report.
   Recurring: Escape closes editor PASS        Recurring: Escape closes editor PASS
   Modals: Escape closes, no action PASS       Modals: Escape closes, no action PASS
   Modals: Tab stays inside      PASS          Modals: Tab stays inside      PASS
+  Plan: closed answer dropped   PASS          Plan: closed answer dropped   PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

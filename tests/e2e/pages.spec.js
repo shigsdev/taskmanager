@@ -8375,3 +8375,104 @@ test.describe("Strength Forge pop-ups keep Tab inside (#417)", () => {
         await expect(page.locator("body")).not.toHaveClass(/sf-print-active/);
     });
 });
+
+// #418: the ✨ Plan review is one shared dialog. An answer (or an apply)
+// that started under one plan must never write into the next one.
+test.describe("✨ Plan drops a stale answer (#418)", () => {
+    // Two slots with text, planner POSTs held until the test releases them.
+    async function setUp(page) {
+        await page.route("**/api/weekly-focus?*", (r) => {
+            if (r.request().method() !== "GET") return r.fallback();
+            return r.fulfill({ json: {
+                slot_count: 3, week_start_date: "2026-10-05", fallback_from: null,
+                slots: [
+                    { slot_order: 1, text: "E2E 418 focus A", goal_id: null, goal_title: null },
+                    { slot_order: 2, text: "E2E 418 focus B", goal_id: null, goal_title: null },
+                ],
+            } });
+        });
+        const held = {};
+        for (const slot of [1, 2]) {
+            let release;
+            const gate = new Promise((res) => { release = res; });
+            held[slot] = release;
+            await page.route(`**/api/weekly-focus/${slot}/plan*`, async (r) => {
+                const changes = await gate;
+                await r.fulfill({ json: { changes } });
+            });
+        }
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        return held;
+    }
+    const row = (id, title) => ({ action: "promote_today", task_id: id, title, reason: "e2e" });
+
+    test("close A, open B: A's late answer never shows in B", async ({ page }) => {
+        const held = await setUp(page);
+        const modal = page.locator("#weeklyFocusPlanModal");
+        await page.locator(".weekly-focus-slot-plan").nth(0).click();
+        await expect(modal).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(modal).toBeHidden();
+        await page.locator(".weekly-focus-slot-plan").nth(1).click();
+        await expect(page.locator("#weeklyFocusPlanFocus")).toHaveText("E2E 418 focus B");
+        held[2]([row(900002, "E2E 418 row from B")]);
+        await expect(page.getByText("E2E 418 row from B")).toBeVisible();
+        held[1]([row(900001, "E2E 418 row from A")]);
+        // Let A's answer land, then check it changed nothing.
+        await page.waitForResponse("**/api/weekly-focus/1/plan*");
+        await page.waitForTimeout(300);
+        await expect(page.getByText("E2E 418 row from A")).toHaveCount(0);
+        await expect(page.locator("#weeklyFocusPlanFocus")).toHaveText("E2E 418 focus B");
+        await expect(page.locator("#weeklyFocusPlanApply")).toHaveText("Apply (1)");
+    });
+
+    test("an answer that arrives after close leaves the dialog closed and empty", async ({ page }) => {
+        const held = await setUp(page);
+        const modal = page.locator("#weeklyFocusPlanModal");
+        await page.locator(".weekly-focus-slot-plan").nth(0).click();
+        await expect(modal).toBeVisible();
+        await page.keyboard.press("Escape");
+        held[1]([row(900001, "E2E 418 row from A")]);
+        await page.waitForResponse("**/api/weekly-focus/1/plan*");
+        await page.waitForTimeout(300);
+        await expect(modal).toBeHidden();
+        await expect(page.locator("#weeklyFocusPlanChanges > *")).toHaveCount(0);
+    });
+
+    test("an apply still running never applies or closes the next plan", async ({ page }) => {
+        const held = await setUp(page);
+        const modal = page.locator("#weeklyFocusPlanModal");
+        const sent = [];
+        page.on("request", (q) => {
+            if (/\/api\/tasks\/9000\d\d/.test(q.url())) sent.push(q.url().replace(/.*\/api\/tasks\//, ""));
+        });
+        let releasePatch;
+        const patchGate = new Promise((res) => { releasePatch = res; });
+        await page.route("**/api/tasks/9000*", async (r) => {
+            await patchGate;
+            await r.fulfill({ json: {} });
+        });
+        // Plan A: one change; Apply, then close while its PATCH is held.
+        await page.locator(".weekly-focus-slot-plan").nth(0).click();
+        held[1]([row(900001, "E2E 418 row from A")]);
+        await expect(page.locator("#weeklyFocusPlanApply")).toHaveText("Apply (1)");
+        await page.locator("#weeklyFocusPlanApply").click();
+        await expect(page.locator("#weeklyFocusPlanApply")).toHaveText("Applying…");
+        await page.keyboard.press("Escape");
+        await expect(modal).toBeHidden();
+        // Plan B (two changes) opens and answers while A's apply is stuck.
+        await page.locator(".weekly-focus-slot-plan").nth(1).click();
+        held[2]([row(900002, "E2E 418 row B1"), row(900003, "E2E 418 row B2")]);
+        await expect(page.locator("#weeklyFocusPlanApply")).toHaveText("Apply (2)");
+        await expect(page.locator("#weeklyFocusPlanApply")).toBeEnabled();
+        // A's apply finishes: B must be untouched.
+        releasePatch();
+        await page.waitForResponse("**/api/tasks/900001");
+        await page.waitForTimeout(500);
+        expect(sent).toEqual(["900001"]);
+        await expect(modal).toBeVisible();
+        await expect(page.getByText("E2E 418 row B2")).toBeVisible();
+        await expect(page.locator("#weeklyFocusPlanApply")).toHaveText("Apply (2)");
+    });
+});
