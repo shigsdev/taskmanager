@@ -832,6 +832,8 @@
         cancelBtn.type = "button";
         cancelBtn.className = "btn";
         cancelBtn.textContent = "Cancel";
+        // #406: panel_keys.js presses this on Escape.
+        cancelBtn.setAttribute("data-panel-close", "");
         cancelBtn.addEventListener("click", close);
         btnRow.appendChild(saveBtn);
         btnRow.appendChild(cancelBtn);

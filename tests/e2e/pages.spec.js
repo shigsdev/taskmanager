@@ -2388,6 +2388,19 @@ test.describe("Reflection - leaving the review screen (#329)", () => {
             document.documentElement.scrollWidth > window.innerWidth);
         expect(overflows).toBe(false);
     });
+
+    test("#406: Escape closes the Next Week's Focus picker, and Tab stays inside it", async ({ page }) => {
+        await stubAnalyze(page, SOMETHING);
+        await analyze(page);
+        await page.locator("#reflFocusBtn").click();
+        const modal = page.locator("#reflFocusModal");
+        await expect(modal).toBeVisible({ timeout: 5000 });
+        await expectTabTrapped(page, "#reflFocusModal");
+        await page.keyboard.press("Escape");
+        await expect(modal).toBeHidden();
+        // Nothing was set: the button still offers the action.
+        await expect(page.locator("#reflFocusBtn")).toBeEnabled();
+    });
 });
 
 test.describe("Reflection - Record tab says Resume, not Start (#332)", () => {
@@ -8179,5 +8192,132 @@ test.describe("Goals - the Add-a-linked-task box is usable (#416)", () => {
             await request.delete(`/api/goals/${goal.id}`);
             await request.delete(`/api/goals/${goal.id}/permanent`);
         }
+    });
+});
+
+// #406: Tab from behind an open modal lands inside it, and Shift+Tab /
+// Tab never leave it. A function declaration, so it is hoisted and the
+// reflection describe above can use it too.
+async function expectTabTrapped(page, rootSel) {
+    const inside = () => page.evaluate((sel) =>
+        !!(document.activeElement && document.activeElement.closest(sel)), rootSel);
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
+    await page.keyboard.press("Tab");
+    expect(await inside()).toBe(true);
+    for (const key of ["Shift+Tab", "Shift+Tab", "Tab", "Tab", "Tab"]) {
+        await page.keyboard.press(key);
+        expect(await inside()).toBe(true);
+    }
+}
+
+test.describe("Modals close on Escape and keep Tab inside (#406)", () => {
+    // #381 gave the side panels Escape + a Tab trap; these modals use other
+    // markup and ignored both. Escape must do exactly what the modal's own
+    // Cancel / close does, so each test also checks the destructive or
+    // saving action did NOT run. The reflection focus picker's test lives
+    // in the #329 describe (it reuses that stub).
+
+    test("recycle bin: Empty Bin confirm", async ({ page }) => {
+        // Stub a non-empty bin so Empty Bin is enabled; a call to the real
+        // purge endpoint is recorded and fails the test.
+        const purged = [];
+        await page.route("**/api/recycle-bin/summary", (r) => r.fulfill({
+            json: { task_count: 1, goal_count: 0, batch_count: 1 } }));
+        await page.route("**/api/recycle-bin", (r) => r.fulfill({ json: { batches: [] } }));
+        await page.route("**/api/recycle-bin/empty", (r) => {
+            purged.push(r.request().method());
+            return r.fulfill({ status: 500, json: { error: "must not run" } });
+        });
+        await page.goto("/recycle-bin?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator("#recycleEmptyBtn").click();
+        const modal = page.locator("#recycleModalOverlay");
+        await expect(modal).toBeVisible({ timeout: 5000 });
+        await expectTabTrapped(page, "#recycleModalOverlay");
+        await page.keyboard.press("Escape");
+        await expect(modal).toBeHidden();
+        expect(purged).toEqual([]);
+    });
+
+    test("board: Plan review", async ({ page }) => {
+        // Stub the focus load (one slot with text, so Plan is enabled) and
+        // the planner, so nothing is written to the real focus rows.
+        await page.route("**/api/weekly-focus?*", (r) => {
+            if (r.request().method() !== "GET") return r.fallback();
+            return r.fulfill({ json: {
+                slot_count: 3, week_start_date: "2026-10-05", fallback_from: null,
+                slots: [{ slot_order: 1, text: "E2E 406 focus", goal_id: null, goal_title: null }],
+            } });
+        });
+        await page.route("**/api/weekly-focus/1/plan*", (r) =>
+            r.fulfill({ json: { changes: [] } }));
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator(".weekly-focus-slot-plan").first().click();
+        const modal = page.locator("#weeklyFocusPlanModal");
+        await expect(modal).toBeVisible({ timeout: 5000 });
+        await expect(page.locator("#weeklyFocusPlanEmpty")).toBeVisible();
+        await expectTabTrapped(page, "#weeklyFocusPlanModal");
+        await page.keyboard.press("Escape");
+        await expect(modal).toBeHidden();
+    });
+
+    test("board: Auto-categorize review", async ({ page, request }) => {
+        const t = await request.post("/api/tasks", {
+            data: { title: `E2E 406 inbox ${Date.now()}`, type: "work", tier: "inbox" },
+        });
+        expect(t.ok()).toBe(true);
+        const task = await t.json();
+        try {
+            await page.route("**/api/inbox/categorize", (r) => r.fulfill({ json: {
+                count: 1, capped: false,
+                suggestions: [{
+                    task_id: task.id, title: task.title, suggested_tier: "this_week",
+                    suggested_project_id: null, suggested_goal_id: null,
+                    suggested_due_date: null, suggested_type: "work", reason: "fixture",
+                }],
+            } }));
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator("#autoCategorizeBtn").click();
+            const modal = page.locator("#autoCategorizeModal");
+            await expect(modal.locator(`tr[data-task-id="${task.id}"]`))
+                .toBeVisible({ timeout: 5000 });
+            await expectTabTrapped(page, "#autoCategorizeModal");
+            await page.keyboard.press("Escape");
+            await expect(modal).toBeHidden();
+            // Not applied: the task is still in the Inbox.
+            const after = await (await request.get(`/api/tasks/${task.id}`)).json();
+            expect(after.tier).toBe("inbox");
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("voice memo: Make recurring", async ({ page }) => {
+        // Real MediaRecorder on the fake mic; only the parse is stubbed
+        // (same pattern as #390).
+        await page.route("**/api/voice-memo", (r) => r.fulfill({ json: {
+            transcript: "stubbed",
+            candidates: [{ title: "E2E 406 weekly", type: "work", tier: "this_week",
+                           due_date: null, route: "task", is_task: true }],
+        } }));
+        await page.goto("/voice-memo?nosw=1");
+        await page.click("#voiceRecordBtn");
+        await expect(page.locator("#voiceStopBtn")).toBeVisible({ timeout: 5000 });
+        await page.waitForTimeout(600);
+        await page.click("#voiceStopBtn");
+        const row = page.locator("#voiceCandidates .voice-candidate").first();
+        await expect(row).toBeVisible({ timeout: 10000 });
+        const recur = row.locator(".voice-candidate-recur-btn");
+        await expect(recur).toContainText("Make recurring");
+        await recur.click();
+        const overlay = page.locator(".voice-recur-overlay");
+        await expect(overlay).toHaveCount(1);
+        await expectTabTrapped(page, ".voice-recur-overlay");
+        await page.keyboard.press("Escape");
+        await expect(overlay).toHaveCount(0);
+        // Cancelled, not saved: the candidate is still a one-off.
+        await expect(recur).toContainText("Make recurring");
     });
 });

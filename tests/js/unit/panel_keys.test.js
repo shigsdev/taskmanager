@@ -36,6 +36,29 @@ describe("topOverlay", () => {
     test("two open (#372 stack) → the later one in the DOM", () => {
         expect(topOverlay([{ el: a, open: true }, { el: b, open: true }])).toBe(b);
     });
+
+    // #406: the modals span z-index 200-1000, so the one painted on top is
+    // the highest z-index, and DOM order only breaks a tie.
+    test("a higher z-index wins even when it comes earlier in the DOM", () => {
+        expect(topOverlay([
+            { el: a, open: true, z: 1000 }, { el: b, open: true, z: 200 },
+        ])).toBe(a);
+    });
+
+    test("equal z-index → the later one in the DOM; a missing z counts as 0", () => {
+        expect(topOverlay([
+            { el: a, open: true, z: 200 }, { el: b, open: true, z: 200 },
+        ])).toBe(b);
+        expect(topOverlay([
+            { el: a, open: true, z: 5 }, { el: b, open: true },
+        ])).toBe(a);
+    });
+
+    test("a closed overlay never wins, whatever its z-index", () => {
+        expect(topOverlay([
+            { el: a, open: false, z: 1000 }, { el: b, open: true, z: 200 },
+        ])).toBe(b);
+    });
 });
 
 describe("trapTarget", () => {
@@ -218,5 +241,73 @@ describe("on the page", () => {
         page({ goalOpen: false, taskOpen: false });
         $("behind").focus();
         expect(press("Tab").defaultPrevented).toBe(false);
+    });
+});
+
+// #406: the five non-panel modals. Each one's own close control carries
+// [data-panel-close], so Escape runs that modal's Cancel / ✕.
+describe("the five modals (#406)", () => {
+    let detach;
+    const MODALS = [
+        ["modal-overlay", 1000],            // /recycle-bin confirm
+        ["reflection-focus-modal", 200],    // /reflection focus picker
+        ["weekly-focus-plan-modal", 200],   // board ✨ Plan review
+        ["auto-categorize-modal", 1000],    // board 💡 Auto-categorize
+        ["voice-recur-overlay", 250],       // voice memo Make recurring
+    ];
+    const $ = (id) => document.getElementById(id);
+    function press(key, opts = {}) {
+        const e = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...opts });
+        (document.activeElement || document.body).dispatchEvent(e);
+        return e;
+    }
+
+    beforeEach(() => { detach = attachPanelKeys(document, window).detach; });
+    afterEach(() => detach());
+
+    test.each(MODALS)("%s: Escape runs its close control, Tab stays inside", (cls, z) => {
+        document.body.innerHTML = `
+            <button id="behind">behind</button>
+            <div class="${cls}" id="m" style="z-index:${z}">
+                <div role="dialog">
+                    <input id="first">
+                    <button id="ok">OK</button>
+                    <button id="cancel" data-panel-close>Cancel</button>
+                </div>
+            </div>`;
+        let closed = 0;
+        $("cancel").addEventListener("click", () => { closed += 1; $("m").style.display = "none"; });
+
+        $("behind").focus();
+        expect(press("Tab").defaultPrevented).toBe(true);
+        expect(document.activeElement.id).toBe("first");
+        press("Tab", { shiftKey: true });
+        expect(document.activeElement.id).toBe("cancel");
+        press("Tab");
+        expect(document.activeElement.id).toBe("first");
+
+        expect(press("Escape").defaultPrevented).toBe(true);
+        expect(closed).toBe(1);
+        // Closed now: a second Escape has nothing to close.
+        expect(press("Escape").defaultPrevented).toBe(false);
+    });
+
+    test("a z-index 1000 modal earlier in the DOM closes before the side panel", () => {
+        // The board: #autoCategorizeModal comes before the task panel in
+        // index.html, but paints over it.
+        document.body.innerHTML = `
+            <div class="auto-categorize-modal" id="m" style="z-index:1000">
+                <button id="mClose" data-panel-close>✕</button>
+            </div>
+            <div class="detail-overlay" id="p" style="z-index:200">
+                <button id="pClose" data-panel-close>✕</button>
+            </div>`;
+        const order = [];
+        for (const [btn, box] of [["mClose", "m"], ["pClose", "p"]]) {
+            $(btn).addEventListener("click", () => { order.push(box); $(box).style.display = "none"; });
+        }
+        press("Escape");
+        press("Escape");
+        expect(order).toEqual(["m", "p"]);
     });
 });

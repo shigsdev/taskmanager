@@ -469,6 +469,11 @@ Report.
      on its line), the second closes the project. On /recurring, + New
      template then Escape closes the editor. Click ✕ and the backdrop
      too — the mouse paths must be unchanged.
+     #406: the five pop-up dialogs — /recycle-bin Empty Bin confirm,
+     /reflection Next Week's Focus, the board's ✨ Plan and 💡
+     Auto-categorize reviews, a voice memo's Make recurring. Each closes on
+     Escape WITHOUT running its action (nothing purged, set or applied),
+     and Tab / Shift+Tab never leave it.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -584,6 +589,8 @@ Report.
   Tasks: Escape closes panel    PASS          Tasks: Escape closes panel    PASS
   Tasks: Tab stays in panel     PASS          Tasks: Tab stays in panel     PASS
   Recurring: Escape closes editor PASS        Recurring: Escape closes editor PASS
+  Modals: Escape closes, no action PASS       Modals: Escape closes, no action PASS
+  Modals: Tab stays inside      PASS          Modals: Tab stays inside      PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

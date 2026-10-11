@@ -11,6 +11,12 @@
  * edits exactly as ✕ and a backdrop click do.
  * Spec: docs/design/381-panel-escape-and-focus-trap.md.
  *
+ * #406: also the five modals that use other markup — the /recycle-bin
+ * confirm, /reflection's focus picker, the board's ✨ Plan and 💡
+ * Auto-categorize reviews, and the voice memo's Make-recurring dialog. Each
+ * one's own Cancel / ✕ carries [data-panel-close], so Escape does exactly
+ * what that control does. Spec: docs/design/406-modal-escape-and-focus-trap.md.
+ *
  * Same dual-export shape as bulk_toolbar_helpers.js: an IIFE, so nothing
  * lands in the global lexical scope every static/*.js classic script shares
  * (#359). Loaded once from base.html; a no-op on pages with no panel open.
@@ -20,7 +26,14 @@
 (function () {
     "use strict";
 
-    var OVERLAY_SELECTOR = ".detail-overlay";
+    var OVERLAY_SELECTOR = [
+        ".detail-overlay",
+        ".modal-overlay",              // #406: /recycle-bin confirm
+        ".reflection-focus-modal",     // #406: /reflection focus picker
+        ".weekly-focus-plan-modal",    // #406: board ✨ Plan review
+        ".auto-categorize-modal",      // #406: board 💡 Auto-categorize
+        ".voice-recur-overlay",        // #406: voice memo Make recurring
+    ].join(", ");
     var CLOSE_SELECTOR = "[data-panel-close]";
     var FOCUSABLE = [
         "a[href]",
@@ -32,15 +45,20 @@
     ].join(", ");
 
     /**
-     * The panel on top: the last open one in DOM order (they share a
-     * z-index, so later paints over earlier). `overlays` is
-     * [{el, open}] in DOM order. Null when none is open.
+     * The overlay on top: the open one with the highest z-index, and on a
+     * tie the last in DOM order (later paints over earlier). The side
+     * panels share z-index 200; #406's modals run 200-1000, so DOM order
+     * alone could hand Escape to a panel underneath a modal. `overlays` is
+     * [{el, open, z}] in DOM order; a missing z counts as 0. Null when none
+     * is open.
      */
     function topOverlay(overlays) {
         if (!Array.isArray(overlays)) return null;
-        var top = null;
+        var top = null, topZ = -Infinity;
         overlays.forEach(function (o) {
-            if (o && o.open) top = o.el;
+            if (!o || !o.open) return;
+            var z = typeof o.z === "number" && !isNaN(o.z) ? o.z : 0;
+            if (z >= topZ) { top = o.el; topZ = z; }
         });
         return top;
     }
@@ -80,7 +98,8 @@
     function openOverlays(doc, win) {
         return Array.prototype.slice.call(doc.querySelectorAll(OVERLAY_SELECTOR))
             .map(function (el) {
-                return { el: el, open: win.getComputedStyle(el).display !== "none" };
+                var cs = win.getComputedStyle(el);
+                return { el: el, open: cs.display !== "none", z: parseInt(cs.zIndex, 10) };
             });
     }
 
