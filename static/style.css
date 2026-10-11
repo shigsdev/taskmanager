@@ -1171,8 +1171,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     .reopen-dropdown button {
         padding: 12px 16px;
         font-size: 1rem;
-        min-height: 44px;
     }
+}
+/* #382: touch targets share ONE breakpoint (767px). These 44px rules
+   used to sit in the 700px block above; kept right here so their
+   cascade position is unchanged — only the width condition moved. */
+@media (max-width: 767px) {
+    .reopen-dropdown button { min-height: 44px; }
 }
 /* #224 PR7: completed tasks get a sage strikethrough — sage is the
    "done" accent (matches the complete-button + the mockup's done state). */
@@ -1329,11 +1334,15 @@ input[type="time"]::-webkit-calendar-picker-indicator {
    at the smaller size). Same fix shape as #233. */
 @media (max-width: 700px) {
     .parent-picker-clear {
-        min-width: 44px;
-        min-height: 44px;
         font-size: 16px;
         padding: 8px 12px;
     }
+}
+/* #382: touch targets share ONE breakpoint (767px). These 44px rules
+   used to sit in the 700px block above; kept right here so their
+   cascade position is unchanged — only the width condition moved. */
+@media (max-width: 767px) {
+    .parent-picker-clear { min-width: 44px; min-height: 44px; }
 }
 .parent-link {
     color: var(--accent, #2563eb);
@@ -1836,7 +1845,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     /* Keep the reset button reachable without a horizontal scroll, and at a
        real 44px tap target (Phase 6 mobile standard). */
     .filter-banner { padding: 8px 11px; }
-    .filter-banner-clear { margin-left: 0; width: 100%; min-height: 44px; }
+    .filter-banner-clear { margin-left: 0; width: 100%; }
+}
+/* #382: touch targets share ONE breakpoint (767px). These 44px rules
+   used to sit in the 700px block above; kept right here so their
+   cascade position is unchanged — only the width condition moved. */
+@media (max-width: 767px) {
+    .filter-banner-clear { min-height: 44px; }
 }
 
 /* #92 (PR25): goal/objective filter bar — always visible, sits below the
@@ -2462,8 +2477,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 @media (max-width: 600px) {
     .goal-danger-zone .btn-danger {
         width: 100%;
-        min-height: 44px;
     }
+}
+/* #382: touch targets share ONE breakpoint (767px). These 44px rules
+   used to sit in the 600px block above; kept right here so their
+   cascade position is unchanged — only the width condition moved. */
+@media (max-width: 767px) {
+    .goal-danger-zone .btn-danger { min-height: 44px; }
 }
 
 .goal-title {
@@ -3470,8 +3490,6 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     /* #399: the type select (33px) and text input (34px) sat beside 44px
        icon-btns, under the 44px tap floor. Height only — the row's width
        (the 2026-04-18 overflow incident) is untouched. */
-    .capture-bar select,
-    .capture-bar input[type="text"] { min-height: 44px; }
     .nav-links {
         gap: 4px;
         overflow-x: auto;
@@ -3498,7 +3516,6 @@ input[type="time"]::-webkit-calendar-picker-indicator {
         white-space: nowrap;
         /* #140 — meet 44px touch-target floor on mobile.
            Was 31px tall (padding 6+6 + line-height) before. */
-        min-height: 44px;
         display: inline-flex;
         align-items: center;
     }
@@ -3509,7 +3526,6 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     /* Task cards: touch-friendly sizing */
     .task-card {
         padding: 12px;
-        min-height: 44px;
         overflow: hidden;
     }
     /* (Removed 2026-05-08: mobile sizing for .task-checkbox — element
@@ -3553,24 +3569,18 @@ input[type="time"]::-webkit-calendar-picker-indicator {
         /* #140 — meet 44px touch-target floor on mobile.
            Was 36px before. .task-quick-actions has flex-wrap:wrap
            so taller buttons reflow cleanly when 7+ don't fit. */
-        min-height: 44px;
     }
 
     /* Buttons: 44px min tap target */
     .btn, .btn-sm {
-        min-height: 44px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
     }
     .icon-btn {
-        min-width: 44px;
-        min-height: 44px;
         font-size: 1.2rem;
     }
     .collapse-toggle {
-        min-width: 44px;
-        min-height: 44px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -3584,12 +3594,10 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     .detail-panel textarea,
     .detail-panel select {
         font-size: 16px; /* prevents iOS zoom on focus */
-        min-height: 44px;
     }
 
     /* Checklist items: bigger tap targets */
     .checklist-item {
-        min-height: 44px;
         align-items: center;
     }
     .checklist-item input[type="checkbox"] {
@@ -3620,8 +3628,6 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     .goals-filters { flex-wrap: wrap; }
     /* #354: the filter selects were 31px (/goals) and 32px (/projects),
        under the 44px tap floor. One rule for both bars so they can't drift. */
-    .goals-filters select,
-    .projects-filters select { min-height: 44px; }
     .goal-card { padding: 12px; }
 
     /* Project filter bar: scroll horizontally */
@@ -3632,7 +3638,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
         -webkit-overflow-scrolling: touch;
     }
     /* #140 — bump from 36px to meet 44px touch-target floor. */
-    .project-filter-btn { white-space: nowrap; min-height: 44px; }
+    .project-filter-btn { white-space: nowrap; }
 
     /* Swipe card: reveal actions on swipe left */
     .task-card.swiped {
@@ -3665,9 +3671,31 @@ input[type="time"]::-webkit-calendar-picker-indicator {
         right: 14px;
     }
     .triage-dropdown button {
-        min-height: 44px;
         font-size: 0.95rem;
     }
+}
+/* #382: touch targets share ONE breakpoint (767px). These 44px rules
+   used to sit in the 600px block above; kept right here so their
+   cascade position is unchanged — only the width condition moved. */
+@media (max-width: 767px) {
+    .capture-bar select,
+    .capture-bar input[type="text"] { min-height: 44px; }
+    .nav-tab { min-height: 44px; }
+    .task-card { min-height: 44px; }
+    .task-quick-actions button { min-height: 44px; }
+    .btn,
+    .btn-sm { min-height: 44px; }
+    .icon-btn { min-width: 44px; min-height: 44px; }
+    .collapse-toggle { min-width: 44px; min-height: 44px; }
+    .detail-panel input[type="text"],
+    .detail-panel input[type="date"],
+    .detail-panel textarea,
+    .detail-panel select { min-height: 44px; }
+    .checklist-item { min-height: 44px; }
+    .goals-filters select,
+    .projects-filters select { min-height: 44px; }
+    .project-filter-btn { min-height: 44px; }
+    .triage-dropdown button { min-height: 44px; }
 }
 
 /* ---- Voice memo page (mirrors .scan-* patterns) ---- */
@@ -4231,9 +4259,14 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     .task-card .task-complete-btn {
         width: 44px;
         height: 44px;
-        min-width: 44px;
         font-size: 1.2rem;
     }
+}
+/* #382: touch targets share ONE breakpoint (767px). These 44px rules
+   used to sit in the 600px block above; kept right here so their
+   cascade position is unchanged — only the width condition moved. */
+@media (max-width: 767px) {
+    .task-card .task-complete-btn { min-width: 44px; }
 }
 
 /* === Projects page (backlog #24) ===
@@ -4539,9 +4572,14 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     .docs-toc a {
         display: flex;
         align-items: center;
-        min-height: 44px;
         line-height: 1.25;
     }
+}
+/* #382: touch targets share ONE breakpoint (767px). These 44px rules
+   used to sit in the 768px block above; kept right here so their
+   cascade position is unchanged — only the width condition moved. */
+@media (max-width: 767px) {
+    .docs-toc a { min-height: 44px; }
 }
 
 /* #400: an anchor jump (TOC click, or a /docs#section URL) scrolled the
@@ -4637,7 +4675,6 @@ pre.mermaid svg {
     .diagram-zoom-btn {
         display: inline-flex;
         align-items: center;
-        min-height: 44px;
         padding: 0 14px;
         margin: 4px 0 6px;
         background: var(--surface-raised);
@@ -4648,6 +4685,12 @@ pre.mermaid svg {
         font-size: 0.9rem;
         cursor: pointer;
     }
+}
+/* #382: touch targets share ONE breakpoint (767px). These 44px rules
+   used to sit in the 700px block above; kept right here so their
+   cascade position is unchanged — only the width condition moved. */
+@media (max-width: 767px) {
+    .diagram-zoom-btn { min-height: 44px; }
 }
 
 /* #405: the full-screen view (a modal <dialog>, diagram_zoom.js). */
@@ -5175,7 +5218,6 @@ table.quality-gates code {
     word-break: break-word;
 }
 
-
 /* === Weekly Focus panel (Feature 1, 2026-05-09) === */
 
 .weekly-focus-panel {
@@ -5290,10 +5332,16 @@ table.quality-gates code {
     .weekly-focus-slot-plan,
     .weekly-focus-slot-clear {
         order: 3;
-        min-height: 44px; /* #399: was 40px */
     }
     /* #399: the goal select and text input were 34px — the whole slot row
        now meets the 44px tap floor. */
+}
+/* #382: touch targets share ONE breakpoint (767px). These 44px rules
+   used to sit in the 700px block above; kept right here so their
+   cascade position is unchanged — only the width condition moved. */
+@media (max-width: 767px) {
+    .weekly-focus-slot-plan,
+    .weekly-focus-slot-clear { min-height: 44px; } /* #399: was 40px */
     .weekly-focus-slot-goal,
     .weekly-focus-slot-input { min-height: 44px; }
 }
@@ -5382,7 +5430,6 @@ table.quality-gates code {
     margin-top: 12px;
 }
 
-
 /* === #156 (2026-05-09): calendar empty-cell click affordance === */
 .calendar-cell-empty {
     cursor: pointer;
@@ -5455,7 +5502,6 @@ table.quality-gates code {
     border-color: var(--accent, #2980b9);
 }
 
-
 /* === #157 (2026-05-09): Weekly Focus tabs (This Week / Next Week) === */
 .weekly-focus-tabs {
     display: inline-flex;
@@ -5483,7 +5529,6 @@ table.quality-gates code {
 .weekly-focus-tab:hover:not(.active) {
     color: var(--text, #111);
 }
-
 
 /* === Weekly Reflection (#165, 2026-05-17) === */
 .reflection-container {
@@ -5559,8 +5604,13 @@ table.quality-gates code {
     .reflection-recover-actions .btn-link {
         display: inline-flex;
         align-items: center;
-        min-height: 44px;
     }
+}
+/* #382: touch targets share ONE breakpoint (767px). These 44px rules
+   used to sit in the 600px block above; kept right here so their
+   cascade position is unchanged — only the width condition moved. */
+@media (max-width: 767px) {
+    .reflection-recover-actions .btn-link { min-height: 44px; }
 }
 
 /* #326: the recording timer now shows its cap ("12:34 / 30:00"). Amber
@@ -6052,19 +6102,24 @@ table.quality-gates code {
     .reflection-combine-bar .btn-link {
         display: inline-flex;
         align-items: center;
-        min-height: 44px;
     }
     /* #335: the summary gets the 44px height so the row is comfortable to
        tap open, and the tick box grows to 22px inside it — the same
        mobile bump `.checklist-item` gets. Measured at 18px in Phase 6 and
        it was too small to hit confidently one-handed. */
-    .reflection-history-item > summary {
-        min-height: 44px;
-    }
     .reflection-history-select {
         width: 22px;
         height: 22px;
     }
+}
+/* #382: touch targets share ONE breakpoint (767px). These 44px rules
+   used to sit in the 600px block above; kept right here so their
+   cascade position is unchanged — only the width condition moved. */
+@media (max-width: 767px) {
+    .reflection-draft-banner .btn-link,
+    .reflection-continue-banner .btn-link,
+    .reflection-combine-bar .btn-link { min-height: 44px; }
+    .reflection-history-item > summary { min-height: 44px; }
 }
 
 /* === #222 (2026-05-24): /utilities page === */
@@ -6232,6 +6287,11 @@ table.quality-gates code {
 .pg-clear { flex: 0 0 auto; }
 @media (max-width: 600px) {
     /* #399: the reassign select was 21px beside a 44px Clear button. */
+}
+/* #382: touch targets share ONE breakpoint (767px). These 44px rules
+   used to sit in the 600px block above; kept right here so their
+   cascade position is unchanged — only the width condition moved. */
+@media (max-width: 767px) {
     .pg-goal-select { min-height: 44px; }
 }
 
@@ -6445,7 +6505,13 @@ table.quality-gates code {
    44px tap-target standard, and this page gets used one-handed mid-workout.
    Applies to every panel's picker (Bands / Military / Isolation / Split). */
 @media (max-width: 700px) {
-    .sf-toggle-btn { min-height: 44px; padding: 6px 12px; }
+    .sf-toggle-btn { padding: 6px 12px; }
+}
+/* #382: touch targets share ONE breakpoint (767px). These 44px rules
+   used to sit in the 700px block above; kept right here so their
+   cascade position is unchanged — only the width condition moved. */
+@media (max-width: 767px) {
+    .sf-toggle-btn { min-height: 44px; }
 }
 
 .sf-worksec { margin-bottom: 22px; }
@@ -6680,7 +6746,6 @@ table.quality-gates code {
     .sf-print-sheet { padding: 18px 16px; margin: 14px 8px; }
 }
 
-
 /* #328: context documents attached to a reflection. Deliberately quiet —
    a fresh reflection shows an invitation, not an empty-state panel. The
    list only earns visual weight once something is in it. */
@@ -6845,7 +6910,6 @@ table.quality-gates code {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-height: 44px;
     }
     .reflection-context-add {
         width: 100%;
@@ -6855,4 +6919,12 @@ table.quality-gates code {
     .reflection-context-item {
         flex-wrap: wrap;
     }
+}
+/* #382: touch targets share ONE breakpoint (767px). These 44px rules
+   used to sit in the 600px block above; kept right here so their
+   cascade position is unchanged — only the width condition moved. */
+@media (max-width: 767px) {
+    .reflection-context-add,
+    .reflection-context-remove,
+    .reflection-context-keep { min-height: 44px; }
 }

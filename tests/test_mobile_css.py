@@ -170,6 +170,25 @@ class TestMobileCSSRules:
             css = f.read()
         assert "min-height: 44px" in css
 
+    def test_touch_targets_share_one_breakpoint(self):
+        """#382: every 44px tap-target rule inside a max-width media query
+        uses 767px. They used to be split across 600 / 700 / 767 / 768px,
+        so between 601 and 767px some controls were 44px tall and others
+        weren't (the Phase 6 mobile standard)."""
+        import re
+        with open("static/style.css", encoding="utf-8") as f:
+            css = re.sub(r"/\*.*?\*/", "", f.read(), flags=re.S)
+        stray = []
+        for m in re.finditer(r"@media\s*\(max-width:\s*(\d+)px\)\s*\{", css):
+            depth, i = 1, m.end()
+            while depth and i < len(css):
+                depth += {"{": 1, "}": -1}.get(css[i], 0)
+                i += 1
+            body = css[m.end():i]
+            if re.search(r"min-(?:height|width):\s*44px", body) and m.group(1) != "767":
+                stray.append(f"{m.group(1)}px")
+        assert not stray, f"44px touch targets under other breakpoints: {stray}"
+
     def test_css_has_ios_zoom_prevention(self):
         """font-size: 16px on form inputs prevents iOS Safari from
         auto-zooming when the user taps a text field."""
