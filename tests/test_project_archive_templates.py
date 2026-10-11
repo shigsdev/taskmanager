@@ -429,10 +429,13 @@ def test_deleting_paused_template_clears_flag_so_unarchive_cannot_resurrect_it(
         assert _state(rt_id) == (False, False)
 
 
-def test_resending_same_is_active_or_project_id_keeps_flag(authed_client, app):
+def test_resending_same_project_id_keeps_flag(authed_client, app):
+    # The /recurring editor re-sends project_id on every Save. #363
+    # narrowed this from "is_active or project_id": nothing re-sends
+    # is_active implicitly, and an explicit Pause on an archive-paused
+    # template now claims it (tests/test_recurring_paused_visible.py).
     pid, rt_id = _archived_with_paused_template(authed_client, app)
 
-    authed_client.patch(f"/api/recurring/{rt_id}", json={"is_active": False})
     authed_client.patch(f"/api/recurring/{rt_id}", json={"project_id": str(pid)})
     with app.app_context():
         assert _state(rt_id) == (False, True)

@@ -108,16 +108,35 @@ function recurringSubmitTarget(editId) {
     return { method: "PATCH", url: "/api/recurring/" + id };
 }
 
+/**
+ * recurringPausedLabel — the PAUSED marker on a /recurring row (#363).
+ *
+ * "" for an active template. A template an archive paused names which
+ * archive, so the user can tell it apart from one they paused themselves
+ * (unarchiving brings only the archive-paused ones back).
+ */
+function recurringPausedLabel(rt) {
+    if (!rt || rt.is_active) return "";
+    const proj = !!rt.paused_by_project_archive;
+    const goal = !!rt.paused_by_goal_archive;
+    if (proj && goal) return "PAUSED — project and goal archived";
+    if (proj) return "PAUSED — project archived";
+    if (goal) return "PAUSED — goal archived";
+    return "PAUSED";
+}
+
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         buildRecurringEditPayload,
         blankRecurringDraft,
         recurringSubmitTarget,
+        recurringPausedLabel,
     };
 } else if (typeof window !== "undefined") {
     window.recurringHelpers = {
         buildRecurringEditPayload,
         blankRecurringDraft,
         recurringSubmitTarget,
+        recurringPausedLabel,
     };
 }

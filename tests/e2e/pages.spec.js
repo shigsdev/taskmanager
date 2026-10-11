@@ -5530,8 +5530,8 @@ test.describe("An archived link stays representable (#355)", () => {
         // #353: archiving the project PAUSED the template. Turn it back
         // on, which is the real-world state this fixture models: a
         // template the user resumed while its project stays archived. It
-        // is also the only way it can appear on /recurring, which lists
-        // active templates only (#363).
+        // is also why the row reads as a live template on /recurring
+        // rather than a PAUSED one (#363 lists both).
         if (template) {
             const paused = await (
                 await request.get(`/api/recurring/${template.id}`)).json();
@@ -8022,6 +8022,109 @@ test.describe("Strength Forge per-side logging (#410)", () => {
                 .toBeVisible();
         } finally {
             await request.delete(`/api/strength-forge/sessions/${id}`);
+        }
+    });
+});
+
+test.describe("Recurring — paused templates stay on the page (#363)", () => {
+    // Before #363 the page asked for `?active_only=false`, a param the
+    // route never read, so a paused template vanished and the editor's
+    // Resume button could never be reached. Delete wrote the same
+    // is_active=false, so the fix also had to keep DELETED templates off
+    // the page. Each test seeds through the API and asserts on what
+    // renders, then on persisted state.
+    const stamp = () =>
+        `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    async function template(request, title, extra = {}) {
+        const r = await request.post("/api/recurring", {
+            data: { title, frequency: "daily", type: "work", ...extra },
+        });
+        expect(r.ok()).toBe(true);
+        return r.json();
+    }
+
+    const rowFor = (page, id) =>
+        page.locator(`.recurring-row:has(input[data-id="${id}"])`);
+
+    test("a paused template renders, and Resume brings it back", async ({
+        page, request,
+    }) => {
+        const s = stamp();
+        const paused = await template(request, `E2E 363 paused ${s}`);
+        const gone = await template(request, `E2E 363 deleted ${s}`);
+        try {
+            const p = await request.patch(`/api/recurring/${paused.id}`, {
+                data: { is_active: false },
+            });
+            expect(p.ok()).toBe(true);
+            expect((await request.delete(`/api/recurring/${gone.id}`))
+                .status()).toBe(204);
+
+            await page.goto("/recurring?nosw=1");
+            await page.waitForLoadState("networkidle");
+
+            const row = rowFor(page, paused.id);
+            await expect(row).toHaveCount(1, { timeout: 10000 });
+            await expect(row).toHaveClass(/recurring-row-inactive/);
+            await expect(row.locator(".recurring-row-meta strong"))
+                .toHaveText("PAUSED");
+            // A deleted template is gone, not "paused".
+            await expect(rowFor(page, gone.id)).toHaveCount(0);
+
+            await row.locator(".recurring-row-info").click();
+            const pause = page.locator("#recurEditPause");
+            await expect(pause).toHaveText("Resume", { timeout: 2000 });
+            const [resp] = await Promise.all([
+                page.waitForResponse((r) =>
+                    r.url().endsWith(`/api/recurring/${paused.id}`)
+                    && r.request().method() === "PATCH"),
+                pause.click(),
+            ]);
+            expect(resp.status()).toBe(200);
+
+            await expect(row).not.toHaveClass(/recurring-row-inactive/);
+            await expect(row.locator(".recurring-row-meta strong"))
+                .toHaveCount(0);
+            const after = await (
+                await request.get(`/api/recurring/${paused.id}`)).json();
+            expect(after.is_active).toBe(true);
+        } finally {
+            await request.delete(`/api/recurring/${paused.id}`);
+        }
+    });
+
+    test("an archive-paused template says which archive paused it", async ({
+        page, request,
+    }) => {
+        const s = stamp();
+        const pr = await request.post("/api/projects", {
+            data: { name: `E2E 363 project ${s}`, type: "work" },
+        });
+        expect(pr.ok()).toBe(true);
+        const project = await pr.json();
+        const tpl = await template(request, `E2E 363 archived ${s}`, {
+            project_id: project.id,
+        });
+        try {
+            const ap = await request.patch(`/api/projects/${project.id}`, {
+                data: { is_active: false },
+            });
+            expect(ap.ok()).toBe(true);
+
+            await page.goto("/recurring?nosw=1");
+            await page.waitForLoadState("networkidle");
+
+            const row = rowFor(page, tpl.id);
+            await expect(row).toHaveCount(1, { timeout: 10000 });
+            await expect(row.locator(".recurring-row-meta strong"))
+                .toHaveText("PAUSED \u2014 project archived");
+        } finally {
+            await request.patch(`/api/recurring/${tpl.id}`, {
+                data: { project_id: null },
+            });
+            await request.delete(`/api/recurring/${tpl.id}`);
+            await request.delete(`/api/projects/${project.id}`);
         }
     });
 });

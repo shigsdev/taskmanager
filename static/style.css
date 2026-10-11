@@ -4362,6 +4362,11 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     font-size: 0.85rem;
     word-break: break-word;
 }
+/* #363: paused templates are listed now (they used to vanish). Dashed
+   border + muted title, not an opacity dim, which would push the already
+   muted meta line below readable contrast. */
+.recurring-row-inactive { border-style: dashed; }
+.recurring-row-inactive .recurring-row-title { color: var(--text-muted); }
 .projects-toolbar {
     display: flex;
     gap: 12px;

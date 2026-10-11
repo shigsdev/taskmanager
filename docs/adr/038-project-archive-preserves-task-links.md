@@ -100,6 +100,19 @@ they're displayed:
   marker it concerns, and clearing never resumes. `/goals` names the
   templates in its Archive confirm. Spec:
   `docs/design/368-goal-archive-pauses-templates.md`.
+- **Amends Decision 3 (#363, 2026-10-11): an explicit `is_active` on a
+  template clears both markers even when the value doesn't change.**
+  `/recurring` now lists paused templates, so a user can bulk-Pause one
+  that an archive already paused. Under "actual change only" that Pause
+  was a no-op that kept the marker, and the next unarchive woke a
+  template the user had just told to stay paused. Nothing sends a
+  template's `is_active` implicitly: the editor's Save doesn't, and
+  `_update_repeat` never reaches an archive-paused template (see
+  Decision 3). So the re-send concern that motivated the guard only
+  applies to `project_id` / `goal_id`, which keep it. Delete now also
+  stamps `RecurringTask.deleted_at`, so a deleted template is no longer
+  indistinguishable from a paused one. Spec:
+  `docs/design/363-paused-templates-visible.md`.
 
 ## Alternatives considered
 

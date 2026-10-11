@@ -469,6 +469,11 @@ Report.
      on its line), the second closes the project. On /recurring, + New
      template then Escape closes the editor. Click ✕ and the backdrop
      too — the mouse paths must be unchanged.
+     #363: on /recurring, Pause a template — it STAYS on the list with a
+     dashed border and PAUSED; open it and Resume brings it back. Delete
+     one — it leaves the list (it must not come back as PAUSED). Archive
+     a project with a repeating task: its row reads "PAUSED — project
+     archived".
   7. **Goals page**: verify goal cards show progress bars with correct task
      counts. Filter by category/priority/status, verify results change.
      Expand a card's `Projects (N)` toggle, drag a project chip onto
@@ -579,6 +584,9 @@ Report.
   Tasks: Escape closes panel    PASS          Tasks: Escape closes panel    PASS
   Tasks: Tab stays in panel     PASS          Tasks: Tab stays in panel     PASS
   Recurring: Escape closes editor PASS        Recurring: Escape closes editor PASS
+  Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
+  Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
+  Recurring: archive pause reason PASS        Recurring: archive pause reason PASS
   Goals: progress bars          PASS          Goals: progress bars          PASS
   Goals: filter category        PASS          Goals: filter category        PASS
   Goals: filter priority        PASS          Goals: filter priority        PASS

@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable
-from datetime import date
+from datetime import UTC, date, datetime
 
 from sqlalchemy import or_, select
 
@@ -294,8 +294,14 @@ def create_recurring(data: dict) -> RecurringTask:
 
 
 def list_recurring(*, active_only: bool = True) -> list[RecurringTask]:
-    """List all recurring task templates."""
-    stmt = select(RecurringTask).order_by(RecurringTask.created_at.asc())
+    """List recurring task templates: the active ones, or with
+    ``active_only=False`` the paused ones too. Deleted templates are never
+    listed (#363)."""
+    stmt = (
+        select(RecurringTask)
+        .where(RecurringTask.deleted_at.is_(None))
+        .order_by(RecurringTask.created_at.asc())
+    )
     if active_only:
         stmt = stmt.where(RecurringTask.is_active.is_(True))
     return list(db.session.scalars(stmt))
@@ -369,11 +375,18 @@ def update_recurring(rt_id: uuid.UUID, data: dict) -> RecurringTask | None:
         rt.subtasks_snapshot = _clean_subtasks_snapshot(data["subtasks_snapshot"])
 
     if "is_active" in data:
-        new_active = bool(data["is_active"])
-        if new_active != rt.is_active:  # #353: see the project_id note above
-            rt.is_active = new_active
-            rt.paused_by_project_archive = False
-            rt.paused_by_goal_archive = False  # #368
+        # #363: an explicit is_active is the user's own Pause/Resume, so it
+        # claims the template from any archive even when the value doesn't
+        # change: a Pause on a template an archive already paused must stop
+        # the next unarchive from waking it. Safe from the project_id trap
+        # above because the /recurring editor's Save never sends is_active.
+        rt.is_active = bool(data["is_active"])
+        rt.paused_by_project_archive = False
+        rt.paused_by_goal_archive = False  # #368
+        if rt.is_active:
+            # #363: turning a deleted template back on (a task's Repeat set
+            # again) revives it as a live one.
+            rt.deleted_at = None
 
     if "end_date" in data:  # #101 (PR30)
         rt.end_date = _parse_end_date(data["end_date"])
@@ -411,11 +424,16 @@ def update_recurring(rt_id: uuid.UUID, data: dict) -> RecurringTask | None:
 
 
 def delete_recurring(rt_id: uuid.UUID) -> bool:
-    """Soft-disable a recurring task (set is_active = False)."""
+    """Soft-delete a recurring task: it stops firing and leaves /recurring.
+
+    #363: ``deleted_at`` is what separates this from a Pause, which writes
+    the same ``is_active=False`` but stays listed with Resume.
+    """
     rt = get_recurring(rt_id)
     if rt is None:
         return False
     rt.is_active = False
+    rt.deleted_at = datetime.now(UTC)
     # #353: unconditionally. Delete writes the same is_active=False as
     # Pause, so a surviving flag would let unarchiving the project
     # resurrect a template the user deleted. #368: same for the goal.

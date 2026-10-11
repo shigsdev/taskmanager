@@ -8,11 +8,12 @@ two special actions:
 - **spawn** — creates actual Task records in Today tier from today's templates
 
 Endpoints:
-    GET    /api/recurring        — list all active recurring templates
+    GET    /api/recurring        — list active templates (``?all=1`` adds paused ones;
+                                   deleted templates are never listed, #363)
     POST   /api/recurring        — create a new recurring template
     GET    /api/recurring/<id>   — get a single template
     PATCH  /api/recurring/<id>   — update a template
-    DELETE /api/recurring/<id>   — disable (soft-delete) a template
+    DELETE /api/recurring/<id>   — soft-delete a template (stamps deleted_at, #363)
     POST   /api/recurring/seed   — populate system defaults
     POST   /api/recurring/spawn  — create today's tasks from templates
 """
@@ -62,6 +63,9 @@ def _serialize(rt: RecurringTask) -> dict:
         "url": rt.url,
         "subtasks_snapshot": rt.subtasks_snapshot or [],
         "is_active": rt.is_active,
+        # #363: so /recurring can say why a template is paused.
+        "paused_by_project_archive": rt.paused_by_project_archive,
+        "paused_by_goal_archive": rt.paused_by_goal_archive,
         "end_date": rt.end_date.isoformat() if rt.end_date else None,  # #101
         "start_date": rt.start_date.isoformat() if rt.start_date else None,  # #147
         "created_at": rt.created_at.isoformat(),

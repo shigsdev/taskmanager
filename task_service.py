@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -410,7 +410,10 @@ def _update_repeat(task: Task, repeat: dict | None) -> None:
                 # Repeat later would mint a duplicate template.
                 return
             if rt:
+                # #363: removing the repeat ends the series. A delete, not
+                # a pause, so it doesn't linger on /recurring as PAUSED.
                 rt.is_active = False
+                rt.deleted_at = datetime.now(UTC)
             task.recurring_task_id = None
         return
 

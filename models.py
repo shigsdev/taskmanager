@@ -347,11 +347,21 @@ class RecurringTask(db.Model):
         JSONType, nullable=True, default=list
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # #363 (2026-10-11): set when the template is deleted. Delete and Pause
+    # both turn is_active off; this is what tells them apart. Paused =
+    # inactive with deleted_at NULL, listed on /recurring with Resume;
+    # deleted = never listed. Re-activating clears it (a task's Repeat set
+    # again revives its old template). Rows inactive before this column
+    # existed stay NULL and read as paused, by user decision.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # #353 (2026-10-01): True means "paused ONLY because its project was
     # archived". Set by project_service._set_project_active when the
     # project is archived; unarchiving resumes exactly these rows. Any
-    # user override — an actual is_active change (in practice a resume),
-    # a move to another project, or a delete — clears it, so unarchiving
+    # user override — an explicit Pause or Resume (#363: even a Pause on
+    # an already-paused row), a move to another project, or a delete —
+    # clears it, so unarchiving
     # can never resurrect a template the user stopped themselves. See
     # spec §4.3. A recycle-bin purge of the project clears it too (#356):
     # the project is gone, so "resume on unarchive" can't happen.

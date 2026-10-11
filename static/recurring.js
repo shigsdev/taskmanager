@@ -2,7 +2,8 @@
  * /recurring page — list + multi-select + bulk-edit toolbar for
  * recurring templates (#63, 2026-04-26).
  *
- * Loads templates via GET /api/recurring (active_only=false), renders
+ * Loads templates via GET /api/recurring?all=1 (active + paused; deleted
+ * ones are never listed, #363), renders
  * one row per template with a checkbox, name, frequency summary,
  * type, project + goal labels. Toolbar fires bulk actions via the
  * new PATCH /api/recurring/bulk and DELETE /api/recurring/bulk
@@ -104,7 +105,9 @@
                 escapeHtml(_freqSummary(rt)) + " · " + escapeHtml(rt.type) +
                 " · proj: " + escapeHtml(_projectName(rt.project_id)) +
                 " · goal: " + escapeHtml(_goalTitle(rt.goal_id)) +
-                (rt.is_active ? "" : " · <strong>PAUSED</strong>") +
+                (rt.is_active ? "" : " · <strong>" +
+                    escapeHtml(window.recurringHelpers.recurringPausedLabel(rt)) +
+                    "</strong>") +
             "</div>";
         // #266: click the row body to edit the template — unless we're in
         // bulk-select mode, where a click toggles the checkbox instead.
@@ -134,7 +137,10 @@
         // is archived keeps that link visible in the editor instead of the
         // select reading back "" and detaching it on the next save.
         var [tpls, projs, gls] = await Promise.all([
-            window.apiFetch("/api/recurring?active_only=false"),
+            // #363: `all=1` is the param the route reads. This page sent
+            // `active_only=false` from #63 on, which the route ignored, so a
+            // paused template never rendered and Resume was unreachable.
+            window.apiFetch("/api/recurring?all=1"),
             window.apiFetch("/api/projects?is_active=all"),
             window.apiFetch("/api/goals?is_active=all"),
         ]);

@@ -86,7 +86,10 @@ component is added, a data flow changes, or a security boundary shifts.
   reflection), recurring tasks (with `subtasks_snapshot` JSON for #26's clone-on-
   spawn pattern, and `paused_by_project_archive` / `paused_by_goal_archive`
   for #353 / #368 — set when a project or goal archive pauses the template,
-  so unarchive resumes only those, and only once neither is set),
+  so unarchive resumes only those, and only once neither is set, and
+  `deleted_at` for #363 — set by a delete, so a deleted template is told
+  apart from a paused one: `/recurring` lists paused templates with
+  Resume and never lists deleted ones),
   import log (with `undo_snapshot` for #367 — what an undo changed, so
   Restore returns each row to its pre-undo state), app_logs, and `reflections` (Weekly
   Reflection transcripts + AI-proposed action audit trail, 2026-05-16;
@@ -616,7 +619,8 @@ component is added, a data flow changes, or a security boundary shifts.
   archive transition it pauses the project's currently-active
   `RecurringTask` rows and sets `paused_by_project_archive`; on unarchive
   it resumes only flagged rows. `recurring_service` clears the flag on any
-  user override (an actual `is_active` or `project_id` change, or a
+  user override (an explicit `is_active` Pause/Resume — #363: even one
+  that doesn't change the value — an actual `project_id` change, or a
   delete). The PR63 #129 task-detach was removed from `delete_project`, so
   Delete and the Archive button now agree and both keep task links.
   `/projects` names the templates that will pause in its archive confirms

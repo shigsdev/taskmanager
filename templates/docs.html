@@ -1512,7 +1512,7 @@ Skip this line (too short)</pre>
             <ul>
                 <li>Capture-bar hint (<code>#daily</code>, <code>#weekdays</code>, <code>#weekly</code>, <code>#monthly</code>) — creates a template matching today's weekday or day-of-month.</li>
                 <li>Task detail panel — add a repeat rule to an existing task.</li>
-                <li><a href="{{ url_for('recurring_page') }}">/recurring</a> page — list view of every template, and the one place you can build a template from scratch rather than attaching a repeat rule to an existing task. <strong>+ New template</strong> opens a blank editor: a title is the only required field, and it starts on <em>Daily</em> / <em>Work</em>. Switch to Weekly or Monthly and the day picker is pre-set to today's weekday / date, matching the capture-bar hints above. <strong>Click a template to edit it</strong> (title, schedule, type, project, goal, link, notes, stop-after date, pause/resume, delete) in the same panel. The <strong>Select</strong> button switches to multi-select for bulk-edit (Type / Frequency / Project / Goal / Pause-Resume / Delete).</li>
+                <li><a href="{{ url_for('recurring_page') }}">/recurring</a> page — list view of every template, and the one place you can build a template from scratch rather than attaching a repeat rule to an existing task. <strong>+ New template</strong> opens a blank editor: a title is the only required field, and it starts on <em>Daily</em> / <em>Work</em>. Switch to Weekly or Monthly and the day picker is pre-set to today's weekday / date, matching the capture-bar hints above. <strong>Click a template to edit it</strong> (title, schedule, type, project, goal, link, notes, stop-after date, pause/resume, delete) in the same panel. The <strong>Select</strong> button switches to multi-select for bulk-edit (Type / Frequency / Project / Goal / Pause-Resume / Delete). A <strong>paused</strong> template stays on the list with a dashed border and <strong>PAUSED</strong> in its details, and opening it offers <strong>Resume</strong>. A <strong>deleted</strong> template leaves the list, and so does the template behind a task whose Repeat you set to none.</li>
             </ul>
 
             <h3>When tasks spawn</h3>
@@ -1546,10 +1546,14 @@ Skip this line (too short)</pre>
                 are unarchived, in whichever order you do it.
             </p>
             <p>
-                While it's paused this way, a repeating task doesn't
-                appear in the /recurring list, and a task it spawned
-                shows its Repeat as none. Unarchiving is how you bring
-                it back.
+                While it's paused this way, a repeating task stays on the
+                /recurring list marked <strong>PAUSED — project
+                archived</strong> (or goal, or both), and a task it
+                spawned shows its Repeat as none. Unarchiving brings it
+                back; so does pressing <strong>Resume</strong> on it
+                yourself, and after that unarchiving leaves it alone. If
+                you <strong>Pause</strong> it yourself instead, it stays
+                paused when you unarchive.
             </p>
 
             <h3>Preview cards vs. real tasks</h3>

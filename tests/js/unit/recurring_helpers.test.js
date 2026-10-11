@@ -10,6 +10,7 @@
 const {
     buildRecurringEditPayload,
     blankRecurringDraft,
+    recurringPausedLabel,
     recurringSubmitTarget,
 } = require("../../../static/recurring_helpers");
 
@@ -217,5 +218,36 @@ describe("blankRecurringDraft", () => {
         expect(body.days_of_week).toBeNull();
         expect(body.day_of_month).toBeNull();
         expect(body.end_date).toBeNull();
+    });
+});
+
+// #363: /recurring now lists paused templates, and an archive-paused row
+// says which archive paused it so the user knows why (and that unarchiving
+// would bring it back).
+describe("recurringPausedLabel (#363)", () => {
+    test("an active template has no label", () => {
+        expect(recurringPausedLabel({ is_active: true })).toBe("");
+    });
+
+    test("a template the user paused reads PAUSED", () => {
+        expect(recurringPausedLabel({ is_active: false })).toBe("PAUSED");
+    });
+
+    test.each([
+        [true, false, "PAUSED — project archived"],
+        [false, true, "PAUSED — goal archived"],
+        [true, true, "PAUSED — project and goal archived"],
+    ])("archive markers project=%s goal=%s", (proj, goal, want) => {
+        expect(recurringPausedLabel({
+            is_active: false,
+            paused_by_project_archive: proj,
+            paused_by_goal_archive: goal,
+        })).toBe(want);
+    });
+
+    test("a marker on an active row is ignored", () => {
+        expect(recurringPausedLabel({
+            is_active: true, paused_by_project_archive: true,
+        })).toBe("");
     });
 });
