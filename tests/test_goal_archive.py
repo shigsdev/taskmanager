@@ -196,6 +196,65 @@ def test_hard_delete_refuses_when_a_TEMPLATE_points_at_it(authed_client, app):
     assert resp.get_json()["references"]["recurring"] == 1
 
 
+def _goal_with_template(app, title: str) -> tuple:
+    with app.app_context():
+        g = _goal(title, active=False)
+        rt = RecurringTask(
+            title=f"{title} template", frequency=RecurringFrequency.DAILY,
+            type=TaskType.WORK, goal_id=g.id,
+        )
+        db.session.add(rt)
+        db.session.commit()
+        return g.id, rt.id
+
+
+def test_a_DELETED_template_does_not_block_the_hard_delete(authed_client, app):
+    # #414: a deleted template is invisible on /recurring and can't be
+    # edited, so counting it left a goal stuck behind a blocker the user
+    # could never clear. Delete it through the real route so deleted_at
+    # is stamped exactly as in use.
+    gid, rid = _goal_with_template(app, "Held by a ghost")
+    assert authed_client.delete(f"/api/recurring/{rid}").status_code == 204
+
+    refs = authed_client.get(f"/api/goals/{gid}/references").get_json()
+    assert refs["recurring"] == 0
+
+    assert authed_client.delete(f"/api/goals/{gid}/permanent").status_code == 204
+    with app.app_context():
+        assert db.session.get(Goal, gid) is None
+        rt = db.session.get(RecurringTask, rid)
+        # Survives, still deleted, its link cleared explicitly by the
+        # service rather than left to the database (#349's rule).
+        assert rt is not None
+        assert rt.deleted_at is not None
+        assert rt.goal_id is None
+
+
+def test_a_PAUSED_template_still_blocks_the_hard_delete(authed_client, app):
+    # Paused is visible on /recurring (#363), so the user can move or
+    # delete it — the guard must keep naming it.
+    gid, rid = _goal_with_template(app, "Held by a paused one")
+    authed_client.patch(f"/api/recurring/{rid}", json={"is_active": False})
+
+    resp = authed_client.delete(f"/api/goals/{gid}/permanent")
+    assert resp.status_code == 409
+    assert resp.get_json()["references"]["recurring"] == 1
+
+
+def test_only_the_non_deleted_templates_are_counted(authed_client, app):
+    gid, deleted_id = _goal_with_template(app, "Mixed")
+    with app.app_context():
+        db.session.add(RecurringTask(
+            title="still here", frequency=RecurringFrequency.DAILY,
+            type=TaskType.WORK, goal_id=gid, is_active=False,
+        ))
+        db.session.commit()
+    authed_client.delete(f"/api/recurring/{deleted_id}")
+
+    refs = authed_client.get(f"/api/goals/{gid}/references").get_json()
+    assert refs["recurring"] == 1
+
+
 def test_hard_delete_refuses_when_a_WEEKLY_FOCUS_points_at_it(authed_client, app):
     # The reference I nearly missed. WeeklyFocus.goal_id is the fourth
     # goal foreign key and the least visible of them; its ondelete is

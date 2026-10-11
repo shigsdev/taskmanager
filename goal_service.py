@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from models import (
     Goal,
@@ -211,13 +211,20 @@ def goal_reference_counts(goal_id: uuid.UUID) -> dict[str, int]:
     Deliberately unfiltered by status or is_active: an archived task
     holds the same foreign key as an active one, and the database does
     not care which it is.
+
+    One exception (#414): a DELETED repeating task doesn't count. It's
+    invisible on /recurring and can't be edited, so counting it left the
+    goal stuck behind a blocker the user could never clear.
+    ``hard_delete_goal`` clears its link explicitly instead. A paused
+    template still counts; the user can see it and move or delete it.
     """
-    return {
-        name: db.session.scalar(
-            select(func.count()).select_from(model).where(model.goal_id == goal_id)
-        ) or 0
-        for name, model in _GOAL_REFERRERS
-    }
+    def _count(model) -> int:
+        stmt = select(func.count()).select_from(model).where(model.goal_id == goal_id)
+        if model is RecurringTask:
+            stmt = stmt.where(RecurringTask.deleted_at.is_(None))
+        return db.session.scalar(stmt) or 0
+
+    return {name: _count(model) for name, model in _GOAL_REFERRERS}
 
 
 def hard_delete_goal(goal_id: uuid.UUID) -> dict:
@@ -242,6 +249,15 @@ def hard_delete_goal(goal_id: uuid.UUID) -> dict:
     if any(refs.values()):
         return {"deleted": False, "reason": "referenced", "references": refs}
 
+    # #414: deleted templates were left out of the guard. Clear their link
+    # here rather than leave it to the FK's ON DELETE SET NULL. Same rule
+    # as the guard itself: the service decides, not the database.
+    db.session.execute(
+        update(RecurringTask)
+        .where(RecurringTask.goal_id == goal_id,
+               RecurringTask.deleted_at.is_not(None))
+        .values(goal_id=None)
+    )
     db.session.delete(goal)
     db.session.commit()
     return {"deleted": True, "reason": None, "references": refs}

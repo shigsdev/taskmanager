@@ -669,7 +669,10 @@ component is added, a data flow changes, or a security boundary shifts.
     goal must already be archived, and nothing may still point at it.
     `GET /api/goals/<id>/references` returns per-table counts so the
     panel can say *why* the button is dead before the click rather than
-    surfacing it as an error after.
+    surfacing it as an error after. One exception (#414): a deleted
+    `RecurringTask` (`deleted_at` set, #363) isn't counted, because the
+    user can't reach it to clear it. `hard_delete_goal` nulls its
+    `goal_id` explicitly in the same commit.
   - **Why a guard rather than a cascade.** FOUR models carry a
     `goal_id` — `Project`, `Task`, `RecurringTask` and `WeeklyFocus` —
     and only `Task.goal_id` lacks `ondelete="SET NULL"`. An unguarded
