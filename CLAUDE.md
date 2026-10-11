@@ -471,7 +471,8 @@ Report.
      too — the mouse paths must be unchanged.
      #406: the five pop-up dialogs — /recycle-bin Empty Bin confirm,
      /reflection Next Week's Focus, the board's ✨ Plan and 💡
-     Auto-categorize reviews, a voice memo's Make recurring. Each closes on
+     Auto-categorize reviews, a voice memo's Make recurring — and #417's
+     Strength Forge how-to (ℹ️), log form and print sheet. Each closes on
      Escape WITHOUT running its action (nothing purged, set or applied),
      and Tab / Shift+Tab never leave it.
      #363: on /recurring, Pause a template — it STAYS on the list with a

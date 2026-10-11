@@ -8321,3 +8321,57 @@ test.describe("Modals close on Escape and keep Tab inside (#406)", () => {
         await expect(recur).toContainText("Make recurring");
     });
 });
+
+// #417: Strength Forge's three pop-ups closed on Escape through their own
+// handlers but let Tab walk behind them. Now they ride panel_keys.js like
+// the #406 modals. expectTabTrapped is the #406 helper above.
+test.describe("Strength Forge pop-ups keep Tab inside (#417)", () => {
+    test("exercise how-to: Tab stays inside, Escape closes", async ({ page }) => {
+        await page.goto("/strength-forge?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator(".sf-exrow-info").first().click();
+        const overlay = page.locator(".sf-modal-overlay");
+        await expect(overlay).toBeVisible();
+        await expectTabTrapped(page, ".sf-modal-overlay");
+        await page.keyboard.press("Escape");
+        await expect(overlay).toBeHidden();
+    });
+
+    test("log form: Tab stays inside, Escape closes and the typed set survives", async ({ page }) => {
+        await page.goto("/strength-forge?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.getByRole("button", { name: "\ud83d\udd01 Split" }).click();
+        const panel = page.locator('.sf-panel[data-tab="split"]');
+        await panel.locator(".sf-log-detail-btn").click();
+        const overlay = page.locator(".sf-logform-overlay");
+        await expect(overlay).toBeVisible();
+        const reps = page.locator(".sf-logform-ex .sf-logform-set input").first();
+        await reps.fill("7");
+        await expectTabTrapped(page, ".sf-logform-overlay");
+        await page.keyboard.press("Escape");
+        await expect(overlay).toBeHidden();
+        // Escape only closes: the on-device draft still holds the set.
+        await page.waitForTimeout(600);
+        await panel.locator(".sf-log-detail-btn").click();
+        await expect(overlay).toBeVisible();
+        await expect(page.locator(".sf-logform-ex .sf-logform-set input").first())
+            .toHaveValue("7");
+        await page.evaluate(() => {
+            Object.keys(localStorage).filter((k) => k.includes("sf")).forEach(
+                (k) => localStorage.removeItem(k));
+        });
+    });
+
+    test("print sheet: Tab stays inside, Escape closes and leaves print mode", async ({ page }) => {
+        await page.goto("/strength-forge?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator(".sf-print-btn:visible").first().click();
+        const overlay = page.locator(".sf-print-overlay");
+        await expect(overlay).toHaveCount(1);
+        await expect(page.locator("body")).toHaveClass(/sf-print-active/);
+        await expectTabTrapped(page, ".sf-print-overlay");
+        await page.keyboard.press("Escape");
+        await expect(overlay).toHaveCount(0);
+        await expect(page.locator("body")).not.toHaveClass(/sf-print-active/);
+    });
+});

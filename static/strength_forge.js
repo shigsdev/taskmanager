@@ -43,7 +43,8 @@
     modalTitle = el("div", { cls: "sf-modal-title" });
     var closeBtn = el("button", {
       cls: "sf-modal-close", text: "✕",
-      attrs: { type: "button", "aria-label": "Close" },
+      // #417: panel_keys.js presses this on Escape (and traps Tab).
+      attrs: { type: "button", "aria-label": "Close", "data-panel-close": "" },
       on: { click: closeModal },
     });
     modalBody = el("div", { cls: "sf-modal-body" });
@@ -56,9 +57,6 @@
       on: { click: closeModal },
     }, [card]);
     document.body.appendChild(modalOverlay);
-    document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && !modalOverlay.hasAttribute("hidden")) closeModal();
-    });
   }
 
   function closeModal() { modalOverlay.setAttribute("hidden", "hidden"); }
@@ -718,9 +716,6 @@
     printOverlay = null;
     document.body.classList.remove("sf-print-active");
   }
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && printOverlay) closePrintSheet();
-  });
 
   // #318: render the program's weekly schedule onto the print sheet, from the
   // same SF.schedules data the on-screen strip uses. Training days are marked;
@@ -865,7 +860,8 @@
       }),
       el("button", {
         cls: "sf-print-close", text: "✕ Close",
-        attrs: { type: "button" }, on: { click: closePrintSheet },
+        // #417: panel_keys.js presses this on Escape (and traps Tab).
+        attrs: { type: "button", "data-panel-close": "" }, on: { click: closePrintSheet },
       }),
     ]);
     printOverlay = el("div", {
@@ -1015,7 +1011,8 @@
     logformTitle = el("div", { cls: "sf-logform-title" });
     var closeBtn = el("button", {
       cls: "sf-logform-close", text: "✕",
-      attrs: { type: "button", "aria-label": "Close" }, on: { click: closeLogForm },
+      // #417: panel_keys.js presses this on Escape (and traps Tab).
+      attrs: { type: "button", "aria-label": "Close", "data-panel-close": "" }, on: { click: closeLogForm },
     });
     logformBody = el("div", { cls: "sf-logform-body" });
     // Auto-save progress to localStorage as the user types (debounced).
@@ -1051,9 +1048,6 @@
       cls: "sf-logform-overlay", attrs: { hidden: "hidden" }, on: { click: closeLogForm },
     }, [card]);
     document.body.appendChild(logformOverlay);
-    document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && !logformOverlay.hasAttribute("hidden")) closeLogForm();
-    });
   }
 
   function closeLogForm() { logformOverlay.setAttribute("hidden", "hidden"); }

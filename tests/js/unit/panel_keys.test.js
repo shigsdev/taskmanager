@@ -254,6 +254,9 @@ describe("the five modals (#406)", () => {
         ["weekly-focus-plan-modal", 200],   // board ✨ Plan review
         ["auto-categorize-modal", 1000],    // board 💡 Auto-categorize
         ["voice-recur-overlay", 250],       // voice memo Make recurring
+        ["sf-modal-overlay", 1000],         // #417 Strength Forge how-to
+        ["sf-logform-overlay", 1000],       // #417 Strength Forge log form
+        ["sf-print-overlay", 1200],         // #417 Strength Forge print sheet
     ];
     const $ = (id) => document.getElementById(id);
     function press(key, opts = {}) {

@@ -33,6 +33,9 @@
         ".weekly-focus-plan-modal",    // #406: board ✨ Plan review
         ".auto-categorize-modal",      // #406: board 💡 Auto-categorize
         ".voice-recur-overlay",        // #406: voice memo Make recurring
+        ".sf-modal-overlay",           // #417: Strength Forge how-to
+        ".sf-logform-overlay",         // #417: Strength Forge log form
+        ".sf-print-overlay",           // #417: Strength Forge print sheet
     ].join(", ");
     var CLOSE_SELECTOR = "[data-panel-close]";
     var FOCUSABLE = [
