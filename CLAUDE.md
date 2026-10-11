@@ -492,6 +492,10 @@ Report.
      (Weekly with no day is refused in the pop-up) — Add All creates a goal
      in that category, a project and a template, and says "Added 1 task,
      1 goal, 1 project and 1 recurring task."
+     #426: open a task a weekly template spawned, push its due date to the
+     Tuesday after next and Save — the template's start date doesn't move
+     and next Monday's preview is still there; push it past the template's
+     Stop-after date and Save still succeeds.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -613,6 +617,7 @@ Report.
   Plan: retry sends only failed PASS          Plan: retry sends only failed PASS
   Board: dates across DST       PASS          Board: dates across DST       PASS
   Voice: goal/project/recurring PASS          Voice: goal/project/recurring PASS
+  Recurring: push keeps schedule PASS         Recurring: push keeps schedule PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

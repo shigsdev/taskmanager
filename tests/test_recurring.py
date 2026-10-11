@@ -1872,20 +1872,19 @@ class TestStartDateSunrise:
             update_recurring(rt.id, {"start_date": None})
             assert db.session.get(RecurringTask, rt.id).start_date is None
 
-    def test_update_repeat_path_also_backfills_start_date(self, app):
-        """User-reported follow-up 2026-05-02: opening + saving an
-        existing task created before PR92 must pick up the sunrise
-        bound. _update_repeat goes through update_recurring, NOT
-        _apply_repeat, so the same start_date plumbing has to be
-        present on both paths or pre-existing templates stay broken."""
+    def test_update_repeat_leaves_a_null_start_date_alone(self, app):
+        """#426: the 2026-05-02 follow-up made _update_repeat backfill a
+        NULL start_date from the task's due date, for templates created
+        before #147. None of those remain, and the backfill skipped
+        occurrences on templates that were already running (the task's
+        due date is one occurrence, maybe pushed). A save now leaves a
+        NULL start date NULL."""
         from datetime import date
 
         from models import RecurringTask, Task, TaskType, Tier, db
         from task_service import _apply_repeat, _update_repeat
 
         with app.app_context():
-            # Step 1: create the template before #147 was in effect by
-            # forcing start_date back to NULL after _apply_repeat fires.
             task = Task(
                 title="x", type=TaskType.WORK, tier=Tier.NEXT_WEEK,
                 due_date=date(2026, 5, 4),
@@ -1895,15 +1894,13 @@ class TestStartDateSunrise:
             _apply_repeat(task, {"frequency": "daily"})
             db.session.commit()
             rt = db.session.get(RecurringTask, task.recurring_task_id)
-            rt.start_date = None  # simulate pre-#147 row
+            rt.start_date = None
             db.session.commit()
-            assert rt.start_date is None
 
-            # Step 2: user opens + saves the task. _update_repeat runs.
             _update_repeat(task, {"frequency": "daily"})
             db.session.commit()
             refreshed = db.session.get(RecurringTask, task.recurring_task_id)
-            assert refreshed.start_date == date(2026, 5, 4)
+            assert refreshed.start_date is None
 
     def test_serializer_exposes_start_date(self, authed_client, app):
 
@@ -1921,6 +1918,80 @@ class TestStartDateSunrise:
         rows = resp.get_json()
         row = next(r for r in rows if r["id"] == rt_id)
         assert row["start_date"] == "2026-05-04"
+
+
+class TestSavingAnOccurrenceKeepsTheSchedule:
+    """#426: saving a task that belongs to a recurring template used to set
+    the template's start_date to that task's due date on every save, so
+    pushing one occurrence later stopped the occurrences in between, and
+    pushing it past the template's end date made the save fail."""
+
+    def _make_weekly(self, client, **repeat_extra):
+        body = client.post("/api/tasks", json={
+            "title": "Weekly Work Prep", "type": "work",
+            "due_date": "2026-10-12",  # a Monday
+            "repeat": {"frequency": "weekly", "day_of_week": 0, **repeat_extra},
+        }).get_json()
+        return body
+
+    def _panel_save(self, client, task, due_date, repeat=None):
+        """The fields the task panel sends (task_detail_payload.js)."""
+        return client.patch(f"/api/tasks/{task['id']}", json={
+            "title": task["title"], "tier": task["tier"], "type": task["type"],
+            "project_id": None, "due_date": due_date, "goal_id": None,
+            "url": None, "notes": "", "checklist": [],
+            "repeat": repeat if repeat is not None else task["repeat"],
+        })
+
+    def _template(self, client, task):
+        tid = task["repeat"]["template_id"]
+        return next(r for r in client.get("/api/recurring").get_json() if r["id"] == tid)
+
+    def test_pushing_one_occurrence_keeps_the_next_one(self, authed_client, app):
+        import uuid
+        from datetime import date
+
+        from models import RecurringTask, db
+        from recurring_service import _template_fires_on
+
+        task = self._make_weekly(authed_client)
+        assert self._template(authed_client, task)["start_date"] == "2026-10-12"
+
+        # Push Monday's to the Tuesday after next.
+        resp = self._panel_save(authed_client, task, "2026-10-20")
+        assert resp.status_code == 200
+        assert resp.get_json()["due_date"] == "2026-10-20"
+
+        tmpl = self._template(authed_client, task)
+        assert tmpl["start_date"] == "2026-10-12"
+        with app.app_context():
+            rt = db.session.get(RecurringTask, uuid.UUID(tmpl["id"]))
+            assert _template_fires_on(rt, date(2026, 10, 19)) is True
+
+    def test_pushing_past_the_end_date_still_saves(self, authed_client):
+        task = self._make_weekly(authed_client, end_date="2026-10-31")
+        resp = self._panel_save(authed_client, task, "2026-11-05")
+        assert resp.status_code == 200, resp.get_json()
+        tmpl = self._template(authed_client, task)
+        assert tmpl["start_date"] == "2026-10-12"
+        assert tmpl["end_date"] == "2026-10-31"
+
+    def test_a_null_start_date_stays_null(self, authed_client):
+        task = authed_client.post("/api/tasks", json={
+            "title": "Workout", "type": "personal",
+            "repeat": {"frequency": "weekly", "day_of_week": 6},
+        }).get_json()
+        assert self._template(authed_client, task)["start_date"] is None
+        resp = self._panel_save(authed_client, task, "2026-10-20")
+        assert resp.status_code == 200
+        assert self._template(authed_client, task)["start_date"] is None
+
+    def test_an_explicit_start_date_still_sets_it(self, authed_client):
+        task = self._make_weekly(authed_client)
+        repeat = {**task["repeat"], "start_date": "2026-11-02"}
+        resp = self._panel_save(authed_client, task, "2026-10-12", repeat=repeat)
+        assert resp.status_code == 200
+        assert self._template(authed_client, task)["start_date"] == "2026-11-02"
 
 
 class TestRecurringBulkCapPR9:
