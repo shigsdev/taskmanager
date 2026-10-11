@@ -713,9 +713,9 @@
     }
 
     // #155 (2026-05-09): "Make recurring" modal.
-    // Opens a small inline form pre-filled with Claude's inferred
-    // repeat (frequency, day_of_week, day_of_month, end_date). User
-    // can override or clear. On Save, the candidate gets a `repeat`
+    // Opens a small inline form pre-filled with the row's current repeat
+    // (empty the first time — the parser doesn't infer one). User can
+    // override or clear. On Save, the candidate gets a `repeat`
     // object attached; on confirm, the candidate is routed to the
     // recurring-template create flow instead of a one-off task.
     function openRecurringModal(idx) {
@@ -777,6 +777,25 @@
         dowRow.appendChild(dowSel);
         dialog.appendChild(dowRow);
 
+        // #425: Monthly by Nth weekday needs a week; without this field the
+        // server rejected every such template and the item was dropped.
+        const womRow = document.createElement("div");
+        womRow.className = "voice-recur-row";
+        womRow.innerHTML = "<label>Week of month</label>";
+        const womSel = document.createElement("select");
+        [["", "—"], ["1", "1st"], ["2", "2nd"], ["3", "3rd"], ["4", "4th"]]
+            .forEach(function (pair) {
+                const opt = document.createElement("option");
+                opt.value = pair[0];
+                opt.textContent = pair[1];
+                if (existing.week_of_month && String(existing.week_of_month) === pair[0]) {
+                    opt.selected = true;
+                }
+                womSel.appendChild(opt);
+            });
+        womRow.appendChild(womSel);
+        dialog.appendChild(womRow);
+
         const domRow = document.createElement("div");
         domRow.className = "voice-recur-row";
         domRow.innerHTML = '<label>Day of month</label>';
@@ -798,6 +817,12 @@
         endRow.appendChild(endInput);
         dialog.appendChild(endRow);
 
+        const problemEl = document.createElement("p");
+        problemEl.className = "voice-recur-problem";
+        problemEl.setAttribute("role", "alert");
+        problemEl.hidden = true;
+        dialog.appendChild(problemEl);
+
         const btnRow = document.createElement("div");
         btnRow.className = "voice-recur-actions";
         const saveBtn = document.createElement("button");
@@ -810,13 +835,23 @@
                 // User picked "Not recurring" → drop any existing repeat.
                 delete currentCandidates[idx].repeat;
             } else {
-                currentCandidates[idx].repeat = {
+                const repeat = {
                     frequency: freq,
                     day_of_week: dowSel.value === "" ? null : Number(dowSel.value),
                     day_of_month: domInput.value
                         ? Number(domInput.value) : null,
+                    week_of_month: womSel.value === "" ? null : Number(womSel.value),
                     end_date: endInput.value || null,
                 };
+                // #425: refuse an incomplete repeat here; the server would
+                // otherwise drop the item at Add time.
+                const problem = window.voiceMemoHelpers.repeatProblem(repeat);
+                if (problem) {
+                    problemEl.textContent = problem;
+                    problemEl.hidden = false;
+                    return;
+                }
+                currentCandidates[idx].repeat = repeat;
             }
             close();
             // Re-render the candidates so the button label updates.
@@ -848,22 +883,12 @@
     }
 
     async function confirmCandidates(onlySelected) {
-        const toSubmit = currentCandidates
-            .filter((c) => onlySelected ? c.included !== false : true)
-            // Sync UI-edited fields before sending. Include the #36
-            // NLP-inferred tier + due_date AND the #37 project/goal
-            // IDs so the server honours them via
-            // create_tasks_from_candidates.
-            .map((c) => ({
-                title: (c.title || "").trim(),
-                type: c.type || "personal",
-                tier: c.tier || "inbox",
-                due_date: c.due_date || null,
-                project_id: c.project_id || null,
-                goal_id: c.goal_id || null,
-                included: true,
-            }))
-            .filter((c) => c.title);
+        // #425: route / category / repeat go too — the old inline map
+        // dropped them, so goals, projects and recurring items all became
+        // Inbox tasks. Jest-tested in voice_confirm_payload.test.js.
+        const toSubmit = window.voiceMemoHelpers.buildConfirmPayload(
+            currentCandidates, onlySelected,
+        );
 
         if (toSubmit.length === 0) {
             doneMessage.textContent = "Nothing to add.";
@@ -884,10 +909,8 @@
             return;
         }
 
-        const created = (data && data.created) || 0;
-        doneMessage.textContent =
-            created === 1 ? "1 task added to Inbox."
-                          : created + " tasks added to Inbox.";
+        // #425: say what was actually made (and the server's warning).
+        doneMessage.textContent = window.voiceMemoHelpers.confirmSummary(data);
         showState("done");
     }
 

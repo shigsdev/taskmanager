@@ -159,6 +159,9 @@ def upload(email: str):  # noqa: ARG001
             "project_hint": c.get("project_hint"),
             "goal_id": c.get("goal_id"),
             "goal_hint": c.get("goal_hint"),
+            # #425: the inferred goal category (#172) — the review row's
+            # Category dropdown starts from it.
+            "category": c.get("category"),
             "route": route,
             "included": True,
         })
@@ -265,6 +268,7 @@ def confirm(email: str):  # noqa: ARG001
 
     # #155: route recurring candidates to the template create flow.
     recurring_created: list = []
+    recurring_skipped = 0  # #425: reported in `warning`, not just logged
     if recurring_candidates:
         from recurring_service import create_recurring_template_from_voice_candidate
         for rc in recurring_candidates:
@@ -272,10 +276,13 @@ def confirm(email: str):  # noqa: ARG001
                 rec = create_recurring_template_from_voice_candidate(rc)
                 if rec is not None:
                     recurring_created.append(rec)
+                else:
+                    recurring_skipped += 1
             except Exception as e:  # noqa: BLE001, S110
                 # Don't let one bad candidate kill the whole batch — the
                 # user can re-create it manually if it doesn't appear.
                 # Log so silent skips are observable in /api/debug/logs.
+                recurring_skipped += 1
                 import logging
                 logging.getLogger(__name__).warning(
                     "voice recurring candidate skipped: %s: %s",
@@ -317,6 +324,11 @@ def confirm(email: str):  # noqa: ARG001
             for r in recurring_created
         ],
     }
+    if recurring_skipped > 0:
+        response["warning"] = (
+            f"{recurring_skipped} recurring item(s) couldn't be created — "
+            f"check the repeat settings and add them on the Recurring page."
+        )
     if skipped_empty > 0:
         existing = response.get("warning", "")
         msg = (

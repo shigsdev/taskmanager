@@ -8576,3 +8576,75 @@ test.describe("Board dates across daylight saving (#424)", () => {
         expect(sent[0]).toMatchObject({ tier: "tomorrow", due_date: "2026-11-02" });
     });
 });
+
+// #425: the voice memo review screen let you route a row to a goal or a
+// project, pick its category, and make it recurring, but Add All never sent
+// any of that: every item became an Inbox task. Confirm is NOT stubbed here,
+// so the rows really have to land as a goal, a project and a template.
+test.describe("Voice memo routes reach the server (#425)", () => {
+    test("a goal, a project and a recurring item are created as such", async ({ page, request }, info) => {
+        const tag = "E2E425 " + info.project.name;
+        const t = (s) => `${tag} ${s}`;
+        await page.route("**/api/voice-memo", (r) => r.fulfill({ json: {
+            transcript: "stubbed",
+            candidates: [
+                { title: t("run a marathon"), type: "personal", tier: "inbox", due_date: null,
+                  route: "goal", category: "health", is_task: true },
+                { title: t("kitchen remodel"), type: "personal", tier: "inbox", due_date: null,
+                  route: "task", category: "personal_growth", is_task: true },
+                { title: t("bins out"), type: "personal", tier: "inbox", due_date: null,
+                  route: "task", category: "personal_growth", is_task: true },
+                { title: t("call the bank"), type: "personal", tier: "inbox", due_date: null,
+                  route: "task", category: "personal_growth", is_task: true },
+            ],
+        } }));
+        await page.goto("/voice-memo?nosw=1");
+        await page.click("#voiceRecordBtn");
+        await expect(page.locator("#voiceStopBtn")).toBeVisible({ timeout: 5000 });
+        await page.waitForTimeout(600);
+        await page.click("#voiceStopBtn");
+        const rows = page.locator("#voiceCandidates .voice-candidate");
+        await expect(rows).toHaveCount(4, { timeout: 10000 });
+
+        // The parser's category reaches the row.
+        await expect(rows.nth(0).locator(".voice-candidate-category")).toHaveValue("health");
+        // Row 2: TASK → GOAL → PROJECT.
+        const badge = rows.nth(1).locator(".voice-candidate-route");
+        await badge.click();
+        await badge.click();
+        await expect(badge).toHaveText("PROJECT");
+        // Row 3: Make recurring — Weekly with no day is refused, Monday saves.
+        await rows.nth(2).locator(".voice-candidate-recur-btn").click();
+        const dialog = page.locator(".voice-recur-dialog");
+        await dialog.locator("select").nth(0).selectOption("weekly");
+        await dialog.getByRole("button", { name: "Save" }).click();
+        await expect(dialog.locator(".voice-recur-problem")).toContainText("day of the week");
+        await expect(dialog).toBeVisible();
+        await dialog.locator("select").nth(1).selectOption("0");
+        await dialog.getByRole("button", { name: "Save" }).click();
+        await expect(dialog).toBeHidden();
+        await expect(rows.nth(2).locator(".voice-candidate-recur-btn")).toHaveText("↻ Recurring (weekly)");
+
+        await page.click("#voiceConfirmAll");
+        await expect(page.locator("#voiceDoneMessage")).toHaveText(
+            "Added 1 task, 1 goal, 1 project and 1 recurring task.", { timeout: 10000 });
+
+        const goals = await (await request.get("/api/goals")).json();
+        const goal = goals.find((g) => g.title === t("run a marathon"));
+        expect(goal).toBeTruthy();
+        expect(goal.category).toBe("health");
+        const projects = await (await request.get("/api/projects")).json();
+        expect(projects.some((p) => p.name === t("kitchen remodel"))).toBe(true);
+        const templates = await (await request.get("/api/recurring")).json();
+        const tmpl = templates.find((r) => r.title === t("bins out"));
+        expect(tmpl).toBeTruthy();
+        expect(tmpl.frequency).toBe("weekly");
+        expect(tmpl.day_of_week).toBe(0);
+        const tasks = await (await request.get("/api/tasks")).json();
+        const titles = (Array.isArray(tasks) ? tasks : tasks.tasks).map((x) => x.title);
+        expect(titles).toContain(t("call the bank"));
+        for (const s of ["run a marathon", "kitchen remodel", "bins out"]) {
+            expect(titles).not.toContain(t(s));
+        }
+    });
+});

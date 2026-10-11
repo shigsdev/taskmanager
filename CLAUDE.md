@@ -487,6 +487,11 @@ Report.
      Next Week reads "Nov 2 — Nov 8"; at 2026-11-01 Tomorrow reads
      "Mon, Nov 2" and a due date of Nov 2 in the panel snaps Section to
      Tomorrow (Playwright `timezoneId` + `page.clock.setFixedTime`).
+     #425: on /voice-memo (fake mic, parse stubbed, Add All real), route
+     one row to GOAL with a category, one to PROJECT, Make another recurring
+     (Weekly with no day is refused in the pop-up) — Add All creates a goal
+     in that category, a project and a template, and says "Added 1 task,
+     1 goal, 1 project and 1 recurring task."
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -607,6 +612,7 @@ Report.
   Plan: closed answer dropped   PASS          Plan: closed answer dropped   PASS
   Plan: retry sends only failed PASS          Plan: retry sends only failed PASS
   Board: dates across DST       PASS          Board: dates across DST       PASS
+  Voice: goal/project/recurring PASS          Voice: goal/project/recurring PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

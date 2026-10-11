@@ -5520,6 +5520,12 @@ table.quality-gates code {
     border-radius: 4px;
     font-size: 0.9rem;
 }
+/* #425: why a repeat can't be saved yet (shown instead of closing) */
+.voice-recur-problem {
+    margin: 8px 0 0;
+    color: var(--danger);
+    font-size: 0.85rem;
+}
 .voice-recur-actions {
     display: flex;
     justify-content: flex-end;

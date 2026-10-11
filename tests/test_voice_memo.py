@@ -2384,3 +2384,53 @@ class TestCallWhisperApi:
             api_key="k", audio_bytes=b"x", mime_type="audio/webm",
         )
         assert result["cost_usd"] == 0.0
+
+
+# --- #425: the review screen's route / category / repeat reach the server ----
+
+
+class TestVoiceRoutesReachServer:
+    """#425: the parse response must carry the goal category the parser
+    inferred (the review row's Category dropdown starts from it), and a
+    recurring item the server can't create must be reported, not dropped."""
+
+    def test_parse_response_carries_the_inferred_category(self, client, monkeypatch):
+        _bypass_auth(monkeypatch)
+        monkeypatch.setenv("OPENAI_API_KEY", "fake-key")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        with (
+            patch("voice_api.transcribe_audio", return_value={
+                "transcript": "goal: run a marathon", "duration_seconds": 3.0,
+                "cost_usd": 0.0003,
+            }),
+            patch("voice_api.parse_voice_memo_to_tasks", return_value=[{
+                "title": "goal: run a marathon", "type": "personal",
+                "tier": "inbox", "due_date": None, "is_task": True,
+                "category": "health",
+            }]),
+        ):
+            resp = client.post(
+                "/api/voice-memo",
+                data={"audio": (io.BytesIO(b"audio"), "memo.webm", "audio/webm")},
+                content_type="multipart/form-data",
+            )
+        assert resp.status_code == 200
+        cand = resp.get_json()["candidates"][0]
+        assert cand["route"] == "goal"
+        assert cand["category"] == "health"
+
+    def test_recurring_item_that_cannot_be_created_is_reported(self, client, monkeypatch, app):
+        """Weekly with no day: create_recurring raises, the old code logged
+        it and returned created=0 with no word to the user."""
+        _bypass_auth(monkeypatch)
+        resp = client.post("/api/voice-memo/confirm", json={"candidates": [
+            {"title": "E2E425 water plants", "type": "personal", "route": "task",
+             "repeat": {"frequency": "weekly", "day_of_week": None}, "included": True},
+            {"title": "E2E425 bins out", "type": "personal", "route": "task",
+             "repeat": {"frequency": "weekly", "day_of_week": 0}, "included": True},
+        ]})
+        body = resp.get_json()
+        assert resp.status_code == 201
+        assert [r["title"] for r in body["recurring"]] == ["E2E425 bins out"]
+        assert "recurring" in body["warning"].lower()
+        assert "1" in body["warning"]
