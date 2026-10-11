@@ -2250,6 +2250,60 @@ class TestProjectGoalCascade:
         )
         assert resp.get_json()["goal_id"] is None
 
+    def test_clearing_project_keeps_a_goal_set_directly(self, authed_client):
+        """#427: the goal only goes with the project when it CAME from the
+        project. One set by hand on the task stays."""
+        gid, pid = self._make_goal_and_project(authed_client)
+        other = authed_client.post(
+            "/api/goals",
+            json={"title": "Other", "category": "work", "priority": "should"},
+        ).get_json()
+        t = authed_client.post(
+            "/api/tasks",
+            json={"title": "X", "type": "work", "project_id": pid},
+        ).get_json()
+        authed_client.patch(f"/api/tasks/{t['id']}", json={"goal_id": other["id"]})
+        resp = authed_client.patch(f"/api/tasks/{t['id']}", json={"project_id": None})
+        body = resp.get_json()
+        assert body["project_id"] is None
+        assert body["goal_id"] == other["id"]
+
+    def test_clearing_project_on_a_task_without_one_keeps_its_goal(self, authed_client):
+        """#427: the bulk toolbar's "No project" sends project_id: null to
+        tasks that never had a project; their goal must survive."""
+        g = authed_client.post(
+            "/api/goals",
+            json={"title": "G", "category": "work", "priority": "must"},
+        ).get_json()
+        t = authed_client.post(
+            "/api/tasks", json={"title": "X", "type": "work", "goal_id": g["id"]},
+        ).get_json()
+        resp = authed_client.patch(f"/api/tasks/{t['id']}", json={"project_id": None})
+        assert resp.get_json()["goal_id"] == g["id"]
+
+    def test_bulk_no_project_clears_only_inherited_goals(self, authed_client):
+        """#427: bulk "No project" over a mixed selection."""
+        gid, pid = self._make_goal_and_project(authed_client)
+        other = authed_client.post(
+            "/api/goals",
+            json={"title": "Other", "category": "work", "priority": "should"},
+        ).get_json()
+        inherited = authed_client.post(
+            "/api/tasks", json={"title": "A", "type": "work", "project_id": pid},
+        ).get_json()
+        direct = authed_client.post(
+            "/api/tasks", json={"title": "B", "type": "work", "goal_id": other["id"]},
+        ).get_json()
+        resp = authed_client.patch("/api/tasks/bulk", json={
+            "task_ids": [inherited["id"], direct["id"]],
+            "updates": {"project_id": None},
+        })
+        assert resp.status_code == 200
+        a = authed_client.get(f"/api/tasks/{inherited['id']}").get_json()
+        b = authed_client.get(f"/api/tasks/{direct['id']}").get_json()
+        assert (a["project_id"], a["goal_id"]) == (None, None)
+        assert (b["project_id"], b["goal_id"]) == (None, other["id"])
+
     def test_explicit_goal_in_same_payload_wins(self, authed_client):
         """If the caller sends BOTH project_id and goal_id, the explicit
         goal_id wins (caller intent over cascade)."""

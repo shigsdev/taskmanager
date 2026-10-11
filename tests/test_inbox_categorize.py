@@ -18,6 +18,7 @@ import pytest
 from models import (
     Goal,
     GoalCategory,
+    GoalPriority,
     GoalStatus,
     Project,
     ProjectType,
@@ -50,7 +51,10 @@ def _make_project(name: str = "P", goal_id=None) -> Project:
 
 
 def _make_goal(title: str = "G") -> Goal:
-    g = Goal(title=title, category=GoalCategory.WORK, status=GoalStatus.IN_PROGRESS)
+    g = Goal(
+        title=title, category=GoalCategory.WORK, priority=GoalPriority.MUST,
+        status=GoalStatus.IN_PROGRESS,
+    )
     db.session.add(g)
     db.session.commit()
     return g
@@ -376,6 +380,9 @@ class TestApiContract:
         assert set(sugg.keys()) == {
             "task_id", "title", "suggested_tier", "suggested_project_id",
             "suggested_goal_id", "suggested_due_date", "suggested_type", "reason",
+            # #427: the task's own values, for the review modal.
+            "current_type", "current_project_id", "current_project_name",
+            "current_goal_id", "current_goal_title", "current_due_date",
         }
 
     def test_endpoint_502_on_claude_error(self, authed_client, app, monkeypatch):
@@ -394,3 +401,103 @@ class TestApiContract:
     def test_endpoint_requires_auth(self, client):
         resp = client.post("/api/inbox/categorize")
         assert resp.status_code != 200
+
+
+# --- #427: a task's own values win over Claude's ----------------------------
+
+
+def _row(task, **over):
+    base = {
+        "task_id": str(task.id), "suggested_tier": "this_week",
+        "suggested_project_id": None, "suggested_goal_id": None,
+        "suggested_due_date": None, "suggested_type": "personal",
+        "reason": "r",
+    }
+    base.update(over)
+    return base
+
+
+def _run(rows):
+    from inbox_categorize_service import categorize_inbox
+    with patch(
+        "inbox_categorize_service._post_to_claude",
+        return_value=_claude_response(rows),
+    ) as mock_post:
+        result = categorize_inbox()
+    return {s["task_id"]: s for s in result["suggestions"]}, mock_post
+
+
+class TestKeepsTheTasksOwnValues:
+    """#427: Claude saw only each task's title, and the review row started
+    from its answer, so a task captured with a project and goal showed
+    "None" for both and Apply wiped them; a Work task could flip to
+    Personal."""
+
+    def test_existing_project_goal_and_type_win(self, app, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        with app.app_context():
+            g = _make_goal("Ship Q4")
+            p = _make_project("Roadmaps", goal_id=g.id)
+            t = _make_inbox_task("Draft the roadmap")
+            t.project_id, t.goal_id = p.id, g.id
+            db.session.commit()
+            out, _ = _run([_row(t, suggested_type="personal")])
+            s = out[str(t.id)]
+            assert s["suggested_project_id"] == str(p.id)
+            assert s["suggested_goal_id"] == str(g.id)
+            assert s["suggested_type"] == "work"
+            assert s["current_project_id"] == str(p.id)
+            assert s["current_project_name"] == "Roadmaps"
+            assert s["current_goal_id"] == str(g.id)
+            assert s["current_goal_title"] == "Ship Q4"
+            assert s["current_type"] == "work"
+
+    def test_claude_fills_only_the_blanks(self, app, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        with app.app_context():
+            g = _make_goal("Mine")
+            g2 = _make_goal("Suggested goal")
+            p = _make_project("Suggested", goal_id=g2.id)
+            t = _make_inbox_task("Something")
+            t.goal_id = g.id
+            db.session.commit()
+            out, _ = _run([_row(t, suggested_project_id=str(p.id),
+                               suggested_goal_id=str(g2.id))])
+            s = out[str(t.id)]
+            assert s["suggested_project_id"] == str(p.id)  # blank, filled
+            assert s["suggested_goal_id"] == str(g.id)     # set, kept
+            assert s["current_project_id"] is None
+
+    def test_existing_due_date_wins(self, app, monkeypatch):
+        from datetime import date
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        with app.app_context():
+            t = _make_inbox_task("Pay rent")
+            t.due_date = date(2026, 10, 20)
+            db.session.commit()
+            out, _ = _run([_row(t, suggested_due_date="2026-10-15")])
+            assert out[str(t.id)]["suggested_due_date"] == "2026-10-20"
+            assert out[str(t.id)]["current_due_date"] == "2026-10-20"
+
+    def test_untouched_task_takes_claudes_suggestion(self, app, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        with app.app_context():
+            g = _make_goal("G")
+            p = _make_project("P", goal_id=g.id)
+            t = _make_inbox_task("Buy milk")
+            out, _ = _run([_row(t, suggested_project_id=str(p.id),
+                               suggested_goal_id=str(g.id))])
+            s = out[str(t.id)]
+            assert (s["suggested_project_id"], s["suggested_goal_id"]) == (str(p.id), str(g.id))
+            assert s["suggested_type"] == "personal"
+            assert s["current_type"] == "work"
+
+    def test_prompt_shows_each_tasks_current_type(self, app, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        with app.app_context():
+            t = _make_inbox_task("Standup notes", task_type=TaskType.WORK)
+            _, mock_post = _run([_row(t)])
+            prompt = mock_post.call_args.args[1]
+            assert f"id={t.id}: Standup notes (type=work)" in prompt
+            assert "keep the task's current type" in prompt
+

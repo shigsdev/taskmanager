@@ -140,6 +140,14 @@
     function renderRow(s) {
         var tr = document.createElement("tr");
         tr.dataset.taskId = s.task_id;
+        // #427: the task's own values — Apply sends only what differs.
+        tr._current = {
+            type: s.current_type,
+            project_id: s.current_project_id || null,
+            goal_id: s.current_goal_id || null,
+            project_name: s.current_project_name,
+            goal_title: s.current_goal_title,
+        };
         // The 4th td() arg is the mobile stacked-layout label (becomes
         // data-label → rendered by the CSS ::before). The title + apply
         // cells get none — the title is self-evident, the apply button
@@ -148,8 +156,8 @@
         // worse, rendered a stray label over the title cell.
         tr.appendChild(td(textNode(s.title), "auto-categorize-title", s.reason));
         tr.appendChild(td(tierSelect(s.suggested_tier), "auto-categorize-tier", null, "Section"));
-        tr.appendChild(td(projectSelect(s.suggested_project_id, s.suggested_type), "auto-categorize-project", null, "Project"));
-        tr.appendChild(td(goalSelect(s.suggested_goal_id, s.suggested_type), "auto-categorize-goal", null, "Goal"));
+        tr.appendChild(td(projectSelect(s.suggested_project_id, s.suggested_type, _currentOption(s.current_project_id, s.current_project_name)), "auto-categorize-project", null, "Project"));
+        tr.appendChild(td(goalSelect(s.suggested_goal_id, s.suggested_type, _currentOption(s.current_goal_id, s.current_goal_title)), "auto-categorize-goal", null, "Goal"));
         tr.appendChild(td(dueInput(s.suggested_due_date, s.suggested_tier), "auto-categorize-due", null, "Due"));
         tr.appendChild(td(typeSelect(s.suggested_type), "auto-categorize-type", null, "Type"));
         tr.appendChild(td(rowApplyBtn(), "auto-categorize-actions"));
@@ -169,13 +177,13 @@
                 if (projCell) {
                     var prevProjVal = projCell.querySelector("select").value;
                     projCell.innerHTML = "";
-                    projCell.appendChild(projectSelect(prevProjVal, newType));
+                    projCell.appendChild(projectSelect(prevProjVal, newType, _currentOptionFor(tr, "project")));
                     _wireProjectCascade(tr);
                 }
                 if (goalCell) {
                     var prevGoalVal = goalCell.querySelector("select").value;
                     goalCell.innerHTML = "";
-                    goalCell.appendChild(goalSelect(prevGoalVal, newType));
+                    goalCell.appendChild(goalSelect(prevGoalVal, newType, _currentOptionFor(tr, "goal")));
                 }
             });
         }
@@ -249,18 +257,21 @@
         var projSel = tr.querySelector('select[data-field="project"]');
         var goalSel = tr.querySelector('select[data-field="goal"]');
         if (!projSel || !goalSel || !window.filterHelpers) return;
+        projSel.dataset.prev = projSel.value;
         projSel.addEventListener("change", function () {
+            // The goal select may have been rebuilt by a Type change.
+            var goalNow = tr.querySelector('select[data-field="goal"]');
             var allowed = new Set(
-                Array.from(goalSel.options).map(function (o) { return o.value; })
+                Array.from(goalNow.options).map(function (o) { return o.value; })
             );
-            var newGoalId = window.filterHelpers.projectCascadeGoalId(
-                projSel.value, availableProjects, allowed
+            // #427: same rule as the task panel — the old project's goal
+            // goes with it, a goal set by hand stays.
+            var newGoalId = window.filterHelpers.goalAfterProjectChange(
+                projSel.dataset.prev, projSel.value, goalNow.value,
+                availableProjects, allowed
             );
-            // Always reset: empty string → "— None —"; real UUID
-            // jumps to the matching option. Matches the detail-panel
-            // 2026-05-04 UX fix — picking a new project that has its
-            // own goal shouldn't leave the old project's goal in place.
-            goalSel.value = newGoalId || "";
+            projSel.dataset.prev = projSel.value;
+            goalNow.value = newGoalId || "";
         });
     }
 
@@ -299,7 +310,28 @@
         ], current, "type");
     }
 
-    function projectSelect(current, type) {
+    // #427: a [id, label] option for the task's own project/goal, so the
+    // select can show it even when the type filter or an archive hides it
+    // (it rendered blank, and Apply sent null).
+    function _currentOption(id, label) {
+        return id ? [id, label || "(current)"] : null;
+    }
+
+    function _currentOptionFor(tr, field) {
+        var c = tr._current || {};
+        return field === "project"
+            ? _currentOption(c.project_id, c.project_name)
+            : _currentOption(c.goal_id, c.goal_title);
+    }
+
+    function _withCurrent(options, extra) {
+        if (extra && !options.some(function (o) { return o[0] === extra[0]; })) {
+            options.push(extra);
+        }
+        return options;
+    }
+
+    function projectSelect(current, type, extra) {
         var options = [["", "— None —"]];
         availableProjects.forEach(function (p) {
             if (!p.is_active && p.is_active !== undefined) { return; }
@@ -311,10 +343,10 @@
             // the dropdown looked empty.
             options.push([p.id, p.name]);
         });
-        return makeSelect(options, current || "", "project");
+        return makeSelect(_withCurrent(options, extra), current || "", "project");
     }
 
-    function goalSelect(current, type) {
+    function goalSelect(current, type, extra) {
         var options = [["", "— None —"]];
         // #142 (2026-05-09) strict bipartition: work + bau → work-side,
         // health + relationships + personal_growth → personal-side.
@@ -326,7 +358,7 @@
         filtered.forEach(function (g) {
             options.push([g.id, g.title]);
         });
-        return makeSelect(options, current || "", "goal");
+        return makeSelect(_withCurrent(options, extra), current || "", "goal");
     }
 
     // Today as local "YYYY-MM-DD". Uses the shared dateHelpers (loaded
@@ -444,34 +476,22 @@
     function readRow(tr) {
         var get = function (field) {
             var el = tr.querySelector('[data-field="' + field + '"]');
-            return el ? (el.value || null) : null;
+            return el ? el.value : "";
         };
-        var payload = {
+        // #208: due_date is sent only when it's a real, explicit value
+        // (an auto placeholder is omitted so the server's tier→date
+        // auto-fill runs). #427: type / project / goal only when they
+        // differ from the task's own values. Both rules live in
+        // inbox_categorize_helpers.categorizeApplyPayload (Jest-tested).
+        var dueEl = tr.querySelector('input[data-field="due_date"]');
+        return window.inboxCategorizeHelpers.categorizeApplyPayload({
             tier: get("tier"),
             type: get("type"),
-        };
-        var project = get("project");
-        var goal = get("goal");
-        // Server treats "" as no-change; null clears. Client policy:
-        // empty selects mean "leave null on the server".
-        payload.project_id = project || null;
-        payload.goal_id = goal || null;
-        // #208 (2026-05-22): only send due_date when it's a real,
-        // explicit value. An empty field OR an auto-derived placeholder
-        // is OMITTED so the server's tier→date auto-fill
-        // (_auto_fill_tier_due_date) runs and stamps the authoritative
-        // date. Sending `due_date: null` would suppress that auto-fill
-        // — the original bug: every auto-categorized Today task landed
-        // with no due date.
-        var dueEl = tr.querySelector('input[data-field="due_date"]');
-        var dueVal = dueEl ? dueEl.value : "";
-        var dueAuto = dueEl ? dueEl.dataset.auto === "1" : false;
-        var H = window.inboxCategorizeHelpers;
-        var sendDue = H
-            ? H.shouldSendDue(dueVal, dueAuto)
-            : (Boolean(dueVal) && !dueAuto);
-        if (sendDue) { payload.due_date = dueVal; }
-        return payload;
+            project: get("project"),
+            goal: get("goal"),
+            due: dueEl ? dueEl.value : "",
+            dueAuto: dueEl ? dueEl.dataset.auto === "1" : false,
+        }, tr._current);
     }
 
     function updateAfterRowChange() {

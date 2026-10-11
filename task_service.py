@@ -739,17 +739,25 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
         #     existing goal (silent-data-loss otherwise — the audit
         #     finding).
         #   - Clearing the project (project_id → None) → clear the goal
-        #     too. Same as before — unwinding the inheritance.
+        #     only if it CAME from the old project (#427). A goal set by
+        #     hand stays — the bulk toolbar's "No project" used to wipe
+        #     the goal of every selected task, project or not.
         # If the caller ALSO sets goal_id explicitly in this same
         # payload, that wins via the next branch which writes after.
+        from models import Project
         if task.project_id is not None:
-            from models import Project
             proj = db.session.get(Project, task.project_id)
             if proj and proj.goal_id is not None:
                 task.goal_id = proj.goal_id
             # else: project has no goal — preserve task's existing goal
-        else:
-            task.goal_id = None
+        elif old_project_id is not None:
+            old_proj = db.session.get(Project, old_project_id)
+            if (
+                old_proj is not None
+                and old_proj.goal_id is not None
+                and task.goal_id == old_proj.goal_id
+            ):
+                task.goal_id = None
 
     if "goal_id" in data:
         task.goal_id = _parse_uuid(data["goal_id"], "goal_id")

@@ -8648,3 +8648,135 @@ test.describe("Voice memo routes reach the server (#425)", () => {
         }
     });
 });
+
+/**
+ * #427: goal links silently wiped (probable cause of #146).
+ *
+ * The rule: when a task's project changes, a goal that came from the old
+ * project goes with it, and a goal you set yourself stays.
+ */
+test.describe("Goal links survive a project change (#427)", () => {
+    const uniq = () => Math.random().toString(36).slice(2, 8);
+
+    async function seed(request, tag) {
+        const goal = async (title) => (await request.post("/api/goals", {
+            data: { title, category: "work", priority: "must" },
+        })).json();
+        const g1 = await goal(`427 project goal ${tag}`);
+        const g2 = await goal(`427 my goal ${tag}`);
+        const p = await (await request.post("/api/projects", {
+            data: { name: `427 Roadmaps ${tag}`, type: "work", goal_id: g1.id },
+        })).json();
+        return { g1, g2, p };
+    }
+
+    async function cleanup(request, ids) {
+        for (const t of ids.tasks || []) await request.delete(`/api/tasks/${t}`);
+        for (const p of ids.projects || []) await request.delete(`/api/projects/${p}`);
+        for (const g of ids.goals || []) await request.delete(`/api/goals/${g}`);
+    }
+
+    test("task panel: (no project) keeps a goal you set, clears one from the project", async ({
+        page, request,
+    }) => {
+        const tag = uniq();
+        const { g1, g2, p } = await seed(request, tag);
+        const mk = async (title) => (await request.post("/api/tasks", {
+            data: { title: `${title} ${tag}`, type: "work", tier: "backlog", project_id: p.id },
+        })).json();
+        const mine = await mk("427 my goal task");
+        const inherited = await mk("427 inherited task");
+        await request.patch(`/api/tasks/${mine.id}`, { data: { goal_id: g2.id } });
+        expect(inherited.goal_id).toBe(g1.id);
+
+        const openAndClearProject = async (id) => {
+            await page.evaluate(async (tid) => {
+                const t = await fetch(`/api/tasks/${tid}`).then((r) => r.json());
+                window.taskDetailOpen(t);
+            }, id);
+            await expect(page.locator("#detailPanel")).toBeVisible();
+            await page.selectOption("#detailProject", "");
+            const goal = await page.inputValue("#detailGoal");
+            await page.evaluate(() => document.getElementById("detailForm").requestSubmit());
+            await expect(page.locator("#detailOverlay")).toBeHidden({ timeout: 3000 });
+            return goal;
+        };
+
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+
+            expect(await openAndClearProject(mine.id)).toBe(g2.id);
+            const a = await (await request.get(`/api/tasks/${mine.id}`)).json();
+            expect([a.project_id, a.goal_id]).toEqual([null, g2.id]);
+
+            expect(await openAndClearProject(inherited.id)).toBe("");
+            const b = await (await request.get(`/api/tasks/${inherited.id}`)).json();
+            expect([b.project_id, b.goal_id]).toEqual([null, null]);
+        } finally {
+            await cleanup(request, {
+                tasks: [mine.id, inherited.id], projects: [p.id], goals: [g1.id, g2.id],
+            });
+        }
+    });
+
+    test("💡 Auto-categorize: a task's own project and goal survive Apply", async ({
+        page, request,
+    }) => {
+        const tag = uniq();
+        const { g1, g2, p } = await seed(request, tag);
+        const task = await (await request.post("/api/tasks", {
+            data: { title: `427 captured with a project ${tag}`, type: "work", tier: "inbox", project_id: p.id },
+        })).json();
+        expect(task.goal_id).toBe(g1.id);
+
+        try {
+            // The suggestion exactly as the server now sends it for this task
+            // (pytest TestKeepsTheTasksOwnValues covers the server side):
+            // the task's own project and goal kept, plus its current values.
+            await page.route("**/api/inbox/categorize", (route) => route.fulfill({ json: {
+                count: 1, capped: false,
+                suggestions: [{
+                    task_id: task.id, title: task.title,
+                    suggested_tier: "this_week",
+                    suggested_project_id: p.id, suggested_goal_id: g1.id,
+                    suggested_due_date: null, suggested_type: "work",
+                    reason: "fixture",
+                    current_type: "work",
+                    current_project_id: p.id, current_project_name: p.name,
+                    current_goal_id: g1.id, current_goal_title: g1.title,
+                    current_due_date: null,
+                }],
+            } }));
+
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator("#autoCategorizeBtn").click();
+            const row = page.locator(`#autoCategorizeRows tr[data-task-id="${task.id}"]`);
+            await expect(row).toBeVisible({ timeout: 5000 });
+
+            // Flip Type to Personal: the Project and Goal lists re-filter to
+            // personal ones, and used to drop this work project and goal, so
+            // both showed "— None —" and Apply sent nulls.
+            await row.locator('select[data-field="type"]').selectOption("personal");
+            await expect(row.locator('select[data-field="project"]')).toHaveValue(p.id);
+            await expect(row.locator('select[data-field="goal"]')).toHaveValue(g1.id);
+            await expect(row.locator('select[data-field="project"] option:checked'))
+                .toHaveText(p.name);
+
+            const patch = page.waitForRequest((r) =>
+                r.method() === "PATCH" && r.url().endsWith(`/api/tasks/${task.id}`));
+            await row.locator("button", { hasText: "Apply" }).click();
+            const body = (await patch).postDataJSON();
+            expect(body).toEqual({ tier: "this_week", type: "personal" });
+            await expect(row).toHaveCount(0);
+
+            const after = await (await request.get(`/api/tasks/${task.id}`)).json();
+            expect([after.project_id, after.goal_id, after.type, after.tier])
+                .toEqual([p.id, g1.id, "personal", "this_week"]);
+        } finally {
+            await page.unroute("**/api/inbox/categorize");
+            await cleanup(request, { tasks: [task.id], projects: [p.id], goals: [g1.id, g2.id] });
+        }
+    });
+});

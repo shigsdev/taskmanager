@@ -101,11 +101,39 @@ function shouldSendDue(value, auto) {
     return Boolean(value) && !auto;
 }
 
+/**
+ * #427: the PATCH body for one review row. `type`, `project_id` and
+ * `goal_id` are sent only when the row differs from the task's own
+ * values (`current`, from the server's `current_*` keys); sending every
+ * field turned a blank select into `null` and wiped the task's project
+ * and goal. When the project is sent, the goal is sent too, so the
+ * server's project→goal cascade can't replace what the row shows.
+ *
+ * @param {{tier: string, type: string, project: string, goal: string,
+ *          due: string, dueAuto: boolean}} row — the row's control values
+ *   ("" for an empty select or date).
+ * @param {{type?: string, project_id?: string|null, goal_id?: string|null}} current
+ * @returns {object} the PATCH payload.
+ */
+function categorizeApplyPayload(row, current) {
+    var cur = current || {};
+    var payload = { tier: row.tier || null };
+    if (row.type && row.type !== cur.type) { payload.type = row.type; }
+    var project = row.project || null;
+    var goal = row.goal || null;
+    var projectChanged = project !== (cur.project_id || null);
+    if (projectChanged) { payload.project_id = project; }
+    if (projectChanged || goal !== (cur.goal_id || null)) { payload.goal_id = goal; }
+    if (shouldSendDue(row.due, row.dueAuto)) { payload.due_date = row.due; }
+    return payload;
+}
+
 var _api = {
     addDaysIso: addDaysIso,
     dueDateForTier: categorizeDueDateForTier,
     resolveDueForTier: resolveDueForTier,
     shouldSendDue: shouldSendDue,
+    categorizeApplyPayload: categorizeApplyPayload,
 };
 
 if (typeof module !== "undefined" && module.exports) {

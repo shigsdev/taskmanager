@@ -216,6 +216,22 @@ function projectCascadeGoalId(projectId, allProjects, allowedGoalIds) {
     return proj.goal_id;
 }
 
+// #427: what a Goal select becomes when its Project changes. A goal that
+// came from the OLD project goes with it; a goal you set yourself stays.
+// The new project's own goal (the #117 cascade) still wins when it has one.
+// Used by the task panel and the Auto-categorize review — both used to
+// reset to the new project's goal or "— None —", blanking a hand-set goal,
+// and Save then wrote that null (probable cause of #146).
+function goalAfterProjectChange(oldProjectId, newProjectId, currentGoalId, allProjects, allowedGoalIds) {
+    const cascaded = projectCascadeGoalId(newProjectId, allProjects, allowedGoalIds);
+    if (cascaded) return cascaded;
+    if (!currentGoalId) return null;
+    const old = oldProjectId && Array.isArray(allProjects)
+        ? allProjects.find((p) => p && p.id === oldProjectId)
+        : null;
+    return old && old.goal_id && old.goal_id === currentGoalId ? null : currentGoalId;
+}
+
 // Browser: expose individual helpers on the global object so app.js
 // can use them without a bundler. Node (Jest): export via module.exports.
 if (typeof module !== "undefined" && module.exports) {
@@ -230,6 +246,7 @@ if (typeof module !== "undefined" && module.exports) {
         searchTerm,
         taskMatchesSearch,
         projectCascadeGoalId,
+        goalAfterProjectChange,
         describeActiveFilters,
     };
 } else if (typeof window !== "undefined") {
@@ -244,6 +261,7 @@ if (typeof module !== "undefined" && module.exports) {
         searchTerm,
         taskMatchesSearch,
         projectCascadeGoalId,
+        goalAfterProjectChange,
         describeActiveFilters,
     };
 }

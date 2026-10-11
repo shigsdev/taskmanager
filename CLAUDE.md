@@ -496,6 +496,12 @@ Report.
      Tuesday after next and Save — the template's start date doesn't move
      and next Monday's preview is still there; push it past the template's
      Stop-after date and Save still succeeds.
+     #427: open a task whose goal you set by hand (its project has a
+     different goal), pick Project "(no project)" — the Goal stays, and
+     Save keeps it; the same on a task whose goal came from its project
+     blanks the Goal. In 💡 Auto-categorize, a task captured with a
+     project shows that project and its goal; flip the row's Type and
+     both are still selected; Apply leaves them on the task.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -618,6 +624,8 @@ Report.
   Board: dates across DST       PASS          Board: dates across DST       PASS
   Voice: goal/project/recurring PASS          Voice: goal/project/recurring PASS
   Recurring: push keeps schedule PASS         Recurring: push keeps schedule PASS
+  Tasks: no project keeps my goal PASS        Tasks: no project keeps my goal PASS
+  Auto-categorize: keeps links  PASS          Auto-categorize: keeps links  PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

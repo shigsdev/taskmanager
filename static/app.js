@@ -2563,6 +2563,8 @@ function taskDetailOpen(task) {
     // the #148 revival branch on a completed task.
     taskDetailPopulateProjects(task.type, task.project_id);
     document.getElementById("detailProject").value = task.project_id || "";
+    // #427: remember the project the Goal select is relative to.
+    document.getElementById("detailProject").dataset.prev = task.project_id || "";
     document.getElementById("detailDueDate").value = task.due_date || "";
     // #142 (2026-05-09): scope goals by type, same pattern as projects.
     // #272: pass task.goal_id so an existing cross-side assignment (e.g.
@@ -2708,9 +2710,17 @@ function taskDetailToggleProject(type) {
 // with it"). buildTaskDetailPayload always sends goal_id explicitly,
 // so the server-side preserve rule isn't triggered; the cleared
 // dropdown round-trips faithfully as goal_id=null on save.
+//
+// #427: narrowed to the goal that CAME from the old project — a goal you
+// set yourself now stays when you pick "(no project)" or a project with
+// no goal (it used to be blanked, and Save wrote the null).
 function taskDetailProjectChanged(projectId) {
     const goalSel = document.getElementById("detailGoal");
     if (!goalSel) return;
+    const projSel = document.getElementById("detailProject");
+    const oldProjectId = projSel ? projSel.dataset.prev || "" : "";
+    const currentGoalId = goalSel.value;
+    if (projSel) projSel.dataset.prev = projectId || "";
     // #272: repopulate the goal options FIRST so the newly-selected
     // project's linked goal is present in the dropdown even when the
     // #142 type filter would exclude it (cross-side personal→work link,
@@ -2721,11 +2731,10 @@ function taskDetailProjectChanged(projectId) {
     // and silently leaves the goal blank (the reported #272 symptom).
     taskDetailPopulateGoals();
     const allowed = new Set(Array.from(goalSel.options).map((o) => o.value));
-    const newGoalId = window.filterHelpers.projectCascadeGoalId(
-        projectId, allProjects, allowed,
+    const newGoalId = window.filterHelpers.goalAfterProjectChange(
+        oldProjectId, projectId, currentGoalId, allProjects, allowed,
     );
-    // Always reset — empty string maps to "— None —" option;
-    // a real UUID jumps to the matching option.
+    // Empty string maps to "— None —"; a real UUID jumps to its option.
     goalSel.value = newGoalId || "";
 }
 

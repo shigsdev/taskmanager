@@ -95,8 +95,8 @@ For each task, choose values for:
     (e.g. "Pay rent by 15th" → next 15th; "Mom's birthday Friday" → upcoming Friday).
     Otherwise null.
 
-  suggested_type — "work" or "personal". Default "personal" if ambiguous unless the
-    title clearly references work projects, code, deadlines, meetings, etc.
+  suggested_type — "work" or "personal". Each task above shows its current type;
+    keep the task's current type unless the title clearly belongs to the other.
 
   reason — one short sentence (≤ 80 chars) explaining the most-influential signal.
 
@@ -133,7 +133,7 @@ def _format_tasks_block(tasks: list[dict]) -> str:
         return "(none)"
     lines = []
     for t in tasks:
-        lines.append(f"  - id={t['id']}: {t['title']}")
+        lines.append(f"  - id={t['id']}: {t['title']} (type={t['type']})")
     return "\n".join(lines)
 
 
@@ -179,7 +179,7 @@ def _build_prompt(tasks: list[Task], projects: list[dict], goals: list[dict]) ->
         projects_block=_format_projects_block(projects),
         goals_block=_format_goals_block(goals),
         tasks_block=_format_tasks_block([
-            {"id": str(t.id), "title": t.title} for t in tasks
+            {"id": str(t.id), "title": t.title, "type": t.type.value} for t in tasks
         ]),
     )
 
@@ -288,6 +288,31 @@ def _validate_suggestion(
     }
 
 
+def _keep_current_values(s: dict, task: Task) -> dict:
+    """#427: a task's own project, goal and due date win over Claude's,
+    which only sees the title (Claude fills the blanks). A task already
+    filed under a project or goal keeps its type. The ``current_*`` keys
+    let the review modal show the task's values (even an archived or
+    other-type project) and send only what actually changes."""
+    project = task.project
+    goal = task.goal
+    s["current_type"] = task.type.value
+    s["current_project_id"] = str(task.project_id) if task.project_id else None
+    s["current_project_name"] = project.name if project is not None else None
+    s["current_goal_id"] = str(task.goal_id) if task.goal_id else None
+    s["current_goal_title"] = goal.title if goal is not None else None
+    s["current_due_date"] = task.due_date.isoformat() if task.due_date else None
+    if s["current_project_id"]:
+        s["suggested_project_id"] = s["current_project_id"]
+    if s["current_goal_id"]:
+        s["suggested_goal_id"] = s["current_goal_id"]
+    if s["current_due_date"]:
+        s["suggested_due_date"] = s["current_due_date"]
+    if s["current_project_id"] or s["current_goal_id"]:
+        s["suggested_type"] = s["current_type"]
+    return s
+
+
 def categorize_inbox() -> dict:
     """Entry point. Loads inbox + context, calls Claude, validates the
     response, returns the structured suggestions list (plus metadata).
@@ -349,6 +374,9 @@ def categorize_inbox() -> dict:
             "suggested_type": t.type.value,
             "reason": "(no suggestion returned — review manually)",
         })
+
+    by_id = {str(t.id): t for t in tasks}
+    cleaned = [_keep_current_values(s, by_id[s["task_id"]]) for s in cleaned]
 
     capped = len(tasks) == MAX_INBOX_TASKS_PER_CALL
     log.info("inbox_categorize: %d tasks suggested (capped=%s)", len(cleaned), capped)

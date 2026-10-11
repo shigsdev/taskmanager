@@ -1723,9 +1723,18 @@ Skip this line (too short)</pre>
                 <li><strong>Project</strong> — picked from your active projects, or null if nothing fits.</li>
                 <li><strong>Goal</strong> — picked from your in-progress / not-started goals, or null. If a project is suggested, Claude usually mirrors that project's goal.</li>
                 <li><strong>Due date</strong> — Claude sets one only when the task title implies it (e.g. "Pay rent by 15th"). When it doesn't, a row whose section is <strong>Today</strong> or <strong>Tomorrow</strong> still pre-fills the date input with that section's date, so you can see what the <a href="#tiers">section&nbsp;→&nbsp;date auto-fill</a> will stamp on apply — switch the Section dropdown and it re-derives. Other sections leave the date blank unless you set one.</li>
-                <li><strong>Type</strong> — Work or Personal.</li>
+                <li><strong>Type</strong> — Work or Personal. Claude is told each task's current type and asked to keep it unless the title clearly says otherwise.</li>
                 <li><strong>Reason</strong> — one short sentence explaining the most-influential signal.</li>
             </ul>
+            <p>
+                Claude sees only each task's title and type, so anything
+                else the task already has wins: a project, goal or due date already on it
+                (say from <code>@project</code> in the capture bar) is what
+                its row starts with, and Claude fills in only what's blank.
+                A task that already has a project or goal keeps its type too.
+                Apply changes only what differs from the task, so a project
+                or goal you leave alone is never cleared.
+            </p>
             <h3>Review then apply</h3>
             <ul>
                 <li>Each suggestion renders as one row in the modal with editable selects + a date input. Override anything before applying.</li>
@@ -2245,7 +2254,9 @@ Skip this line (too short)</pre>
                     <a href="#goals-feature">Goals</a>.</li>
             </ul>
             <p>
-                Removing a task's project entirely also clears its goal.
+                Removing a task's project entirely also clears its goal
+                when the goal came from that project. A goal you set on the
+                task yourself stays.
                 <em>Archiving</em> a project does not: the project goes away,
                 but its tasks keep both their project and their goal, so
                 unarchiving brings everything back as it was. The Archive
