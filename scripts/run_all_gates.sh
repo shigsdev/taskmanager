@@ -504,6 +504,20 @@ banner "8d. No-string-match-only prod tests"
 python scripts/check_no_string_match_only_tests.py || true
 pass "no-string-match-only prod tests (heuristic)"
 
+# --- 8e. E2E tests assert success, not shape (#347) --------------------------
+banner "8e. E2E assertion shape"
+# Hard fail. Over every tests/e2e*/**/*.spec.js: a test named drag/drop
+# that never drags, and a pass-through page.route that records URLs but
+# never checks a response status (#345 shipped one of each — the second
+# passed while its fetch returned 400). A test the rule genuinely does
+# not fit opts out with `// lint-347: <reason>` in its body.
+if python scripts/check_e2e_assertion_shape.py; then
+    pass "e2e assertion shape"
+else
+    fail "e2e test asserts shape, not success — see output above"
+    exit 1
+fi
+
 # --- 9. Semgrep (security pattern scanner) ----------------------------------
 
 banner "9. Semgrep (security patterns)"
@@ -578,7 +592,7 @@ bg_scan gitleaks "$GITLEAKS_BIN" detect --source . --no-banner --redact --no-git
 # --- 5–10. Join the parallel security scanners (#274) -----------------------
 # All 5 read-only scanners were launched with bg_scan above and ran
 # concurrently with each other AND with the fast docs/arch/heuristic checks
-# (gates 8–8d). Join them now: wait ONLY on the scanner PIDs (never the
+# (gates 8–8e). Join them now: wait ONLY on the scanner PIDs (never the
 # bypass server), print each result in a fixed order, and fail the suite on
 # ANY non-zero rc. A scanner whose failure is dropped silently would be worse
 # than a slow gate — scan_join enforces every rc.

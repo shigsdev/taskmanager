@@ -785,6 +785,13 @@ does `expect(text).toContain(<JS literal>)` against fetched `/static/*.js`
 without any other behavioral assertion. Wired into `run_all_gates.sh`
 as gate 8d.
 
+**Gate 8e (#347):** `scripts/check_e2e_assertion_shape.py` hard-fails
+on two more shape-not-success forms, across every `tests/e2e*/` spec: a
+test NAMED drag/drop whose body never drags, and a pass-through
+`page.route` (`route.continue`/`fallback`) that reads `.url()` but never
+checks a response status. If a name says "drop" in the plain-English
+sense, opt the test out with `// lint-347: <reason>` in its body.
+
 ### Required test coverage
 
 - **Flask route tests** — 200 / 400 / 422 cases for every endpoint

@@ -807,6 +807,7 @@ flowchart TD
                     <tr><td>7</td><td><code>npm audit</code></td><td>Known CVEs in <code>package.json</code> — fails on HIGH+ only (LOW/MED warn)</td></tr>
                     <tr><td>8</td><td><code>docs_sync_check.py</code></td><td>Every env var read in code is documented in README's env-var table (drift gate)</td></tr>
                     <tr><td>8b</td><td><code>arch_sync_check.py</code></td><td>Every <code>@app.route</code> / <code>@bp.verb</code> / <code>scheduler.add_job(id=)</code> name appears in ARCHITECTURE.md (drift gate)</td></tr>
+                    <tr><td>8e</td><td><code>check_e2e_assertion_shape.py</code></td><td>Playwright tests assert success, not shape: no drag-named test without a drag, no pass-through <code>page.route</code> that records URLs without checking the response status (#347)</td></tr>
                     <tr><td>9</td><td><code>semgrep</code></td><td>Flask + OWASP security patterns — Jinja unescaped output, hardcoded secrets, SQL string concat. Cross-platform PATH issue on Win Python 3.14 (#16)</td></tr>
                     <tr><td>10</td><td><code>gitleaks</code></td><td>Secrets in staged content (and full history) via <code>.gitleaks.toml</code> rule pack. Also runs as <code>.githooks/pre-commit</code> hook (#17)</td></tr>
                     <tr><td>11</td><td>Embedded creds in remote URLs</td><td>Greps <code>git config --get-regexp 'remote.*.url'</code> for the <code>https://user[:token]@…</code> shape that <code>gitleaks</code> doesn't scan (<code>.git/config</code> is local-only). Catches the leak class added 2026-05-24 after a fine-grained PAT was discovered in this repo's origin URL. Full rotation runbook at <code>docs/security/git-credentials.md</code>.</td></tr>
@@ -866,6 +867,11 @@ flowchart TD
                         <td><code>test_every_css_custom_property_used_is_defined</code></td>
                         <td>Every <code>var(--name)</code> without a fallback in <code>static/*.css</code> is defined somewhere — a stylesheet, an inline <code>style</code> in a template, or a script's <code>setProperty</code></td>
                         <td>#411: <code>.sf-logform</code> used <code>var(--slate-50)</code>, a token that never existed, so the workout log card rendered transparent from #287 until #410's Phase 6 caught it. CSS has no compile step; Playwright checks behaviour, not paint</td>
+                    </tr>
+                    <tr>
+                        <td><code>check_e2e_assertion_shape</code> (gate 8e)</td>
+                        <td>No Playwright test named drag/drop without a real drag in its body (or an in-file helper that does one); no pass-through <code>page.route</code> that records request URLs without checking a response status. Opt out with <code>// lint-347: &lt;reason&gt;</code></td>
+                        <td>#347: during #345 a test asserted the recurring-previews fetch window widened and passed while that fetch returned 400, and a test named "dragging between days still works" only clicked a cell. Gate 8d only looks at prod-smoke string matches</td>
                     </tr>
                     <tr>
                         <td><code>_build_enum_repair_statements</code></td>

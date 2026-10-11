@@ -950,6 +950,7 @@ test.describe("Prod smoke — feature surfaces", () => {
     });
 
     test("on mobile, task-card quick-actions drop to their own row below the title (#281)", async ({ page }) => {
+        // lint-347: layout test -- "drop" means the row wraps, not drag-and-drop.
         // #281: #278's mobile reset (position:static) left quick-actions as an
         // in-flow flex SIBLING of .task-body on the SAME row, so the tier
         // buttons claimed ~half the card and squeezed the title into a narrow

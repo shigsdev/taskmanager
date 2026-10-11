@@ -1907,6 +1907,7 @@ test.describe("Reflection — transient audio buffer (#327)", () => {
     });
 
     test("dropping one segment does not touch another", async ({ page }) => {
+        // lint-347: "dropping" = deleting a buffered audio segment, not drag-and-drop.
         await seed(page, "seg-1", [100], Date.now());
         await seed(page, "seg-2", [250], Date.now());
         const out = await page.evaluate(async () => {
@@ -3151,6 +3152,7 @@ test.describe("Reflection - reading several together (#335)", () => {
     });
 
     test("Clear drops the whole selection", async ({ page }) => {
+        // lint-347: "drops" = clears the selection, not drag-and-drop.
         await select(page, 2);
         await page.locator("#reflCombineClear").click();
         await expect(page.locator("#reflCombineBar")).toBeHidden();
@@ -4223,6 +4225,7 @@ test.describe("Projects - drag a task to another project (#344)", () => {
     });
 
     test("the task line advertises that it can be dragged", async ({ page }) => {
+        // lint-347: discoverability check on draggable/cursor, not a drag. The drag itself is covered elsewhere in this describe.
         // Discoverability, not just function: before #344 these lines
         // looked like static labels, so nothing suggested dragging them.
         await page.goto("/projects?nosw=1");
@@ -4990,6 +4993,7 @@ test.describe("Goals - drag a project to another goal (#343)", () => {
     test("the project chip advertises that it can be dragged", async ({
         page, request,
     }) => {
+        // lint-347: discoverability check on draggable/cursor, not a drag. The drag itself is covered elsewhere in this describe.
         // Discoverability, not just function: a chip that looks like a
         // static label tells nobody it can be moved.
         const goals = await activeGoals(request);
