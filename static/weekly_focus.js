@@ -430,14 +430,17 @@
         li.className = "weekly-focus-plan-row";
         li.dataset.action = change.action;
 
+        if (change._failed) li.classList.add("weekly-focus-plan-row-failed");
+
+        // #422: a re-render after a partial failure keeps the user's ticks.
         var cb = document.createElement("input");
         cb.type = "checkbox";
-        cb.checked = true;
+        cb.checked = change._applied !== false;
         cb.className = "weekly-focus-plan-check";
         cb.addEventListener("change", function () {
             change._applied = cb.checked;
         });
-        change._applied = true;
+        change._applied = cb.checked;
         li.appendChild(cb);
 
         var titleSpan = document.createElement("span");
@@ -473,6 +476,7 @@
         var failed = 0;
         for (var i = 0; i < approved.length; i++) {
             var c = approved[i];
+            c._failed = false;
             try {
                 if (c.action === "promote_today") {
                     await _patchTask(c.task_id, { tier: "today" });
@@ -490,7 +494,9 @@
                         due_date: c.due_date || undefined,
                     });
                 }
+                c._landed = true;
             } catch (e) {
+                c._failed = true;
                 failed += 1;
                 console.error("apply failed for", c, e);
             }
@@ -502,6 +508,10 @@
         if (failed === 0) {
             closeModal();
         } else {
+            // #422: what landed leaves the list, so a retry sends only the
+            // failures (a create_new must not be created twice).
+            pendingChanges = pendingChanges.filter(function (c) { return !c._landed; });
+            renderPlanChanges();
             modalApply.textContent = "Apply remaining (" + failed + " failed)";
         }
     }

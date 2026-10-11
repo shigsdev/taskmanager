@@ -8476,3 +8476,61 @@ test.describe("✨ Plan drops a stale answer (#418)", () => {
         await expect(page.locator("#weeklyFocusPlanApply")).toHaveText("Apply (2)");
     });
 });
+
+// #422: after a partial failure, "Apply remaining" must send only what
+// failed. A create_new that already landed must not be created twice.
+test.describe("✨ Plan retry skips what already landed (#422)", () => {
+    test("Apply remaining resends only the failure, never the created task", async ({ page }) => {
+        await page.route("**/api/weekly-focus?*", (r) => {
+            if (r.request().method() !== "GET") return r.fallback();
+            return r.fulfill({ json: {
+                slot_count: 3, week_start_date: "2026-10-05", fallback_from: null,
+                slots: [{ slot_order: 1, text: "E2E 422 focus", goal_id: null, goal_title: null }],
+            } });
+        });
+        await page.route("**/api/weekly-focus/1/plan*", (r) => r.fulfill({ json: { changes: [
+            { action: "create_new", title: "E2E 422 new task", type: "work",
+              suggested_tier: "this_week", reason: "e2e" },
+            { action: "promote_today", task_id: 900101, title: "E2E 422 promote fails once", reason: "e2e" },
+            { action: "promote_today", task_id: 900102, title: "E2E 422 left unticked", reason: "e2e" },
+        ] } }));
+        let posts = 0;
+        await page.route("**/api/tasks", (r) => {
+            if (r.request().method() !== "POST") return r.fallback();
+            posts += 1;
+            return r.fulfill({ status: 201, json: { id: 900199, title: "E2E 422 new task" } });
+        });
+        let patches = 0;
+        await page.route("**/api/tasks/900101", (r) => {
+            patches += 1;
+            if (patches === 1) return r.fulfill({ status: 500, json: { error: "e2e boom" } });
+            return r.fulfill({ json: {} });
+        });
+        let untickedSent = 0;
+        await page.route("**/api/tasks/900102", (r) => { untickedSent += 1; return r.fulfill({ json: {} }); });
+
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const modal = page.locator("#weeklyFocusPlanModal");
+        const apply = page.locator("#weeklyFocusPlanApply");
+        const rowOf = (title) => page.locator(".weekly-focus-plan-row", { hasText: title });
+        await page.locator(".weekly-focus-slot-plan").first().click();
+        await expect(apply).toHaveText("Apply (3)");
+        await rowOf("E2E 422 left unticked").locator("input[type=checkbox]").uncheck();
+        await apply.click();
+        await expect(apply).toHaveText("Apply remaining (1 failed)");
+
+        // The created task left the list; the failure is marked and still
+        // ticked; the row the user unticked is still unticked.
+        await expect(rowOf("E2E 422 new task")).toHaveCount(0);
+        await expect(rowOf("E2E 422 promote fails once")).toHaveClass(/weekly-focus-plan-row-failed/);
+        await expect(rowOf("E2E 422 promote fails once").locator("input[type=checkbox]")).toBeChecked();
+        await expect(rowOf("E2E 422 left unticked").locator("input[type=checkbox]")).not.toBeChecked();
+
+        await apply.click();
+        await expect(modal).toBeHidden();
+        expect(posts).toBe(1);
+        expect(patches).toBe(2);
+        expect(untickedSent).toBe(0);
+    });
+});

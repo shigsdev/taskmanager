@@ -478,6 +478,10 @@ Report.
      #418: on the board, ✨ Plan one slot, close it while it still says it's
      thinking, then ✨ Plan another — only the second slot's name and rows
      show, however long the first takes to answer.
+     #422: in a ✨ Plan with a new-task suggestion, make one other change
+     fail (stub its PATCH to 500) and Apply — the new task's row leaves the
+     list, the failed row is shaded and still ticked, a row you unticked
+     stays unticked, and Apply remaining sends only the failed change.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -596,6 +600,7 @@ Report.
   Modals: Escape closes, no action PASS       Modals: Escape closes, no action PASS
   Modals: Tab stays inside      PASS          Modals: Tab stays inside      PASS
   Plan: closed answer dropped   PASS          Plan: closed answer dropped   PASS
+  Plan: retry sends only failed PASS          Plan: retry sends only failed PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS
