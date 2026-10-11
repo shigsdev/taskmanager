@@ -2598,6 +2598,15 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     border-radius: 6px;
     font-size: 0.8rem;
 }
+/* #416: the shared `.detail-panel select { width: 100% }` field rule also
+   caught this small picker, which then took the whole row and crushed the
+   text box beside it to 18px. Size it to its content; the box gets the rest.
+   Scoped under .detail-panel so it outranks that rule without relying on
+   source order. */
+.detail-panel .add-linked-task select {
+    width: auto;
+    flex: 0 0 auto;
+}
 
 /* === Weekly Review === */
 .review-container {

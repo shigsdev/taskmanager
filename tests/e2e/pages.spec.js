@@ -8128,3 +8128,56 @@ test.describe("Recurring — paused templates stay on the page (#363)", () => {
         }
     });
 });
+
+test.describe("Goals - the Add-a-linked-task box is usable (#416)", () => {
+    // #416: `.detail-panel select { width: 100% }` also caught the small
+    // Work/Personal picker beside the "Add a task to this goal…" box, so
+    // the picker took the whole row and the text box shrank to 18px.
+    // Asserts the rendered widths, then that the row still WORKS: the
+    // typed task is created on this goal (read back through the API).
+    test("the text box takes the row, and Add creates the task", async ({
+        page, request,
+    }) => {
+        const s = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const g = await request.post("/api/goals", {
+            data: { title: `E2E 416 goal ${s}`, category: "work",
+                    priority: "should" },
+        });
+        expect(g.ok()).toBe(true);
+        const goal = await g.json();
+        let created = [];
+        try {
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator(`[data-goal-id="${goal.id}"]`).first().click();
+            const input = page.locator("#linkedTaskInput");
+            await expect(input).toBeVisible({ timeout: 5000 });
+
+            const box = await input.boundingBox();
+            const pick = await page.locator("#linkedTaskType").boundingBox();
+            expect(box.width).toBeGreaterThanOrEqual(150);
+            expect(box.width).toBeGreaterThan(pick.width);
+
+            const title = `E2E 416 linked ${s}`;
+            await input.fill(title);
+            const [resp] = await Promise.all([
+                page.waitForResponse((r) => r.url().endsWith("/api/tasks")
+                    && r.request().method() === "POST"),
+                page.locator("#addLinkedTaskBtn").click(),
+            ]);
+            expect(resp.status()).toBe(201);
+
+            created = await (await request.get(
+                `/api/tasks?goal_id=${goal.id}`)).json();
+            expect(created.map((t) => t.title)).toContain(title);
+        } finally {
+            for (const t of created) {
+                await request.patch(`/api/tasks/${t.id}`,
+                                    { data: { goal_id: null } });
+                await request.delete(`/api/tasks/${t.id}`);
+            }
+            await request.delete(`/api/goals/${goal.id}`);
+            await request.delete(`/api/goals/${goal.id}/permanent`);
+        }
+    });
+});
