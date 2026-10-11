@@ -482,6 +482,11 @@ Report.
      fail (stub its PATCH to 500) and Apply — the new task's row leaves the
      list, the failed row is shaded and still ticked, a row you unticked
      stays unticked, and Apply remaining sends only the failed change.
+     #424: with the browser in America/New_York and the clock at
+     2026-10-28, the day strip runs Oct 26 to Nov 8 with no date twice and
+     Next Week reads "Nov 2 — Nov 8"; at 2026-11-01 Tomorrow reads
+     "Mon, Nov 2" and a due date of Nov 2 in the panel snaps Section to
+     Tomorrow (Playwright `timezoneId` + `page.clock.setFixedTime`).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -601,6 +606,7 @@ Report.
   Modals: Tab stays inside      PASS          Modals: Tab stays inside      PASS
   Plan: closed answer dropped   PASS          Plan: closed answer dropped   PASS
   Plan: retry sends only failed PASS          Plan: retry sends only failed PASS
+  Board: dates across DST       PASS          Board: dates across DST       PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

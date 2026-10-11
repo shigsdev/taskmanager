@@ -290,3 +290,48 @@ def test_every_css_custom_property_used_is_defined():
     assert not missing, (
         "CSS var() used but never defined (add it to :root or give a fallback):\n  " + listing
     )
+
+
+# --- No fixed-milliseconds day arithmetic in page scripts (#424) -----------
+
+# Adding N × 86400000 ms to a local midnight is not "N days later" across a
+# daylight-saving change (a day is 23 or 25 hours): on 2026-11-01 the board
+# stamped "tomorrow" as today. Use dateHelpers.addDays / tierHelpers.weekBounds
+# (calendar arithmetic). Comments are stripped before matching.
+_MS_DAY_MATH = re.compile(r"\b86400000\b|\b864e5\b|24\s*\*\s*60\s*\*\s*60\s*\*\s*1000")
+_JS_COMMENTS = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
+# calendar_bucket_helpers.js works on Date.UTC values (UTC has no DST);
+# audio_buffer.js uses 24 h as a retention DURATION, not a calendar day.
+_MS_DAY_MATH_ALLOWED = frozenset({"calendar_bucket_helpers.js", "audio_buffer.js"})
+
+
+def _ms_day_math_offenders(sources):
+    """{filename: source} → sorted filenames doing ms-per-day arithmetic."""
+    return sorted(
+        name for name, text in sources.items()
+        if name not in _MS_DAY_MATH_ALLOWED
+        and _MS_DAY_MATH.search(_JS_COMMENTS.sub("", text))
+    )
+
+
+def test_ms_day_math_detector_catches_it():
+    assert _ms_day_math_offenders({
+        "a.js": "const t = new Date(d.getTime() + 86400000);\n",
+        "b.js": "var e = new Date(n + 7 * 24 * 60 * 60 * 1000);\n",
+        "c.js": "// we used to add 86400000 here\nconst x = addDays(d, 1);\n",
+        "d.js": "/* 24 * 60 * 60 * 1000 */\n",
+        "audio_buffer.js": "var RETENTION_MS = 24 * 60 * 60 * 1000;\n",
+    }) == ["a.js", "b.js"]
+
+
+def test_no_ms_per_day_date_math_in_static_js():
+    sources = {
+        p.name: p.read_text(encoding="utf-8")
+        for p in sorted((REPO_ROOT / "static").glob("*.js"))
+    }
+    offenders = _ms_day_math_offenders(sources)
+    assert not offenders, (
+        "fixed-milliseconds day arithmetic (breaks across DST, #424) in: "
+        + ", ".join(offenders)
+        + " — use dateHelpers.addDays / tierHelpers.weekBounds"
+    )

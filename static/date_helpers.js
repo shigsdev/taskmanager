@@ -71,8 +71,23 @@ function utcIsoToLocalDate(s) {
     return localIsoDate(d);
 }
 
+/**
+ * #424: the local date N calendar days after `d` (N may be negative), at
+ * local midnight. Never add N × 86400000 ms instead: across a daylight-
+ * saving change a day is 23 or 25 hours, so on 2026-11-01 midnight + 24 h
+ * is 23:00 the SAME date. Building from (year, month, day + n) lets the
+ * Date do the calendar arithmetic (the #345 calendar.js fix).
+ *
+ * @param {Date} d
+ * @param {number} n
+ * @returns {Date} a new Date; `d` is not modified.
+ */
+function addDays(d, n) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+}
+
 if (typeof module !== "undefined" && module.exports) {
-    module.exports = { localIsoDate, compareIsoDates, utcIsoToLocalDate };
+    module.exports = { localIsoDate, compareIsoDates, utcIsoToLocalDate, addDays };
 } else if (typeof window !== "undefined") {
-    window.dateHelpers = { localIsoDate, compareIsoDates, utcIsoToLocalDate };
+    window.dateHelpers = { localIsoDate, compareIsoDates, utcIsoToLocalDate, addDays };
 }

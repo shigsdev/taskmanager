@@ -215,7 +215,7 @@ async function loadRecurringPreviews() {
     // 14-day window from today; adjust if we later support wider preview
     // ranges (e.g. the 4-week planning view).
     const today = new Date();
-    const end = new Date(today.getTime() + 13 * 24 * 60 * 60 * 1000);
+    const end = window.dateHelpers.addDays(today, 13);   // #424: not 13 × 24 h
     const fmt = (d) => {
         const y = d.getFullYear();
         const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -376,17 +376,10 @@ const _DAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday",
 // THIS_WEEK ENDS today (today is the Sunday cap of the ISO week);
 // NEXT_WEEK is the upcoming Mon-Sun.
 function _tierDateRange(tier) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    // JS weekday: Sun=0, Mon=1, ..., Sat=6. Our day_group is Mon-first.
-    const jsDay = today.getDay();
-    const daysSinceMonday = (jsDay + 6) % 7;  // Mon=0, Sun=6
-    const thisMonday = new Date(today.getTime() - daysSinceMonday * 86400000);
-    // #218: Mon-Sun ISO week ends Sunday = Mon+6. Was Mon+5 (Sat) per #72.
-    const thisSunday = new Date(thisMonday.getTime() + 6 * 86400000);
-    const nextMonday = new Date(thisMonday.getTime() + 7 * 86400000);
-    // #218: Mon+13 = next Sunday. Was Mon+12 (next Sat) per #72.
-    const nextSunday = new Date(thisMonday.getTime() + 13 * 86400000);
+    // #424: the same bounds tierForDueDate files by, computed in calendar
+    // days (a fixed 86400000 ms per day broke across a DST change).
+    const { thisMonday, thisSunday, nextMonday, nextSunday } =
+        window.tierHelpers.weekBounds();
     if (tier === "this_week") return [thisMonday, thisSunday];
     if (tier === "next_week") return [nextMonday, nextSunday];
     return null;
@@ -583,7 +576,7 @@ function _tierHeaderDate(tier) {
         return today.toLocaleDateString(undefined, _DATE_FMT_DOW_MONTH_DAY);
     }
     if (tier === "tomorrow") {
-        const t = new Date(today.getTime() + 86400000);
+        const t = window.dateHelpers.addDays(today, 1);   // #424
         return t.toLocaleDateString(undefined, _DATE_FMT_DOW_MONTH_DAY);
     }
     const range = _tierDateRange(tier);
@@ -639,8 +632,9 @@ function renderDayStrip() {
     // #218: compute Mon-Sun for this week + next week (was Mon-Sat per #72).
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const daysSinceMonday = (today.getDay() + 6) % 7;
-    const thisMonday = new Date(today.getTime() - daysSinceMonday * 86400000);
+    // #424: calendar days, not 86400000 ms — across Nov 1 the old math
+    // showed Nov 1 twice and never Nov 8.
+    const thisMonday = window.tierHelpers.weekBounds(today).thisMonday;
 
     const todayIso = _isoDate(today);
     // #218: 14 cells (7 days × 2 weeks), was 12 cells (6 days × 2 weeks).
@@ -648,7 +642,7 @@ function renderDayStrip() {
     for (let i = 0; i < 14; i++) {
         // Mon-Sun layout: offset i directly into days-from-this-Monday.
         const offset = i;
-        const d = new Date(thisMonday.getTime() + offset * 86400000);
+        const d = window.dateHelpers.addDays(thisMonday, offset);
         const cell = document.createElement("div");
         cell.className = "day-cell";
         const iso = _isoDate(d);
@@ -3780,8 +3774,8 @@ function initBulkSelect() {
             return `${y}-${m}-${day}`;
         };
         const today = new Date();
-        const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
-        const inAWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+        const tomorrow = window.dateHelpers.addDays(today, 1);   // #424
+        const inAWeek = window.dateHelpers.addDays(today, 7);
         showBulkDropdown(dueDateBtn, [
             { label: "Today", onClick: () => stageBulkChange("due_date", fmt(today)) },
             { label: "Tomorrow", onClick: () => stageBulkChange("due_date", fmt(tomorrow)) },

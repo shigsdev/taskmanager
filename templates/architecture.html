@@ -869,6 +869,11 @@ flowchart TD
                         <td>#411: <code>.sf-logform</code> used <code>var(--slate-50)</code>, a token that never existed, so the workout log card rendered transparent from #287 until #410's Phase 6 caught it. CSS has no compile step; Playwright checks behaviour, not paint</td>
                     </tr>
                     <tr>
+                        <td><code>test_no_ms_per_day_date_math_in_static_js</code></td>
+                        <td>No <code>static/*.js</code> does day arithmetic in fixed milliseconds (<code>86400000</code>, <code>24 * 60 * 60 * 1000</code>) outside comments; use <code>dateHelpers.addDays</code> / <code>tierHelpers.weekBounds</code>. Allow-listed: <code>calendar_bucket_helpers.js</code> (UTC values) and <code>audio_buffer.js</code> (a duration)</td>
+                        <td>#424: a day is 23 or 25 hours across a daylight-saving change, so on 2026-11-01 the board stamped "tomorrow" as today and showed Nov 1 twice in the day strip. <code>calendar.js</code> had already hit and fixed the same bug in #345; four other copies survived. Jest now also pins <code>TZ=America/New_York</code> for these dates (<code>dst_date_math.test.js</code>)</td>
+                    </tr>
+                    <tr>
                         <td><code>check_e2e_assertion_shape</code> (gate 8e)</td>
                         <td>No Playwright test named drag/drop without a real drag in its body (or an in-file helper that does one); no pass-through <code>page.route</code> that records request URLs without checking a response status. Opt out with <code>// lint-347: &lt;reason&gt;</code></td>
                         <td>#347: during #345 a test asserted the recurring-previews fetch window widened and passed while that fetch returned 400, and a test named "dragging between days still works" only clicked a cell. Gate 8d only looks at prod-smoke string matches</td>

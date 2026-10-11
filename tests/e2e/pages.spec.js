@@ -8534,3 +8534,45 @@ test.describe("✨ Plan retry skips what already landed (#422)", () => {
         expect(untickedSent).toBe(0);
     });
 });
+
+// #424: the board's week math across the 2026-11-01 clock change, in the
+// user's own timezone. Fixed-ms day arithmetic showed Nov 1 twice in the day
+// strip, never Nov 8, a Next Week header of "Nov 1 — Nov 7", and stamped
+// "tomorrow" as today on Nov 1.
+test.describe("Board dates across daylight saving (#424)", () => {
+    test.use({ timezoneId: "America/New_York", locale: "en-US" });
+
+    test("week of Oct 26: day strip and week headers run Oct 26 to Nov 8", async ({ page }) => {
+        await page.clock.setFixedTime(new Date("2026-10-28T12:00:00-04:00"));
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const dates = await page.locator("#dayStrip .day-cell").evaluateAll(
+            (cells) => cells.map((c) => c.dataset.date));
+        expect(dates).toHaveLength(14);
+        expect(new Set(dates).size).toBe(14);
+        expect(dates[0]).toBe("2026-10-26");
+        expect(dates[6]).toBe("2026-11-01");
+        expect(dates[7]).toBe("2026-11-02");
+        expect(dates[13]).toBe("2026-11-08");
+        await expect(page.locator('.tier[data-tier="this_week"] .tier-date')).toHaveText("Oct 26 — Nov 1");
+        await expect(page.locator('.tier[data-tier="next_week"] .tier-date')).toHaveText("Nov 2 — Nov 8");
+    });
+
+    test("on Nov 1, Tomorrow is Mon Nov 2 and a move to Tomorrow is dated Nov 2", async ({ page }) => {
+        await page.clock.setFixedTime(new Date("2026-11-01T12:00:00-05:00"));
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator('.tier[data-tier="tomorrow"] .tier-date')).toHaveText("Mon, Nov 2");
+        const tasks = await (await page.request.get("/api/tasks")).json();
+        const t = (Array.isArray(tasks) ? tasks : tasks.tasks).find((x) => x.tier !== "tomorrow");
+        const sent = [];
+        await page.route(`**/api/tasks/${t.id}`, (r) => {
+            if (r.request().method() !== "PATCH") return r.fallback();
+            sent.push(r.request().postDataJSON());
+            return r.fulfill({ json: { ...t, tier: "tomorrow" } });
+        });
+        await page.evaluate((id) => window.taskMoveTier(id, "tomorrow"), t.id);
+        await expect.poll(() => sent.length).toBe(1);
+        expect(sent[0]).toMatchObject({ tier: "tomorrow", due_date: "2026-11-02" });
+    });
+});

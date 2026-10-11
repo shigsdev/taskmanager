@@ -19,8 +19,6 @@
  */
 "use strict";
 
-const _MS_PER_DAY = 86400000;
-
 /**
  * Strip time-of-day from a Date so date-equality comparisons work
  * regardless of when the input was constructed.
@@ -37,6 +35,37 @@ function _atMidnight(d) {
  */
 function _mondayWeekday(d) {
     return (d.getDay() + 6) % 7;
+}
+
+/**
+ * #424: N calendar days later, at local midnight. Not N × 24 h: across a
+ * daylight-saving change that lands on the wrong date (2026-11-01 + 24 h is
+ * still Nov 1). Same operation as dateHelpers.addDays; kept private because
+ * this file's top-level names are globals in the browser.
+ */
+function _tierHelpersAddDays(d, n) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+}
+
+/**
+ * #424: the Mon-Sun bounds of this week and next week, each at local
+ * midnight. The board's week headers and recurring previews use these too
+ * (app.js `_tierDateRange`), so there is one definition of "this week".
+ *
+ * @param {Date} [todayOverride] for testing only
+ * @returns {{thisMonday: Date, thisSunday: Date, nextMonday: Date, nextSunday: Date}}
+ */
+function weekBounds(todayOverride) {
+    const today = todayOverride ? _atMidnight(todayOverride) : _atMidnight(new Date());
+    const thisMonday = _tierHelpersAddDays(today, -_mondayWeekday(today));
+    return {
+        thisMonday: thisMonday,
+        // #218: Mon-Sun ISO week ends Sunday = Mon+6 (was Mon+5 per #72).
+        thisSunday: _tierHelpersAddDays(thisMonday, 6),
+        nextMonday: _tierHelpersAddDays(thisMonday, 7),
+        // #218: Mon+13 = next Sunday (was Mon+12 per #72).
+        nextSunday: _tierHelpersAddDays(thisMonday, 13),
+    };
 }
 
 /**
@@ -78,17 +107,11 @@ function tierForDueDate(dueDate, todayOverride) {
     if (Number.isNaN(due.getTime())) return null;
 
     const today = todayOverride ? _atMidnight(todayOverride) : _atMidnight(new Date());
-    const tomorrow = new Date(today.getTime() + _MS_PER_DAY);
+    const tomorrow = _tierHelpersAddDays(today, 1);
     if (due.getTime() === today.getTime()) return "today";
     if (due.getTime() === tomorrow.getTime()) return "tomorrow";
 
-    const daysSinceMonday = _mondayWeekday(today);
-    const thisMonday = new Date(today.getTime() - daysSinceMonday * _MS_PER_DAY);
-    // #218: was thisMonday + 5 (Saturday). Mon-Sun ISO week ends Sunday = +6.
-    const thisSunday = new Date(thisMonday.getTime() + 6 * _MS_PER_DAY);
-    const nextMonday = new Date(thisMonday.getTime() + 7 * _MS_PER_DAY);
-    // #218: was thisMonday + 12 (next Saturday). Next Mon-Sun ends +13.
-    const nextSunday = new Date(thisMonday.getTime() + 13 * _MS_PER_DAY);
+    const { thisMonday, thisSunday, nextMonday, nextSunday } = weekBounds(today);
 
     if (due.getTime() >= thisMonday.getTime() && due.getTime() <= thisSunday.getTime()) {
         return "this_week";
@@ -114,7 +137,7 @@ function tierForDueDate(dueDate, todayOverride) {
 function dueDateForTier(tier, todayOverride) {
     if (tier !== "today" && tier !== "tomorrow") return null;
     const today = todayOverride ? _atMidnight(todayOverride) : _atMidnight(new Date());
-    const target = tier === "today" ? today : new Date(today.getTime() + _MS_PER_DAY);
+    const target = tier === "today" ? today : _tierHelpersAddDays(today, 1);
     const yyyy = target.getFullYear();
     const mm = String(target.getMonth() + 1).padStart(2, "0");
     const dd = String(target.getDate()).padStart(2, "0");
@@ -177,6 +200,7 @@ if (typeof module !== "undefined" && module.exports) {
         dueDateForTier: dueDateForTier,
         tierForFiledDate: tierForFiledDate,
         candidateSection: candidateSection,
+        weekBounds: weekBounds,
     };
 } else if (typeof window !== "undefined") {
     window.tierHelpers = {
@@ -184,5 +208,6 @@ if (typeof module !== "undefined" && module.exports) {
         dueDateForTier: dueDateForTier,
         tierForFiledDate: tierForFiledDate,
         candidateSection: candidateSection,
+        weekBounds: weekBounds,
     };
 }
