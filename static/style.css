@@ -1482,8 +1482,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .detail-panel label:first-of-type { margin-top: 0; }
 
+/* #415: every text-like input type a panel uses belongs in this list and
+   its two mobile twins below; number and url were missing and rendered
+   as 21px browser defaults. tests/test_mobile_css.py guards the lists. */
 .detail-panel input[type="text"],
 .detail-panel input[type="date"],
+.detail-panel input[type="number"],
+.detail-panel input[type="url"],
 .detail-panel textarea,
 .detail-panel select {
     width: 100%;
@@ -3306,6 +3311,17 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     border-bottom: 1px solid var(--border);
 }
 .settings-hint { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+/* #415: the Weekly Focus slot count had no rule and rendered as a 21px
+   browser default. Same field look as the side panels; the template's
+   inline width keeps it narrow. */
+.settings-row input[type="number"] {
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-family: inherit;
+}
+.settings-row input[type="number"]:focus { border-color: var(--accent); outline: none; }
 .settings-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
 .settings-stat { text-align: center; padding: 12px; background: var(--surface-sunk); border-radius: 6px; }
 .settings-stat-value { display: block; font-size: 24px; font-weight: 700; color: var(--accent); }
@@ -3591,8 +3607,11 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     .detail-panel .form-row { flex-direction: column; gap: 0; }
     .detail-panel input[type="text"],
     .detail-panel input[type="date"],
+    .detail-panel input[type="number"],
+    .detail-panel input[type="url"],
     .detail-panel textarea,
-    .detail-panel select {
+    .detail-panel select,
+    .settings-row input[type="number"] {
         font-size: 16px; /* prevents iOS zoom on focus */
     }
 
@@ -3689,8 +3708,11 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     .collapse-toggle { min-width: 44px; min-height: 44px; }
     .detail-panel input[type="text"],
     .detail-panel input[type="date"],
+    .detail-panel input[type="number"],
+    .detail-panel input[type="url"],
     .detail-panel textarea,
-    .detail-panel select { min-height: 44px; }
+    .detail-panel select,
+    .settings-row input[type="number"] { min-height: 44px; }
     .checklist-item { min-height: 44px; }
     .goals-filters select,
     .projects-filters select { min-height: 44px; }

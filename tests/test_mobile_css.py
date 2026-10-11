@@ -196,6 +196,43 @@ class TestMobileCSSRules:
             css = f.read()
         assert "font-size: 16px" in css
 
+    def test_every_panel_input_type_is_styled(self):
+        """#415: the shared `.detail-panel` field rule and its two mobile
+        twins (16px iOS-zoom font, 44px tap height) listed only text and
+        date inputs, so number and url fields rendered as 21px browser
+        defaults. Every text-like input type a panel template uses must
+        appear in all three lists — i.e. as often as `text` does."""
+        import glob
+        import re
+
+        text_like = {"text", "date", "number", "url", "email", "search",
+                     "tel", "time", "datetime-local", "month", "week",
+                     "password"}
+        used = set()
+        for path in glob.glob("templates/*.html"):
+            with open(path, encoding="utf-8") as f:
+                html = f.read()
+            if 'class="detail-panel' in html:
+                used |= set(re.findall(r'<input[^>]*\btype="([a-z-]+)"', html))
+        used &= text_like
+        assert "text" in used  # the guard is reading real templates
+
+        with open("static/style.css", encoding="utf-8") as f:
+            css = re.sub(r"/\*.*?\*/", "", f.read(), flags=re.S)
+        sel = '.detail-panel input[type="{}"]'
+        want = css.count(sel.format("text"))
+        assert want == 3
+        missing = {t: css.count(sel.format(t)) for t in sorted(used)
+                   if css.count(sel.format(t)) != want}
+        assert not missing, f"panel input types not in all {want} rule lists: {missing}"
+
+    def test_settings_number_input_is_styled(self):
+        """#415: the /settings Weekly Focus slot count had no rule at all."""
+        with open("static/style.css", encoding="utf-8") as f:
+            css = f.read()
+        # base look + the mobile 16px and 44px lists (+ its :focus rule)
+        assert css.count('.settings-row input[type="number"]') >= 3
+
     def test_css_has_full_width_detail_panel(self):
         with open("static/style.css", encoding="utf-8") as f:
             css = f.read()
