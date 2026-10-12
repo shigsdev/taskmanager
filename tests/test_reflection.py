@@ -536,10 +536,12 @@ class TestApplyActionsCorrectnessPR6:
             assert summary["created"]["task"] == 1
             # The failed step is 0 + recorded.
             assert summary["created"]["goal"] == 0
-            assert any(
-                "create goals" in e and "simulated goal-create failure" in e
-                for e in summary["errors"]
-            ), f"goal-create failure missing from errors: {summary['errors']}"
+            # #437: a plain sentence — the raw exception text stays in
+            # the server log — and the goal's position is marked failed.
+            assert summary["errors"] == [
+                "Couldn't create 1 goal — nothing was saved for it."
+            ]
+            assert summary["failed"] == [1]
 
     def test_confirm_returns_207_when_summary_has_errors(
         self, app, client, monkeypatch,

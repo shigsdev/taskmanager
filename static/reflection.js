@@ -97,6 +97,10 @@
     var costHintEl = document.getElementById("reflCostHint");
     var transcriptEl = document.getElementById("reflTranscript");
     var applyBtn = document.getElementById("reflApplyBtn");
+    // #437: why an Apply failed or only partly went through.
+    var applyMsg = document.getElementById("reflApplyMsg");
+    var applyMsgText = document.getElementById("reflApplyMsgText");
+    var applyMsgList = document.getElementById("reflApplyMsgList");
     var focusBtn = document.getElementById("reflFocusBtn");
     var startOverBtn = document.getElementById("reflStartOverBtn");
     var reviewExit = document.getElementById("reflReviewExit");
@@ -127,6 +131,7 @@
     // ---- runtime state ----
     var current = null;          // last serialized reflection
     var checkedMap = {};         // "bucket:idx" → bool
+    var rowEls = {};             // #437: "bucket:idx" → {row, cb}
     // #341: a submit is in flight. Every one is a PAID Claude call and a
     // new history row, so a second concurrent one is pure cost.
     var submitInFlight = false;
@@ -834,6 +839,8 @@
 
     function renderReview(refl) {
         checkedMap = {};
+        rowEls = {};  // #437
+        hideApplyMsg();
         bucketsEl.innerHTML = "";
         var proposed = (refl && refl.proposed_actions) || {};
         var total = (proposed.explicit || []).length
@@ -930,6 +937,7 @@
             updateApplyLabel();
         });
         row.appendChild(cb);
+        rowEls[key] = { row: row, cb: cb };  // #437
 
         var body = document.createElement("div");
         body.className = "reflection-action-body";
@@ -978,6 +986,10 @@
         if (actions.length === 0) return;
         applyBtn.disabled = true;
         applyBtn.textContent = "Applying…";
+        // #437: which row each sent action came from, so a partial
+        // failure can keep exactly those rows ticked.
+        var sentKeys = H.selectedKeys(current.proposed_actions || {}, checkedMap);
+        hideApplyMsg();
         var resp;
         try {
             resp = await window.apiFetch(
@@ -985,14 +997,67 @@
                 { method: "POST", body: JSON.stringify({ actions: actions }) }
             );
         } catch (err) {
-            applyBtn.disabled = false;
+            // #437: stay on the review — it used to be replaced by the
+            // error screen, and the only way back was History.
             updateApplyLabel();
-            showErr("Apply failed: " + (err.message || err), false);
+            showApplyMsg("Apply didn't go through: " + (err.message || err)
+                + ". Nothing on this screen was lost — press Apply to try again.", []);
             return;
         }
-        renderDone(resp && resp.summary);
+        var summary = resp && resp.summary;
+        var outcome = H.applyOutcome(sentKeys, summary && summary.failed);
         loadHistory();
+        if (outcome.failed.length === 0) {
+            renderDone(summary);
+            return;
+        }
+        markAppliedRows(outcome.applied);
+        outcome.failed.forEach(function (k) {
+            if (rowEls[k]) rowEls[k].row.classList.add("reflection-action-failed");
+        });
+        updateApplyLabel();
+        showApplyMsg(
+            H.partialApplyText(outcome.applied.length, outcome.failed.length),
+            (summary && summary.errors) || []
+        );
     });
+
+    // #437: rows that landed can't be sent again — unticked, disabled
+    // and labelled, so Apply counts only what's left.
+    function markAppliedRows(keys) {
+        keys.forEach(function (k) {
+            checkedMap[k] = false;
+            var el = rowEls[k];
+            if (!el) return;
+            el.cb.checked = false;
+            el.cb.disabled = true;
+            el.row.classList.remove("reflection-action-failed");
+            el.row.classList.add("reflection-action-applied");
+            if (!el.row.querySelector(".reflection-action-applied-tag")) {
+                var tag = document.createElement("span");
+                tag.className = "reflection-action-applied-tag";
+                tag.textContent = "✓ applied";
+                var title = el.row.querySelector(".reflection-action-title");
+                (title || el.row).appendChild(tag);
+            }
+        });
+    }
+
+    function showApplyMsg(text, errors) {
+        if (!applyMsg) return;
+        applyMsgText.textContent = text;
+        applyMsgList.innerHTML = "";
+        (errors || []).forEach(function (e) {
+            var li = document.createElement("li");
+            li.textContent = e;
+            applyMsgList.appendChild(li);
+        });
+        applyMsg.style.display = "";
+    }
+
+    function hideApplyMsg() {
+        if (applyMsg) applyMsg.style.display = "none";
+    }
 
     function renderDone(summary) {
         var text = H.applySummaryText(summary);
@@ -1345,7 +1410,7 @@
         // when there is one, otherwise a generated label that includes
         // the TIME. The old label (week + date + mode) was identical for
         // two sittings on the same day.
-        var applied = r.applied_at ? " ✓ applied" : "";
+        var applied = H.appliedBadge(r);  // #437: or "◐ partly applied"
         var archivedTag = r.is_archived ? " · 📥 archived" : "";
         var baseLabel = (RH_ && typeof RH_.reflectionLabel === "function")
             ? RH_.reflectionLabel(r)

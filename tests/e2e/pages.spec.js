@@ -9498,3 +9498,81 @@ test.describe("/plan: accepting a move with no date keeps the task's date (#436)
         }
     });
 });
+
+test.describe("Reflection: a failed or partial Apply keeps the review (#437)", () => {
+    const PROPOSED = {
+        explicit: [
+            { op: "create", entity: "task", target: "437 lands", reason: "a" },
+            { op: "create", entity: "goal", target: "437 fails", reason: "b" },
+        ],
+        suggested: [],
+    };
+    test.beforeEach(async ({ page }) => {
+        await page.route("**/api/reflection", async (route, request) => {
+            if (request.method() !== "POST") return route.continue();
+            await route.fulfill({ status: 201, json: {
+                id: "00000000-0000-0000-0000-000000000437", iso_week: "2026-W41",
+                input_mode: "typed", transcript: "437.", ai_cost_usd: null,
+                proposed_actions: PROPOSED, raw_segments: [],
+                is_archived: false, is_active: true,
+            } });
+        });
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator("#reflText").fill("437.");
+        await page.locator("#reflAnalyzeBtn").click();
+        await expect(page.locator("#reflStateReview")).toBeVisible({ timeout: 10000 });
+    });
+    test.afterEach(async ({ page }) => {
+        await page.unroute("**/api/reflection").catch(() => {});
+        await page.evaluate(() => fetch("/api/reflection/draft",
+            { method: "DELETE", credentials: "same-origin" })).catch(() => {});
+    });
+
+    test("a partial apply keeps the failed row ticked and the retry sends only it", async ({ page }) => {
+        const bodies = [];
+        await page.route("**/api/reflection/*/confirm", async (route, request) => {
+            bodies.push(JSON.parse(request.postData()));
+            if (bodies.length === 1) {
+                await route.fulfill({ status: 207, json: { id: "x", applied_at: null, summary: {
+                    created: { task: 1, goal: 0, project: 0 }, updated: {}, deleted: {},
+                    errors: ["Couldn't create 1 goal — nothing was saved for it."],
+                    failed: [1], already_applied: 0,
+                } } });
+            } else {
+                await route.fulfill({ status: 200, json: { id: "x", applied_at: "2026-10-12T00:00:00Z",
+                    summary: { created: { task: 0, goal: 1, project: 0 }, updated: {}, deleted: {},
+                        errors: [], failed: [], already_applied: 0 } } });
+            }
+        });
+        const rows = page.locator("#reflStateReview .reflection-action-row");
+        await expect(page.locator("#reflApplyBtn")).toHaveText("Apply Selected (2)");
+        await page.locator("#reflApplyBtn").click();
+
+        await expect(page.locator("#reflStateReview")).toBeVisible();
+        await expect(page.locator("#reflApplyMsg")).toBeVisible();
+        await expect(page.locator("#reflApplyMsgText")).toContainText("1 change was applied; 1 didn't save");
+        await expect(page.locator("#reflApplyMsgList li")).toHaveText(["Couldn't create 1 goal — nothing was saved for it."]);
+        await expect(rows.nth(0)).toHaveClass(/reflection-action-applied/);
+        await expect(rows.nth(0).locator(".reflection-action-check")).toBeDisabled();
+        await expect(rows.nth(0).locator(".reflection-action-check")).not.toBeChecked();
+        await expect(rows.nth(1)).toHaveClass(/reflection-action-failed/);
+        await expect(rows.nth(1).locator(".reflection-action-check")).toBeChecked();
+        await expect(page.locator("#reflApplyBtn")).toHaveText("Apply Selected (1)");
+
+        await page.locator("#reflApplyBtn").click();
+        await expect(page.locator("#reflStateDone")).toBeVisible();
+        expect(bodies[1].actions.map((a) => a.target)).toEqual(["437 fails"]);
+    });
+
+    test("a failed apply (500) stays on the review with the reason", async ({ page }) => {
+        await page.route("**/api/reflection/*/confirm", (route) =>
+            route.fulfill({ status: 500, json: { error: "Apply failed (unexpected)" } }));
+        await page.locator("#reflApplyBtn").click();
+        await expect(page.locator("#reflApplyMsgText")).toContainText("Apply didn't go through");
+        await expect(page.locator("#reflStateReview")).toBeVisible();
+        await expect(page.locator("#reflStateError")).toBeHidden();
+        await expect(page.locator("#reflApplyBtn")).toBeEnabled();
+        await expect(page.locator("#reflApplyBtn")).toHaveText("Apply Selected (2)");
+    });
+});

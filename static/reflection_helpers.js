@@ -733,7 +733,77 @@
             : "🔗 Combined analysis of " + ids.length + " reflections";
     }
 
+    /**
+     * #437: the row keys ("explicit:0", …) of the ticked rows, in the
+     * same order selectedActions returns their actions — so position i
+     * in the confirm request is row selectedKeys(...)[i].
+     */
+    function selectedKeys(proposed, checkedMap) {
+        var p = proposed && typeof proposed === "object" ? proposed : {};
+        var map = checkedMap && typeof checkedMap === "object" ? checkedMap : {};
+        var out = [];
+        ["explicit", "suggested"].forEach(function (bucket) {
+            var arr = Array.isArray(p[bucket]) ? p[bucket] : [];
+            for (var i = 0; i < arr.length; i++) {
+                if (map[bucket + ":" + i]) out.push(bucket + ":" + i);
+            }
+        });
+        return out;
+    }
+
+    /**
+     * #437: after a confirm, which sent rows landed and which failed.
+     * `failedIndices` is the server's summary.failed — positions in the
+     * request. A position the server doesn't name landed (or was already
+     * applied earlier, which is the same thing to the user).
+     */
+    function applyOutcome(sentKeys, failedIndices) {
+        var keys = Array.isArray(sentKeys) ? sentKeys : [];
+        var failedSet = {};
+        (Array.isArray(failedIndices) ? failedIndices : []).forEach(function (i) {
+            failedSet[i] = true;
+        });
+        var applied = [];
+        var failed = [];
+        keys.forEach(function (k, i) {
+            (failedSet[i] ? failed : applied).push(k);
+        });
+        return { applied: applied, failed: failed };
+    }
+
+    /**
+     * #437: the line shown on the review screen after a partly failed
+     * Apply. The reasons are listed under it.
+     */
+    function partialApplyText(appliedCount, failedCount) {
+        var head;
+        if (appliedCount === 0) {
+            head = failedCount === 1 ? "That change didn't save." : failedCount + " changes didn't save.";
+        } else {
+            head = (appliedCount === 1 ? "1 change was applied" : appliedCount + " changes were applied")
+                + "; " + (failedCount === 1 ? "1 didn't save." : failedCount + " didn't save.");
+        }
+        return head + " The ones that didn't are still ticked — "
+            + "press Apply again to retry them, or untick any you no longer want.";
+    }
+
+    /**
+     * #437: the history row's apply badge. A reflection whose apply
+     * partly failed has landed actions but no applied_at.
+     */
+    function appliedBadge(r) {
+        if (!r) return "";
+        if (r.applied_at) return " ✓ applied";
+        var a = r.applied_actions;
+        if (a && Array.isArray(a.actions) && a.actions.length > 0) return " ◐ partly applied";
+        return "";
+    }
+
     var api = {
+        selectedKeys: selectedKeys,
+        applyOutcome: applyOutcome,
+        partialApplyText: partialApplyText,
+        appliedBadge: appliedBadge,
         attachmentLabel: attachmentLabel,
         attachmentSummary: attachmentSummary,
         attachmentPreflight: attachmentPreflight,

@@ -5988,6 +5988,24 @@ table.quality-gates code {
     margin-top: 2px;
 }
 .reflection-action-body { flex: 1; min-width: 0; }
+/* #437: after a partly failed Apply — landed rows go quiet, failed rows
+   are tinted like #422's and stay ticked for the retry. */
+.reflection-action-row.reflection-action-applied { opacity: 0.6; }
+.reflection-action-row.reflection-action-failed {
+    background: rgba(220, 38, 38, 0.08);
+}
+.reflection-action-applied-tag {
+    color: var(--success, #16a34a);
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+.reflection-apply-msg {
+    margin: 10px 0 0;
+    color: var(--danger);
+    font-size: 0.9rem;
+}
+.reflection-apply-msg p { margin: 0 0 4px; }
+.reflection-apply-msg ul { margin: 0; padding-left: 20px; }
 .reflection-action-title {
     display: flex;
     align-items: baseline;

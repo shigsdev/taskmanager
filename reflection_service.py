@@ -50,7 +50,7 @@ from reflection_context_service import (
     context_files_block,
     normalise_context_files,
 )
-from utils import local_datetime_from_dt
+from utils import ValidationError, local_datetime_from_dt, local_today_date
 
 logger = logging.getLogger(__name__)
 
@@ -90,8 +90,13 @@ _PROJECT_UPDATE_FIELDS = {"name", "type", "status", "target_quarter",
 
 
 def current_iso_week(today: date | None = None) -> str:
-    """Return the ISO week label, e.g. ``2026-W20``."""
-    d = today or datetime.now(UTC).date()
+    """Return the ISO week label, e.g. ``2026-W20``.
+
+    #437: the user's week (``DIGEST_TZ``), not UTC's — a Sunday-evening
+    reflection in ET is past midnight UTC and used to file under the
+    next week.
+    """
+    d = today or local_today_date()
     iso = d.isocalendar()
     return f"{iso.year}-W{iso.week:02d}"
 
@@ -759,7 +764,7 @@ def analyze_reflection(
 
     snapshot = build_state_snapshot()
     prompt = _REFLECT_PROMPT.format(
-        today=datetime.now(UTC).date().isoformat(),
+        today=local_today_date().isoformat(),  # #437: not UTC's date
         iso_week=current_iso_week(),
         # #325: runway + continuity. Without these every reflection is
         # analysed cold — week 4 has no idea what week 1 committed to,
@@ -1707,8 +1712,11 @@ def apply_selected_actions(
     deletes, so a task can link to a project/goal created in the same
     reflection.
 
-    Returns a summary dict and records it (plus the confirmed actions)
-    on the Reflection row as the audit trail.
+    Returns a summary dict and records it (plus every action that has
+    landed so far) on the Reflection row as the audit trail. #437: an
+    action that already landed is skipped, ``summary["failed"]`` lists
+    the positions of the ones that didn't, and ``applied_at`` is set only
+    when none failed — so a partly failed apply can be retried safely.
     """
     from import_service import (
         create_goals_from_import,
@@ -1721,57 +1729,96 @@ def apply_selected_actions(
         "updated": {"task": 0, "goal": 0, "project": 0},
         "deleted": {"task": 0, "goal": 0, "project": 0},
         "errors": [],
+        # #437: positions (in `actions`) of the ones that didn't land, so
+        # the page can keep exactly those ticked for a retry.
+        "failed": [],
+        # #437: sent again after they had already landed — skipped.
+        "already_applied": 0,
     }
 
-    creates = {"task": [], "goal": [], "project": []}
-    updates: list[dict[str, Any]] = []
-    deletes: list[dict[str, Any]] = []
-    for a in actions:
+    # #437: what earlier applies of this reflection already landed. An
+    # action equal to one of these is never applied twice, so a retry
+    # (or a full re-apply after reopening) can't create duplicates. The
+    # review rows aren't editable, so equality is exact.
+    previous = reflection.applied_actions
+    landed: list[Any] = []
+    if isinstance(previous, dict) and isinstance(previous.get("actions"), list):
+        landed = list(previous["actions"])
+    landed_keys = {_action_key(a) for a in landed}
+
+    creates: dict[str, list[tuple[int, dict[str, Any]]]] = {
+        "task": [], "goal": [], "project": [],
+    }
+    updates: list[tuple[int, dict[str, Any]]] = []
+    deletes: list[tuple[int, dict[str, Any]]] = []
+    for i, a in enumerate(actions):
         if not isinstance(a, dict):
             continue
         op = a.get("op")
         entity = a.get("entity")
         if op not in _VALID_OPS or entity not in _VALID_ENTITIES:
             continue
+        if _action_key(a) in landed_keys:
+            summary["already_applied"] += 1
+            continue
         if op == "create":
-            creates[entity].append(a)
+            creates[entity].append((i, a))
         elif op == "update":
-            updates.append(a)
+            updates.append((i, a))
         else:
-            deletes.append(a)
+            deletes.append((i, a))
+
+    def _ok(a: dict[str, Any]) -> None:
+        landed.append(a)
+        landed_keys.add(_action_key(a))
+
+    def _failed(i: int, message: str) -> None:
+        summary["failed"].append(i)
+        summary["errors"].append(message)
+
+    def _create_failed(kind: str, batch: list) -> None:
+        # #437: the detail goes to the log; the user gets a sentence. The
+        # old text embedded the raw SQLAlchemy message (#189 class).
+        db.session.rollback()
+        logger.exception("reflection apply: create %ss failed", kind)
+        n = len(batch)
+        noun = kind if n == 1 else kind + "s"
+        summary["failed"].extend(i for i, _a in batch)
+        summary["errors"].append(
+            f"Couldn't create {n} {noun} — nothing was saved for "
+            f"{'it' if n == 1 else 'them'}."
+        )
 
     # 1. Create projects + goals first so tasks can link to them.
     #
     # #174 (2026-05-21): each create step is wrapped in its own
-    # try/except — mirroring the update/delete loops below. Before this,
-    # a failure inside any import creator bubbled straight out of
-    # apply_selected_actions; the route's catch-all then returned an
-    # opaque 500 and the partial `summary` (what DID land) was lost.
-    # Now a create-step failure is captured in summary["errors"], the
-    # session is rolled back, and the remaining steps still run.
-    try:
-        proj_objs = create_projects_from_import(
-            [_project_candidate(a) for a in creates["project"]],
-            source="reflection_project",
-        )
-        summary["created"]["project"] = len(proj_objs)
-    except Exception as e:  # noqa: BLE001 — surface, don't crash batch
-        db.session.rollback()
-        summary["errors"].append(
-            f"create projects: {type(e).__name__}: {e}"
-        )
+    # try/except — mirroring the update/delete loops below. A failure is
+    # captured in summary["errors"], the session is rolled back, and the
+    # remaining steps still run. Every creator commits its own rows, so
+    # a rollback here only undoes the step that failed.
+    if creates["project"]:
+        try:
+            proj_objs = create_projects_from_import(
+                [_project_candidate(a) for _i, a in creates["project"]],
+                source="reflection_project",
+            )
+            summary["created"]["project"] = len(proj_objs)
+            for _i, a in creates["project"]:
+                _ok(a)
+        except Exception:  # noqa: BLE001 — surface, don't crash batch
+            _create_failed("project", creates["project"])
 
-    try:
-        goal_objs = create_goals_from_import(
-            [_goal_candidate(a) for a in creates["goal"]],
-            source="reflection_goal",
-        )
-        summary["created"]["goal"] = len(goal_objs)
-    except Exception as e:  # noqa: BLE001
-        db.session.rollback()
-        summary["errors"].append(
-            f"create goals: {type(e).__name__}: {e}"
-        )
+    if creates["goal"]:
+        try:
+            goal_objs = create_goals_from_import(
+                [_goal_candidate(a) for _i, a in creates["goal"]],
+                source="reflection_goal",
+            )
+            summary["created"]["goal"] = len(goal_objs)
+            for _i, a in creates["goal"]:
+                _ok(a)
+        except Exception:  # noqa: BLE001
+            _create_failed("goal", creates["goal"])
 
     # Build name→id maps INCLUDING rows just created so a task's
     # project_hint / goal_hint can resolve to brand-new entities too.
@@ -1787,36 +1834,37 @@ def apply_selected_actions(
         goal_index[g.title.strip().lower()] = g.id
 
     # 2. Create tasks.
-    task_candidates = []
-    for a in creates["task"]:
-        f = a.get("payload") or a.get("fields") or {}
-        task_candidates.append({
-            "title": (f.get("title") or "").strip(),
-            "type": f.get("type") or "work",
-            "tier": f.get("tier") or "inbox",
-            "due_date": f.get("due_date") or "",
-            "project_id": _resolve_ref(f.get("project_hint"), project_index)
-            or "",
-            "goal_id": _resolve_ref(f.get("goal_hint"), goal_index) or "",
-            "included": True,
-        })
-    try:
-        task_objs = create_tasks_from_candidates(
-            task_candidates, source_prefix="reflection"
-        )
-        summary["created"]["task"] = len(task_objs)
-    except Exception as e:  # noqa: BLE001
-        db.session.rollback()
-        summary["errors"].append(
-            f"create tasks: {type(e).__name__}: {e}"
-        )
+    if creates["task"]:
+        task_candidates = []
+        for _i, a in creates["task"]:
+            f = a.get("payload") or a.get("fields") or {}
+            task_candidates.append({
+                "title": (f.get("title") or "").strip(),
+                "type": f.get("type") or "work",
+                "tier": f.get("tier") or "inbox",
+                "due_date": f.get("due_date") or "",
+                "project_id": _resolve_ref(f.get("project_hint"), project_index)
+                or "",
+                "goal_id": _resolve_ref(f.get("goal_hint"), goal_index) or "",
+                "included": True,
+            })
+        try:
+            task_objs = create_tasks_from_candidates(
+                task_candidates, source_prefix="reflection"
+            )
+            summary["created"]["task"] = len(task_objs)
+            for _i, a in creates["task"]:
+                _ok(a)
+        except Exception:  # noqa: BLE001
+            _create_failed("task", creates["task"])
 
     # 3. Updates.
-    for a in updates:
+    for i, a in updates:
         entity = a["entity"]
+        name = _action_name(a)
         rid = _parse_uuid(a.get("id"))
         if rid is None:
-            summary["errors"].append(f"update {entity}: bad id")
+            _failed(i, f"Couldn't update {entity} {name} — it has no valid id.")
             continue
         payload = dict(a.get("payload") or a.get("fields") or {})
         try:
@@ -1834,21 +1882,22 @@ def apply_selected_actions(
                 ok = update_project(rid, payload) is not None
         except Exception as e:  # noqa: BLE001 — surface, don't crash batch
             db.session.rollback()
-            summary["errors"].append(
-                f"update {entity} {rid}: {type(e).__name__}: {e}"
-            )
+            logger.exception("reflection apply: update %s %s failed", entity, rid)
+            _failed(i, f"Couldn't update {entity} {name}{_reason(e)}")
             continue
         if ok:
             summary["updated"][entity] += 1
+            _ok(a)
         else:
-            summary["errors"].append(f"update {entity} {rid}: not found")
+            _failed(i, f"Couldn't update {entity} {name} — it no longer exists.")
 
     # 4. Deletes (soft — recycle bin).
-    for a in deletes:
+    for i, a in deletes:
         entity = a["entity"]
+        name = _action_name(a)
         rid = _parse_uuid(a.get("id"))
         if rid is None:
-            summary["errors"].append(f"delete {entity}: bad id")
+            _failed(i, f"Couldn't delete {entity} {name} — it has no valid id.")
             continue
         try:
             if entity == "task":
@@ -1862,32 +1911,61 @@ def apply_selected_actions(
                 ok = delete_project(rid)
         except Exception as e:  # noqa: BLE001
             db.session.rollback()
-            summary["errors"].append(
-                f"delete {entity} {rid}: {type(e).__name__}: {e}"
-            )
+            logger.exception("reflection apply: delete %s %s failed", entity, rid)
+            _failed(i, f"Couldn't delete {entity} {name}{_reason(e)}")
             continue
         if ok:
             summary["deleted"][entity] += 1
+            _ok(a)
         else:
-            summary["errors"].append(f"delete {entity} {rid}: not found")
+            _failed(i, f"Couldn't delete {entity} {name} — it no longer exists.")
 
     # Persist the audit record. #174: wrap so a failure here also lands
     # in summary["errors"] instead of bubbling to an opaque 500 —
     # apply_selected_actions never raises, so the route always has a
-    # summary to return. On failure `applied_at` stays None; the route
-    # guards the .isoformat() access accordingly.
+    # summary to return. #437: `actions` is every action that has landed
+    # so far (across retries), and `applied_at` is set only once nothing
+    # failed — so a partly failed apply can be retried.
     try:
-        reflection.applied_actions = {"actions": actions, "summary": summary}
-        reflection.applied_at = datetime.now(UTC)
+        reflection.applied_actions = {"actions": landed, "summary": summary}
+        reflection.applied_at = None if summary["failed"] else datetime.now(UTC)
         db.session.commit()
-    except Exception as e:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         db.session.rollback()
+        logger.exception("reflection apply: audit record not saved")
         reflection.applied_at = None
         summary["errors"].append(
-            f"failed to persist reflection audit record: "
-            f"{type(e).__name__}: {e}"
+            "Your changes were made, but the record of them wasn't saved."
         )
     return summary
+
+
+def _action_key(action: Any) -> str:
+    """#437: a stable identity for one proposed action (canonical JSON)."""
+    try:
+        return json.dumps(action, sort_keys=True, default=str)
+    except (TypeError, ValueError):
+        return repr(action)
+
+
+def _action_name(action: dict[str, Any]) -> str:
+    """#437: how an action is named in an error the user reads."""
+    f = action.get("payload") or action.get("fields") or {}
+    name = (
+        action.get("target")
+        or (f.get("title") if isinstance(f, dict) else None)
+        or (f.get("name") if isinstance(f, dict) else None)
+    )
+    return f'"{str(name).strip()}"' if name and str(name).strip() else "(unnamed)"
+
+
+def _reason(e: Exception) -> str:
+    """#437: the user-facing tail of an update/delete error. A
+    ValidationError's message is ours and safe to show; anything else
+    (a database error especially) stays in the log — #189."""
+    if isinstance(e, ValidationError):
+        return f" — {e}."
+    return " — something went wrong saving it."
 
 
 def _apply_task_link_hints(

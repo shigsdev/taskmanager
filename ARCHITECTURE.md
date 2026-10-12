@@ -237,9 +237,12 @@ component is added, a data flow changes, or a security boundary shifts.
   → user confirms a subset via `POST /api/reflection/<id>/confirm` →
   applied through the canonical `task/goal/project` services. Created
   rows are grouped under `reflection_*` ImportLog batches (recycle-bin
-  undo); deletes are **soft** (recycle bin) — never hard. The
-  confirmed action set + apply summary are stored back on the
-  `reflections` row as an audit trail. Rate-limited 20/min (paid
+  undo); deletes are **soft** (recycle bin) — never hard. Every
+  action that has landed + the latest apply summary are stored back on
+  the `reflections` row as an audit trail (#437: `applied_at` is set
+  only once nothing failed; `summary.failed` lists the positions that
+  didn't land, a retry resends them, and an action that already landed
+  is skipped rather than applied twice). Rate-limited 20/min (paid
   Whisper + Claude). The frontend (2026-05-17, `/reflection` page,
   `templates/reflection.html`, `static/reflection.js`,
   `static/reflection_helpers.js`) is a type-or-record input → analyzing

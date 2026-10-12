@@ -533,6 +533,11 @@ Report.
      #436: on /plan (stub /api/planner/weekly), a MOVE row with no date on a
      task dated weeks out: Accept (and, on another, Apply all remaining) moves
      it and the date stays; the button reads "Apply all remaining".
+     #437: on /reflection (stub the analysis POST to a real reflection id),
+     propose a create plus an update of a task id that doesn't exist, Apply:
+     the review stays, the create row reads "✓ applied" and is greyed, the
+     update row stays ticked with "Couldn't update task … no longer exists",
+     Apply again creates nothing twice, and History reads "◐ partly applied".
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -675,6 +680,7 @@ Report.
   Work view: archived project tasks PASS      Work view: archived project tasks PASS
   Bulk Section: move re-dates   PASS          Bulk Section: move re-dates   PASS
   Plan: dateless move keeps date PASS         Plan: dateless move keeps date PASS
+  Reflection: partial apply retry PASS        Reflection: partial apply retry PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

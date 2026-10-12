@@ -334,6 +334,12 @@
                 Start Over
             </button>
         </div>
+        {# #437: a failed or partly failed Apply is explained here, and the
+           review stays up so it can be retried. #}
+        <div class="reflection-apply-msg" id="reflApplyMsg" role="alert" style="display:none">
+            <p id="reflApplyMsgText"></p>
+            <ul id="reflApplyMsgList"></ul>
+        </div>
 
         <details class="reflection-transcript-details">
             <summary>Show transcript</summary>
