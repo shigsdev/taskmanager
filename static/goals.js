@@ -416,10 +416,16 @@ function goalLinkedTaskRow(task, goalId) {
     cb.checked = task.status === "archived";
     cb.disabled = task.status === "archived";
     cb.addEventListener("change", async () => {
-        await apiFetch(`/api/tasks/${task.id}`, {
-            method: "PATCH",
-            body: JSON.stringify({ status: "archived" }),
-        });
+        try {
+            await apiFetch(`/api/tasks/${task.id}`, {
+                method: "PATCH",
+                body: JSON.stringify({ status: "archived" }),
+            });
+        } catch (err) {
+            // #430: it used to stay ticked as if it had worked.
+            const msg = window.apiHelpers.actionFailureMessage("Completing the task", err);
+            if (msg) alert(msg);
+        }
         await goalsLoad();
         goalRenderLinkedTasks(goalId);
     });
@@ -542,18 +548,27 @@ async function goalDetailToggleArchive() {
     const goal = goalsData.find((g) => g.id === id);
     if (!goal) return;
 
-    if (goal.is_active === false) {
-        // Unarchive. PATCH rather than DELETE — there is no "undelete".
-        await apiFetch(`/api/goals/${id}`, {
-            method: "PATCH",
-            body: JSON.stringify({ is_active: true }),
-        });
-    } else {
-        // #368: archiving pauses the goal's running repeating tasks, so
-        // name them first. None means no dialog. Unarchive asks nothing.
-        const impact = await goalArchiveImpactMessage(id);
-        if (impact && !confirm(impact)) return;
-        await apiFetch(`/api/goals/${id}`, { method: "DELETE" });
+    try {
+        if (goal.is_active === false) {
+            // Unarchive. PATCH rather than DELETE — there is no "undelete".
+            await apiFetch(`/api/goals/${id}`, {
+                method: "PATCH",
+                body: JSON.stringify({ is_active: true }),
+            });
+        } else {
+            // #368: archiving pauses the goal's running repeating tasks, so
+            // name them first. None means no dialog. Unarchive asks nothing.
+            const impact = await goalArchiveImpactMessage(id);
+            if (impact && !confirm(impact)) return;
+            await apiFetch(`/api/goals/${id}`, { method: "DELETE" });
+        }
+    } catch (err) {
+        // #430: the panel stays open and the list reloads to the truth.
+        const what = goal.is_active === false ? "Unarchiving the goal" : "Archiving the goal";
+        const msg = window.apiHelpers.actionFailureMessage(what, err);
+        if (msg) alert(msg);
+        await goalsLoad();
+        return;
     }
     await goalsLoad();
     goalDetailClose();

@@ -279,13 +279,15 @@ def reorder(email: str):  # noqa: ARG001
     if not tier_val or not isinstance(task_ids, list):
         return jsonify({"error": "tier and task_ids required"}), 422
 
-    # #187 (2026-05-21): cap the payload, mirroring bulk_update's 200-id
-    # limit. reorder does N independent get_task() + SET per id, so an
-    # unbounded list eats a worker; MAX_CONTENT_LENGTH alone would allow
-    # ~600k UUIDs through.
-    if len(task_ids) > 200:
+    # #187 (2026-05-21): cap the payload — reorder does N independent
+    # get_task() + SET per id, so an unbounded list eats a worker;
+    # MAX_CONTENT_LENGTH alone would allow ~600k UUIDs through.
+    # #430: 1000, not bulk_update's 200. The board sends a whole tier's
+    # order after a drag, so a tier past 200 cards 422'd AFTER the drag's
+    # tier change had already landed. 1000 still bounds the work.
+    if len(task_ids) > 1000:
         return jsonify({
-            "error": f"too many task_ids ({len(task_ids)}); max 200 per call",
+            "error": f"too many task_ids ({len(task_ids)}); max 1000 per call",
         }), 422
 
     try:

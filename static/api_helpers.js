@@ -47,16 +47,42 @@ function buildRecoveryUrl(loc) {
     return loc.pathname + (loc.search || "") + sep + "nosw=1";
 }
 
+/**
+ * #430: what to tell the user when an action didn't save — or null when
+ * there's nothing to say. `err` is what the request threw (an error apiFetch
+ * already showed its own prompt for is marked `userNotified`, so it gets no
+ * second dialog); `bulk` is a /api/tasks/bulk result, which comes back 200
+ * with `errors` / `not_found` for the tasks that failed. The caller then
+ * reloads, so the page shows what actually saved.
+ */
+function actionFailureMessage(what, err, bulk) {
+    const tail = " The page now shows what's saved.";
+    if (err) {
+        if (err.userNotified) return null;
+        const reason = typeof err === "string" ? err : err.message;
+        return what + " didn't save" + (reason ? ": " + reason : "") + "." + tail;
+    }
+    if (bulk) {
+        const bad = (bulk.errors || []).length + (bulk.not_found || []).length;
+        if (!bad) return null;
+        const total = bad + (bulk.updated || 0);
+        return what + ": " + bad + " of " + total + " didn't save." + tail;
+    }
+    return null;
+}
+
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         shouldAutoRetry,
         classifyResponse,
         buildRecoveryUrl,
+        actionFailureMessage,
     };
 } else if (typeof window !== "undefined") {
     window.apiHelpers = {
         shouldAutoRetry,
         classifyResponse,
         buildRecoveryUrl,
+        actionFailureMessage,
     };
 }

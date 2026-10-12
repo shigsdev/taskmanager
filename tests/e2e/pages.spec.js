@@ -8933,3 +8933,130 @@ test.describe("Double taps don't duplicate (#429)", () => {
         await expect(page.locator('.review-btn[data-action="keep"]')).toBeEnabled();
     });
 });
+
+/**
+ * #430: a board action that fails says so and the board snaps back to what
+ * is saved. Each test makes the server refuse the write (a stubbed 500) and
+ * checks the message and that the card is where the server says it is.
+ */
+test.describe("Board actions that fail say so (#430)", () => {
+    const uniq = () => Math.random().toString(36).slice(2, 8);
+    const refuse = (method) => async (route) => {
+        if (route.request().method() === method) {
+            await route.fulfill({ status: 500, json: { error: "stub refusal" } });
+        } else {
+            await route.continue();
+        }
+    };
+    const collectDialogs = (page) => {
+        const seen = [];
+        page.on("dialog", async (d) => { seen.push(d.message()); await d.accept(); });
+        return seen;
+    };
+    const cardIn = (page, tier, id) =>
+        page.locator(`.task-list[data-tier="${tier}"] .task-card[data-id="${id}"]`);
+
+    test("a quick tier button that fails says so and leaves the card", async ({ page, request }) => {
+        const task = await (await request.post("/api/tasks", {
+            data: { title: `430 quick ${uniq()}`, type: "work", tier: "backlog" },
+        })).json();
+        try {
+            const dialogs = collectDialogs(page);
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.route(`**/api/tasks/${task.id}`, refuse("PATCH"));
+            const card = cardIn(page, "backlog", task.id);
+            await card.hover();
+            await card.locator(".task-quick-actions button", { hasText: "Freezer" }).click();
+            await expect.poll(() => dialogs.length).toBe(1);
+            expect(dialogs[0]).toBe("Moving the task didn't save: stub refusal. The page now shows what's saved.");
+            await expect(cardIn(page, "backlog", task.id)).toBeVisible();
+            await expect(cardIn(page, "freezer", task.id)).toHaveCount(0);
+        } finally {
+            await page.unroute(`**/api/tasks/${task.id}`);
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("a drag to another tier that fails snaps the card back", async ({ page, request }) => {
+        const task = await (await request.post("/api/tasks", {
+            data: { title: `430 drag ${uniq()}`, type: "work", tier: "backlog" },
+        })).json();
+        try {
+            const dialogs = collectDialogs(page);
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.route(`**/api/tasks/${task.id}`, refuse("PATCH"));
+            await page.evaluate((id) => {
+                const card = document.querySelector(`.task-card[data-id="${id}"]`);
+                const list = document.querySelector('.task-list[data-tier="freezer"]');
+                const dt = new DataTransfer();
+                card.dispatchEvent(new DragEvent("dragstart", { dataTransfer: dt, bubbles: true }));
+                list.dispatchEvent(new DragEvent("dragover", { dataTransfer: dt, bubbles: true, cancelable: true }));
+                list.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
+                card.dispatchEvent(new DragEvent("dragend", { dataTransfer: dt, bubbles: true }));
+            }, task.id);
+            await expect.poll(() => dialogs.length).toBe(1);
+            expect(dialogs[0]).toContain("Moving the task didn't save: stub refusal.");
+            await expect(cardIn(page, "backlog", task.id)).toBeVisible();
+            await expect(cardIn(page, "freezer", task.id)).toHaveCount(0);
+        } finally {
+            await page.unroute(`**/api/tasks/${task.id}`);
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("the panel's Delete that fails says so and keeps the panel open", async ({ page, request }) => {
+        const task = await (await request.post("/api/tasks", {
+            data: { title: `430 delete ${uniq()}`, type: "work", tier: "backlog" },
+        })).json();
+        try {
+            const dialogs = collectDialogs(page);
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.evaluate((t) => window.taskDetailOpen(t), task);
+            await expect(page.locator("#detailPanel")).toBeVisible();
+            await page.route(`**/api/tasks/${task.id}`, refuse("DELETE"));
+            await page.click("#detailDelete");
+            await expect.poll(() => dialogs.length).toBe(1);
+            expect(dialogs[0]).toContain("Deleting the task didn't save: stub refusal.");
+            await expect(page.locator("#detailPanel")).toBeVisible();
+            const still = await (await request.get(`/api/tasks/${task.id}`)).json();
+            expect(still.status).toBe("active");
+        } finally {
+            await page.unroute(`**/api/tasks/${task.id}`);
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("Inbox triage with one failure moves the rest and says how many didn't", async ({
+        page, request,
+    }) => {
+        const tag = uniq();
+        const ok = await (await request.post("/api/tasks", {
+            data: { title: `430 triage ok ${tag}`, type: "work", tier: "inbox" },
+        })).json();
+        const bad = await (await request.post("/api/tasks", {
+            data: { title: `430 triage bad ${tag}`, type: "work", tier: "inbox" },
+        })).json();
+        try {
+            const dialogs = collectDialogs(page);
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.route(`**/api/tasks/${bad.id}`, refuse("PATCH"));
+            for (const t of [ok, bad]) {
+                await cardIn(page, "inbox", t.id).locator(".triage-check").check();
+            }
+            await page.click("#bulkTriageBtn");
+            await page.locator(".triage-dropdown button", { hasText: "Freezer" }).click();
+            await expect.poll(() => dialogs.length).toBe(1);
+            expect(dialogs[0]).toBe("Moving the tasks: 1 of 2 didn't save. The page now shows what's saved.");
+            await expect(cardIn(page, "freezer", ok.id)).toBeVisible();
+            await expect(cardIn(page, "inbox", bad.id)).toBeVisible();
+        } finally {
+            await page.unroute(`**/api/tasks/${bad.id}`);
+            await request.delete(`/api/tasks/${ok.id}`);
+            await request.delete(`/api/tasks/${bad.id}`);
+        }
+    });
+});

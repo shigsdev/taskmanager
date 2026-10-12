@@ -2580,13 +2580,13 @@ class TestArchivedTaskUnarchiveOnDetailSave:
 
 
 class TestReorderCapPR9:
-    """#187 (PR 9): /api/tasks/reorder gained the 200-id cap that
-    bulk_update already enforced. reorder does N independent
-    get_task() + SET, so an unbounded payload eats a worker."""
+    """#187 (PR 9): /api/tasks/reorder is capped, because it does N
+    independent get_task() + SET and an unbounded payload eats a worker.
+    #430 raised the cap from 200 to 1000: the board sends a whole tier."""
 
-    def test_reorder_over_200_ids_rejected(self, authed_client, app):
+    def test_reorder_over_1000_ids_rejected(self, authed_client, app):
         import uuid as _uuid
-        ids = [str(_uuid.uuid4()) for _ in range(201)]
+        ids = [str(_uuid.uuid4()) for _ in range(1001)]
         resp = authed_client.post(
             "/api/tasks/reorder",
             json={"tier": "today", "task_ids": ids},
@@ -2594,11 +2594,32 @@ class TestReorderCapPR9:
         assert resp.status_code == 422
         assert "too many" in resp.get_json()["error"].lower()
 
-    def test_reorder_at_200_ids_not_rejected_by_cap(self, authed_client, app):
-        """Exactly 200 ids must pass the cap check (unknown ids are
+    def test_a_tier_past_200_cards_can_be_reordered(self, authed_client, app):
+        """#430: a drag in a 201-card tier used to 422 here after its tier
+        change had landed. Real tasks, real order written."""
+        import uuid as _uuid
+
+        from models import Task, TaskType, Tier, db
+        with app.app_context():
+            tasks = [Task(title=f"t{i}", type=TaskType.WORK, tier=Tier.BACKLOG) for i in range(201)]
+            db.session.add_all(tasks)
+            db.session.commit()
+            ids = [str(t.id) for t in tasks][::-1]
+        resp = authed_client.post(
+            "/api/tasks/reorder", json={"tier": "backlog", "task_ids": ids},
+        )
+        assert resp.status_code == 200, resp.get_json()
+        with app.app_context():
+            from models import Task as _T
+            first = db.session.get(_T, _uuid.UUID(ids[0]))
+            last = db.session.get(_T, _uuid.UUID(ids[-1]))
+            assert first.sort_order < last.sort_order
+
+    def test_reorder_at_1000_ids_not_rejected_by_cap(self, authed_client, app):
+        """Exactly 1000 ids must pass the cap check (unknown ids are
         just no-ops downstream). The cap is the only thing under test."""
         import uuid as _uuid
-        ids = [str(_uuid.uuid4()) for _ in range(200)]
+        ids = [str(_uuid.uuid4()) for _ in range(1000)]
         resp = authed_client.post(
             "/api/tasks/reorder",
             json={"tier": "today", "task_ids": ids},

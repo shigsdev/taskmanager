@@ -507,6 +507,11 @@ Report.
      voice memo / scan, and a /review button: exactly one of each is made and
      /review shows the next task, not the one after. In the capture bar,
      press Enter twice then type — one task, and what you typed stays.
+     #430: make the server refuse a write (stub its PATCH/DELETE to 500) and
+     use a quick tier button, a drag to another tier, the panel's Delete and
+     Inbox triage (one of two refused): each says "… didn't save: <reason>.
+     The page now shows what's saved." and the card is where the server has
+     it (Delete keeps the panel open; triage moves the other one).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -636,6 +641,7 @@ Report.
   Tasks: no project keeps my goal PASS        Tasks: no project keeps my goal PASS
   Auto-categorize: keeps links  PASS          Auto-categorize: keeps links  PASS
   Double tap: one of each made  PASS          Double tap: one of each made  PASS
+  Failed action says so         PASS          Failed action says so         PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

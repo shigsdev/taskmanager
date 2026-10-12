@@ -159,6 +159,8 @@
                 "Network request failed (this can happen on a tab that's " +
                 "been idle for a while). Reload the page to recover?"
             );
+            // #430: callers skip their own "didn't save" dialog for this.
+            if (err && typeof err === "object") err.userNotified = true;
             throw err;
         }
         // 401/403 — actual auth failure. Surface a clean message instead
@@ -166,7 +168,9 @@
         // caller can decide what to do.
         if (resp.status === 401 || resp.status === 403) {
             _maybePromptRecovery("Authentication failed. Reload to sign in again?");
-            throw new Error("Authentication required");
+            const authErr = new Error("Authentication required");
+            authErr.userNotified = true;  // #430
+            throw authErr;
         }
         if (!resp.ok) {
             const body = await resp.json().catch(() => ({}));

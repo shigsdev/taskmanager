@@ -951,10 +951,13 @@ function setupDragAndDrop() {
                         task_ids: groupIds,
                         updates: { status: "archived" },
                     }),
-                }).then(() => {
+                }).then((res) => {
+                    loadCompletedTasks();
+                    if (boardBulkFailed("Completing the tasks", res)) return;  // #430
                     clearBulkSelection();
                     loadTasks();
-                    loadCompletedTasks();
+                }).catch((err) => {
+                    boardActionFailed("Completing the tasks", err);  // #430
                 });
                 return;
             }
@@ -1044,10 +1047,13 @@ function onTouchEnd() {
                     task_ids: groupIds,
                     updates: { status: "archived" },
                 }),
-            }).then(function () {
+            }).then(function (res) {
+                loadCompletedTasks();
+                if (boardBulkFailed("Completing the tasks", res)) return;  // #430
                 clearBulkSelection();
                 loadTasks();
-                loadCompletedTasks();
+            }).catch(function (err) {
+                boardActionFailed("Completing the tasks", err);  // #430
             });
         } else {
             taskComplete(card.dataset.id);
@@ -1134,8 +1140,12 @@ function finishDrop(list) {
                     updates: _patchBodyForTierDrop(targetTier),
                 }),
             })
-            : Promise.resolve();
-        tierPatch.then(function () {
+            : Promise.resolve(null);
+        // #430: a partial bulk failure stops here (told + reloaded); a
+        // thrown error goes to the shared failure path.
+        var DROP_REPORTED = {};
+        tierPatch.then(function (res) {
+            if (res && boardBulkFailed("Moving the tasks", res)) throw DROP_REPORTED;
             return saveReorder(targetTier, cardIds);
         }).then(function () {
             loadTasks();
@@ -1155,6 +1165,8 @@ function finishDrop(list) {
                 }
                 updateBulkToolbar();
             });
+        }).catch(function (err) {
+            if (err !== DROP_REPORTED) boardActionFailed("Moving the tasks", err);
         });
         return;
     }
@@ -1171,6 +1183,9 @@ function finishDrop(list) {
         }).then(function () {
             loadTasks();
             loadCompletedTasks();
+        }).catch(function (err) {
+            boardActionFailed("Moving the task", err);  // #430
+            loadCompletedTasks();
         });
     } else if (sourceTier !== targetTier) {
         apiFetch(API + "/" + taskId, {
@@ -1180,9 +1195,13 @@ function finishDrop(list) {
             return saveReorder(targetTier, cardIds);
         }).then(function () {
             loadTasks();
+        }).catch(function (err) {
+            boardActionFailed("Moving the task", err);  // #430
         });
     } else {
-        saveReorder(targetTier, cardIds);
+        saveReorder(targetTier, cardIds).catch(function (err) {
+            boardActionFailed("Reordering", err);  // #430
+        });
     }
 }
 
@@ -1891,13 +1910,46 @@ async function bulkMoveTier(tier) {
         '.tier[data-tier="inbox"] .triage-check:checked'
     );
     const ids = Array.from(checks).map((c) => c.closest(".task-card").dataset.id);
-    await Promise.all(
+    // #430: allSettled — one failure used to reject the whole Promise.all,
+    // skip the reload and say nothing.
+    const results = await Promise.allSettled(
         ids.map((id) => apiFetch(`${API}/${id}`, {
             method: "PATCH",
             body: JSON.stringify({ tier }),
         }))
     );
+    const failed = results.filter((r) => r.status === "rejected");
+    if (failed.length) {
+        boardBulkFailed("Moving the tasks", {
+            updated: results.length - failed.length,
+            errors: failed.map((r) => ({ message: String(r.reason && r.reason.message) })),
+        });
+        return;
+    }
     await loadTasks();
+}
+
+// --- #430: one failure path for board actions -------------------------------
+//
+// Drag-and-drop, the quick tier buttons, ✓, the panel's Delete / Complete,
+// swipe-Delete, Inbox triage, a drop on Completed and the subtask checkbox
+// had no failure handling: the card stayed where it was dropped (the DOM
+// moves during dragover) or the panel closed, as if it had worked, until
+// the next poll quietly put it back. Say what didn't save, then reload.
+function boardActionFailed(what, err) {
+    const msg = window.apiHelpers.actionFailureMessage(what, err);
+    if (msg) alert(msg);
+    return loadTasks();
+}
+
+// A /api/tasks/bulk result comes back 200 with the tasks that failed
+// listed; true (after telling the user and reloading) when any did.
+function boardBulkFailed(what, result) {
+    const msg = window.apiHelpers.actionFailureMessage(what, null, result);
+    if (!msg) return false;
+    alert(msg);
+    loadTasks();
+    return true;
 }
 
 // --- Task mutations ----------------------------------------------------------
@@ -1916,10 +1968,15 @@ async function taskMoveTier(id, tier) {
         const iso = window.tierHelpers.dueDateForTier(tier);
         if (iso) body.due_date = iso;
     }
-    await apiFetch(`${API}/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
-    });
+    try {
+        await apiFetch(`${API}/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify(body),
+        });
+    } catch (err) {
+        await boardActionFailed("Moving the task", err);  // #430
+        return;
+    }
     await loadTasks();
 }
 
@@ -1934,15 +1991,22 @@ async function taskComplete(id) {
             `This task has ${open} open subtask(s).\n\nComplete all subtasks too?`
         );
         if (!ok) return;
-        await apiFetch(`${API}/${id}/complete`, {
-            method: "POST",
-            body: JSON.stringify({ complete_subtasks: true }),
-        });
-    } else {
-        await apiFetch(`${API}/${id}`, {
-            method: "PATCH",
-            body: JSON.stringify({ status: "archived" }),
-        });
+    }
+    try {
+        if (task && task.subtask_count > task.subtask_done) {
+            await apiFetch(`${API}/${id}/complete`, {
+                method: "POST",
+                body: JSON.stringify({ complete_subtasks: true }),
+            });
+        } else {
+            await apiFetch(`${API}/${id}`, {
+                method: "PATCH",
+                body: JSON.stringify({ status: "archived" }),
+            });
+        }
+    } catch (err) {
+        await boardActionFailed("Completing the task", err);  // #430
+        return;
     }
 
     await loadTasks();
@@ -1950,7 +2014,13 @@ async function taskComplete(id) {
 }
 
 async function taskDelete(id) {
-    await apiFetch(`${API}/${id}`, { method: "DELETE" });
+    try {
+        await apiFetch(`${API}/${id}`, { method: "DELETE" });
+    } catch (err) {
+        // #430: the panel stays open — the task is still there.
+        await boardActionFailed("Deleting the task", err);
+        return;
+    }
     await loadTasks();
     taskDetailClose();
 }
@@ -3315,10 +3385,16 @@ async function taskDetailLoadSubtasks(parentId) {
         cb.type = "checkbox";
         cb.title = "Complete subtask";
         cb.addEventListener("change", async () => {
-            await apiFetch(`${API}/${sub.id}`, {
-                method: "PATCH",
-                body: JSON.stringify({ status: "archived" }),
-            });
+            try {
+                await apiFetch(`${API}/${sub.id}`, {
+                    method: "PATCH",
+                    body: JSON.stringify({ status: "archived" }),
+                });
+            } catch (err) {
+                await boardActionFailed("Completing the subtask", err);  // #430
+                taskDetailLoadSubtasks(parentId);
+                return;
+            }
             await loadTasks();
             taskDetailLoadSubtasks(parentId);
         });
