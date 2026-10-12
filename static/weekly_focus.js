@@ -55,7 +55,10 @@
         // Whole-week planner button (considers ALL focus statements).
         planAllBtn = document.getElementById("weeklyFocusPlanAll");
         if (planAllBtn) {
-            planAllBtn.addEventListener("click", openPlanAllModal);
+            // #429: one paid planner call at a time per button.
+            planAllBtn.addEventListener("click", function () {
+                window.withInflight(planAllBtn, openPlanAllModal);
+            });
         }
 
         // #157 — tab pill click handlers (added to the template).
@@ -242,8 +245,12 @@
         planBtn.textContent = "✨ Plan";
         planBtn.title = "Use AI to propose task changes for this focus";
         planBtn.disabled = !(row && row.text && row.text.trim());
+        // #429: one paid call at a time for this slot; another slot's
+        // ✨ Plan still works meanwhile (#418 keeps only its answer).
         planBtn.addEventListener("click", function () {
-            openPlanModal(slotOrder, input.value);
+            window.withInflight(planBtn, function () {
+                return openPlanModal(slotOrder, input.value);
+            });
         });
         // Re-enable / disable on text edits so the button reflects
         // current state without needing to save first.
@@ -333,7 +340,8 @@
     // ---- ✨ Plan modal ----
 
     function openPlanModal(slotOrder, focusText) {
-        _runPlan(
+        // #429: returned so the ✨ Plan button stays guarded until it answers.
+        return _runPlan(
             "/api/weekly-focus/" + slotOrder + "/plan"
             + "?week_offset=" + currentWeekOffset,
             focusText
@@ -350,7 +358,7 @@
         var label = texts.length === 1
             ? texts[0]
             : (texts.length + " focus statements " + when);
-        _runPlan(
+        return _runPlan(
             "/api/weekly-focus/plan-all?week_offset=" + currentWeekOffset,
             label
         );

@@ -687,7 +687,8 @@ function projectsSetupDetailPanel() {
         });
     document
         .getElementById("projectDetailForm")
-        .addEventListener("submit", projectDetailSave);
+        // #429: one save at a time — a double click made two projects.
+        .addEventListener("submit", window.inflightSubmit(projectDetailSave));
     // #66: when type changes, snap the color picker to the per-type
     // default ONLY if the picker still holds a known default (i.e., the
     // user hasn't manually picked a custom color). Manual overrides win.

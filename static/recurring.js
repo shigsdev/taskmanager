@@ -501,7 +501,8 @@
 
         // #266: editor wiring.
         _el("recurEditFrequency").addEventListener("change", recurEditFreqChanged);
-        _el("recurEditForm").addEventListener("submit", saveEditor);
+        // #429: one save at a time — a double click made two templates.
+        _el("recurEditForm").addEventListener("submit", window.inflightSubmit(saveEditor));
         _el("recurEditClose").addEventListener("click", closeEditor);
         _el("recurEditPause").addEventListener("click", togglePauseEditor);
         _el("recurEditDelete").addEventListener("click", deleteEditor);

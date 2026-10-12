@@ -502,6 +502,11 @@ Report.
      blanks the Goal. In 💡 Auto-categorize, a task captured with a
      project shows that project and its goal; flip the row's Type and
      both are still selected; Apply leaves them on the task.
+     #429: double-click Save on a NEW recurring template, a new goal, a new
+     project and ➕ New Task (or press Enter twice), double-tap Add All on a
+     voice memo / scan, and a /review button: exactly one of each is made and
+     /review shows the next task, not the one after. In the capture bar,
+     press Enter twice then type — one task, and what you typed stays.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -630,6 +635,7 @@ Report.
   Recurring: push keeps schedule PASS         Recurring: push keeps schedule PASS
   Tasks: no project keeps my goal PASS        Tasks: no project keeps my goal PASS
   Auto-categorize: keeps links  PASS          Auto-categorize: keeps links  PASS
+  Double tap: one of each made  PASS          Double tap: one of each made  PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

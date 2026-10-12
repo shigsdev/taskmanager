@@ -60,6 +60,59 @@
         }
     }
 
+    // #429: methods safe to send twice. Everything else is a write.
+    function _isRetryableMethod(method) {
+        const m = String(method || "GET").toUpperCase();
+        return m === "GET" || m === "HEAD";
+    }
+
+    // #429: run `fn` at most once at a time per element. A second click,
+    // tap or Enter while the first is still running is ignored (returns
+    // undefined) instead of sending the request again — double taps made
+    // two recurring templates, two goals, skipped a task on /review, and
+    // ran /plan's paid call twice. `el` may be a list (buttons that do the
+    // same thing, like Add All + Add Selected): busy if any is, all
+    // guarded together. A button is disabled (and aria-busy) meanwhile and
+    // re-enabled afterwards, success or failure; an element with no
+    // `disabled` (a form) is only guarded. Errors still reach the caller.
+    const _inflight = new WeakSet();
+
+    async function withInflight(el, fn) {
+        const els = (Array.isArray(el) ? el : [el]).filter(Boolean);
+        if (els.length === 0) return fn();
+        if (els.some((x) => _inflight.has(x))) return undefined;
+        const toggled = els.filter((x) => ("disabled" in x) && x.disabled === false);
+        els.forEach((x) => {
+            _inflight.add(x);
+            if (x.setAttribute) x.setAttribute("aria-busy", "true");
+        });
+        toggled.forEach((x) => { x.disabled = true; });
+        try {
+            return await fn();
+        } finally {
+            els.forEach((x) => {
+                _inflight.delete(x);
+                if (x.removeAttribute) x.removeAttribute("aria-busy");
+            });
+            toggled.forEach((x) => { x.disabled = false; });
+        }
+    }
+
+    // #429: a form `submit` listener that runs one save at a time, guarded
+    // on the form's submit button (Enter in a field and a click on Save
+    // both arrive here). Wraps an existing handler unchanged:
+    //   form.addEventListener("submit", inflightSubmit(saveFn));
+    function inflightSubmit(handler) {
+        return function (e) {
+            if (e && e.preventDefault) e.preventDefault();
+            const form = e && e.currentTarget;
+            const btn = form && form.querySelector
+                ? form.querySelector('button[type="submit"]')
+                : null;
+            return withInflight(btn || form, () => handler.call(this, e));
+        };
+    }
+
     async function apiFetch(url, opts = {}) {
         // PR47 #112 + PR49 #113: stale-tab fetch failure recovery.
         // Causes for "TypeError: Failed to fetch" on a long-idle tab:
@@ -90,7 +143,14 @@
             // Auto-retry once before bothering the user — covers the
             // "stale-tab first-wake" class, which usually succeeds on
             // retry once the connection / SW rebinds.
-            if (err && err.name === "TypeError" && !opts._retried) {
+            // #429: reads only. A TypeError can also mean the server DID
+            // commit and only the response was lost (a phone switching
+            // networks); retrying a write then created a duplicate task or
+            // import, ran a second paid analysis, or turned a restore /
+            // undo / confirm into a false "failed" 409. A write that fails
+            // here goes to the recovery prompt instead.
+            if (err && err.name === "TypeError" && !opts._retried
+                    && _isRetryableMethod(opts.method)) {
                 await new Promise((r) => setTimeout(r, 250));
                 return apiFetch(url, { ...opts, _retried: true });
             }
@@ -178,6 +238,8 @@
     const api = {
         apiFetch,
         subscribeTasksChanged,  // #214
+        withInflight,  // #429
+        inflightSubmit,  // #429
         _hardRecover,
         _maybePromptRecovery,
         _resetRecoveryFlag,
@@ -192,5 +254,7 @@
         // can call window.apiFetch directly. Doesn't shadow Node tests
         // because they use module.exports.
         window.apiFetch = apiFetch;
+        window.withInflight = withInflight;  // #429
+        window.inflightSubmit = inflightSubmit;  // #429
     }
 })();

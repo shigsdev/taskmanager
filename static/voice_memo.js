@@ -919,8 +919,13 @@
     if (recordBtn) recordBtn.addEventListener("click", startRecording);
     if (stopBtn) stopBtn.addEventListener("click", stopRecording);
     if (cancelBtn) cancelBtn.addEventListener("click", cancelRecording);
-    if (confirmAllBtn) confirmAllBtn.addEventListener("click", () => confirmCandidates(false));
-    if (confirmSelectedBtn) confirmSelectedBtn.addEventListener("click", () => confirmCandidates(true));
+    // #429: Add All and Add Selected send the whole batch — one at a time,
+    // across both buttons (a double tap created everything twice).
+    const confirmBtns = [confirmAllBtn, confirmSelectedBtn];
+    if (confirmAllBtn) confirmAllBtn.addEventListener("click",
+        () => window.withInflight(confirmBtns, () => confirmCandidates(false)));
+    if (confirmSelectedBtn) confirmSelectedBtn.addEventListener("click",
+        () => window.withInflight(confirmBtns, () => confirmCandidates(true)));
     if (recordAgainBtn) recordAgainBtn.addEventListener("click", () => showState("idle"));
     if (recordAnotherBtn) recordAnotherBtn.addEventListener("click", () => showState("idle"));
     if (retryBtn) retryBtn.addEventListener("click", () => showState("idle"));

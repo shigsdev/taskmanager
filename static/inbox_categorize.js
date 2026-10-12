@@ -32,7 +32,10 @@
         var openBtn = document.getElementById("autoCategorizeBtn");
         if (!modal || !openBtn) { return; }
 
-        openBtn.addEventListener("click", openModal);
+        // #429: one paid categorize call at a time.
+        openBtn.addEventListener("click", function () {
+            window.withInflight(openBtn, openModal);
+        });
         cancelBtn.addEventListener("click", closeModal);
         closeBtn.addEventListener("click", closeModal);
         applyAllBtn.addEventListener("click", applyAll);

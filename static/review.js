@@ -294,9 +294,15 @@
     }
 
     // Bind action buttons
-    document.querySelectorAll(".review-btn").forEach(function (btn) {
+    // #429: one action at a time across all four buttons. A double tap
+    // used to apply the action and then advance twice, skipping the next
+    // task unseen (and a late second tap acted on it).
+    var reviewBtns = Array.prototype.slice.call(document.querySelectorAll(".review-btn"));
+    reviewBtns.forEach(function (btn) {
         btn.addEventListener("click", function () {
-            handleAction(btn.dataset.action);
+            window.withInflight(reviewBtns, function () {
+                return handleAction(btn.dataset.action);
+            });
         });
     });
 

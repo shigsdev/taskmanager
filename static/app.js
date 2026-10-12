@@ -2328,7 +2328,8 @@ function setupDetailPanel() {
     document.getElementById("detailOverlay").addEventListener("click", (e) => {
         if (e.target === e.currentTarget) taskDetailClose();
     });
-    document.getElementById("detailForm").addEventListener("submit", taskDetailSave);
+    // #429: one save at a time — a double Enter on ➕ New Task made two.
+    document.getElementById("detailForm").addEventListener("submit", window.inflightSubmit(taskDetailSave));
     document.getElementById("detailDelete").addEventListener("click", () => {
         const id = document.getElementById("detailId").value;
         if (id) taskDelete(id);
@@ -3363,6 +3364,10 @@ async function addSubtask() {
     const parentId = document.getElementById("detailId").value;
     if (!parentId) return;
 
+    // #429: clear at once so a second Enter / click finds nothing to send;
+    // restored below if the save fails and the box is still empty.
+    input.value = "";
+
     const parentTask = allTasks.find((t) => t.id === parentId);
     const type = parentTask ? parentTask.type : "work";
     const goalId = parentTask ? parentTask.goal_id : null;
@@ -3381,10 +3386,10 @@ async function addSubtask() {
             method: "POST",
             body: JSON.stringify(body),
         });
-        input.value = "";
         await loadTasks();
         taskDetailLoadSubtasks(parentId);
     } catch (err) {
+        if (!input.value) input.value = title;
         alert("Failed to add subtask: " + err.message);
     }
 }

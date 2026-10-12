@@ -8818,3 +8818,118 @@ test.describe("Recycle Bin restores a deleted task (#428)", () => {
         }
     });
 });
+
+/**
+ * #429: double taps no longer send things twice. Each test holds the first
+ * request open (a delayed route) and fires the action again while it is
+ * still running — the window a real double tap / double Enter lands in.
+ */
+test.describe("Double taps don't duplicate (#429)", () => {
+    const uniq = () => Math.random().toString(36).slice(2, 8);
+    const slowPosts = (ms) => async (route) => {
+        if (route.request().method() === "POST") {
+            await new Promise((r) => setTimeout(r, ms));
+        }
+        await route.continue();
+    };
+
+    test("capture bar: a double Enter adds one task and keeps what you type next", async ({
+        page, request,
+    }) => {
+        const title = `429 capture ${uniq()}`;
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.route("**/api/tasks", slowPosts(800));
+        const created = page.waitForResponse((r) =>
+            r.request().method() === "POST" && r.url().endsWith("/api/tasks"));
+        const input = page.locator("#captureInput");
+        await input.fill(title);
+        await input.press("Enter");
+        await input.press("Enter");
+        await input.type("the next thing");
+        expect((await created).status()).toBe(201);
+        await page.waitForLoadState("networkidle");
+        await expect(input).toHaveValue("the next thing");
+        await page.unroute("**/api/tasks");
+        const tasks = await (await request.get("/api/tasks")).json();
+        const mine = tasks.filter((t) => t.title === title);
+        expect(mine).toHaveLength(1);
+        for (const t of mine) await request.delete(`/api/tasks/${t.id}`);
+    });
+
+    test("➕ New Task: two submits create one task", async ({ page, request }) => {
+        const title = `429 panel ${uniq()}`;
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.evaluate(() => window.taskDetailOpenNew());
+        await expect(page.locator("#detailPanel")).toBeVisible();
+        await page.fill("#detailTitle", title);
+        await page.route("**/api/tasks", slowPosts(800));
+        const created = page.waitForResponse((r) =>
+            r.request().method() === "POST" && r.url().endsWith("/api/tasks"));
+        await page.evaluate(() => {
+            const form = document.getElementById("detailForm");
+            form.requestSubmit();
+            form.requestSubmit();
+        });
+        expect((await created).status()).toBe(201);
+        await expect(page.locator("#detailOverlay")).toBeHidden({ timeout: 5000 });
+        await page.unroute("**/api/tasks");
+        const tasks = await (await request.get("/api/tasks")).json();
+        const mine = tasks.filter((t) => t.title === title);
+        expect(mine).toHaveLength(1);
+        for (const t of mine) await request.delete(`/api/tasks/${t.id}`);
+    });
+
+    test("recurring + New template: two submits create one template", async ({
+        page, request,
+    }) => {
+        const title = `429 template ${uniq()}`;
+        await page.goto("/recurring?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.click("#recurringNew");
+        await page.fill("#recurEditTitle", title);
+        await page.route("**/api/recurring", slowPosts(800));
+        const created = page.waitForResponse((r) =>
+            r.request().method() === "POST" && r.url().endsWith("/api/recurring"));
+        await page.evaluate(() => {
+            const form = document.getElementById("recurEditForm");
+            form.requestSubmit();
+            form.requestSubmit();
+        });
+        expect((await created).status()).toBe(201);
+        await page.waitForLoadState("networkidle");
+        await page.unroute("**/api/recurring");
+        const rows = (await (await request.get("/api/recurring")).json())
+            .filter((r) => r.title === title);
+        expect(rows).toHaveLength(1);
+        for (const r of rows) await request.delete(`/api/recurring/${r.id}`);
+    });
+
+    test("/review: a double tap acts once and shows the next task", async ({ page }) => {
+        const queue = [
+            { id: "00000000-0000-4000-8000-000000000001", title: "429 review first",
+              type: "work", tier: "backlog", notes: null, checklist: [] },
+            { id: "00000000-0000-4000-8000-000000000002", title: "429 review second",
+              type: "work", tier: "backlog", notes: null, checklist: [] },
+        ];
+        let actions = 0;
+        await page.route("**/api/review", (route) => route.fulfill({ json: queue }));
+        await page.route("**/api/review/*", async (route) => {
+            actions += 1;
+            await new Promise((r) => setTimeout(r, 600));
+            await route.fulfill({ json: { ok: true } });
+        });
+        await page.goto("/review?nosw=1");
+        await expect(page.locator("#reviewTaskTitle")).toHaveText("429 review first");
+        // Two taps landing together: Keep, then Snooze on the same card.
+        await page.evaluate(() => {
+            document.querySelector('.review-btn[data-action="keep"]').click();
+            document.querySelector('.review-btn[data-action="snooze"]').click();
+        });
+        await expect(page.locator("#reviewTaskTitle")).toHaveText("429 review second");
+        await expect(page.locator("#reviewProgressText")).toHaveText("1 of 2 reviewed");
+        expect(actions).toBe(1);
+        await expect(page.locator('.review-btn[data-action="keep"]')).toBeEnabled();
+    });
+});

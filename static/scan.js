@@ -425,12 +425,15 @@
         }
     }
 
+    // #429: one confirm at a time across both buttons (a double tap
+    // created the whole batch twice).
+    var confirmBtns = [confirmAllBtn, confirmSelectedBtn];
     confirmAllBtn.addEventListener("click", function () {
-        confirmCandidates(true);
+        window.withInflight(confirmBtns, function () { return confirmCandidates(true); });
     });
 
     confirmSelectedBtn.addEventListener("click", function () {
-        confirmCandidates(false);
+        window.withInflight(confirmBtns, function () { return confirmCandidates(false); });
     });
 
     rescanBtn.addEventListener("click", resetUpload);

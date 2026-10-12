@@ -299,7 +299,8 @@ function goalsSetupDetailPanel() {
     document.getElementById("goalDetailOverlay").addEventListener("click", (e) => {
         if (e.target === e.currentTarget) goalDetailClose();
     });
-    document.getElementById("goalDetailForm").addEventListener("submit", goalDetailSave);
+    // #429: one save at a time — a double click made two goals.
+    document.getElementById("goalDetailForm").addEventListener("submit", window.inflightSubmit(goalDetailSave));
     document.getElementById("goalDelete")
         .addEventListener("click", goalDetailToggleArchive);
     document.getElementById("goalHardDelete")
@@ -486,16 +487,19 @@ async function goalAddLinkedTask() {
     const title = input.value.trim();
     if (!title) return;
     const type = document.getElementById("linkedTaskType").value;
+    // #429: clear at once so a second Enter / click finds nothing to send;
+    // restored below if the save fails and the box is still empty.
+    input.value = "";
 
     try {
         await apiFetch("/api/tasks", {
             method: "POST",
             body: JSON.stringify({ title, type, goal_id: goalId }),
         });
-        input.value = "";
         await goalsLoad();
         goalRenderLinkedTasks(goalId);
     } catch (err) {
+        if (!input.value) input.value = title;
         alert("Failed: " + err.message);
     }
 }

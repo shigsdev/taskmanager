@@ -51,7 +51,10 @@
     document.addEventListener("DOMContentLoaded", function () {
         var dateInput = $("planStartDate");
         dateInput.value = nextMondayIso();
-        $("planGenerateBtn").addEventListener("click", generate);
+        // #429: one paid planner call at a time.
+        $("planGenerateBtn").addEventListener("click", function () {
+            window.withInflight($("planGenerateBtn"), generate);
+        });
         $("planApplyAllBtn").addEventListener("click", applyAll);
         $("planApplyAllBtn").style.display = "none";
 

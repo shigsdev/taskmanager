@@ -14,6 +14,11 @@
     async function submitCapture() {
         const raw = input.value.trim();
         if (!raw) return;
+        // #429: clear at once, so a second Enter finds nothing to send (it
+        // used to create the task twice) and whatever you start typing
+        // while this saves is kept (it used to be wiped when it finished).
+        // Put the text back if the save fails and the box is still empty.
+        input.value = "";
 
         const parsed = parseCapture(raw);
         parsed.type = parsed.type || typeSelect.value;
@@ -49,7 +54,6 @@
                 method: "POST",
                 body: JSON.stringify(parsed),
             });
-            input.value = "";
             await loadTasks();
             // #207: the server resolves an `@project` hint to a real
             // project by case-insensitive substring match. When it
@@ -60,6 +64,7 @@
                 alert(created.warning);
             }
         } catch (err) {
+            if (!input.value) input.value = raw;
             alert("Capture failed: " + err.message);
         }
     }
