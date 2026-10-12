@@ -9139,3 +9139,112 @@ test.describe("Reflection: a failed 'Analyze so far' keeps the draft (#431)", ()
         expect(await draftText(page)).toBe(text);
     });
 });
+
+/**
+ * #432: a parse that answers after Back must be dropped. It used to show its
+ * review anyway with no mode set, and "Add All" then posted the task
+ * candidates to /api/import/goals/confirm. Separately, Start Over / Import
+ * More left the paste Parse buttons disabled and a picked Excel file stuck.
+ */
+test.describe("Import: a late parse is dropped and Parse works again (#432)", () => {
+    const TASKS = {
+        total: 1,
+        candidates: [{ title: "BUG432 task", type: "work", tier: "inbox" }],
+    };
+
+    test("a tasks parse answered after Back doesn't show its review", async ({ page }) => {
+        let release;
+        const gate = new Promise((r) => { release = r; });
+        await page.route("**/api/import/tasks/parse", async (route) => {
+            await gate;
+            await route.fulfill({ json: TASKS }).catch(() => {});
+        });
+        const confirms = [];
+        page.on("request", (req) => {
+            if (/\/api\/import\/\w+\/confirm/.test(req.url())) confirms.push(req.url());
+        });
+
+        await page.goto("/import?nosw=1");
+        await page.click("#importTasksBtn");
+        await page.fill("#importText", "stubbed");
+        await page.click("#importParseTasksBtn");
+        await page.click("#importBackFromTasks");
+        await page.click("#importProjectsTextBtn");
+
+        const answered = page.waitForResponse("**/api/import/tasks/parse");
+        release();
+        await answered;
+        await page.waitForTimeout(400);
+
+        await expect(page.locator("#importProjectsTextInput")).toBeVisible();
+        await expect(page.locator("#importReview")).toBeHidden();
+        await expect(page.locator("#importCandidates .import-candidate")).toHaveCount(0);
+        expect(confirms).toEqual([]);
+
+        // And going back to paste tasks, its Parse button works.
+        await page.click("#importBackFromProjectsText");
+        await page.click("#importTasksBtn");
+        await expect(page.locator("#importParseTasksBtn")).toBeEnabled();
+        await expect(page.locator("#importTasksStatus")).toBeHidden();
+    });
+
+    test("Parse works after Start Over and after Import More", async ({ page }) => {
+        await page.route("**/api/import/tasks/parse", (route) => route.fulfill({ json: TASKS }));
+        let confirmUrl = null;
+        await page.route("**/api/import/*/confirm", (route) => {
+            confirmUrl = new URL(route.request().url()).pathname;
+            return route.fulfill({ json: { created: 1 } });
+        });
+
+        await page.goto("/import?nosw=1");
+        await page.click("#importTasksBtn");
+        await page.fill("#importText", "stubbed");
+        await page.click("#importParseTasksBtn");
+        await expect(page.locator("#importReview")).toBeVisible();
+        await page.click("#importStartOver");
+
+        await page.click("#importTasksBtn");
+        await expect(page.locator("#importParseTasksBtn")).toBeEnabled();
+        await page.fill("#importText", "stubbed again");
+        await page.click("#importParseTasksBtn");
+        await expect(page.locator("#importReview")).toBeVisible();
+        await page.click("#importConfirmAll");
+        await page.click("#importFinalConfirm");
+        await expect(page.locator("#importDone")).toBeVisible();
+        await expect(page.locator("#importDoneMessage")).toHaveText("1 task(s) imported successfully.");
+        expect(confirmUrl).toBe("/api/import/tasks/confirm");
+
+        await page.click("#importAgainBtn");
+        await page.click("#importTasksBtn");
+        await expect(page.locator("#importParseTasksBtn")).toBeEnabled();
+    });
+
+    test("Start Over clears a picked projects Excel file", async ({ page }) => {
+        await page.route("**/api/import/projects/upload", (route) => route.fulfill({
+            json: { total: 1, candidates: [{ name: "BUG432 project", type: "work" }] },
+        }));
+        await page.goto("/import?nosw=1");
+        await page.click("#importProjectsExcelBtn");
+        await page.setInputFiles("#importProjectsExcelFile", {
+            name: "projects432.xlsx",
+            mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            buffer: Buffer.from("stub"),
+        });
+        await expect(page.locator("#importProjectsExcelFileName")).toHaveText("projects432.xlsx");
+        await page.click("#importParseProjectsExcelBtn");
+        await expect(page.locator("#importReview")).toBeVisible();
+        await page.click("#importStartOver");
+
+        await page.click("#importProjectsExcelBtn");
+        await expect(page.locator("#importProjectsExcelFileName")).toHaveText("");
+        await expect(page.locator("#importParseProjectsExcelBtn")).toBeDisabled();
+        expect(await page.locator("#importProjectsExcelFile").evaluate((el) => el.files.length)).toBe(0);
+        // Picking the same file again re-arms Parse.
+        await page.setInputFiles("#importProjectsExcelFile", {
+            name: "projects432.xlsx",
+            mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            buffer: Buffer.from("stub"),
+        });
+        await expect(page.locator("#importParseProjectsExcelBtn")).toBeEnabled();
+    });
+});

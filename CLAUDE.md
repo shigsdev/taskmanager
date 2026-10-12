@@ -573,6 +573,10 @@ Report.
       never locked. Same on the **voice memo** review screen (stub the
       recorder + `/api/voice-memo` — see the #390 Playwright test) — and
       check the voice row stays inside the viewport at desktop width.
+      #432: Paste tasks, Parse (stub its answer to arrive late), press Back
+      and open Paste Project Names before it answers — you stay there, no
+      review appears and nothing is imported. Parse, Start Over, come back:
+      Parse is clickable again; a picked Excel file is forgotten.
   11. **Scan page**: verify radio buttons toggle and upload area is tappable.
   12. **Recycle bin**: verify batch entries show, Empty Bin button is visible.
       #428: delete a task from its panel, open the Recycle Bin — it is first
@@ -686,6 +690,8 @@ Report.
   Settings: no-tmpl undo quiet  PASS          Settings: no-tmpl undo quiet  PASS
   Import: button click          PASS          Import: button click          PASS
   Import: dated row tier locked PASS          Import: dated row tier locked PASS
+  Import: late parse dropped    PASS          Import: late parse dropped    PASS
+  Import: Parse after Start Over PASS         Import: Parse after Start Over PASS
   Voice: dated row tier locked  PASS          Voice: dated row tier locked  PASS
   Scan: radio toggle            PASS          Scan: radio toggle            PASS
   Scan: upload area             PASS          Scan: upload area             PASS

@@ -124,30 +124,59 @@
         el.className = "import-status" + (isError ? " import-error" : "");
     }
 
+    // #432: one guard for every Parse. Back / Start Over cancel it and a newer
+    // Parse replaces it, so an answer that arrives late is dropped instead of
+    // showing its review over whatever the user has moved on to.
+    var parseGuard = window.requestGuardHelpers.createRequestGuard();
+
+    // #432: the mode and source are set here, from the parse that produced
+    // the review — never left over from a mode button that Back has undone.
+    async function importShowReview(mine, review) {
+        if (review.lookups) {
+            await loadImportLookups();
+            if (!parseGuard.isCurrent(mine)) return;
+        }
+        currentMode = review.mode;
+        currentSource = review.source || null;
+        currentCandidates = review.candidates;
+        reviewTitle.textContent = review.title;
+        reviewDesc.textContent = review.desc;
+        review.render();
+        showSection(reviewSection);
+    }
+
     function resetAll() {
-        textArea.value = "";
-        fileInput.value = "";
-        fileName.textContent = "";
-        docxFileInput.value = "";
-        docxFileName.textContent = "";
-        parseGoalsBtn.disabled = true;
-        parseDocxBtn.disabled = true;
-        tasksStatus.style.display = "none";
-        docxStatus.style.display = "none";
-        goalsStatus.style.display = "none";
-        // Transcript inputs.
-        var ttext = document.getElementById("importTranscriptText");
-        var tfile = document.getElementById("importTranscriptFile");
-        var tfileName = document.getElementById("importTranscriptFileName");
-        var tparse = document.getElementById("importParseTranscriptUploadBtn");
-        var tstatus = document.getElementById("importTranscriptStatus");
-        var tustatus = document.getElementById("importTranscriptUploadStatus");
-        if (ttext) ttext.value = "";
-        if (tfile) tfile.value = "";
-        if (tfileName) tfileName.textContent = "";
-        if (tparse) tparse.disabled = true;
-        if (tstatus) tstatus.style.display = "none";
-        if (tustatus) tustatus.style.display = "none";
+        parseGuard.cancel();
+        // Paste modes: empty the box; Parse is ready for the next paste
+        // (#432 — a successful Parse used to leave it disabled).
+        ["importText", "importProjectsText", "importTranscriptText"].forEach(function (id) {
+            var box = document.getElementById(id);
+            if (box) box.value = "";
+        });
+        ["importParseTasksBtn", "importParseProjectsTextBtn", "importParseTranscriptBtn"].forEach(function (id) {
+            var btn = document.getElementById(id);
+            if (btn) btn.disabled = false;
+        });
+        // File modes: forget the file (so picking the same one again fires
+        // `change`), its shown name, and wait for a new pick (#432 — tasks
+        // and projects Excel were missed).
+        [
+            ["importFile", "importFileName", "importParseGoalsBtn"],
+            ["importDocxFile", "importDocxFileName", "importParseDocxBtn"],
+            ["importTasksExcelFile", "importTasksExcelFileName", "importParseTasksExcelBtn"],
+            ["importProjectsExcelFile", "importProjectsExcelFileName", "importParseProjectsExcelBtn"],
+            ["importTranscriptFile", "importTranscriptFileName", "importParseTranscriptUploadBtn"],
+        ].forEach(function (ids) {
+            var input = document.getElementById(ids[0]);
+            var name = document.getElementById(ids[1]);
+            var btn = document.getElementById(ids[2]);
+            if (input) input.value = "";
+            if (name) name.textContent = "";
+            if (btn) btn.disabled = true;
+        });
+        document.querySelectorAll(".import-status").forEach(function (el) {
+            el.style.display = "none";
+        });
         currentCandidates = [];
         currentMode = null;
         currentSource = null;
@@ -157,17 +186,14 @@
     // --- Mode selection ------------------------------------------------------
 
     tasksBtn.addEventListener("click", function () {
-        currentMode = "tasks";
         showSection(tasksInput);
     });
 
     docxBtn.addEventListener("click", function () {
-        currentMode = "tasks";
         showSection(docxInput);
     });
 
     goalsBtn.addEventListener("click", function () {
-        currentMode = "goals";
         showSection(goalsInput);
     });
 
@@ -186,7 +212,6 @@
     var tasksExcelStatus = document.getElementById("importTasksExcelStatus");
 
     if (tasksExcelBtn) tasksExcelBtn.addEventListener("click", function () {
-        currentMode = "tasks";
         showSection(tasksExcelInput);
     });
     if (backFromTasksExcel) backFromTasksExcel.addEventListener("click", resetAll);
@@ -204,6 +229,7 @@
         if (!file) return;
         parseTasksExcelBtn.disabled = true;
         setStatus(tasksExcelStatus, "Parsing tasks from Excel…", false);
+        var mine = parseGuard.begin();
         var formData = new FormData();
         formData.append("file", file);
         try {
@@ -211,18 +237,22 @@
             var data = await window.apiFetch("/api/import/tasks/upload-xlsx", {
                 method: "POST", body: formData,
             });
+            if (!parseGuard.isCurrent(mine)) return;
             if (data.candidates && data.candidates.length > 0) {
-                currentCandidates = data.candidates;
-                reviewTitle.textContent = "Review Task Candidates";
-                reviewDesc.textContent = data.total + " task(s) found. Edit any field before importing.";
-                await loadImportLookups();
-                renderTaskCandidates();
-                showSection(reviewSection);
+                await importShowReview(mine, {
+                    mode: "tasks",
+                    candidates: data.candidates,
+                    title: "Review Task Candidates",
+                    desc: data.total + " task(s) found. Edit any field before importing.",
+                    render: renderTaskCandidates,
+                    lookups: true,
+                });
             } else {
                 setStatus(tasksExcelStatus, "No tasks found in the Excel file.", true);
                 parseTasksExcelBtn.disabled = false;
             }
         } catch (err) {
+            if (!parseGuard.isCurrent(mine)) return;
             setStatus(tasksExcelStatus, "Parse failed: " + err.message, true);
             parseTasksExcelBtn.disabled = false;
         }
@@ -245,11 +275,9 @@
     var projectsExcelStatus = document.getElementById("importProjectsExcelStatus");
 
     if (projectsTextBtn) projectsTextBtn.addEventListener("click", function () {
-        currentMode = "projects";
         showSection(projectsTextInput);
     });
     if (projectsExcelBtn) projectsExcelBtn.addEventListener("click", function () {
-        currentMode = "projects";
         showSection(projectsExcelInput);
     });
     if (backFromProjectsText) backFromProjectsText.addEventListener("click", resetAll);
@@ -272,23 +300,28 @@
         }
         parseProjectsTextBtn.disabled = true;
         setStatus(projectsTextStatus, "Parsing projects…", false);
+        var mine = parseGuard.begin();
         try {
             // PR67 #132: window.apiFetch (auto-retry + recovery)
             var data = await window.apiFetch("/api/import/projects/parse", {
                 method: "POST",
                 body: JSON.stringify({ text: text }),
             });
+            if (!parseGuard.isCurrent(mine)) return;
             if (data.candidates && data.candidates.length > 0) {
-                currentCandidates = data.candidates;
-                reviewTitle.textContent = "Review Project Candidates";
-                reviewDesc.textContent = data.total + " project(s) found. Edit any field before importing.";
-                renderProjectCandidates();
-                showSection(reviewSection);
+                await importShowReview(mine, {
+                    mode: "projects",
+                    candidates: data.candidates,
+                    title: "Review Project Candidates",
+                    desc: data.total + " project(s) found. Edit any field before importing.",
+                    render: renderProjectCandidates,
+                });
             } else {
                 setStatus(projectsTextStatus, "No project names parsed.", true);
                 parseProjectsTextBtn.disabled = false;
             }
         } catch (err) {
+            if (!parseGuard.isCurrent(mine)) return;
             setStatus(projectsTextStatus, "Parse failed: " + err.message, true);
             parseProjectsTextBtn.disabled = false;
         }
@@ -299,6 +332,7 @@
         if (!file) return;
         parseProjectsExcelBtn.disabled = true;
         setStatus(projectsExcelStatus, "Parsing projects from Excel…", false);
+        var mine = parseGuard.begin();
         var formData = new FormData();
         formData.append("file", file);
         try {
@@ -306,17 +340,21 @@
             var data = await window.apiFetch("/api/import/projects/upload", {
                 method: "POST", body: formData,
             });
+            if (!parseGuard.isCurrent(mine)) return;
             if (data.candidates && data.candidates.length > 0) {
-                currentCandidates = data.candidates;
-                reviewTitle.textContent = "Review Project Candidates";
-                reviewDesc.textContent = data.total + " project(s) found. Edit any field before importing.";
-                renderProjectCandidates();
-                showSection(reviewSection);
+                await importShowReview(mine, {
+                    mode: "projects",
+                    candidates: data.candidates,
+                    title: "Review Project Candidates",
+                    desc: data.total + " project(s) found. Edit any field before importing.",
+                    render: renderProjectCandidates,
+                });
             } else {
                 setStatus(projectsExcelStatus, "No projects found in the Excel file.", true);
                 parseProjectsExcelBtn.disabled = false;
             }
         } catch (err) {
+            if (!parseGuard.isCurrent(mine)) return;
             setStatus(projectsExcelStatus, "Parse failed: " + err.message, true);
             parseProjectsExcelBtn.disabled = false;
         }
@@ -341,13 +379,9 @@
     var transcriptUploadStatus = document.getElementById("importTranscriptUploadStatus");
 
     if (transcriptBtn) transcriptBtn.addEventListener("click", function () {
-        currentMode = "tasks";
-        currentSource = "transcript_import";
         showSection(transcriptInput);
     });
     if (transcriptUploadBtn) transcriptUploadBtn.addEventListener("click", function () {
-        currentMode = "tasks";
-        currentSource = "transcript_import";
         showSection(transcriptUploadInput);
     });
     if (backFromTranscript) backFromTranscript.addEventListener("click", resetAll);
@@ -362,15 +396,17 @@
         parseTranscriptUploadBtn.disabled = false;
     });
 
-    async function handleTranscriptCandidates(data, statusEl, retryBtn) {
+    async function handleTranscriptCandidates(mine, data, statusEl, retryBtn) {
         if (data.candidates && data.candidates.length > 0) {
-            currentCandidates = data.candidates;
-            reviewTitle.textContent = "Review Action Items";
-            reviewDesc.textContent =
-                data.total + " action item(s) extracted. Edit, include, or exclude before importing.";
-            await loadImportLookups();
-            renderTaskCandidates();
-            showSection(reviewSection);
+            await importShowReview(mine, {
+                mode: "tasks",
+                source: "transcript_import",
+                candidates: data.candidates,
+                title: "Review Action Items",
+                desc: data.total + " action item(s) extracted. Edit, include, or exclude before importing.",
+                render: renderTaskCandidates,
+                lookups: true,
+            });
         } else {
             setStatus(statusEl, "No action items found in the transcript.", true);
             if (retryBtn) retryBtn.disabled = false;
@@ -385,13 +421,16 @@
         }
         parseTranscriptBtn.disabled = true;
         setStatus(transcriptStatus, "Extracting action items…", false);
+        var mine = parseGuard.begin();
         try {
             var data = await window.apiFetch("/api/import/transcript/parse", {
                 method: "POST",
                 body: JSON.stringify({ text: text }),
             });
-            await handleTranscriptCandidates(data, transcriptStatus, parseTranscriptBtn);
+            if (!parseGuard.isCurrent(mine)) return;
+            await handleTranscriptCandidates(mine, data, transcriptStatus, parseTranscriptBtn);
         } catch (err) {
+            if (!parseGuard.isCurrent(mine)) return;
             setStatus(transcriptStatus, "Extraction failed: " + err.message, true);
             parseTranscriptBtn.disabled = false;
         }
@@ -402,14 +441,17 @@
         if (!file) return;
         parseTranscriptUploadBtn.disabled = true;
         setStatus(transcriptUploadStatus, "Extracting action items…", false);
+        var mine = parseGuard.begin();
         var formData = new FormData();
         formData.append("file", file);
         try {
             var data = await window.apiFetch("/api/import/transcript/upload", {
                 method: "POST", body: formData,
             });
-            await handleTranscriptCandidates(data, transcriptUploadStatus, parseTranscriptUploadBtn);
+            if (!parseGuard.isCurrent(mine)) return;
+            await handleTranscriptCandidates(mine, data, transcriptUploadStatus, parseTranscriptUploadBtn);
         } catch (err) {
+            if (!parseGuard.isCurrent(mine)) return;
             setStatus(transcriptUploadStatus, "Extraction failed: " + err.message, true);
             parseTranscriptUploadBtn.disabled = false;
         }
@@ -449,6 +491,7 @@
 
         parseDocxBtn.disabled = true;
         setStatus(docxStatus, "Parsing tasks from .docx...", false);
+        var mine = parseGuard.begin();
 
         var formData = new FormData();
         formData.append("file", file);
@@ -459,20 +502,23 @@
                 method: "POST",
                 body: formData,
             });
+            if (!parseGuard.isCurrent(mine)) return;
 
             if (data.candidates && data.candidates.length > 0) {
-                currentCandidates = data.candidates;
-                reviewTitle.textContent = "Review Task Candidates";
-                reviewDesc.textContent =
-                    data.total + " task(s) found. Edit, include, or exclude before importing.";
-                await loadImportLookups();
-                renderTaskCandidates();
-                showSection(reviewSection);
+                await importShowReview(mine, {
+                    mode: "tasks",
+                    candidates: data.candidates,
+                    title: "Review Task Candidates",
+                    desc: data.total + " task(s) found. Edit, include, or exclude before importing.",
+                    render: renderTaskCandidates,
+                    lookups: true,
+                });
             } else {
                 setStatus(docxStatus, "No tasks found in the .docx file.", true);
                 parseDocxBtn.disabled = false;
             }
         } catch (err) {
+            if (!parseGuard.isCurrent(mine)) return;
             setStatus(docxStatus, "Parse failed: " + err.message, true);
             parseDocxBtn.disabled = false;
         }
@@ -489,6 +535,7 @@
 
         parseTasksBtn.disabled = true;
         setStatus(tasksStatus, "Parsing tasks...", false);
+        var mine = parseGuard.begin();
 
         try {
             // PR67 #132: window.apiFetch (auto-retry + recovery)
@@ -496,20 +543,23 @@
                 method: "POST",
                 body: JSON.stringify({ text: text }),
             });
+            if (!parseGuard.isCurrent(mine)) return;
 
             if (data.candidates && data.candidates.length > 0) {
-                currentCandidates = data.candidates;
-                reviewTitle.textContent = "Review Task Candidates";
-                reviewDesc.textContent =
-                    data.total + " task(s) found. Edit, include, or exclude before importing.";
-                await loadImportLookups();
-                renderTaskCandidates();
-                showSection(reviewSection);
+                await importShowReview(mine, {
+                    mode: "tasks",
+                    candidates: data.candidates,
+                    title: "Review Task Candidates",
+                    desc: data.total + " task(s) found. Edit, include, or exclude before importing.",
+                    render: renderTaskCandidates,
+                    lookups: true,
+                });
             } else {
                 setStatus(tasksStatus, "No tasks found in the pasted text.", true);
                 parseTasksBtn.disabled = false;
             }
         } catch (err) {
+            if (!parseGuard.isCurrent(mine)) return;
             setStatus(tasksStatus, "Parse failed: " + err.message, true);
             parseTasksBtn.disabled = false;
         }
@@ -523,6 +573,7 @@
 
         parseGoalsBtn.disabled = true;
         setStatus(goalsStatus, "Parsing goals from Excel...", false);
+        var mine = parseGuard.begin();
 
         var formData = new FormData();
         formData.append("file", file);
@@ -533,14 +584,16 @@
                 method: "POST",
                 body: formData,
             });
+            if (!parseGuard.isCurrent(mine)) return;
 
             if (data.candidates && data.candidates.length > 0) {
-                currentCandidates = data.candidates;
-                reviewTitle.textContent = "Review Goal Candidates";
-                reviewDesc.textContent =
-                    data.total + " goal(s) found. Edit, include, or exclude before importing.";
-                renderGoalCandidates();
-                showSection(reviewSection);
+                await importShowReview(mine, {
+                    mode: "goals",
+                    candidates: data.candidates,
+                    title: "Review Goal Candidates",
+                    desc: data.total + " goal(s) found. Edit, include, or exclude before importing.",
+                    render: renderGoalCandidates,
+                });
             } else {
                 setStatus(goalsStatus, "No goals found in the Excel file.", true);
                 parseGoalsBtn.disabled = false;
@@ -548,6 +601,7 @@
             // (No need to load goals/projects for the goals-import path —
             // goals don't reference each other or projects.)
         } catch (err) {
+            if (!parseGuard.isCurrent(mine)) return;
             setStatus(goalsStatus, "Parse failed: " + err.message, true);
             parseGoalsBtn.disabled = false;
         }
@@ -1031,8 +1085,7 @@
             return;
         }
 
-        var noun = currentMode === "tasks" ? "task(s)"
-                 : (currentMode === "projects" ? "project(s)" : "goal(s)");
+        var noun = window.importHelpers.importNoun(currentMode);
         confirmDesc.textContent =
             "You are about to import " +
             pendingImport.length +
@@ -1060,13 +1113,20 @@
     }
 
     async function executeImport() {
+        // #432: snapshot the mode — Cancel during the request resets it — and
+        // never guess an endpoint (an unknown mode used to fall through to
+        // goals and import task rows as goals).
+        var mode = currentMode;
+        var source = currentSource;
+        var url = window.importHelpers.importConfirmUrl(mode);
+        if (!url) {
+            alert("Nothing to import here — choose what to import and parse it again.");
+            resetAll();
+            return;
+        }
+
         finalConfirmBtn.disabled = true;
         finalConfirmBtn.textContent = "Importing...";
-
-        var url;
-        if (currentMode === "tasks") url = "/api/import/tasks/confirm";
-        else if (currentMode === "projects") url = "/api/import/projects/confirm";
-        else url = "/api/import/goals/confirm";
 
         try {
             // PR67 #132: window.apiFetch (auto-retry + recovery)
@@ -1074,13 +1134,11 @@
                 method: "POST",
                 body: JSON.stringify({
                     candidates: pendingImport,
-                    source: currentSource || (currentMode + "_import"),
+                    source: source || (mode + "_import"),
                 }),
             });
-            var noun = currentMode === "tasks" ? "task(s)"
-                     : (currentMode === "projects" ? "project(s)" : "goal(s)");
             doneMessage.textContent =
-                data.created + " " + noun + " imported successfully.";
+                data.created + " " + window.importHelpers.importNoun(mode) + " imported successfully.";
             showSection(doneSection);
         } catch (err) {
             alert("Confirm failed: " + err.message);
