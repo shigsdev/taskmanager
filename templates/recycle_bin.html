@@ -10,10 +10,14 @@
     </div>
 
     <p class="recycle-hint">
-        Imports you've undone appear here. You can restore a batch to put
-        it back in your task list, or permanently delete it by purging.
-        Nothing in the recycle bin is ever cleaned up automatically —
-        items stay here until you remove them.
+        Imports you've undone and tasks you've deleted appear here.
+        Nothing in the recycle bin is ever cleaned up automatically.
+    </p>
+
+    <h3 class="recycle-section-title">Undone imports</h3>
+    <p class="recycle-hint">
+        Restore a batch to put it back in your task list, or permanently
+        delete it by purging.
     </p>
 
     <section class="recycle-summary" id="recycleSummary">
@@ -28,8 +32,22 @@
     <section class="recycle-list-section">
         <ul class="recycle-list" id="recycleList"></ul>
         <p class="recycle-empty" id="recycleEmptyMsg" style="display:none">
-            The recycle bin is empty.
+            No undone imports.
         </p>
+    </section>
+
+    <section class="recycle-list-section" id="recycleDeletedSection">
+        <h3 class="recycle-section-title">Deleted tasks</h3>
+        <p class="recycle-hint">
+            Tasks you've deleted stay here until you restore them, newest
+            first. Restore puts a task back in the section it was in.
+            Empty Bin doesn't touch these.
+        </p>
+        <ul class="recycle-list" id="recycleDeletedList"></ul>
+        <p class="recycle-empty" id="recycleDeletedEmpty" style="display:none">
+            No deleted tasks.
+        </p>
+        <button class="btn btn-sm" id="recycleDeletedMore" style="display:none"></button>
     </section>
 </div>
 
@@ -52,5 +70,6 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='recycle_bin_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='recycle_bin.js') }}"></script>
 {% endblock %}

@@ -167,6 +167,10 @@ def serialize_task(task: Task, *, view: str = "full") -> dict:
         "type": task.type.value,
         "status": task.status.value,
         "parent_id": str(task.parent_id) if task.parent_id else None,
+        # #428: set only while the task belongs to an import batch (an
+        # ordinary delete clears it); the Recycle Bin uses it to keep a
+        # batch's tasks out of its Deleted tasks list.
+        "batch_id": str(task.batch_id) if task.batch_id else None,
         "project_id": str(task.project_id) if task.project_id else None,
         "goal_id": str(task.goal_id) if task.goal_id else None,
         "due_date": task.due_date.isoformat() if task.due_date else None,

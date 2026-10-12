@@ -31,6 +31,9 @@ _FULL_KEYS = {
     "goal_id", "due_date", "url", "notes", "cancellation_reason",
     "checklist", "sort_order", "last_reviewed", "repeat", "subtask_count",
     "subtask_done", "created_at", "updated_at",
+    # #428: lets the Recycle Bin keep an undone import's tasks out of its
+    # Deleted tasks list (they come back with their batch).
+    "batch_id",
 }
 
 # The exact key set review_api._serialize emitted before #200.

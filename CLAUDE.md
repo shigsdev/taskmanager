@@ -561,6 +561,10 @@ Report.
       check the voice row stays inside the viewport at desktop width.
   11. **Scan page**: verify radio buttons toggle and upload area is tappable.
   12. **Recycle bin**: verify batch entries show, Empty Bin button is visible.
+      #428: delete a task from its panel, open the Recycle Bin — it is first
+      under Deleted tasks, with its section; Restore turns the row into
+      "Restored to <section>." and the task is back in that section. The
+      Settings "Recycle Bin (N)" count includes deleted tasks.
   13. **Print view**: verify tasks are listed with correct tier grouping.
   14. **Architecture page** (#405): at mobile every diagram draws full size
       (labels ~16px, not 2–8px) and swipes sideways inside its own box —
@@ -670,6 +674,7 @@ Report.
   Scan: upload area             PASS          Scan: upload area             PASS
   Recycle bin: batch entries    PASS          Recycle bin: batch entries    PASS
   Recycle bin: Empty Bin btn    PASS          Recycle bin: Empty Bin btn    PASS
+  Recycle bin: restore deleted  PASS          Recycle bin: restore deleted  PASS
   Print: tier grouping          PASS          Print: tier grouping          PASS
   Architecture: diagrams readable PASS        Architecture: diagrams readable PASS
   Architecture: no zoom buttons PASS          Architecture: full-screen view PASS

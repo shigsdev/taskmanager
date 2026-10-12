@@ -5,7 +5,7 @@
  * Bump CACHE_VERSION when deploying new static files.
  */
 
-var CACHE_VERSION = "v295";
+var CACHE_VERSION = "v296";
 var CACHE_NAME = "taskmanager-" + CACHE_VERSION;
 
 // HTML is intentionally NOT pre-cached (see fetch handler below — Bug #56).
@@ -57,6 +57,7 @@ var APP_SHELL = [
     "/static/scan.js",
     "/static/settings.js",
     "/static/recycle_bin.js",
+    "/static/recycle_bin_helpers.js",
     "/static/swipe.js",
     "/static/utilities.js",  // #222
     "/static/strength_forge_data.js",  // #282

@@ -8,6 +8,10 @@
  *   - Empty Bin purges every batch at once; requires typed "DELETE".
  *
  * No automated cleanup — see BACKLOG.md Freezer for the deferred auto-TTL.
+ *
+ * #428: a Deleted tasks section lists tasks deleted the ordinary way
+ * (GET /api/tasks?status=deleted) and restores one with
+ * PATCH {status: "active"}. Ordering / labels: recycle_bin_helpers.js.
  */
 
 (function () {
@@ -26,6 +30,13 @@
     var modalConfirm = document.getElementById("recycleModalConfirm");
     var modalCancel = document.getElementById("recycleModalCancel");
 
+    var deletedListEl = document.getElementById("recycleDeletedList");
+    var deletedEmptyEl = document.getElementById("recycleDeletedEmpty");
+    var deletedMoreBtn = document.getElementById("recycleDeletedMore");
+    var DELETED_SHOWN = 25;
+    var deletedTasks = [];
+    var showAllDeleted = false;
+
     // --- Loading -------------------------------------------------------------
 
     function load() {
@@ -39,12 +50,105 @@
         }).catch(function (err) {
             console.error("Failed to load recycle bin:", err);
         });
+        loadDeleted();
+    }
+
+    // --- #428: Deleted tasks -------------------------------------------------
+
+    function loadDeleted() {
+        window.apiFetch("/api/tasks?status=deleted").then(function (tasks) {
+            deletedTasks = Array.isArray(tasks) ? tasks : [];
+            renderDeleted();
+        }).catch(function (err) {
+            console.error("Failed to load deleted tasks:", err);
+        });
+    }
+
+    function renderDeleted() {
+        var out = window.recycleBinHelpers.binDeletedTasks(
+            deletedTasks, showAllDeleted ? 0 : DELETED_SHOWN
+        );
+        deletedListEl.innerHTML = "";
+        deletedEmptyEl.style.display = out.total ? "none" : "";
+        out.rows.forEach(function (row) {
+            deletedListEl.appendChild(deletedRow(row));
+        });
+        if (out.hidden) {
+            deletedMoreBtn.style.display = "";
+            deletedMoreBtn.textContent = "Show all " + out.total;
+        } else {
+            deletedMoreBtn.style.display = "none";
+        }
+    }
+
+    deletedMoreBtn.addEventListener("click", function () {
+        showAllDeleted = true;
+        renderDeleted();
+    });
+
+    function deletedRow(row) {
+        var li = document.createElement("li");
+        li.className = "recycle-item";
+        li.dataset.taskId = row.id;
+
+        var header = document.createElement("div");
+        header.className = "recycle-item-header";
+        var title = document.createElement("div");
+        title.className = "recycle-item-title";
+        title.textContent = row.title;
+        var dates = document.createElement("div");
+        dates.className = "recycle-item-dates";
+        dates.textContent = (row.deletedAt
+            ? "Deleted " + row.deletedAt.toLocaleDateString() + " · "
+            : "") + "was in " + row.section;
+        header.appendChild(title);
+        header.appendChild(dates);
+        if (row.parentDeleted) {
+            var note = document.createElement("div");
+            note.className = "recycle-item-counts";
+            note.textContent = "A subtask — its parent task is deleted too; restore that as well to see it.";
+            header.appendChild(note);
+        }
+
+        var actions = document.createElement("div");
+        actions.className = "recycle-item-actions";
+        var restoreBtn = document.createElement("button");
+        restoreBtn.className = "btn btn-sm";
+        restoreBtn.textContent = "Restore";
+        restoreBtn.addEventListener("click", function () {
+            restoreTask(row, li, restoreBtn, dates);
+        });
+        actions.appendChild(restoreBtn);
+
+        li.appendChild(header);
+        li.appendChild(actions);
+        return li;
+    }
+
+    function restoreTask(row, li, btn, statusEl) {
+        btn.disabled = true;
+        btn.textContent = "Restoring…";
+        window.apiFetch("/api/tasks/" + row.id, {
+            method: "PATCH",
+            body: JSON.stringify({ status: "active" }),
+        }).then(function (task) {
+            deletedTasks = deletedTasks.filter(function (t) { return t.id !== row.id; });
+            li.classList.add("recycle-item-restored");
+            btn.remove();
+            statusEl.textContent = "Restored to " +
+                window.recycleBinHelpers.binSectionLabel(task.tier) + ".";
+            statusEl.setAttribute("role", "status");
+        }).catch(function (err) {
+            btn.disabled = false;
+            btn.textContent = "Retry";
+            statusEl.textContent = "Couldn't restore it: " + (err.message || err);
+        });
     }
 
     function renderSummary(data) {
         var total = (data.task_count || 0) + (data.goal_count || 0);
         if (total === 0) {
-            summaryText.textContent = "The recycle bin is empty.";
+            summaryText.textContent = "No undone imports.";
             emptyBtn.disabled = true;
             return;
         }

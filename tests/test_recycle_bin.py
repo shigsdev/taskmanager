@@ -706,7 +706,49 @@ class TestListing:
             "task_count": 0,
             "goal_count": 0,
             "project_count": 0,  # PR66 #131
+            "deleted_task_count": 0,  # #428
         }
+
+    def test_bin_summary_counts_deleted_tasks(self, app, authed_client):
+        """#428: a task deleted the ordinary way (not an import undo) is
+        listed on the Recycle Bin page, so the Settings badge counts it.
+        It isn't an import item, so task_count (Empty Bin's number) doesn't."""
+        a = authed_client.post("/api/tasks", json={"title": "a", "type": "work"}).get_json()
+        b = authed_client.post("/api/tasks", json={"title": "b", "type": "work"}).get_json()
+        authed_client.post("/api/tasks", json={"title": "kept", "type": "work"})
+        authed_client.delete(f"/api/tasks/{a['id']}")
+        authed_client.delete(f"/api/tasks/{b['id']}")
+        bid = _make_batch(task_titles=["imported"])
+        recycle_service.undo_batch(bid)
+
+        summary = authed_client.get("/api/recycle-bin/summary").get_json()
+        assert summary["deleted_task_count"] == 2
+        assert summary["task_count"] == 1
+
+    def test_deleted_listing_tells_batch_tasks_apart(self, app, authed_client):
+        """#428: undoing an import marks its tasks deleted too; the bin's
+        Deleted tasks list leaves those to their batch, using batch_id."""
+        mine = authed_client.post("/api/tasks", json={"title": "mine", "type": "work"}).get_json()
+        authed_client.delete(f"/api/tasks/{mine['id']}")
+        bid = _make_batch(task_titles=["imported"])
+        recycle_service.undo_batch(bid)
+        rows = {t["title"]: t for t in authed_client.get("/api/tasks?status=deleted").get_json()}
+        assert rows["mine"]["batch_id"] is None
+        assert rows["imported"]["batch_id"] == str(bid)
+
+    def test_a_deleted_task_comes_back_with_status_active(self, app, authed_client):
+        """#428: the bin's Restore button is PATCH {status: active}."""
+        t = authed_client.post(
+            "/api/tasks", json={"title": "oops", "type": "work", "tier": "this_week"},
+        ).get_json()
+        authed_client.delete(f"/api/tasks/{t['id']}")
+        listed = authed_client.get("/api/tasks?status=deleted").get_json()
+        assert t["id"] in [x["id"] for x in listed]
+        resp = authed_client.patch(f"/api/tasks/{t['id']}", json={"status": "active"})
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert (body["status"], body["tier"]) == ("active", "this_week")
+        assert t["id"] in [x["id"] for x in authed_client.get("/api/tasks").get_json()]
 
 
 # --- Filter correctness: undone items don't leak into normal views -----------

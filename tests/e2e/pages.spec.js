@@ -8780,3 +8780,41 @@ test.describe("Goal links survive a project change (#427)", () => {
         }
     });
 });
+
+/**
+ * #428: a deleted task can be restored from the Recycle Bin. Deleting only
+ * ever set status = deleted, but no screen listed those tasks, so the
+ * bulk-delete confirm's "They will land in the recycle bin" was false.
+ */
+test.describe("Recycle Bin restores a deleted task (#428)", () => {
+    test("delete a task, Restore it from Deleted tasks, it's back in its section", async ({
+        page, request,
+    }) => {
+        const title = `428 deleted by mistake ${Math.random().toString(36).slice(2, 8)}`;
+        const task = await (await request.post("/api/tasks", {
+            data: { title, type: "work", tier: "this_week" },
+        })).json();
+        const del = await request.delete(`/api/tasks/${task.id}`);
+        expect(del.ok()).toBeTruthy();
+
+        try {
+            await page.goto("/recycle-bin?nosw=1");
+            const row = page.locator(`#recycleDeletedList li[data-task-id="${task.id}"]`);
+            await expect(row).toBeVisible({ timeout: 5000 });
+            await expect(row).toContainText(title);
+            await expect(row).toContainText("was in This Week");
+
+            await row.getByRole("button", { name: "Restore" }).click();
+            await expect(row).toContainText("Restored to This Week.");
+            await expect(row.getByRole("button", { name: "Restore" })).toHaveCount(0);
+
+            const after = await (await request.get(`/api/tasks/${task.id}`)).json();
+            expect([after.status, after.tier]).toEqual(["active", "this_week"]);
+
+            await page.goto("/tier/this_week?nosw=1");
+            await expect(page.getByText(title)).toBeVisible({ timeout: 5000 });
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+});

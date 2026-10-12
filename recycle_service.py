@@ -18,9 +18,11 @@ State of a batch is determined by ``ImportLog.undone_at``:
     !NULL → in recycle bin (soft-deleted)
     gone (ImportLog row deleted) → purged
 
-Scope decision: this recycle bin is import-undo only. Regular task delete
-(trash icon) continues to hard soft-delete via ``TaskStatus.DELETED``
-without going through the bin. See CLAUDE.md / BACKLOG.md for rationale.
+Batches are import-undo only. A task deleted the ordinary way just gets
+``TaskStatus.DELETED`` (no batch); since #428 the page lists those too
+(``GET /api/tasks?status=deleted``) and restores one with
+``PATCH {status: active}``. ``bin_summary`` counts them as
+``deleted_task_count``; Empty Bin / purge never touch them.
 
 No automated cleanup — the user manually purges batches or empties the
 whole bin via the UI. See "Recycle bin: automated TTL cleanup" in the
@@ -270,11 +272,26 @@ def bin_summary() -> dict:
         )
         or 0
     )
+    # #428: tasks deleted the ordinary way (no import batch). They are
+    # listed in the page's Deleted tasks section and restored one at a
+    # time; Empty Bin doesn't touch them, so they stay out of task_count.
+    deleted_task_count = (
+        db.session.scalar(
+            select(db.func.count())
+            .select_from(Task)
+            .where(
+                Task.status == TaskStatus.DELETED,
+                Task.batch_id.is_(None),
+            )
+        )
+        or 0
+    )
     return {
         "batch_count": batch_count,
         "task_count": task_count,
         "goal_count": goal_count,
         "project_count": project_count,
+        "deleted_task_count": deleted_task_count,
     }
 
 

@@ -132,7 +132,9 @@
             .then(function (data) {
                 var badge = document.getElementById("settingsBinCount");
                 if (badge) {
-                    var total = (data.task_count || 0) + (data.goal_count || 0);
+                    // #428: deleted tasks are listed in the bin too.
+                    var total = (data.task_count || 0) + (data.goal_count || 0) +
+                        (data.deleted_task_count || 0);
                     badge.textContent = total;
                 }
             })

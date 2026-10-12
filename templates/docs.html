@@ -1495,7 +1495,7 @@ Skip this line (too short)</pre>
                 <li><strong>Active</strong> — default.</li>
                 <li><strong>Archived</strong> — completed. Shows on the <a href="{{ url_for('completed_page') }}">/completed</a> page.</li>
                 <li><strong>Cancelled</strong> — consciously dropped, not done. Optional reason field.</li>
-                <li><strong>Deleted</strong> — soft-deleted. Hidden from the board; not in the recycle bin (regular deletes bypass the bin).</li>
+                <li><strong>Deleted</strong> — soft-deleted. Hidden from the board; listed under <strong>Deleted tasks</strong> on the <a href="{{ url_for('recycle_bin_page') }}">Recycle Bin</a> page, where <strong>Restore</strong> brings it back.</li>
             </ul>
         </section>
 
@@ -1614,7 +1614,7 @@ Skip this line (too short)</pre>
                 <li><strong>Keep</strong> — leave the task in its current section. Stamps <code>last_reviewed</code> = today, so it drops out of the queue for 7 more days.</li>
                 <li><strong>Freeze</strong> — move to Freezer and stamp <code>last_reviewed</code>.</li>
                 <li><strong>Snooze</strong> — leave in place and stamp <code>last_reviewed</code> = today. Effectively the same as Keep; separate button for when you're deliberately deferring the decision.</li>
-                <li><strong>Delete</strong> — soft-delete (status = deleted). Does not go through the recycle bin (that's for import undos only).</li>
+                <li><strong>Delete</strong> — soft-delete (status = deleted). You can restore it from Deleted tasks on the Recycle Bin page.</li>
             </ul>
 
             <h3>UI</h3>
@@ -2005,7 +2005,7 @@ Skip this line (too short)</pre>
                 <li><strong>Goal</strong> — link all selected to a goal (or clear the link).</li>
                 <li><strong>Project</strong> — link all selected to a project (or clear).</li>
                 <li><strong>Complete</strong> — archive all selected.</li>
-                <li><strong>Delete</strong> — soft-delete all selected.</li>
+                <li><strong>Delete</strong> — soft-delete all selected. You can restore them from the Recycle Bin page.</li>
             </ul>
 
             <h3>Staged changes (Apply pattern)</h3>
@@ -2478,10 +2478,24 @@ Skip this line (too short)</pre>
             <h2>Recycle bin and undo</h2>
             <p>
                 The <a href="{{ url_for('recycle_bin_page') }}">/recycle-bin</a>
-                page is the undo surface for <em>bulk imports only</em>
+                page has two sections: <strong>Undone imports</strong>
                 — OneNote pastes, Excel goal imports, and image-scan
-                confirmations. Regular task deletes do not go through
-                the bin.
+                confirmations you've undone — and
+                <strong>Deleted tasks</strong>, every task you've deleted.
+            </p>
+
+            <h3>Deleted tasks</h3>
+            <p>
+                However you delete a task — its panel, swipe, the bulk
+                toolbar, Review, or an applied suggestion — it's listed
+                here, most recently deleted first (the newest 25, then
+                <strong>Show all</strong>). Each row says when it was
+                deleted and which section it was in.
+                <strong>Restore</strong> puts it back in that section and
+                the row says where it went. A subtask whose parent task is
+                deleted too says so; restore the parent as well to see it.
+                Deleted tasks are kept until you restore them —
+                <strong>Empty Bin</strong> doesn't touch them.
             </p>
 
             <h3>How a batch lands there</h3>
@@ -2526,8 +2540,9 @@ Skip this line (too short)</pre>
 
             <h3>Empty Bin</h3>
             <p>
-                Purges every batch currently in the bin in one step.
-                Also requires typing <code>DELETE</code>.
+                Purges every import batch currently in the bin in one
+                step. Also requires typing <code>DELETE</code>. Deleted
+                tasks are not affected.
             </p>
 
             <h3>No automated cleanup</h3>
@@ -2539,9 +2554,8 @@ Skip this line (too short)</pre>
 
             <h3>Scope reminder</h3>
             <ul>
-                <li>Regular delete (trash icon on a task card) → soft-deletes immediately, does NOT go to the recycle bin.</li>
-                <li>Review-mode Delete → same; does NOT go to the recycle bin.</li>
-                <li>Only bulk-import batch undos end up here.</li>
+                <li>Deleting a task (panel, swipe, bulk toolbar, Review) → soft-deletes it at once; it's listed under Deleted tasks and can be restored.</li>
+                <li>Only undone bulk imports appear as batches, and only batches can be purged.</li>
             </ul>
         </section>
 

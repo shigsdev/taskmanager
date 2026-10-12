@@ -3567,7 +3567,8 @@ async function bulkMove(direction) {
 async function bulkDelete() {
     const ids = getBulkSelectedIds();
     if (ids.length === 0) return;
-    if (!confirm(`Delete ${ids.length} task(s)? They will land in the recycle bin.`)) return;
+    // #428: true now — the Recycle Bin lists deleted tasks with Restore.
+    if (!confirm(`Delete ${ids.length} task(s)? You can restore them from the Recycle Bin (Settings → Recycle Bin).`)) return;
     // Delete iterates per-task — keeps recycle-bin batch_id semantics
     // identical to single deletes (no special bulk-delete endpoint).
     let failed = 0;

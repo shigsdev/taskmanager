@@ -3431,6 +3431,18 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     gap: 8px;
     flex: 0 0 auto;
 }
+/* #428: the page's two sections (undone imports, deleted tasks). */
+.recycle-section-title {
+    margin: 24px 0 4px;
+    font-size: 1.05rem;
+}
+.recycle-item-restored {
+    opacity: 0.7;
+}
+#recycleDeletedMore {
+    display: block;
+    margin: 8px auto 0;
+}
 .recycle-empty {
     text-align: center;
     color: var(--text-muted);
