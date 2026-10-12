@@ -2136,9 +2136,11 @@ class TestTierDueDateAutoFill:
         )
         assert resp.get_json()["due_date"] == self._expected_tomorrow_iso()
 
-    def test_move_to_today_does_not_overwrite_explicit_date(
+    def test_move_to_today_replaces_an_older_date(
         self, authed_client, app,
     ):
+        """#435: a tier-only move to Today gives the task today's date,
+        like the board's Today button (was: the old date stayed)."""
         from datetime import date as _date
         with app.app_context():
             t = _make_task(
@@ -2149,7 +2151,7 @@ class TestTierDueDateAutoFill:
         resp = authed_client.patch(
             f"/api/tasks/{task_id}", json={"tier": "today"},
         )
-        assert resp.get_json()["due_date"] == "2026-12-31"
+        assert resp.get_json()["due_date"] == self._expected_today_iso()
 
     def test_explicit_null_due_date_in_same_patch_is_respected(
         self, authed_client, app,

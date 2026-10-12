@@ -528,6 +528,8 @@ Report.
      board (and /tier/<name>) click Work: the task shows under
      "<name> (archived)" in a quieter header, and the section count equals
      the cards shown.
+     #435: tick a Today card, Section ▾ Tomorrow, Apply: the card shows ONLY in
+     Tomorrow (not in Today too) and reads tomorrow's date.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -668,6 +670,7 @@ Report.
   Subtasks: no-subtask delete quiet PASS     Subtasks: no-subtask delete quiet PASS
   Goals: tick on a parent asks  PASS          Goals: tick on a parent asks  PASS
   Work view: archived project tasks PASS      Work view: archived project tasks PASS
+  Bulk Section: move re-dates   PASS          Bulk Section: move re-dates   PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

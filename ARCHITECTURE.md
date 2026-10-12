@@ -771,9 +771,11 @@ component is added, a data flow changes, or a security boundary shifts.
   is called from both `create_task` and `update_task`. When a task
   lands in TODAY or TOMORROW without an explicit `due_date`, the
   field is auto-filled from the tier (today / today+1). Fill-if-null
-  only; never overwrites. Uses `_local_today_date()` (DIGEST_TZ) so
+  only, except a tier-only move (`tier` without `due_date`) to
+  TODAY/TOMORROW, which `_redate_section_move` (#435) re-dates over an
+  older date. Uses `_local_today_date()` (DIGEST_TZ) so
   evening ET tasks don't get UTC-tomorrow's date. Moving OUT of
-  TODAY/TOMORROW does NOT clear the auto-filled date.
+  TODAY/TOMORROW does NOT clear the date, except to NEXT_WEEK (#220).
 - **Completed dedicated page** (#29, ADR-017): `/completed` route
   parallel to `/tier/<name>` but filters by `status=archived` instead
   of `tier=X`. "Completed" is a TaskStatus not a Tier; has its own

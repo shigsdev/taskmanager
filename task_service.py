@@ -234,6 +234,25 @@ def _auto_fill_tier_due_date(task: Task, data: dict) -> None:
         task.due_date = _local_today_date() + timedelta(days=1)
 
 
+def _redate_section_move(task: Task, data: dict) -> None:
+    """#435: a write that names ``tier`` but not ``due_date`` and leaves
+    an active task in TODAY / TOMORROW gives it that day's date, over
+    any older one. Same rule as the board's tier buttons
+    (``tierHelpers.dueDateForTier``), here so the bulk toolbar, the voice
+    Shortcut, ✨ Plan and the review screens get it too. Runs even when
+    the tier didn't change: "move to Today" on an overdue Today task
+    means do it today. Other sections keep the date (#466).
+    """
+    if "tier" not in data or "due_date" in data:
+        return
+    if task.status is not None and task.status != TaskStatus.ACTIVE:
+        return
+    if task.tier == Tier.TODAY:
+        task.due_date = _local_today_date()
+    elif task.tier == Tier.TOMORROW:
+        task.due_date = _local_today_date() + timedelta(days=1)
+
+
 # #74 (2026-04-26): when a task's `due_date` is set, route the tier to
 # match the date by default. Per scoping: ALWAYS overwrite, except
 # - FREEZER (user explicitly parked it; treat the date as a reminder,
@@ -858,7 +877,9 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
     # and due_date ended up null (and wasn't explicitly set in this
     # payload), fill it from the tier. Runs on every update — catches
     # drag-to-today, bulk tier change, capture-bar #today with no
-    # explicit date, etc.
+    # explicit date, etc. #435: a tier-only move there replaces an older
+    # date first.
+    _redate_section_move(task, data)
     _auto_fill_tier_due_date(task, data)
 
     # #46: inverse direction — if the user just set due_date to today

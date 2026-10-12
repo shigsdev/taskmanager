@@ -9427,3 +9427,34 @@ test.describe("Work view shows tasks on archived projects (#434)", () => {
         }
     });
 });
+
+test.describe("A Section-only move to Tomorrow re-dates the task (#435)", () => {
+    test("bulk Section ▾ Tomorrow: the Today card leaves Today and takes tomorrow's date", async ({
+        page, request,
+    }) => {
+        const s = Math.random().toString(36).slice(2, 8);
+        const post = async (data) => (await request.post("/api/tasks", { data })).json();
+        // The server fills a Tomorrow task's date, so this is the server's tomorrow.
+        const probe = await post({ title: `435 probe ${s}`, type: "work", tier: "tomorrow" });
+        const task = await post({ title: `435 move me ${s}`, type: "work", tier: "today" });
+        expect(task.due_date).not.toBe(probe.due_date);
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator(`.task-card[data-id="${task.id}"] .bulk-select-check`).check();
+            await page.click("#bulkActionTier");
+            await page.locator(".bulk-dropdown button", { hasText: /^Tomorrow$/ }).click();
+            await page.click("#bulkApplyChanges");
+            const tomorrowList = page.locator('.task-list[data-tier="tomorrow"]');
+            const todayList = page.locator('.task-list[data-tier="today"]');
+            await expect(tomorrowList.locator(`.task-card[data-id="${task.id}"]`)).toHaveCount(1);
+            await expect(todayList.locator(`.task-card[data-id="${task.id}"]`)).toHaveCount(0);
+            const saved = await (await request.get(`/api/tasks/${task.id}`)).json();
+            expect(saved.tier).toBe("tomorrow");
+            expect(saved.due_date).toBe(probe.due_date);
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+            await request.delete(`/api/tasks/${probe.id}`);
+        }
+    });
+});

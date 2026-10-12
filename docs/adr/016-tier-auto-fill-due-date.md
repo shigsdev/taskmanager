@@ -36,6 +36,13 @@ If they provided `"due_date": null`, they get null (auto-fill
 respects the explicit intent, not just the final value). If they
 didn't mention the field at all, auto-fill decides based on tier.
 
+> **Amended 2026-10-12 (#435):** a write that names `tier` but not
+> `due_date` and leaves an active task in TODAY / TOMORROW now sets
+> that day's date even over an older one (`task_service._redate_section_move`),
+> the same rule the board's tier buttons already followed. Fill-if-null
+> still holds for every other write. See
+> `docs/design/435-section-move-redates-today-tomorrow.md`.
+
 ### 2. Only TODAY and TOMORROW trigger the fill
 
 Other tiers (BACKLOG, THIS_WEEK, NEXT_WEEK, FREEZER, INBOX) have
@@ -48,6 +55,9 @@ If a user has a TODAY task with due_date=today and they move it to
 BACKLOG, the due_date stays. Matches the backlog design note
 ("user may still want the reminder") and fits the broader pattern
 of "don't clobber data the user might be using."
+
+> **Note (#220, recorded 2026-10-12):** a move to NEXT_WEEK without a
+> date does clear it. Other sections still keep it (#466 tracks the rest).
 
 ### 4. Uses DIGEST_TZ for "today" and "tomorrow"
 

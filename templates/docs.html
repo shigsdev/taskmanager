@@ -1422,6 +1422,14 @@ Skip this line (too short)</pre>
                 in the same update (even setting it to blank is
                 treated as user intent).
             </p>
+            <p>
+                One exception: <strong>moving</strong> a task into
+                Today or Tomorrow without touching its date (the card buttons, a drag, the
+                bulk toolbar's Section, ✨ Plan, the voice Shortcut, a
+                review screen's suggestion) always sets the date to that
+                day, replacing an older one. An overdue task moved to
+                Today stops being overdue.
+            </p>
 
             <h3>Section auto-route (date → section)</h3>
             <p>
@@ -1468,9 +1476,11 @@ Skip this line (too short)</pre>
                 (<em>Set by due date</em>); clearing the date unlocks it.
             </p>
             <p>
-                Moving a task back out of Today/Tomorrow does NOT
-                clear the auto-filled date. The date is still
-                meaningful as a reminder.
+                Moving a task out of Today/Tomorrow to This Week,
+                Backlog, Freezer or Inbox does NOT clear its date. The
+                date is still meaningful as a reminder. Moving it to
+                <strong>Next Week</strong> without picking a date clears
+                the date.
             </p>
             <p>
                 In the task detail panel, both rules also run
