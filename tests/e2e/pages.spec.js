@@ -9060,3 +9060,82 @@ test.describe("Board actions that fail say so (#430)", () => {
         }
     });
 });
+
+/**
+ * #431: a failed "Analyze so far" must not cost the draft. It used to go to
+ * the error screen ("…it's in your history" — false for a still-open draft),
+ * whose Try Again emptied the box; the next autosave then PUT that empty box
+ * over the saved draft.
+ */
+test.describe("Reflection: a failed 'Analyze so far' keeps the draft (#431)", () => {
+    const draftText = (page) => page.evaluate(async () => {
+        const r = await fetch("/api/reflection/draft", { credentials: "same-origin" });
+        const body = await r.json();
+        return body.draft ? body.draft.transcript : null;
+    });
+
+    test.beforeEach(async ({ page }) => {
+        await page.goto("/reflection?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.evaluate(() => fetch("/api/reflection/draft", {
+            method: "DELETE", credentials: "same-origin",
+        }));
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+    });
+
+    test.afterEach(async ({ page }) => {
+        await page.evaluate(() => fetch("/api/reflection/draft", {
+            method: "DELETE", credentials: "same-origin",
+        })).catch(() => {});
+    });
+
+    test("the text stays, the error shows in place, and the draft isn't blanked", async ({ page }) => {
+        const text = "Forty minutes of thinking I can't write again.";
+        await page.locator("#reflText").fill(text);
+        await expect.poll(() => draftText(page), { timeout: 10000 }).toBe(text);
+
+        await page.route("**/api/reflection/draft/analyze", (route) => route.fulfill({
+            status: 500, json: { error: "Analysis failed: the model is busy." },
+        }));
+        await page.locator("#reflInterimBtn").click();
+        await expect(page.locator("#reflInterimError:visible, #reflStateError:visible"))
+            .toBeVisible({ timeout: 10000 });
+        // Whatever the page offers next, take it — the old error screen's
+        // only button was Try Again.
+        const retry = page.locator("#reflRetryBtn");
+        if (await retry.isVisible()) await retry.click();
+
+        // Then what a tab switch does: flush the draft.
+        await page.evaluate(() => window.__reflectionSaveDraftNow());
+        await page.waitForTimeout(300);
+
+        await expect(page.locator("#reflStateInput")).toBeVisible();
+        await expect(page.locator("#reflText")).toHaveValue(text);
+        await expect(page.locator("#reflInterimError")).toHaveText(
+            "Analysis failed: the model is busy. Your text is still here, and still saved as your draft.");
+        expect(await draftText(page)).toBe(text);
+
+        // Typing clears the note.
+        await page.locator("#reflText").press("End");
+        await page.locator("#reflText").type(" More.");
+        await expect(page.locator("#reflInterimError")).toBeHidden();
+    });
+
+    test("Try Again on the error screen never sends an empty box over a draft", async ({ page }) => {
+        // The defensive half: reach resetInput with a live draft directly.
+        const text = "Still open.";
+        await page.locator("#reflText").fill(text);
+        await expect.poll(() => draftText(page), { timeout: 10000 }).toBe(text);
+        await page.evaluate(() => {
+            document.getElementById("reflErrorMessage").textContent = "x";
+            document.querySelectorAll(".reflection-state").forEach((s) => { s.style.display = "none"; });
+            document.getElementById("reflStateError").style.display = "";
+        });
+        await page.locator("#reflRetryBtn").click();
+        await expect(page.locator("#reflText")).toHaveValue("");
+        await page.evaluate(() => window.__reflectionSaveDraftNow());
+        await page.waitForTimeout(300);
+        expect(await draftText(page)).toBe(text);
+    });
+});

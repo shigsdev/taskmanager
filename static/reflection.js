@@ -198,8 +198,19 @@
     // first so the server analyses what is actually on screen, not the
     // text as of the last debounce.
     var interimBtn = document.getElementById("reflInterimBtn");
+    var interimError = document.getElementById("reflInterimError");
+
+    // #431: shown under the writing box after a failed "Analyze so far";
+    // hidden again by the next attempt or the next keystroke.
+    function showInterimError(message) {
+        if (!interimError) return;
+        interimError.textContent = message || "";
+        interimError.style.display = message ? "" : "none";
+    }
+
     if (interimBtn) {
         interimBtn.addEventListener("click", async function () {
+            showInterimError("");
             var text = (textArea.value || "").trim();
             if (!text) {
                 alert("Write something to reflect on first.");
@@ -220,7 +231,15 @@
                 markStep(stepClaude, "fail");
                 // Deliberately NOT clearDraftUi(): unlike submit, nothing
                 // was retired server-side, so the draft is still live.
-                showErr(analysisErrorText(err), true);
+                // #431: so go back to writing with the text where it was.
+                // This used to go to the error screen, which said the
+                // transcript was "in your history" (it isn't — it's still
+                // the open draft) and whose only button, Try Again, emptied
+                // the box while the draft was live: the next autosave (a
+                // tab switch is enough) then PUT that empty box over it.
+                showState("input");
+                showInterimError(analysisErrorText(err)
+                    + " Your text is still here, and still saved as your draft.");
                 return;
             } finally {
                 interimBtn.disabled = false;
@@ -1090,6 +1109,12 @@
 
     function resetInput() {
         textArea.value = "";
+        // #431: emptying the box here is not the user deleting their text.
+        // With lastSavedText still holding it, the next autosave saw ""
+        // as a change and PUT it over a live draft. null = "nothing of
+        // ours saved yet", so an empty box is never sent; typing starts
+        // fresh.
+        lastSavedText = null;
         // #237: also clear the raw-segments buffer when starting over.
         // Without this, a new reflection started via "Start Over" /
         // "New Reflection" / "Try Again" would carry the prior
@@ -1776,6 +1801,7 @@
             // something new" working — that path clears the box and never
             // passes through a reset.
             draftRetired = false;
+            showInterimError("");  // #431: typing again clears the failure note
             scheduleDraftSave();
         });
         // Leaving the tab is the classic "lost it" moment — flush now

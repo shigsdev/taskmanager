@@ -186,6 +186,10 @@
                 <span class="reflection-draft-status" id="reflDraftStatus"
                       aria-live="polite"></span>
             </div>
+            {# #431: a failed "Analyze so far" says so here, under the text
+               it left untouched, instead of on the error screen. #}
+            <p class="reflection-interim-error" id="reflInterimError" role="alert"
+               style="display:none"></p>
         </div>
 
         <!-- Voice sub-state (#232 — pause/resume with append-to-textarea).

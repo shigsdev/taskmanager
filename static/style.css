@@ -3432,6 +3432,12 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     flex: 0 0 auto;
 }
 /* #428: the page's two sections (undone imports, deleted tasks). */
+/* #431: a failed "Analyze so far", shown under the writing box. */
+.reflection-interim-error {
+    margin: 8px 0 0;
+    color: var(--danger);
+    font-size: 0.9rem;
+}
 .recycle-section-title {
     margin: 24px 0 4px;
     font-size: 1.05rem;

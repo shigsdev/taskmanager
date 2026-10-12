@@ -512,6 +512,10 @@ Report.
      Inbox triage (one of two refused): each says "… didn't save: <reason>.
      The page now shows what's saved." and the card is where the server has
      it (Delete keeps the panel open; triage moves the other one).
+     #431: on /reflection, type, wait for "Draft saved", make "Analyze so
+     far" fail (stub /api/reflection/draft/analyze to 500): you stay on the
+     writing view with the text, the reason shows under the buttons, and
+     after a reload the draft still holds the text.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -642,6 +646,7 @@ Report.
   Auto-categorize: keeps links  PASS          Auto-categorize: keeps links  PASS
   Double tap: one of each made  PASS          Double tap: one of each made  PASS
   Failed action says so         PASS          Failed action says so         PASS
+  Reflection: failed checkpoint keeps draft PASS  Reflection: failed checkpoint keeps draft PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS
