@@ -524,6 +524,10 @@ Report.
      Restore brings all three back. Deleting a task with no subtasks asks
      nothing (the quiet case). On /goals, ticking a parent asks first; No
      leaves it unticked and open.
+     #434: archive a work project that still has an open task, then on the
+     board (and /tier/<name>) click Work: the task shows under
+     "<name> (archived)" in a quieter header, and the section count equals
+     the cards shown.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -663,6 +667,7 @@ Report.
   Subtasks: delete + restore with parent PASS Subtasks: delete + restore with parent PASS
   Subtasks: no-subtask delete quiet PASS     Subtasks: no-subtask delete quiet PASS
   Goals: tick on a parent asks  PASS          Goals: tick on a parent asks  PASS
+  Work view: archived project tasks PASS      Work view: archived project tasks PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

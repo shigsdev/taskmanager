@@ -232,6 +232,48 @@ function goalAfterProjectChange(oldProjectId, newProjectId, currentGoalId, allPr
     return old && old.goal_id && old.goal_id === currentGoalId ? null : currentGoalId;
 }
 
+// #434: a section's cards grouped by project for Work / Personal view.
+// Active projects first (in the order given), then archived ones — since
+// #353 archiving keeps a task's link, so these tasks are real and still
+// counted — then tasks whose project is in neither list (a list that
+// failed to load, a stale id), then tasks with no project. Every task is
+// in exactly one group, so the cards always add up to the section count.
+// Returns [{key, label, color, archived, tasks}] with empty groups left out.
+function groupTasksByProject(tasks, activeProjects, archivedProjects) {
+    const byProject = new Map();
+    const noProject = [];
+    for (const task of tasks || []) {
+        if (!task.project_id) { noProject.push(task); continue; }
+        if (!byProject.has(task.project_id)) byProject.set(task.project_id, []);
+        byProject.get(task.project_id).push(task);
+    }
+    const groups = [];
+    const take = (projects, archived) => {
+        for (const p of projects || []) {
+            const list = p && byProject.get(p.id);
+            if (!list) continue;
+            byProject.delete(p.id);
+            groups.push({
+                key: p.id,
+                label: archived ? `${p.name} (archived)` : p.name,
+                color: p.color || null,
+                archived,
+                tasks: list,
+            });
+        }
+    };
+    take(activeProjects, false);
+    take(archivedProjects, true);
+    const unknown = [].concat(...byProject.values());
+    if (unknown.length) {
+        groups.push({ key: "unknown", label: "Unknown project", color: null, archived: false, tasks: unknown });
+    }
+    if (noProject.length) {
+        groups.push({ key: "none", label: "No project", color: null, archived: false, tasks: noProject });
+    }
+    return groups;
+}
+
 // Browser: expose individual helpers on the global object so app.js
 // can use them without a bundler. Node (Jest): export via module.exports.
 if (typeof module !== "undefined" && module.exports) {
@@ -248,6 +290,7 @@ if (typeof module !== "undefined" && module.exports) {
         projectCascadeGoalId,
         goalAfterProjectChange,
         describeActiveFilters,
+        groupTasksByProject,
     };
 } else if (typeof window !== "undefined") {
     window.filterHelpers = {
@@ -263,5 +306,6 @@ if (typeof module !== "undefined" && module.exports) {
         projectCascadeGoalId,
         goalAfterProjectChange,
         describeActiveFilters,
+        groupTasksByProject,
     };
 }

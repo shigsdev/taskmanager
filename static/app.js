@@ -799,38 +799,23 @@ function renderBoard() {
 }
 
 function renderTierGroupedByProject(list, tasks) {
-    // Collect tasks by project
-    const byProject = new Map();
-    const noProject = [];
-    for (const task of tasks) {
-        if (task.project_id) {
-            if (!byProject.has(task.project_id)) byProject.set(task.project_id, []);
-            byProject.get(task.project_id).push(task);
-        } else {
-            noProject.push(task);
-        }
-    }
-
-    // Render each project group
-    for (const project of allProjects) {
-        const projectTasks = byProject.get(project.id);
-        if (!projectTasks) continue;
+    // #434: archived projects (and unknown ones) get a group too — they
+    // used to be skipped, so their tasks vanished while still counted.
+    const groups = window.filterHelpers.groupTasksByProject(
+        tasks, allProjects, archivedProjects);
+    for (const group of groups) {
         const groupHeader = document.createElement("div");
-        groupHeader.className = "project-group-header";
-        groupHeader.innerHTML = `<span class="project-dot" style="background:${project.color || '#999'}"></span> ${escapeHtml(project.name)}`;
-        list.appendChild(groupHeader);
-        for (const task of projectTasks) {
-            list.appendChild(taskCardEl(task));
+        groupHeader.className = "project-group-header"
+            + (group.archived ? " project-group-header-archived" : "");
+        if (group.key !== "unknown" && group.key !== "none") {
+            const dot = document.createElement("span");
+            dot.className = "project-dot";
+            dot.style.background = group.color || "#999";
+            groupHeader.appendChild(dot);
         }
-    }
-
-    // Tasks without project
-    if (noProject.length > 0) {
-        const groupHeader = document.createElement("div");
-        groupHeader.className = "project-group-header";
-        groupHeader.textContent = "No project";
+        groupHeader.appendChild(document.createTextNode(group.label));
         list.appendChild(groupHeader);
-        for (const task of noProject) {
+        for (const task of group.tasks) {
             list.appendChild(taskCardEl(task));
         }
     }

@@ -377,3 +377,53 @@ describe("describeActiveFilters (#316 — 'filters are hiding tasks' banner)", (
         );
     });
 });
+
+// #434: Work / Personal view groups each section by project. It walked the
+// active projects only, so a task on an archived project (archiving keeps
+// the link since #353) was drawn nowhere while the count still included it.
+describe("groupTasksByProject (#434)", () => {
+    const { groupTasksByProject } = require("../../../static/filter_helpers");
+    const active = [
+        { id: "a1", name: "Launch", color: "#111" },
+        { id: "a2", name: "Hiring", color: "#222" },
+    ];
+    const archived = [{ id: "x1", name: "Old site", color: "#333" }];
+    const t = (id, project_id) => ({ id, project_id: project_id || null });
+
+    test("active projects in their order, then archived, unknown, none", () => {
+        const groups = groupTasksByProject([
+            t("1", null), t("2", "x1"), t("3", "a2"), t("4", "ghost"), t("5", "a1"), t("6", "a2"),
+        ], active, archived);
+        expect(groups.map((g) => g.label)).toEqual([
+            "Launch", "Hiring", "Old site (archived)", "Unknown project", "No project",
+        ]);
+        expect(groups.map((g) => g.tasks.map((x) => x.id))).toEqual([
+            ["5"], ["3", "6"], ["2"], ["4"], ["1"],
+        ]);
+        expect(groups.map((g) => g.archived)).toEqual([false, false, true, false, false]);
+        expect(groups[2].color).toBe("#333");
+    });
+
+    test("every task lands in exactly one group", () => {
+        const tasks = [t("1", "a1"), t("2", "x1"), t("3", "zz"), t("4", null), t("5", "x1")];
+        const groups = groupTasksByProject(tasks, active, archived);
+        const ids = groups.flatMap((g) => g.tasks.map((x) => x.id)).sort();
+        expect(ids).toEqual(["1", "2", "3", "4", "5"]);
+    });
+
+    test("projects with no tasks in this section get no group", () => {
+        expect(groupTasksByProject([t("1", "a2")], active, archived).map((g) => g.label))
+            .toEqual(["Hiring"]);
+    });
+
+    test("no project lists loaded: project tasks still show, as unknown", () => {
+        const groups = groupTasksByProject([t("1", "a1"), t("2", null)], undefined, null);
+        expect(groups.map((g) => [g.label, g.tasks.length])).toEqual([
+            ["Unknown project", 1], ["No project", 1],
+        ]);
+    });
+
+    test("nothing to group", () => {
+        expect(groupTasksByProject([], active, archived)).toEqual([]);
+    });
+});

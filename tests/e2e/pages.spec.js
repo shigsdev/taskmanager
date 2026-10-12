@@ -9390,3 +9390,40 @@ test.describe("Subtasks close or go with their parent (#433)", () => {
         }
     });
 });
+
+/**
+ * #434: in Work / Personal view a section groups its cards by project. It
+ * walked the active projects only, so a task on an archived project (the
+ * link survives archiving since #353) showed nowhere — while the section
+ * count still included it.
+ */
+test.describe("Work view shows tasks on archived projects (#434)", () => {
+    test("the task shows under '<name> (archived)' and the count matches the cards", async ({
+        page, request,
+    }) => {
+        const s = Math.random().toString(36).slice(2, 8);
+        const project = await (await request.post("/api/projects", {
+            data: { name: `434 old site ${s}`, type: "work" },
+        })).json();
+        const task = await (await request.post("/api/tasks", {
+            data: { title: `434 still to do ${s}`, type: "work", tier: "backlog", project_id: project.id },
+        })).json();
+        const ap = await request.patch(`/api/projects/${project.id}`, { data: { is_active: false } });
+        expect(ap.ok()).toBe(true);
+        try {
+            await page.goto("/tier/backlog?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.click('.view-filter-btn[data-view="work"]');
+            const list = page.locator('.task-list[data-tier="backlog"]');
+            await expect(list.locator(`.task-card[data-id="${task.id}"]`)).toBeVisible();
+            const header = list.locator(".project-group-header", { hasText: `434 old site ${s} (archived)` });
+            await expect(header).toBeVisible();
+            await expect(header).toHaveClass(/project-group-header-archived/);
+            const shown = await list.locator(".task-card[data-id]").count();
+            await expect(page.locator("#tierDetailCount")).toHaveText(String(shown));
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+            await request.delete(`/api/projects/${project.id}`);
+        }
+    });
+});

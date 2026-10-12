@@ -2288,6 +2288,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     margin-top: 0;
     padding-top: 0;
 }
+/* #434: a task on an archived project still shows, under a quieter header. */
+.project-group-header-archived {
+    font-style: italic;
+}
+.project-group-header-archived .project-dot {
+    opacity: 0.5;
+}
 
 /* === Goals Page === */
 .goals-page {
