@@ -57,7 +57,7 @@
         </section>
 
         <div class="plan-footer">
-            <button class="btn" id="planApplyAllBtn">Apply all accepted</button>
+            <button class="btn" id="planApplyAllBtn">Apply all remaining</button>
             <span class="plan-applied-count" id="planAppliedCount"></span>
         </div>
     </div>
@@ -66,5 +66,6 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='filter_helpers.js') }}"></script>
+<script src="{{ url_for('static', filename='plan_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='plan.js') }}"></script>
 {% endblock %}

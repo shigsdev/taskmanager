@@ -5,7 +5,7 @@
  * has more sections (day-by-day, goal hints, velocity, stale freezer)
  * than fit a modal cleanly. Same review-before-apply discipline:
  * suggestions render with editable selects + Accept / Override / Ignore
- * per row; "Apply all accepted" routes through PATCH /api/tasks/<id>
+ * per row; "Apply all remaining" routes through PATCH /api/tasks/<id>
  * (or POST /api/planner/ignore for ignore-flag toggles).
  */
 (function () {
@@ -321,23 +321,14 @@
             var el = li.querySelector('[data-field="' + field + '"]');
             return el ? (el.value || null) : null;
         };
-        var payload = {};
-        if (s.action === "move") {
-            var tier = get("tier") || s.suggested_tier;
-            if (tier) { payload.tier = tier; }
-            var due = get("due_date") || s.suggested_due_date;
-            if (due !== undefined) { payload.due_date = due; }
-        } else if (s.action === "freeze") {
-            payload.tier = "freezer";
-        } else if (s.action === "delete") {
-            // Delete is handled separately via DELETE method.
-            payload._delete = true;
-        }
-        var proj = get("project");
-        if (proj !== null) { payload.project_id = proj || null; }
-        var goal = get("goal");
-        if (goal !== null) { payload.goal_id = goal || null; }
-        return payload;
+        // #436: the rules (a move with no date sends none) live in
+        // plan_helpers.js, Jest-tested.
+        return window.planHelpers.planRowPayload(s, {
+            tier: get("tier"),
+            due_date: get("due_date"),
+            project: get("project"),
+            goal: get("goal"),
+        });
     }
 
     async function applyOne(li, s) {
@@ -378,7 +369,7 @@
             }
         }
         $("planApplyAllBtn").disabled = false;
-        $("planApplyAllBtn").textContent = "Apply all accepted";
+        $("planApplyAllBtn").textContent = "Apply all remaining";
         updateAppliedCount(failed);
     }
 

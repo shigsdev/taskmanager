@@ -162,7 +162,9 @@ def _load_inbox_context() -> tuple[list[Task], list[dict], list[dict]]:
         for p in db.session.scalars(proj_stmt)
     ]
 
-    goal_stmt = select(Goal).where(Goal.status != GoalStatus.DONE)
+    goal_stmt = select(Goal).where(
+        Goal.status != GoalStatus.DONE, Goal.is_active.is_(True),  # #436: not archived
+    )
     goals = [
         {"id": str(g.id), "title": g.title, "category": g.category.value}
         for g in db.session.scalars(goal_stmt)

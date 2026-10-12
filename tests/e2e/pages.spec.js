@@ -9458,3 +9458,43 @@ test.describe("A Section-only move to Tomorrow re-dates the task (#435)", () => 
         }
     });
 });
+
+test.describe("/plan: accepting a move with no date keeps the task's date (#436)", () => {
+    test("Accept on a dateless move keeps the date; the button reads Apply all remaining", async ({
+        page, request,
+    }) => {
+        const s = Math.random().toString(36).slice(2, 8);
+        const task = await (await request.post("/api/tasks", {
+            data: { title: `436 dated ${s}`, type: "work", tier: "backlog", due_date: "2027-03-15" },
+        })).json();
+        expect(task.due_date).toBe("2027-03-15");
+        await page.route("**/api/planner/weekly", (r) => r.fulfill({ json: {
+            start_date: "2026-10-19", end_date: "2026-10-25",
+            active_count: 1, stale_freezer_count: 0, velocity_warning: null,
+            goal_hints: [], day_by_day_plan: {}, stale_freezer_review: [],
+            per_task_suggestions: [{
+                task_id: task.id, title: task.title, action: "move",
+                suggested_tier: "this_week", suggested_due_date: null,
+                suggested_project_id: null, suggested_goal_id: null, reason: "436",
+            }],
+        } }));
+        try {
+            await page.goto("/plan?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.click("#planGenerateBtn");
+            const row = page.locator(`.plan-row[data-task-id="${task.id}"]`);
+            await expect(row).toBeVisible();
+            await expect(page.locator("#planApplyAllBtn")).toHaveText("Apply all remaining");
+            const patched = page.waitForRequest((req) =>
+                req.method() === "PATCH" && req.url().endsWith(`/api/tasks/${task.id}`));
+            await row.locator(".plan-accept").click();
+            expect(JSON.parse((await patched).postData())).toEqual({ tier: "this_week" });
+            await expect(row.locator(".plan-accept")).toHaveText("Applied ✓");
+            const saved = await (await request.get(`/api/tasks/${task.id}`)).json();
+            expect(saved.tier).toBe("this_week");
+            expect(saved.due_date).toBe("2027-03-15");
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+});

@@ -1889,13 +1889,16 @@ Skip this line (too short)</pre>
             <ul>
                 <li>Each suggestion is a row with editable selects (section,
                     due date, project, goal). Override anything before
-                    accepting.</li>
+                    accepting. A move with no date leaves the task's
+                    date as it is (a move to Today or Tomorrow still
+                    gets that day's date).</li>
                 <li><strong>Accept</strong> per row — runs
                     <code>PATCH /api/tasks/&lt;id&gt;</code>
                     (or <code>DELETE</code> for delete actions); same
                     canonical mutation surface as the rest of the app.</li>
-                <li><strong>Apply all accepted</strong> — patches every
-                    pending row in sequence. Failures keep their row
+                <li><strong>Apply all remaining</strong> — applies every
+                    row you haven't already accepted or ignored, in
+                    sequence, deletes included. Failures keep their row
                     visible (highlighted) for retry.</li>
                 <li><strong>Ignore</strong> — sets
                     <code>Task.planner_ignore = true</code> so the task

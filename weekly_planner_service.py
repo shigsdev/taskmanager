@@ -248,19 +248,17 @@ def _load_completed_history(today: date) -> list[dict]:
 def _load_recurring_fires(start: date, end: date) -> list[dict]:
     """Return the recurring templates that will fire between start and end.
 
-    Best-effort enumeration — uses RecurringTask.compute_fires() if
-    available, otherwise returns templates whose frequency overlaps
-    the week. The plan tolerates an approximate list — Claude only
-    needs to know "these are reserved time".
+    One row per fire, from the same previews the This Week / Next Week
+    panels show (active templates; a day that already has its spawned
+    task is left out). Claude only needs to know "these are reserved
+    time".
     """
-    try:
-        from recurring_service import compute_previews_in_range
-        previews = compute_previews_in_range(start, end)
-    except Exception as e:  # noqa: BLE001
-        log.warning("recurring preview load failed: %s", e)
-        return []
+    # #436: this used to call the keyword-only function positionally and
+    # swallow the TypeError, so the planner never saw a recurring fire.
+    from recurring_service import compute_previews_in_range
+    previews = compute_previews_in_range(start=start, end=end)
     return [
-        {"title": p.get("title", ""), "fire_day": p.get("due_date", "")}
+        {"title": p["title"], "fire_day": p["fire_date"]}
         for p in previews
     ]
 
@@ -302,7 +300,9 @@ def _load_projects() -> list[dict]:
 
 
 def _load_goals() -> list[dict]:
-    stmt = select(Goal).where(Goal.status != GoalStatus.DONE)
+    stmt = select(Goal).where(
+        Goal.status != GoalStatus.DONE, Goal.is_active.is_(True),  # #436: not archived
+    )
     return [
         {"id": str(g.id), "title": g.title, "category": g.category.value}
         for g in db.session.scalars(stmt)
