@@ -185,6 +185,14 @@ def serialize_task(task: Task, *, view: str = "full") -> dict:
         "repeat": _serialize_repeat(task),
         "subtask_count": len(active_subtasks) + len(done_subtasks),
         "subtask_done": len(done_subtasks),
+        # #433: a repeating task keeps its subtasks open when it closes
+        # (#230), so the page leaves those out of its "they'll close too"
+        # confirm; deleted_with_parent lets the Recycle Bin list a
+        # subtask that went with its parent under that parent.
+        "recurring_task_id": (
+            str(task.recurring_task_id) if task.recurring_task_id else None
+        ),
+        "deleted_with_parent": bool(task.deleted_with_parent),
         "created_at": task.created_at.isoformat(),
         "updated_at": task.updated_at.isoformat(),
     }
@@ -641,10 +649,56 @@ _UPDATABLE_FIELDS = {
 }
 
 
+_CLOSED_STATUSES = (TaskStatus.ARCHIVED, TaskStatus.CANCELLED)
+
+
+def _apply_status_to_subtasks(
+    task: Task, new_status: TaskStatus, close_subtasks: bool
+) -> None:
+    """#433: what a parent's status change does to its open subtasks.
+
+    Called before ``task.status`` is overwritten, so ``task.status`` is
+    still the old value. Mirrors ``complete_parent_task`` /
+    ``cancel_parent_task`` for every other path (bulk, Goals tick box,
+    reflection proposals):
+
+    - to ARCHIVED / CANCELLED: refused while open subtasks remain, unless
+      the caller sent ``close_subtasks: true`` — then they close the same
+      way. A repeating-template task keeps them open (#230).
+    - to DELETED: they go to the Recycle Bin with it (``_soft_delete``).
+    - DELETED → ACTIVE (Restore): the ones that went with it come back.
+    """
+    if task.parent_id is not None:
+        return
+    if new_status in _CLOSED_STATUSES:
+        if task.recurring_task_id is not None:
+            return
+        open_subs = [s for s in task.subtasks if s.status == TaskStatus.ACTIVE]
+        if not open_subs:
+            return
+        if not close_subtasks:
+            verb = "complete" if new_status == TaskStatus.ARCHIVED else "cancel"
+            raise ValidationError(
+                f"{len(open_subs)} open subtask(s) — {verb} them too or close "
+                "them individually first",
+                "subtasks",
+            )
+        for sub in open_subs:
+            sub.status = new_status
+    elif new_status == TaskStatus.DELETED:
+        _soft_delete(task)
+    elif task.status == TaskStatus.DELETED and new_status == TaskStatus.ACTIVE:
+        _restore_subtasks_deleted_with(task)
+
+
 def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
     task = get_task(task_id)
     if task is None:
         return None
+
+    # #433: a request flag, not a column — consent to close the open
+    # subtasks along with the parent (see _apply_status_to_subtasks).
+    close_subtasks = data.pop("close_subtasks", False) is True
 
     # Snapshot pre-update values so we can cascade goal/project changes to
     # subtasks that still mirror the parent's old value (see below).
@@ -711,6 +765,7 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
 
     if "status" in data:
         new_status = _parse_enum(TaskStatus, data["status"], "status") or task.status
+        old_status = task.status
         # When transitioning out of CANCELLED, clear the reason so a stale
         # explanation doesn't outlive the cancellation. Caller can still
         # set it explicitly in the same PATCH if they want to preserve it.
@@ -720,7 +775,11 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
             and "cancellation_reason" not in data
         ):
             task.cancellation_reason = None
+        if new_status != old_status:
+            _apply_status_to_subtasks(task, new_status, close_subtasks)
         task.status = new_status
+        if old_status == TaskStatus.DELETED and new_status != TaskStatus.DELETED:
+            task.deleted_with_parent = False
 
     if "parent_id" in data:
         new_parent_id = _parse_uuid(data["parent_id"], "parent_id")
@@ -939,10 +998,42 @@ def delete_task(task_id: uuid.UUID) -> bool:
     task = get_task(task_id)
     if task is None:
         return False
-    task.status = TaskStatus.DELETED
-    task.batch_id = None
+    _soft_delete(task)
     db.session.commit()
     return True
+
+
+def _soft_delete(task: Task) -> int:
+    """Set ``task`` DELETED and take its open subtasks along (#433). No commit.
+
+    Each ACTIVE subtask goes to the Recycle Bin too, marked
+    ``deleted_with_parent`` so restoring the parent brings back exactly
+    those (``_restore_subtasks_deleted_with``); done / cancelled subtasks
+    are left as they are. ``batch_id`` is cleared on all of them — see
+    ``delete_task``. Returns how many subtasks went along.
+    """
+    task.status = TaskStatus.DELETED
+    task.batch_id = None
+    task.deleted_with_parent = False
+    taken = 0
+    if task.parent_id is None:
+        for sub in task.subtasks:
+            if sub.status != TaskStatus.ACTIVE:
+                continue
+            sub.status = TaskStatus.DELETED
+            sub.batch_id = None
+            sub.deleted_with_parent = True
+            taken += 1
+    return taken
+
+
+def _restore_subtasks_deleted_with(task: Task) -> None:
+    """#433: the Recycle Bin's Restore of a parent brings back the subtasks
+    that went to the bin with it — not one deleted on its own."""
+    for sub in task.subtasks:
+        if sub.status == TaskStatus.DELETED and sub.deleted_with_parent:
+            sub.status = TaskStatus.ACTIVE
+            sub.deleted_with_parent = False
 
 
 def duplicate_task(task_id: uuid.UUID) -> Task | None:

@@ -17,6 +17,7 @@ from datetime import timedelta
 from sqlalchemy import or_, select
 
 from models import Task, TaskStatus, Tier, db
+from task_service import _soft_delete
 from utils import local_today_date
 
 
@@ -69,10 +70,9 @@ def review_task(task: Task, action: str) -> str:
         task.tier = Tier.FREEZER
         task.last_reviewed = today
     elif action == "delete":
-        task.status = TaskStatus.DELETED
-        # Sever from any bulk-import batch — see delete_task() in
-        # task_service.py for the same rationale.
-        task.batch_id = None
+        # Same as every other delete: severs the import batch and takes
+        # the open subtasks to the Recycle Bin with it (#433).
+        _soft_delete(task)
     elif action == "snooze":
         task.last_reviewed = today
     else:

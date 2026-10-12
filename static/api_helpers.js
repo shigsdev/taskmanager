@@ -66,7 +66,11 @@ function actionFailureMessage(what, err, bulk) {
         const bad = (bulk.errors || []).length + (bulk.not_found || []).length;
         if (!bad) return null;
         const total = bad + (bulk.updated || 0);
-        return what + ": " + bad + " of " + total + " didn't save." + tail;
+        // #433: the server's reason, when it gave one (e.g. "2 open
+        // subtask(s) — complete them too or close them individually first").
+        const reasons = [...new Set((bulk.errors || []).map((e) => e && e.message).filter(Boolean))];
+        return what + ": " + bad + " of " + total + " didn't save"
+            + (reasons.length ? " (" + reasons.join("; ") + ")" : "") + "." + tail;
     }
     return null;
 }

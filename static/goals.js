@@ -416,10 +416,18 @@ function goalLinkedTaskRow(task, goalId) {
     cb.checked = task.status === "archived";
     cb.disabled = task.status === "archived";
     cb.addEventListener("change", async () => {
+        // #433: a parent with open subtasks gets the board's question and
+        // closes them with it; No leaves everything as it was.
+        const subs = window.subtaskHelpers.openSubtaskSummary([task]);
+        if (subs.open && !confirm(
+            `This task has ${subs.open} open subtask(s).\n\nComplete all subtasks too?`)) {
+            cb.checked = false;
+            return;
+        }
         try {
-            await apiFetch(`/api/tasks/${task.id}`, {
-                method: "PATCH",
-                body: JSON.stringify({ status: "archived" }),
+            await apiFetch(subs.open ? `/api/tasks/${task.id}/complete` : `/api/tasks/${task.id}`, {
+                method: subs.open ? "POST" : "PATCH",
+                body: JSON.stringify(subs.open ? { complete_subtasks: true } : { status: "archived" }),
             });
         } catch (err) {
             // #430: it used to stay ticked as if it had worked.

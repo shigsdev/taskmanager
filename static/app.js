@@ -945,20 +945,7 @@ function setupDragAndDrop() {
                 for (const c of draggedGroup) c.classList.remove("dragging");
                 draggedCard = null;
                 draggedGroup = null;
-                apiFetch("/api/tasks/bulk", {
-                    method: "PATCH",
-                    body: JSON.stringify({
-                        task_ids: groupIds,
-                        updates: { status: "archived" },
-                    }),
-                }).then((res) => {
-                    loadCompletedTasks();
-                    if (boardBulkFailed("Completing the tasks", res)) return;  // #430
-                    clearBulkSelection();
-                    loadTasks();
-                }).catch((err) => {
-                    boardActionFailed("Completing the tasks", err);  // #430
-                });
+                boardCompleteGroup(groupIds);
                 return;
             }
             const taskId = draggedCard.dataset.id;
@@ -971,6 +958,34 @@ function setupDragAndDrop() {
     // --- Mobile: touch events (document-level for cross-tier dragging) ---
     document.addEventListener("touchmove", onTouchMove, { passive: false });
     document.addEventListener("touchend", onTouchEnd);
+}
+
+// Several cards dropped on Completed (mouse or touch): archive them in one
+// bulk PATCH. #433: if any has open subtasks, the user agrees first that
+// they close too; No puts the cards back.
+function boardCompleteGroup(groupIds) {
+    const subs = bulkOpenSubtasks(groupIds);
+    if (subs.open) {
+        const note = window.subtaskHelpers.subtaskCloseNote("complete", subs, groupIds.length);
+        if (!confirm(`Complete ${groupIds.length} tasks? ${note}`)) {
+            loadTasks();
+            return;
+        }
+    }
+    apiFetch("/api/tasks/bulk", {
+        method: "PATCH",
+        body: JSON.stringify({
+            task_ids: groupIds,
+            updates: withSubtaskConsent({ status: "archived" }, subs),
+        }),
+    }).then((res) => {
+        loadCompletedTasks();
+        if (boardBulkFailed("Completing the tasks", res)) return;  // #430
+        clearBulkSelection();
+        loadTasks();
+    }).catch((err) => {
+        boardActionFailed("Completing the tasks", err);  // #430
+    });
 }
 
 function onTouchMove(e) {
@@ -1040,21 +1055,7 @@ function onTouchEnd() {
         // Dropped on Completed → archive instead of tier-move. For a
         // group, archive every selected card via bulk PATCH.
         if (draggedGroup) {
-            var groupIds = draggedGroup.map(function (c) { return c.dataset.id; });
-            apiFetch("/api/tasks/bulk", {
-                method: "PATCH",
-                body: JSON.stringify({
-                    task_ids: groupIds,
-                    updates: { status: "archived" },
-                }),
-            }).then(function (res) {
-                loadCompletedTasks();
-                if (boardBulkFailed("Completing the tasks", res)) return;  // #430
-                clearBulkSelection();
-                loadTasks();
-            }).catch(function (err) {
-                boardActionFailed("Completing the tasks", err);  // #430
-            });
+            boardCompleteGroup(draggedGroup.map(function (c) { return c.dataset.id; }));
         } else {
             taskComplete(card.dataset.id);
         }
@@ -1985,15 +1986,16 @@ async function taskComplete(id) {
 
     // Parent tasks with open subtasks: use the /complete endpoint which
     // returns a 422 warning. Prompt user to auto-close or cancel.
-    if (task && task.subtask_count > task.subtask_done) {
-        const open = task.subtask_count - task.subtask_done;
+    // #433: not for a repeating task — its subtasks stay open anyway (#230).
+    const open = window.subtaskHelpers.openSubtaskSummary(task ? [task] : []).open;
+    if (open) {
         const ok = confirm(
             `This task has ${open} open subtask(s).\n\nComplete all subtasks too?`
         );
         if (!ok) return;
     }
     try {
-        if (task && task.subtask_count > task.subtask_done) {
+        if (open) {
             await apiFetch(`${API}/${id}/complete`, {
                 method: "POST",
                 body: JSON.stringify({ complete_subtasks: true }),
@@ -2014,6 +2016,13 @@ async function taskComplete(id) {
 }
 
 async function taskDelete(id) {
+    // #433: a parent's open subtasks go to the Recycle Bin with it — say so
+    // first. No subtasks, no question (as before).
+    const subs = bulkOpenSubtasks([id], { includeRepeating: true });
+    if (subs.open && !confirm(
+        "Delete this task? " + window.subtaskHelpers.subtaskCloseNote("delete", subs, 1))) {
+        return;
+    }
     try {
         await apiFetch(`${API}/${id}`, { method: "DELETE" });
     } catch (err) {
@@ -2033,9 +2042,10 @@ async function taskDelete(id) {
 // Mirrors taskComplete's open-subtask prompt.
 async function taskCancel(id, reason) {
     const task = allTasks.find((t) => t.id === id);
+    // #433: a repeating task keeps its subtasks open (#230) — no question.
+    const open = window.subtaskHelpers.openSubtaskSummary(task ? [task] : []).open;
     try {
-        if (task && task.subtask_count > task.subtask_done) {
-            const open = task.subtask_count - task.subtask_done;
+        if (open) {
             const ok = confirm(
                 `This task has ${open} open subtask(s).\n\nCancel all subtasks too?`
             );
@@ -3549,6 +3559,22 @@ function showBulkDropdown(anchor, items) {
     }, 0);
 }
 
+// #433: the open subtasks under these tasks, from the board's cache. A
+// repeating task keeps its subtasks open when it closes (#230), so it only
+// counts for a delete ({includeRepeating: true}).
+function bulkOpenSubtasks(ids, opts) {
+    const wanted = new Set(ids);
+    return window.subtaskHelpers.openSubtaskSummary(
+        allTasks.filter((t) => wanted.has(t.id)), opts);
+}
+
+// #433: ask the server to close those subtasks too — only when the confirm
+// just named them. If the cache missed some, the server refuses that task
+// and says why, rather than closing subtasks nobody was told about.
+function withSubtaskConsent(updates, subs) {
+    return subs.open ? Object.assign({}, updates, { close_subtasks: true }) : updates;
+}
+
 async function bulkPatch(updates, successMessage) {
     const ids = getBulkSelectedIds();
     if (ids.length === 0) return;
@@ -3563,7 +3589,9 @@ async function bulkPatch(updates, successMessage) {
             const parts = [`${resp.updated} updated`];
             if (notFound) parts.push(`${notFound} not found`);
             if (errCount) parts.push(`${errCount} validation error(s)`);
-            alert(parts.join(" — "));
+            // #433: say why (e.g. "2 open subtask(s) — complete them too…").
+            const reasons = [...new Set((resp.errors || []).map((e) => e.message).filter(Boolean))];
+            alert(parts.join(" — ") + (reasons.length ? `\n\n${reasons.join("\n")}` : ""));
         } else if (successMessage) {
             // Quiet success — no popup
         }
@@ -3649,12 +3677,23 @@ async function bulkDelete() {
     const ids = getBulkSelectedIds();
     if (ids.length === 0) return;
     // #428: true now — the Recycle Bin lists deleted tasks with Restore.
-    if (!confirm(`Delete ${ids.length} task(s)? You can restore them from the Recycle Bin (Settings → Recycle Bin).`)) return;
+    // #433: their open subtasks go along, and come back with them.
+    const note = window.subtaskHelpers.subtaskCloseNote(
+        "delete", bulkOpenSubtasks(ids, { includeRepeating: true }), ids.length);
+    if (!confirm(`Delete ${ids.length} task(s)? You can restore them from the Recycle Bin (Settings → Recycle Bin).`
+        + (note ? " " + note : ""))) return;
     // Delete iterates per-task — keeps recycle-bin batch_id semantics
     // identical to single deletes (no special bulk-delete endpoint).
+    // #433: a selected subtask whose parent is selected too goes with the
+    // parent (and comes back with it), so it isn't deleted on its own.
+    const selected = new Set(ids);
+    const own = ids.filter((id) => {
+        const t = allTasks.find((x) => x.id === id);
+        return !(t && t.parent_id && selected.has(t.parent_id));
+    });
     let failed = 0;
     await Promise.all(
-        ids.map((id) =>
+        own.map((id) =>
             apiFetch(`${API}/${id}`, { method: "DELETE" }).catch(() => { failed += 1; })
         )
     );
@@ -3821,29 +3860,36 @@ function initBulkSelect() {
             {
                 label: "Mark complete",
                 onClick: () => {
-                    const n = getBulkSelectedIds().length;
-                    if (n && confirm(`Mark ${n} task(s) complete?`)) {
-                        bulkPatch({ status: "archived" });
+                    const ids = getBulkSelectedIds();
+                    if (!ids.length) return;
+                    // #433: open subtasks close with their parent — say so.
+                    const subs = bulkOpenSubtasks(ids);
+                    const note = window.subtaskHelpers.subtaskCloseNote("complete", subs, ids.length);
+                    if (confirm(`Mark ${ids.length} task(s) complete?` + (note ? " " + note : ""))) {
+                        bulkPatch(withSubtaskConsent({ status: "archived" }, subs));
                     }
                 },
             },
             {
                 label: "Mark cancelled",
                 onClick: () => {
-                    const n = getBulkSelectedIds().length;
-                    if (!n) return;
+                    const ids = getBulkSelectedIds();
+                    if (!ids.length) return;
+                    const subs = bulkOpenSubtasks(ids);
+                    const note = window.subtaskHelpers.subtaskCloseNote("cancel", subs, ids.length);
                     // Single shared reason for the whole batch — keeps the
                     // bulk flow simple. Per-task reasons can still be set
                     // by opening individual cards in the detail panel.
                     const reason = prompt(
-                        `Mark ${n} task(s) cancelled. Optional reason (Cancel to abort):`,
+                        `Mark ${ids.length} task(s) cancelled.` + (note ? " " + note : "")
+                        + " Optional reason (Cancel to abort):",
                         "",
                     );
                     if (reason === null) return;
-                    bulkPatch({
+                    bulkPatch(withSubtaskConsent({
                         status: "cancelled",
                         cancellation_reason: reason.trim() || null,
-                    });
+                    }, subs));
                 },
             },
             {

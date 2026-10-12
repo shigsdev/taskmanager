@@ -34,6 +34,9 @@ _FULL_KEYS = {
     # #428: lets the Recycle Bin keep an undone import's tasks out of its
     # Deleted tasks list (they come back with their batch).
     "batch_id",
+    # #433: which parents keep their subtasks open when they close (#230),
+    # and which deleted subtasks went to the bin with their parent.
+    "recurring_task_id", "deleted_with_parent",
 }
 
 # The exact key set review_api._serialize emitted before #200.

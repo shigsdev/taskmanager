@@ -60,6 +60,17 @@ function binDeletedTasks(tasks, limit) {
     });
     var deletedIds = {};
     list.forEach(function (t) { deletedIds[t.id] = true; });
+    // #433: an open subtask that went to the bin with its parent comes back
+    // with that parent's Restore, so it's counted on the parent's row
+    // instead of listed on its own.
+    var withParent = {};
+    list = list.filter(function (t) {
+        if (t.deleted_with_parent && t.parent_id && deletedIds[t.parent_id]) {
+            withParent[t.parent_id] = (withParent[t.parent_id] || 0) + 1;
+            return false;
+        }
+        return true;
+    });
     list.sort(function (a, b) {
         var da = binDeletedDate(a.updated_at), db = binDeletedDate(b.updated_at);
         return (db ? db.getTime() : 0) - (da ? da.getTime() : 0);
@@ -71,6 +82,7 @@ function binDeletedTasks(tasks, limit) {
             section: binSectionLabel(t.tier),
             deletedAt: binDeletedDate(t.updated_at),
             parentDeleted: Boolean(t.parent_id && deletedIds[t.parent_id]),
+            subtaskCount: withParent[t.id] || 0,
         };
     });
     var shown = limit ? Math.min(limit, rows.length) : rows.length;

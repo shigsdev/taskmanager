@@ -183,6 +183,7 @@ EXPECTED_STATIC_FILES = (
     "static/recycle_bin.js",
     "static/recycle_bin_helpers.js",
     "static/import_helpers.js",  # #432 — import confirm endpoint per mode
+    "static/subtask_helpers.js",  # #433 — subtasks close / go with their parent
     "static/swipe.js",
     "static/utilities.js",  # #222 — /utilities admin actions
     "static/strength_forge_data.js",  # #282 — Strength Forge data

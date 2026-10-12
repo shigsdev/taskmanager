@@ -45,6 +45,9 @@
        day early → tasks due today flagged as overdue. Pure local-date helper here,
        loaded globally before page-specific scripts run. #}
     <script src="{{ url_for('static', filename='date_helpers.js') }}"></script>
+    {# #433: the "open subtasks close / go with it" confirm text, shared by
+       the board (app.js on several pages) and the Goals tick box. #}
+    <script src="{{ url_for('static', filename='subtask_helpers.js') }}"></script>
     {# #381: Escape closes the top-most side panel (.detail-overlay) via its
        [data-panel-close] ✕, and Tab stays inside it. One document listener;
        a no-op on pages with no panel open. #}

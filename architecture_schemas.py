@@ -54,6 +54,7 @@ _SCHEMA_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "recurring_task_id":   {"desc": "The recurring template that spawned this", "fk_target": "recurring_tasks.id", "notes": "Optional"},
             "batch_id":            {"desc": "Bulk-import batch (for recycle-bin undo)", "fk_target": "import_log.batch_id", "notes": "Optional"},
             "planner_ignore":      {"desc": "Weekly-planner 'stop suggesting until I touch it' flag", "notes": "Auto-resets to False on any meaningful field change in update_task()"},
+            "deleted_with_parent": {"desc": "An open subtask that went to the Recycle Bin because its parent was deleted", "notes": "Restoring the parent brings back exactly these, not a subtask deleted on its own; cleared when the task leaves deleted (#433)"},
         },
     },
     "goals": {

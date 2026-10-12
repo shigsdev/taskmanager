@@ -72,6 +72,31 @@ describe("binDeletedTasks (#428)", () => {
         expect(binDeletedTasks([])).toEqual({ rows: [], hidden: 0, total: 0 });
         expect(binDeletedTasks(null)).toEqual({ rows: [], hidden: 0, total: 0 });
     });
+
+    // #433: deleting a parent takes its open subtasks to the bin, marked
+    // deleted_with_parent; restoring the parent brings them back.
+    test("subtasks that went with their parent are listed under it", () => {
+        const out = binDeletedTasks([
+            t("parent", "2026-10-12T10:00:00"),
+            t("s1", "2026-10-12T10:00:00", { parent_id: "parent", deleted_with_parent: true }),
+            t("s2", "2026-10-12T10:00:00", { parent_id: "parent", deleted_with_parent: true }),
+            t("alone", "2026-10-11T10:00:00", { parent_id: "parent" }),
+        ]);
+        expect(out.rows.map((r) => r.id)).toEqual(["parent", "alone"]);
+        expect(out.total).toBe(2);
+        const byId = Object.fromEntries(out.rows.map((r) => [r.id, r]));
+        expect(byId.parent.subtaskCount).toBe(2);
+        expect(byId.alone.subtaskCount).toBe(0);
+        // Deleted on its own earlier: its own row, flagged as before.
+        expect(byId.alone.parentDeleted).toBe(true);
+    });
+
+    test("a marked subtask whose parent isn't in the bin keeps its own row", () => {
+        const out = binDeletedTasks([
+            t("s1", "2026-10-12T10:00:00", { parent_id: "gone", deleted_with_parent: true }),
+        ]);
+        expect(out.rows.map((r) => r.id)).toEqual(["s1"]);
+    });
 });
 
 describe("binSectionLabel (#428)", () => {

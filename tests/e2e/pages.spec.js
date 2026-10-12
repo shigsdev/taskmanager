@@ -9050,7 +9050,8 @@ test.describe("Board actions that fail say so (#430)", () => {
             await page.click("#bulkTriageBtn");
             await page.locator(".triage-dropdown button", { hasText: "Freezer" }).click();
             await expect.poll(() => dialogs.length).toBe(1);
-            expect(dialogs[0]).toBe("Moving the tasks: 1 of 2 didn't save. The page now shows what's saved.");
+            // #433: the server's reason is named too.
+            expect(dialogs[0]).toBe("Moving the tasks: 1 of 2 didn't save (stub refusal). The page now shows what's saved.");
             await expect(cardIn(page, "freezer", ok.id)).toBeVisible();
             await expect(cardIn(page, "inbox", bad.id)).toBeVisible();
         } finally {
@@ -9246,5 +9247,146 @@ test.describe("Import: a late parse is dropped and Parse works again (#432)", ()
             buffer: Buffer.from("stub"),
         });
         await expect(page.locator("#importParseProjectsExcelBtn")).toBeEnabled();
+    });
+});
+
+/**
+ * #433: closing or deleting a parent no longer strands its open subtasks.
+ * Bulk Mark complete closes them with it (after the confirm says so); a
+ * Delete takes them to the Recycle Bin, where the parent's row counts them
+ * and Restore brings them back; the Goals tick asks the board's question.
+ */
+test.describe("Subtasks close or go with their parent (#433)", () => {
+    const uniq = () => Math.random().toString(36).slice(2, 8);
+    const post = async (request, data) =>
+        (await request.post("/api/tasks", { data })).json();
+    const statusOf = async (request, id) =>
+        (await (await request.get(`/api/tasks/${id}`)).json()).status;
+    // Answers each dialog in turn (true = OK) and records its text.
+    const answerDialogs = (page, answers) => {
+        const seen = [];
+        page.on("dialog", (d) => {
+            seen.push(d.message());
+            const ok = answers.length ? answers.shift() : true;
+            (ok ? d.accept() : d.dismiss()).catch(() => {});
+        });
+        return seen;
+    };
+    async function family(request, s, extra = {}) {
+        const parent = await post(request, { title: `433 parent ${s}`, type: "work", tier: "today", ...extra });
+        const subs = [];
+        for (const n of [1, 2]) {
+            subs.push(await post(request, {
+                title: `433 sub ${n} ${s}`, type: "work", tier: "today", parent_id: parent.id,
+            }));
+        }
+        return { parent, subs };
+    }
+    const cleanup = async (request, tasks) => {
+        for (const t of tasks) await request.delete(`/api/tasks/${t.id}`).catch(() => {});
+    };
+
+    test("bulk Mark complete names the open subtasks and closes them too", async ({ page, request }) => {
+        const s = uniq();
+        const { parent, subs } = await family(request, s);
+        const plain = await post(request, { title: `433 plain ${s}`, type: "work", tier: "today" });
+        try {
+            const seen = answerDialogs(page, [true]);
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            for (const id of [parent.id, plain.id]) {
+                await page.locator(`.task-card[data-id="${id}"] .bulk-select-check`).check();
+            }
+            await page.click("#bulkActionStatus");
+            await page.locator(".bulk-dropdown button", { hasText: "Mark complete" }).click();
+            await expect.poll(() => seen.length).toBe(1);
+            expect(seen[0]).toBe(
+                "Mark 2 task(s) complete? 1 of them has 2 open subtasks, which will be completed too.");
+            for (const t of [parent, plain, ...subs]) {
+                await expect.poll(() => statusOf(request, t.id)).toBe("archived");
+            }
+            await expect(page.locator(`.task-card[data-id="${subs[0].id}"]`)).toHaveCount(0);
+        } finally {
+            await cleanup(request, [...subs, parent, plain]);
+        }
+    });
+
+    test("Delete takes the subtasks to the bin, and Restore brings them back", async ({ page, request }) => {
+        const s = uniq();
+        const { parent, subs } = await family(request, s);
+        try {
+            const seen = answerDialogs(page, [true]);
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.evaluate((t) => window.taskDetailOpen(t), parent);
+            await page.click("#detailDelete");
+            await expect.poll(() => seen.length).toBe(1);
+            expect(seen[0]).toBe("Delete this task? It has 2 open subtasks, which go to the "
+                + "Recycle Bin with it and come back when you restore it.");
+            for (const t of [parent, ...subs]) {
+                await expect.poll(() => statusOf(request, t.id)).toBe("deleted");
+            }
+            await expect(page.locator(`.task-card[data-id="${subs[0].id}"]`)).toHaveCount(0);
+
+            await page.goto("/recycle-bin?nosw=1");
+            const row = page.locator(`#recycleDeletedList li[data-task-id="${parent.id}"]`);
+            await expect(row).toBeVisible({ timeout: 5000 });
+            await expect(row).toContainText("+2 subtasks come back with it");
+            await expect(page.locator(`#recycleDeletedList li[data-task-id="${subs[0].id}"]`)).toHaveCount(0);
+            await row.getByRole("button", { name: "Restore" }).click();
+            await expect(row).toContainText("Restored to Today with its 2 subtasks.");
+            await expect(row).not.toContainText("come back with it");
+            for (const t of [parent, ...subs]) {
+                expect(await statusOf(request, t.id)).toBe("active");
+            }
+        } finally {
+            await cleanup(request, [...subs, parent]);
+        }
+    });
+
+    test("deleting a task with no subtasks asks nothing", async ({ page, request }) => {
+        const task = await post(request, { title: `433 lone ${uniq()}`, type: "work", tier: "today" });
+        try {
+            const seen = answerDialogs(page, []);
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.evaluate((t) => window.taskDetailOpen(t), task);
+            await page.click("#detailDelete");
+            await expect.poll(() => statusOf(request, task.id)).toBe("deleted");
+            expect(seen).toEqual([]);
+        } finally {
+            await cleanup(request, [task]);
+        }
+    });
+
+    test("the Goals tick on a parent asks first; No leaves it open", async ({ page, request }) => {
+        const s = uniq();
+        const goal = await (await request.post("/api/goals", {
+            data: { title: `433 goal ${s}`, category: "work", priority: "should" },
+        })).json();
+        const { parent, subs } = await family(request, s, { goal_id: goal.id });
+        try {
+            const seen = answerDialogs(page, [false, true]);
+            await page.goto("/goals?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator(`.goal-card[data-goal-id="${goal.id}"]`).click({ position: { x: 8, y: 8 } });
+            const tick = () => page.locator("#linkedTasksList .linked-task-row")
+                .filter({ hasText: parent.title }).locator('input[type="checkbox"]');
+
+            await tick().click();
+            await expect.poll(() => seen.length).toBe(1);
+            expect(seen[0]).toBe("This task has 2 open subtask(s).\n\nComplete all subtasks too?");
+            await expect(tick()).not.toBeChecked();
+            expect(await statusOf(request, parent.id)).toBe("active");
+
+            await tick().click();
+            await expect.poll(() => seen.length).toBe(2);
+            for (const t of [parent, ...subs]) {
+                await expect.poll(() => statusOf(request, t.id)).toBe("archived");
+            }
+        } finally {
+            await cleanup(request, [...subs, parent]);
+            await request.delete(`/api/goals/${goal.id}`).catch(() => {});
+        }
     });
 });

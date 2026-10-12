@@ -45,7 +45,9 @@ component is added, a data flow changes, or a security boundary shifts.
         │   │ tasks (url,   │  │ daily      │  │  image buffer│   │
         │   │  parent_id,   │  │ digest @   │  │ (never       │   │
         │   │  cancellation_│  │ DIGEST_TIME│  │  persisted)  │   │
-        │   │  reason)·     │  │            │  │              │   │
+        │   │  reason,      │  │            │  │              │   │
+        │   │  deleted_with_│  │            │  │              │   │
+        │   │  parent)·     │  │            │  │              │   │
         │   │ goals·projects│  │ tomorrow-  │  │              │   │
         │   │ recurring     │  │ roll @     │  │              │   │
         │   │ (+ subtasks_  │  │ 00:01 local│  │              │   │
@@ -80,7 +82,9 @@ component is added, a data flow changes, or a security boundary shifts.
 - **Flask app** — the single web service. Hosts routes, auth, services, and
   scheduler. One process, gunicorn-served.
 - **PostgreSQL** — Railway-managed. Stores tasks (with optional `url`,
-  self-referential `parent_id` for one-level subtasks, and optional
+  self-referential `parent_id` for one-level subtasks, `deleted_with_parent`
+  for #433 — set on an open subtask that went to the Recycle Bin with its
+  parent, so Restore brings back exactly those — and optional
   `cancellation_reason` for status=CANCELLED tasks), projects, goals,
   `global_context_files` (#336 — reference documents attached to every
   reflection), recurring tasks (with `subtasks_snapshot` JSON for #26's clone-on-
@@ -452,6 +456,13 @@ component is added, a data flow changes, or a security boundary shifts.
   Subtasks inherit `goal_id` and `project_id` from their parent unless
   explicitly overridden. Updating a parent's goal/project cascades to
   subtasks that still match the old value.
+  #433: no path strands open subtasks under a closed or deleted parent.
+  `update_task` refuses archived/cancelled on a parent with open subtasks
+  unless the request sends `close_subtasks: true` (then they close the same
+  way); a repeating-template task keeps them open (#230). Every delete goes
+  through `task_service._soft_delete`, which takes the open subtasks to the
+  Recycle Bin marked `deleted_with_parent`; DELETED → ACTIVE (Restore)
+  brings exactly those back.
 - **Bulk task operations** (#21, ADR-008): `PATCH /api/tasks/bulk` accepts
   `{ids: [...], updates: {...}}` (cap 200 ids). Each task is processed via
   `update_task` so cascade rules apply; per-task errors don't roll back

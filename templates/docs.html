@@ -1677,14 +1677,25 @@ Skip this line (too short)</pre>
                 <li><strong>Parent-card badge</strong> — parent cards show a badge like <code>2/5 subtasks</code>. It turns green when the count hits total.</li>
             </ul>
 
-            <h3>Completing a parent with open subtasks</h3>
+            <h3>Completing, cancelling or deleting a parent with open subtasks</h3>
             <p>
-                Completing a parent with still-active subtasks shows
-                a prompt: complete all children along with the
-                parent, or close each subtask individually first.
-                There's no "archive parent and leave orphans" path —
-                that would leave subtasks with no visible home on the
-                board.
+                Completing or cancelling a parent with still-active
+                subtasks asks first: they close along with the parent,
+                or you say no and close each subtask yourself. That holds
+                for the panel's buttons, the bulk toolbar's
+                <strong>Status ▾</strong>, dragging several cards onto
+                Completed, and ticking a task on the Goals page — the
+                question says how many subtasks will close. Nothing
+                leaves subtasks open under a finished parent, with one
+                exception: a task made by a repeating template keeps its
+                subtasks open when it closes, since they're often work
+                that outlives the week.
+            </p>
+            <p>
+                Deleting a parent takes its open subtasks to the Recycle
+                Bin with it (the question says how many), and restoring
+                the parent brings them back. Subtasks already done or
+                cancelled stay where they are.
             </p>
 
             <h3>Subtasks and recurring templates</h3>
@@ -2006,8 +2017,8 @@ Skip this line (too short)</pre>
                 <li><strong>Due</strong> — set a due date on all selected (auto-routes the section per the date → section rules above).</li>
                 <li><strong>Goal</strong> — link all selected to a goal (or clear the link).</li>
                 <li><strong>Project</strong> — link all selected to a project (or clear).</li>
-                <li><strong>Complete</strong> — archive all selected.</li>
-                <li><strong>Delete</strong> — soft-delete all selected. You can restore them from the Recycle Bin page.</li>
+                <li><strong>Status ▾</strong> — Mark complete, Mark cancelled (with one optional reason for all) or Mark active. If any selected task has open subtasks, the question says how many, and they complete or cancel too.</li>
+                <li><strong>Delete</strong> — soft-delete all selected. You can restore them from the Recycle Bin page. Open subtasks of a selected task go with it and come back when you restore it.</li>
             </ul>
 
             <h3>Staged changes (Apply pattern)</h3>
@@ -2494,8 +2505,14 @@ Skip this line (too short)</pre>
                 <strong>Show all</strong>). Each row says when it was
                 deleted and which section it was in.
                 <strong>Restore</strong> puts it back in that section and
-                the row says where it went. A subtask whose parent task is
-                deleted too says so; restore the parent as well to see it.
+                the row says where it went. When you delete a task that
+                has open subtasks, they come here with it but aren't
+                listed on their own: the task's row says
+                <strong>+2 subtasks come back with it</strong>, and
+                Restore brings them back too ("Restored to Today with
+                its 2 subtasks."). A subtask you deleted by itself, whose
+                parent task is deleted too, says so; restore the parent
+                as well to see it.
                 Deleted tasks are kept until you restore them —
                 <strong>Empty Bin</strong> doesn't touch them.
             </p>

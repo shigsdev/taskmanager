@@ -265,6 +265,13 @@ class Task(db.Model):
     planner_ignore: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sql_false()
     )
+    # #433: True on an open subtask that went to the Recycle Bin because its
+    # parent was deleted. Restoring the parent brings back exactly these
+    # (not a subtask deleted on its own); cleared whenever the task leaves
+    # DELETED. See task_service._soft_delete.
+    deleted_with_parent: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sql_false()
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now

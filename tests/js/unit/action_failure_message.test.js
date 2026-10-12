@@ -38,6 +38,14 @@ describe("actionFailureMessage (#430)", () => {
         })).toBe("Completing the tasks: 2 of 3 didn't save. The page now shows what's saved.");
     });
 
+    test("a bulk result names the server's reasons once each (#433)", () => {
+        const why = "2 open subtask(s) — complete them too or close them individually first";
+        expect(actionFailureMessage("Completing the tasks", null, {
+            updated: 1, not_found: [],
+            errors: [{ id: "a", message: why }, { id: "b", message: why }],
+        })).toBe(`Completing the tasks: 2 of 3 didn't save (${why}). The page now shows what's saved.`);
+    });
+
     test("a clean bulk result, or nothing at all, says nothing", () => {
         expect(actionFailureMessage("Moving the tasks", null, { updated: 3, not_found: [], errors: [] }))
             .toBeNull();

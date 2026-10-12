@@ -275,6 +275,8 @@ def bin_summary() -> dict:
     # #428: tasks deleted the ordinary way (no import batch). They are
     # listed in the page's Deleted tasks section and restored one at a
     # time; Empty Bin doesn't touch them, so they stay out of task_count.
+    # #433: a subtask that went to the bin with its parent is listed (and
+    # restored) with that parent, so it isn't counted on its own.
     deleted_task_count = (
         db.session.scalar(
             select(db.func.count())
@@ -282,6 +284,7 @@ def bin_summary() -> dict:
             .where(
                 Task.status == TaskStatus.DELETED,
                 Task.batch_id.is_(None),
+                Task.deleted_with_parent.is_(False),
             )
         )
         or 0

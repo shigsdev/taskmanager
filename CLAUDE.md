@@ -516,6 +516,14 @@ Report.
      far" fail (stub /api/reflection/draft/analyze to 500): you stay on the
      writing view with the text, the reason shows under the buttons, and
      after a reload the draft still holds the text.
+     #433: give a task two subtasks. Select it plus another card, Status ▾ →
+     Mark complete: the question says "1 of them has 2 open subtasks, which
+     will be completed too" and all four end up completed. Delete a parent
+     from its panel: the question names its subtasks, they leave the board,
+     the Recycle Bin shows ONE row "+2 subtasks come back with it", and
+     Restore brings all three back. Deleting a task with no subtasks asks
+     nothing (the quiet case). On /goals, ticking a parent asks first; No
+     leaves it unticked and open.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -651,6 +659,10 @@ Report.
   Double tap: one of each made  PASS          Double tap: one of each made  PASS
   Failed action says so         PASS          Failed action says so         PASS
   Reflection: failed checkpoint keeps draft PASS  Reflection: failed checkpoint keeps draft PASS
+  Subtasks: bulk complete closes them PASS   Subtasks: bulk complete closes them PASS
+  Subtasks: delete + restore with parent PASS Subtasks: delete + restore with parent PASS
+  Subtasks: no-subtask delete quiet PASS     Subtasks: no-subtask delete quiet PASS
+  Goals: tick on a parent asks  PASS          Goals: tick on a parent asks  PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

@@ -109,6 +109,14 @@
             note.textContent = "A subtask — its parent task is deleted too; restore that as well to see it.";
             header.appendChild(note);
         }
+        // #433: the open subtasks deleted with it come back with it.
+        if (row.subtaskCount) {
+            var subNote = document.createElement("div");
+            subNote.className = "recycle-item-counts recycle-item-subtasks";
+            subNote.textContent = "+" + row.subtaskCount +
+                (row.subtaskCount === 1 ? " subtask comes" : " subtasks come") + " back with it";
+            header.appendChild(subNote);
+        }
 
         var actions = document.createElement("div");
         actions.className = "recycle-item-actions";
@@ -132,11 +140,20 @@
             method: "PATCH",
             body: JSON.stringify({ status: "active" }),
         }).then(function (task) {
-            deletedTasks = deletedTasks.filter(function (t) { return t.id !== row.id; });
+            // #433: the subtasks that went with it are back too.
+            deletedTasks = deletedTasks.filter(function (t) {
+                return t.id !== row.id && !(t.deleted_with_parent && t.parent_id === row.id);
+            });
             li.classList.add("recycle-item-restored");
+            // The "come back with it" promise is kept — the status says so.
+            var subNote = li.querySelector(".recycle-item-subtasks");
+            if (subNote) subNote.remove();
             btn.remove();
             statusEl.textContent = "Restored to " +
-                window.recycleBinHelpers.binSectionLabel(task.tier) + ".";
+                window.recycleBinHelpers.binSectionLabel(task.tier) +
+                (row.subtaskCount
+                    ? " with its " + row.subtaskCount + " subtask" + (row.subtaskCount === 1 ? "" : "s")
+                    : "") + ".";
             statusEl.setAttribute("role", "status");
         }).catch(function (err) {
             btn.disabled = false;
