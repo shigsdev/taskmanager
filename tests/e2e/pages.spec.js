@@ -2790,6 +2790,17 @@ test.describe("Reflection - checkpoint without ending the session (#333)", () =>
     });
 });
 
+// #469: type into the reflection box and wait until the debounced autosave
+// PUT has answered OK. A fixed 1600 ms sleep raced it under the parallel
+// gate: the reload landed first and the draft wasn't there yet.
+async function fillAndAwaitDraftSave(page, text) {
+    const saved = page.waitForResponse((r) =>
+        r.url().endsWith("/api/reflection/draft")
+        && r.request().method() === "PUT");
+    await page.locator("#reflText").fill(text);
+    expect((await saved).ok()).toBe(true);
+}
+
 test.describe("Reflection - continuing a past reflection (#334)", () => {
     // No stubbing: continuing is a pure DB copy with no Claude or Whisper
     // call, so the real endpoint runs here and these assert real state.
@@ -2929,8 +2940,7 @@ test.describe("Reflection - continuing a past reflection (#334)", () => {
     test("a plain draft still gets the draft banner", async ({ page }) => {
         // Guards the toggle in the other direction: suppressing the draft
         // banner must depend on the continuation, not happen always.
-        await page.locator("#reflText").fill("An ordinary sitting.");
-        await page.waitForTimeout(1600);
+        await fillAndAwaitDraftSave(page, "An ordinary sitting.");
         await page.reload();
         await page.waitForLoadState("networkidle");
         await expect(page.locator("#reflDraftBanner")).toBeVisible({
@@ -2952,8 +2962,7 @@ test.describe("Reflection - continuing a past reflection (#334)", () => {
         });
         // Type MORE, then check the original again: the fork must not be
         // writing through to the row it came from.
-        await page.locator("#reflText").fill(before + " Plus new thinking.");
-        await page.waitForTimeout(1600);  // outlast the 1200ms autosave debounce
+        await fillAndAwaitDraftSave(page, before + " Plus new thinking.");
         await page.reload();
         await page.waitForLoadState("networkidle");
         expect(await page.locator("#reflHistory .reflection-history-item").count())
@@ -2975,8 +2984,7 @@ test.describe("Reflection - continuing a past reflection (#334)", () => {
             // Drafts are hard-deleted with no recycle bin, and these
             // sittings run for hours — a silent clobber here is the worst
             // thing this feature could do.
-            await page.locator("#reflText").fill("Two hours of thinking.");
-            await page.waitForTimeout(1600);
+            await fillAndAwaitDraftSave(page, "Two hours of thinking.");
             await firstRow(page).evaluate((el) => { el.open = true; });
             let message = "";
             page.once("dialog", (d) => { message = d.message(); d.accept(); });
@@ -3396,8 +3404,7 @@ test.describe("Reflection - files attached to every reflection (#336)", () => {
         // it when the draft is thrown away.
         await attach(page, "plan.txt");
         await keepForever(page, "plan.txt");
-        await page.locator("#reflText").fill("Some words.");
-        await page.waitForTimeout(1600);
+        await fillAndAwaitDraftSave(page, "Some words.");
         // The Discard control lives on the draft banner, which only
         // appears once a draft is RESTORED — typing alone doesn't raise
         // it, so reload to get into the state the user would be in.
