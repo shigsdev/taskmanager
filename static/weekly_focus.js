@@ -30,9 +30,18 @@
         slots: [],          // [{slot_order, text, goal_id, goal_title}]
     };
     // #157 (2026-05-09): tab toggle "This Week" | "Next Week".
-    // 0 = current week, 1 = next week. Drives the GET/PATCH/DELETE
-    // query param on every API call.
+    // 0 = current week, 1 = next week: the tab last asked for.
     var currentWeekOffset = 0;
+    // #441: the week whose slots are on screen. Saves, clears and ✨ Plan
+    // use it, so an edit made while the other tab loads stays in its week.
+    var shownWeekOffset = 0;
+    // #441: bumped each time a week's slots are drawn from a load. A save
+    // answer only updates the screen if it is still the same drawing.
+    var viewSeq = 0;
+    var drawnSeq = -1;     // the viewSeq the slots in the DOM belong to
+    // #441: only the last tab asked for may draw.
+    var loadGuard = window.requestGuardHelpers.createRequestGuard();
+    var H = window.weeklyFocusHelpers;
     // Goals for the optional Goal-link picker. Loaded once on init,
     // independent of app.js's allGoals (which loads async + may not be
     // ready when the panel first renders).
@@ -65,20 +74,10 @@
         var thisWeekTab = document.getElementById("weeklyFocusTabThis");
         var nextWeekTab = document.getElementById("weeklyFocusTabNext");
         if (thisWeekTab) {
-            thisWeekTab.addEventListener("click", function () {
-                if (currentWeekOffset !== 0) {
-                    currentWeekOffset = 0;
-                    loadFocus();
-                }
-            });
+            thisWeekTab.addEventListener("click", function () { _showWeek(0); });
         }
         if (nextWeekTab) {
-            nextWeekTab.addEventListener("click", function () {
-                if (currentWeekOffset !== 1) {
-                    currentWeekOffset = 1;
-                    loadFocus();
-                }
-            });
+            nextWeekTab.addEventListener("click", function () { _showWeek(1); });
         }
 
         modal = document.getElementById("weeklyFocusPlanModal");
@@ -118,42 +117,64 @@
     // they aren't, there are no slots to type into — only a Retry.
     var focusLoaded = false;
 
+    // A tab click. Until the asked-for week answers, the slots on screen
+    // stay the shown week's and still save there (#441).
+    function _showWeek(offset) {
+        if (offset === currentWeekOffset) return;
+        currentWeekOffset = offset;
+        if (focusLoaded && offset === shownWeekOffset) {
+            // Back to the week already drawn: drop the other tab's load.
+            loadGuard.cancel();
+            _refreshTabActive(offset);
+            return;
+        }
+        loadFocus();
+    }
+
     async function loadFocus() {
-        focusLoaded = false;
+        var mine = loadGuard.begin();
+        var offset = currentWeekOffset;
         try {
             var data = await window.apiFetch(
-                "/api/weekly-focus?week_offset=" + currentWeekOffset,
+                "/api/weekly-focus?week_offset=" + offset,
             );
+            if (!loadGuard.isCurrent(mine)) return;  // #441: a newer tab owns it
             state = data;
+            shownWeekOffset = offset;
+            viewSeq += 1;
             focusLoaded = true;
             render();
         } catch (err) {
+            if (!loadGuard.isCurrent(mine)) return;
             console.error("weekly-focus load failed:", err);
             // #440: replace the slots (an earlier week's, or none) so
             // nothing can be typed into the wrong week.
+            focusLoaded = false;
+            _refreshTabActive(offset);
             if (planAllBtn) planAllBtn.disabled = true;
             if (window.loadErrorHelpers) {
                 window.loadErrorHelpers.showLoadError(
                     slotsContainer,
-                    currentWeekOffset ? "next week's focus" : "this week's focus",
+                    offset ? "next week's focus" : "this week's focus",
                     err, loadFocus);
             }
         }
     }
 
-    function _refreshTabActive() {
+    // #441: the highlighted tab is the week drawn (or the one that failed).
+    function _refreshTabActive(offset) {
         var thisTab = document.getElementById("weeklyFocusTabThis");
         var nextTab = document.getElementById("weeklyFocusTabNext");
         if (thisTab) {
-            thisTab.classList.toggle("active", currentWeekOffset === 0);
+            thisTab.classList.toggle("active", offset === 0);
         }
         if (nextTab) {
-            nextTab.classList.toggle("active", currentWeekOffset === 1);
+            nextTab.classList.toggle("active", offset === 1);
         }
     }
 
     function render() {
-        _refreshTabActive();
+        _refreshTabActive(shownWeekOffset);
         // Format the week header.
         if (state.week_start_date) {
             var ws = new Date(state.week_start_date + "T00:00:00");
@@ -175,10 +196,21 @@
             bySlot[state.slots[i].slot_order] = state.slots[i];
         }
 
-        // Render N slots.
-        slotsContainer.innerHTML = "";
-        for (var s = 1; s <= state.slot_count; s++) {
-            slotsContainer.appendChild(renderSlot(s, bySlot[s] || null));
+        // #441: a save's answer updates the slots in place, so typing in
+        // another slot (and its focus) survives. A newly loaded week, or a
+        // changed slot count, draws them afresh.
+        var existing = slotsContainer.querySelectorAll(".weekly-focus-slot");
+        if (drawnSeq === viewSeq && existing.length === state.slot_count) {
+            for (var k = 0; k < existing.length; k++) {
+                var n = Number(existing[k].dataset.slot);
+                updateSlot(existing[k], bySlot[n] || null);
+            }
+        } else {
+            slotsContainer.innerHTML = "";
+            for (var s = 1; s <= state.slot_count; s++) {
+                slotsContainer.appendChild(renderSlot(s, bySlot[s] || null));
+            }
+            drawnSeq = viewSeq;
         }
 
         // "Plan week" is only actionable when at least one slot has text.
@@ -206,6 +238,7 @@
         input.maxLength = 200;
         input.placeholder = "e.g. Ship the auth refresh";
         input.value = row ? row.text : "";
+        input.dataset.synced = input.value;   // #441
         input.addEventListener("blur", function () {
             saveSlot(slotOrder, input.value, _goalSelectValue(wrap));
         });
@@ -222,32 +255,7 @@
         var goalSelect = document.createElement("select");
         goalSelect.className = "weekly-focus-slot-goal";
         goalSelect.title = "Optionally link this focus to a Goal";
-        var blank = document.createElement("option");
-        blank.value = "";
-        blank.textContent = "— No goal link —";
-        goalSelect.appendChild(blank);
-        // Prefer the panel-local goal list (loaded on init); fall back
-        // to app.js's window.allGoals if it happens to be populated.
-        var goals = goalsForPicker.length
-            ? goalsForPicker
-            : ((typeof window.allGoals !== "undefined" && window.allGoals) || []);
-        for (var i = 0; i < goals.length; i++) {
-            var opt = document.createElement("option");
-            opt.value = goals[i].id;
-            opt.textContent = goals[i].title;
-            if (row && row.goal_id === goals[i].id) opt.selected = true;
-            goalSelect.appendChild(opt);
-        }
-        // If allGoals isn't loaded yet AND the row has a goal_id we
-        // don't recognize, surface a stub option so the picker shows
-        // its current goal title.
-        if (row && row.goal_id && !goals.some(function (g) { return g.id === row.goal_id; })) {
-            var stub = document.createElement("option");
-            stub.value = row.goal_id;
-            stub.textContent = row.goal_title || "(linked goal)";
-            stub.selected = true;
-            goalSelect.appendChild(stub);
-        }
+        _fillGoalSelect(goalSelect, row);
         goalSelect.addEventListener("change", function () {
             // Goal change saves immediately (no blur needed — select
             // dispatches change on user pick).
@@ -284,11 +292,69 @@
         clearBtn.title = "Clear this slot";
         clearBtn.disabled = !row;
         clearBtn.addEventListener("click", function () {
-            clearSlot(slotOrder);
+            // #441: empty the box now, so if this slot is still saving the
+            // clear is sent right after (saveSlot reads the box then).
+            input.value = "";
+            planBtn.disabled = true;
+            saveSlot(slotOrder, "", _goalSelectValue(wrap));
         });
         wrap.appendChild(clearBtn);
 
         return wrap;
+    }
+
+    // #441: bring a drawn slot up to date with the server's answer without
+    // replacing it. What the user is typing, or changed and hasn't saved
+    // yet, stays (slotInputValue); so does a picker they have open.
+    function updateSlot(wrap, row) {
+        var input = wrap.querySelector(".weekly-focus-slot-input");
+        var serverText = row ? row.text : "";
+        input.value = H.slotInputValue({
+            value: input.value,
+            synced: input.dataset.synced,
+            serverText: serverText,
+            focused: document.activeElement === input,
+        });
+        if (input.value === serverText) input.dataset.synced = serverText;
+        var goalSelect = wrap.querySelector(".weekly-focus-slot-goal");
+        if (document.activeElement !== goalSelect) _fillGoalSelect(goalSelect, row);
+        wrap.querySelector(".weekly-focus-slot-plan").disabled = !input.value.trim();
+        wrap.querySelector(".weekly-focus-slot-clear").disabled = !row;
+    }
+
+    function _fillGoalSelect(goalSelect, row) {
+        goalSelect.replaceChildren();
+        var blank = document.createElement("option");
+        blank.value = "";
+        blank.textContent = "— No goal link —";
+        goalSelect.appendChild(blank);
+        // Prefer the panel-local goal list (loaded on init); fall back
+        // to app.js's window.allGoals if it happens to be populated.
+        var goals = goalsForPicker.length
+            ? goalsForPicker
+            : ((typeof window.allGoals !== "undefined" && window.allGoals) || []);
+        for (var i = 0; i < goals.length; i++) {
+            var opt = document.createElement("option");
+            opt.value = goals[i].id;
+            opt.textContent = goals[i].title;
+            if (row && row.goal_id === goals[i].id) opt.selected = true;
+            goalSelect.appendChild(opt);
+        }
+        // If allGoals isn't loaded yet AND the row has a goal_id we
+        // don't recognize, surface a stub option so the picker shows
+        // its current goal title.
+        if (row && row.goal_id && !goals.some(function (g) { return g.id === row.goal_id; })) {
+            var stub = document.createElement("option");
+            stub.value = row.goal_id;
+            stub.textContent = row.goal_title || "(linked goal)";
+            stub.selected = true;
+            goalSelect.appendChild(stub);
+        }
+    }
+
+    function _slotWrap(slotOrder) {
+        return slotsContainer.querySelector(
+            '.weekly-focus-slot[data-slot="' + slotOrder + '"]');
     }
 
     function _goalSelectValue(wrap) {
@@ -305,52 +371,74 @@
 
     // ---- Write ----
 
-    var _saveInflight = {};   // slotOrder → bool (debounce duplicate saves)
+    // "<week>:<slot>" → true while that slot's write is in flight, and
+    // → true in _saveAgain when it changed again meanwhile (#441).
+    var _saveInflight = {};
+    var _saveAgain = {};
 
-    async function saveSlot(slotOrder, text, goalId) {
-        text = (text || "").trim();
-        if (!text) {
-            // Empty text → if the slot had content, clear it.
-            // Otherwise no-op (don't fire a delete on a never-touched slot).
-            var existing = state.slots.find(function (s) { return s.slot_order === slotOrder; });
-            if (existing) {
-                await clearSlot(slotOrder);
-            }
-            return;
-        }
-        if (_saveInflight[slotOrder]) return;
-        _saveInflight[slotOrder] = true;
-        try {
-            var fresh = await window.apiFetch(
-                "/api/weekly-focus/" + slotOrder
-                + "?week_offset=" + currentWeekOffset,
-                {
-                    method: "PATCH",
-                    body: JSON.stringify({ text: text, goal_id: goalId }),
-                }
-            );
-            state = fresh;
-            render();
-        } catch (err) {
-            console.error("weekly-focus save failed:", err);
-            alert("Save failed: " + (err.message || err));
-        } finally {
-            _saveInflight[slotOrder] = false;
-        }
+    function _savedRow(slotOrder) {
+        return state.slots.find(function (s) { return s.slot_order === slotOrder; }) || null;
     }
 
-    async function clearSlot(slotOrder) {
+    // Blur / goal pick / ✕: send what changed (PATCH), clear an emptied
+    // slot (DELETE), or nothing at all (#441: a plain blur used to PATCH).
+    function saveSlot(slotOrder, text, goalId) {
+        var key = shownWeekOffset + ":" + slotOrder;
+        if (_saveInflight[key]) {
+            // #441: it used to be dropped. Sent once the first one answers.
+            _saveAgain[key] = true;
+            return;
+        }
+        text = (text || "").trim();
+        var need = H.slotNeedsSave(_savedRow(slotOrder), text, goalId);
+        if (need === "none") return;
+        return _writeSlot(slotOrder, need === "clear"
+            ? { method: "DELETE" }
+            : { method: "PATCH", body: JSON.stringify({ text: text, goal_id: goalId }) });
+    }
+
+    async function _writeSlot(slotOrder, opts) {
+        // #441: the week the user edited, not the tab clicked since; and
+        // its answer only draws if those slots are still the ones showing.
+        var offset = shownWeekOffset;
+        var seq = viewSeq;
+        var key = offset + ":" + slotOrder;
+        var wrap = _slotWrap(slotOrder);
+        var input = wrap ? wrap.querySelector(".weekly-focus-slot-input") : null;
+        if (input) input.dataset.synced = input.value;
+        _saveInflight[key] = true;
         try {
+            // Both answers carry the week's display payload.
             var fresh = await window.apiFetch(
-                "/api/weekly-focus/" + slotOrder
-                + "?week_offset=" + currentWeekOffset,
-                { method: "DELETE" }
-            );
-            // DELETE response includes the same display payload.
-            state = fresh;
-            render();
+                "/api/weekly-focus/" + slotOrder + "?week_offset=" + offset, opts);
+            if (seq === viewSeq) {
+                state = fresh;
+                render();
+            }
         } catch (err) {
-            console.error("weekly-focus clear failed:", err);
+            console.error("weekly-focus save failed:", err);
+            if (input && seq === viewSeq) {
+                // Not saved: the box keeps the edit as unsaved, so the next
+                // blur tries again. An emptied (✕) box shows what's saved.
+                var saved = _savedRow(slotOrder);
+                input.dataset.synced = saved ? saved.text : "";
+                if (opts.method === "DELETE" && !input.value) {
+                    input.value = input.dataset.synced;
+                    render();
+                }
+            }
+            if (opts.method === "PATCH") alert("Save failed: " + (err.message || err));
+        } finally {
+            _saveInflight[key] = false;
+            if (_saveAgain[key]) {
+                _saveAgain[key] = false;
+                var again = seq === viewSeq ? _slotWrap(slotOrder) : null;
+                var box = again ? again.querySelector(".weekly-focus-slot-input") : null;
+                // Still typing there: its own blur will save.
+                if (box && document.activeElement !== box) {
+                    saveSlot(slotOrder, box.value, _goalSelectValue(again));
+                }
+            }
         }
     }
 
@@ -360,7 +448,7 @@
         // #429: returned so the ✨ Plan button stays guarded until it answers.
         return _runPlan(
             "/api/weekly-focus/" + slotOrder + "/plan"
-            + "?week_offset=" + currentWeekOffset,
+            + "?week_offset=" + shownWeekOffset,
             focusText
         );
     }
@@ -371,12 +459,12 @@
             .filter(function (r) { return r && r.text && r.text.trim(); })
             .map(function (r) { return r.text.trim(); });
         if (texts.length === 0) return;
-        var when = currentWeekOffset === 1 ? "next week" : "this week";
+        var when = shownWeekOffset === 1 ? "next week" : "this week";
         var label = texts.length === 1
             ? texts[0]
             : (texts.length + " focus statements " + when);
         return _runPlan(
-            "/api/weekly-focus/plan-all?week_offset=" + currentWeekOffset,
+            "/api/weekly-focus/plan-all?week_offset=" + shownWeekOffset,
             label
         );
     }

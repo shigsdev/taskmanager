@@ -9698,3 +9698,212 @@ test.describe("A failed first load says so, with a Retry (#440)", () => {
             .toContainText("Couldn't load the overview.");
     });
 });
+
+// #441: siblings of #418. A late answer must never draw into a screen that
+// has moved on: another week of the focus, another task or goal in a panel.
+test.describe("Late answers stay out of what's on screen now (#441)", () => {
+    const hold = () => {
+        let release;
+        const gate = new Promise((res) => { release = res; });
+        return { gate, release };
+    };
+    const week = (offset, slots) => ({
+        slot_count: 3, week_offset: offset, fallback_from: null,
+        week_start_date: offset ? "2026-10-19" : "2026-10-12",
+        slots: slots.map(([n, text]) => ({ slot_order: n, text, goal_id: null, goal_title: null })),
+    });
+    const slotInput = (page, n) => page.locator(`.weekly-focus-slot[data-slot="${n}"] input`);
+
+    test("focus: a This Week save answering after the switch leaves Next Week showing", async ({ page }) => {
+        await page.route("**/api/weekly-focus?week_offset=0", (r) =>
+            r.fulfill({ json: week(0, [[1, "E2E 441 this one"]]) }));
+        await page.route("**/api/weekly-focus?week_offset=1", (r) =>
+            r.fulfill({ json: week(1, [[1, "E2E 441 next one"]]) }));
+        const patch = hold();
+        const patched = [];
+        await page.route("**/api/weekly-focus/2?*", async (r) => {
+            patched.push(r.request().url());
+            await patch.gate;
+            await r.fulfill({ json: week(0, [[1, "E2E 441 this one"], [2, "E2E 441 typed"]]) });
+        });
+        await page.goto("/?nosw=1");
+        await expect(slotInput(page, 1)).toHaveValue("E2E 441 this one");
+        await slotInput(page, 2).fill("E2E 441 typed");
+        await page.click("#weeklyFocusTabNext");   // blurs slot 2: its save starts
+        await expect(slotInput(page, 1)).toHaveValue("E2E 441 next one");
+        expect(patched.length).toBe(1);
+        expect(patched[0]).toContain("week_offset=0");
+        patch.release();
+        await page.waitForResponse("**/api/weekly-focus/2?*");
+        await page.waitForTimeout(300);
+        await expect(slotInput(page, 1)).toHaveValue("E2E 441 next one");
+        await expect(slotInput(page, 2)).toHaveValue("");
+        await expect(page.locator("#weeklyFocusTabNext")).toHaveClass(/active/);
+    });
+
+    test("focus: quick tab clicks show the last tab, and typing mid-switch saves to its own week", async ({ page }) => {
+        await page.route("**/api/weekly-focus?week_offset=0", (r) =>
+            r.fulfill({ json: week(0, [[1, "E2E 441 this one"]]) }));
+        const next = hold();
+        await page.route("**/api/weekly-focus?week_offset=1", async (r) => {
+            await next.gate;
+            await r.fulfill({ json: week(1, [[1, "E2E 441 next one"]]) });
+        });
+        const patched = [];
+        await page.route("**/api/weekly-focus/2?*", (r) => {
+            patched.push(r.request().url());
+            return r.fulfill({ json: week(0, [[1, "E2E 441 this one"], [2, "E2E 441 mid-switch"]]) });
+        });
+        await page.goto("/?nosw=1");
+        await expect(slotInput(page, 1)).toHaveValue("E2E 441 this one");
+        await page.click("#weeklyFocusTabNext");    // held
+        // This Week's slots are still the ones showing: an edit is this week's.
+        await slotInput(page, 2).fill("E2E 441 mid-switch");
+        await slotInput(page, 2).press("Enter");
+        await expect.poll(() => patched.length).toBe(1);
+        expect(patched[0]).toContain("week_offset=0");
+        await page.click("#weeklyFocusTabThis");
+        await expect(page.locator("#weeklyFocusTabThis")).toHaveClass(/active/);
+        next.release();
+        await page.waitForResponse("**/api/weekly-focus?week_offset=1");
+        await page.waitForTimeout(300);
+        await expect(slotInput(page, 1)).toHaveValue("E2E 441 this one");
+        await expect(page.locator("#weeklyFocusTabThis")).toHaveClass(/active/);
+        await expect(page.locator("#weeklyFocusTabNext")).not.toHaveClass(/active/);
+    });
+
+    test("focus: a save answering keeps what's being typed in the next slot", async ({ page }) => {
+        await page.route("**/api/weekly-focus?week_offset=0", (r) =>
+            r.fulfill({ json: week(0, [[1, "E2E 441 one"]]) }));
+        const patch = hold();
+        let patches = 0;
+        await page.route("**/api/weekly-focus/1?*", async (r) => {
+            patches += 1;
+            await patch.gate;
+            await r.fulfill({ json: week(0, [[1, "E2E 441 one edited"]]) });
+        });
+        await page.goto("/?nosw=1");
+        await expect(slotInput(page, 1)).toHaveValue("E2E 441 one");
+        // A blur with nothing changed sends nothing.
+        await slotInput(page, 1).click();
+        await slotInput(page, 2).click();
+        await page.waitForTimeout(200);
+        expect(patches).toBe(0);
+        await slotInput(page, 1).fill("E2E 441 one edited");
+        await slotInput(page, 2).click();            // slot 1's save starts
+        await page.keyboard.type("E2E 441 two typ");
+        patch.release();
+        await page.waitForResponse("**/api/weekly-focus/1?*");
+        await page.waitForTimeout(300);
+        await expect(slotInput(page, 2)).toHaveValue("E2E 441 two typ");
+        await expect(slotInput(page, 2)).toBeFocused();
+        await expect(slotInput(page, 1)).toHaveValue("E2E 441 one edited");
+        expect(patches).toBe(1);
+    });
+
+    // A real active task as a template for the fake ones the panel opens.
+    async function fakeTasks(page, ids) {
+        return page.evaluate(async (ids) => {
+            const all = await fetch("/api/tasks").then((r) => r.json());
+            const base = all.find((t) => !t.parent_id && !t.subtask_count);
+            return ids.map((id) => Object.assign({}, base, {
+                id, title: "E2E " + id, parent_id: null, subtask_count: 0, repeat: null,
+            }));
+        }, ids);
+    }
+
+    test("task panel: A's late subtask list never shows in B's panel", async ({ page }) => {
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const [a, b] = await fakeTasks(page, ["e2e-441-a", "e2e-441-b"]);
+        const subA = hold();
+        const sub = (id, title) => ({ id, title, tier: "today", status: "active" });
+        await page.route("**/api/tasks/e2e-441-a/subtasks", async (r) => {
+            await subA.gate;
+            await r.fulfill({ json: [sub("e2e-441-a1", "E2E 441 subtask of A")] });
+        });
+        await page.route("**/api/tasks/e2e-441-b/subtasks", (r) =>
+            r.fulfill({ json: [sub("e2e-441-b1", "E2E 441 subtask of B")] }));
+        await page.evaluate((t) => window.taskDetailOpen(t), a);
+        await page.evaluate(() => window.taskDetailClose());
+        await page.evaluate((t) => window.taskDetailOpen(t), b);
+        await expect(page.locator("#subtaskItems")).toContainText("E2E 441 subtask of B");
+        subA.release();
+        await page.waitForResponse("**/api/tasks/e2e-441-a/subtasks");
+        await page.waitForTimeout(300);
+        await expect(page.locator("#subtaskItems .subtask-row")).toHaveCount(1);
+        await expect(page.locator("#subtaskItems")).not.toContainText("subtask of A");
+    });
+
+    test("goal panel: a tick answering after another goal opened leaves that goal's list", async ({ page }) => {
+        await page.goto("/goals?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const pick = await page.evaluate(() => {
+            const a = goalsData.find((g) =>
+                (goalTasks[g.id] || []).some((t) => !t.subtask_count));
+            if (!a) return null;
+            const b = goalsData.find((g) => g.id !== a.id
+                && (goalTasks[g.id] || []).length !== goalTasks[a.id].length);
+            const task = goalTasks[a.id].find((t) => !t.subtask_count);
+            return b ? { a: a.id, b: b.id, task: task.id } : null;
+        });
+        expect(pick).not.toBeNull();
+        const tick = hold();
+        await page.route(`**/api/tasks/${pick.task}`, async (r) => {
+            if (r.request().method() !== "PATCH") return r.fallback();
+            await tick.gate;
+            await r.fulfill({ json: {} });   // nothing really completes
+        });
+        await page.evaluate((id) => goalDetailOpen(goalsData.find((g) => g.id === id)), pick.a);
+        await page.locator(`#linkedTasksList [data-task-id="${pick.task}"] input[type=checkbox]`).check();
+        await page.evaluate(() => goalDetailClose());
+        await page.evaluate((id) => goalDetailOpen(goalsData.find((g) => g.id === id)), pick.b);
+        const bList = await page.locator("#linkedTasksList").innerText();
+        const bCount = await page.locator("#linkedTaskCount").innerText();
+        tick.release();
+        await page.waitForResponse(`**/api/tasks/${pick.task}`);
+        await page.waitForLoadState("networkidle");
+        await page.waitForTimeout(300);
+        await expect(page.locator("#goalId")).toHaveValue(pick.b);
+        await expect(page.locator(`#linkedTasksList [data-task-id="${pick.task}"]`)).toHaveCount(0);
+        expect(await page.locator("#linkedTaskCount").innerText()).toBe(bCount);
+        expect(await page.locator("#linkedTasksList").innerText()).toBe(bList);
+    });
+
+    test("recurring preview: a late answer never replaces the task opened meanwhile", async ({ page }) => {
+        const d = new Date();
+        d.setDate(d.getDate() + (((8 - d.getDay()) % 7) || 7));   // next Monday
+        const pad = (n) => String(n).padStart(2, "0");
+        const fire = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        await page.route("**/api/recurring/previews**", (r) => r.fulfill({ json: [{
+            template_id: "e2e-441-tmpl", title: "E2E 441 preview", frequency: "weekly",
+            type: "work", fire_date: fire, project_id: null, goal_id: null,
+        }] }));
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const [spawn, other] = await fakeTasks(page, ["e2e-441-spawn", "e2e-441-other"]);
+        spawn.repeat = { template_id: "e2e-441-tmpl", frequency: "weekly", day_of_week: 0 };
+        const all = hold();
+        await page.route("**/api/tasks?status=all", async (r) => {
+            await all.gate;
+            await r.fulfill({ json: [spawn] });
+        });
+        const dialogs = [];
+        page.on("dialog", (dl) => { dialogs.push(dl.message()); dl.dismiss().catch(() => {}); });
+        await page.locator('.preview-card[data-template-id="e2e-441-tmpl"]').click();
+        await page.evaluate((t) => window.taskDetailOpen(t), other);
+        await expect(page.locator("#detailTitle")).toHaveValue("E2E e2e-441-other");
+        all.release();
+        await page.waitForResponse("**/api/tasks?status=all");
+        await page.waitForTimeout(300);
+        await expect(page.locator("#detailTitle")).toHaveValue("E2E e2e-441-other");
+        expect(dialogs).toEqual([]);
+
+        // The quiet case: a click with nothing else opened still opens the spawn.
+        await page.evaluate(() => window.taskDetailClose());
+        await page.unroute("**/api/tasks?status=all");
+        await page.route("**/api/tasks?status=all", (r) => r.fulfill({ json: [spawn] }));
+        await page.locator('.preview-card[data-template-id="e2e-441-tmpl"]').click();
+        await expect(page.locator("#detailTitle")).toHaveValue("E2E e2e-441-spawn");
+    });
+});

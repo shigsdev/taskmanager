@@ -51,6 +51,9 @@
     {# #440: "Couldn't load — Retry" instead of a blank page or an empty
        state that reads like real data. Used by most pages' first load. #}
     <script src="{{ url_for('static', filename='load_error_helpers.js') }}"></script>
+    {# #418/#441: drop an async answer whose screen has moved on (✨ Plan,
+       the task panel's subtask and parent lists, recurring previews). #}
+    <script src="{{ url_for('static', filename='request_guard_helpers.js') }}"></script>
     {# #381: Escape closes the top-most side panel (.detail-overlay) via its
        [data-panel-close] ✕, and Tab stays inside it. One document listener;
        a no-op on pages with no panel open. #}

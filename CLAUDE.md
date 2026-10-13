@@ -550,6 +550,16 @@ Report.
      into, New Goal / New Project panels open AND close, a failed calendar
      refresh keeps what was drawn, and Retry (once the server answers) draws
      the real page. The quiet case: a normal load shows no message anywhere.
+     #441: slow the server's answers (fetch override with a delay). In the
+     Focus panel edit slot 1, click into slot 2 and keep typing while slot 1
+     saves — slot 2 keeps its text and focus. Edit a slot and click Next Week
+     at once — Next Week stays showing and the edit lands in This Week.
+     Open a task with subtasks, close it, open another before its list
+     answers — no foreign subtasks. On /goals tick a linked task, close,
+     open another goal before it answers — that goal's own list stays.
+     Click a recurring preview card, open another task before it answers —
+     the other task stays open, no alert. The quiet cases: a plain save,
+     a plain preview click, a plain tick all still work.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -696,6 +706,10 @@ Report.
   Help: nightly re-sort section PASS          Help: nightly re-sort section PASS
   Help: digest catch-up line    PASS          Help: digest catch-up line    PASS
   Failed load: message + Retry  PASS          Failed load: message + Retry  PASS
+  Focus: typing survives a save PASS          Focus: typing survives a save PASS
+  Focus: late save, other week  PASS          Focus: late save, other week  PASS
+  Panels: late list stays out   PASS          Panels: late list stays out   PASS
+  Preview: late click dropped   PASS          Preview: late click dropped   PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

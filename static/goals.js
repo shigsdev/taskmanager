@@ -470,6 +470,9 @@ function goalLinkedTaskRow(task, goalId) {
 }
 
 function goalRenderLinkedTasks(goalId) {
+    // #441: a tick or an add re-renders after its await; by then another
+    // goal may be open, and this goal's tasks must not paint into it.
+    if (document.getElementById("goalId").value !== goalId) return;
     const helpers = window.completedTasksHelpers;
     const list = document.getElementById("linkedTasksList");
     const countEl = document.getElementById("linkedTaskCount");

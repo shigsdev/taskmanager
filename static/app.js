@@ -532,6 +532,11 @@ function _frequencyLabel(freq) {
 // template), we show an informational alert explaining it'll first
 // spawn on fire_date.
 async function _openPreviewTemplate(preview) {
+    // #441: the lookup below fetches every task, so it can answer after
+    // the user has opened something else (or clicked another preview).
+    // Then the answer is dropped instead of replacing that panel.
+    const mine = _previewOpenGuard.begin();
+    const openedBefore = _detailOpenCount;
     let recentTask = null;
     try {
         // Ask the API for any task tied to this template, newest first.
@@ -554,6 +559,7 @@ async function _openPreviewTemplate(preview) {
     } catch (err) {
         console.warn("Could not look up recent spawn:", err);
     }
+    if (!_previewOpenGuard.isCurrent(mine) || _detailOpenCount !== openedBefore) return;
     if (recentTask) {
         taskDetailOpen(recentTask);
     } else {
@@ -2620,6 +2626,15 @@ function setupDetailPanel() {
 // and the snapshot lifetime is the same as the panel's.
 let _detailOpenSnapshot = null;
 
+// #441: the panel's async lists answer late. Each load takes a token from
+// its guard; opening or closing the panel cancels both, so a list never
+// lands in a task other than the one that asked. _detailOpenCount lets a
+// recurring preview click see that another panel opened meanwhile.
+const _subtaskLoadGuard = window.requestGuardHelpers.createRequestGuard();
+const _parentLinkGuard = window.requestGuardHelpers.createRequestGuard();
+const _previewOpenGuard = window.requestGuardHelpers.createRequestGuard();
+let _detailOpenCount = 0;
+
 // #269 (2026-05-31): toggle the detail panel between "edit existing" and
 // "create new" mode. In create mode there's no task yet, so the controls
 // that act on an existing row (Complete / Copy / Cancel / Delete), the
@@ -2675,6 +2690,9 @@ function taskDetailOpenNew(prefillTitle, prefillType, prefillDue) {
 
 function taskDetailOpen(task) {
     _taskDetailRememberOpener();   // #377 — before the overlay shows
+    _detailOpenCount += 1;         // #441
+    _subtaskLoadGuard.cancel();
+    _parentLinkGuard.cancel();
     // Capture a deep copy so subsequent allTasks reloads can't mutate
     // it under us. JSON round-trip is safe — the API serializer's
     // shape is plain JSON-compatible (strings, numbers, arrays of
@@ -2875,6 +2893,8 @@ function taskDetailProjectChanged(projectId) {
 
 function taskDetailClose() {
     document.getElementById("detailOverlay").style.display = "none";
+    _subtaskLoadGuard.cancel();    // #441
+    _parentLinkGuard.cancel();
     _taskDetailRestoreFocus();
 }
 
@@ -3391,6 +3411,7 @@ async function taskDetailPopulateParentLink(parentId) {
     const body = document.getElementById("parentLinkBody");
     if (!body) return;
     body.innerHTML = "";  // clear before populate
+    const mine = _parentLinkGuard.begin();   // #441
 
     let parent = allTasks.find((t) => t.id === parentId);
     if (!parent) {
@@ -3398,9 +3419,11 @@ async function taskDetailPopulateParentLink(parentId) {
         try {
             parent = await apiFetch(`${API}/${parentId}`);
         } catch {
-            body.textContent = "Parent task not found.";
+            if (_parentLinkGuard.isCurrent(mine)) body.textContent = "Parent task not found.";
             return;
         }
+        // #441: another task opened meanwhile — its link, not this one.
+        if (!_parentLinkGuard.isCurrent(mine)) return;
     }
 
     const link = document.createElement("a");
@@ -3434,13 +3457,20 @@ async function taskDetailPopulateParentLink(parentId) {
 
 async function taskDetailLoadSubtasks(parentId) {
     const list = document.getElementById("subtaskItems");
-    list.innerHTML = "";
+    // #441: a tick's reload after another task opened is not this panel's.
+    if (document.getElementById("detailId").value !== parentId) return;
+    const mine = _subtaskLoadGuard.begin();
     let subtasks;
     try {
         subtasks = await apiFetch(`${API}/${parentId}/subtasks`);
     } catch {
         return;
     }
+    // #441: only the newest load for the task still open draws, and it
+    // clears just before drawing — two quick ticks used to list every
+    // row twice.
+    if (!_subtaskLoadGuard.isCurrent(mine)) return;
+    list.innerHTML = "";
     for (const sub of subtasks) {
         const row = document.createElement("div");
         row.className = "subtask-row";

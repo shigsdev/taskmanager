@@ -983,6 +983,17 @@ listeners before loading; the board isn't drawn until `/api/tasks` has
 answered once (`tasksLoaded`); a failed /calendar refresh keeps what was
 drawn; the weekly Focus panel draws slots only from a loaded week.
 
+**Late answers (#418, #441).** An async answer only draws if its screen
+still shows what asked for it — `static/request_guard_helpers.js`
+(`createRequestGuard`: begin / isCurrent / cancel, loaded globally from
+base.html). ✨ Plan's dialog, the task panel's subtask and parent-link
+lists (cancelled on every panel open/close), a recurring preview click
+(dropped if another panel opened meanwhile) and the weekly Focus tabs
+(the last tab asked for wins) use it; the goal panel's linked list
+re-checks the open goal id. The Focus slots update in place after a
+save (`static/weekly_focus_helpers.js`), so typing and focus in another
+slot survive, and a save goes to the week whose slots were edited.
+
 **One scheduler per container, and it survives a worker kill (#439).**
 `gunicorn.conf.py` `post_worker_init` starts the scheduler in whichever
 worker wins an exclusive file lock (`scheduler_lock.try_acquire`, in the
