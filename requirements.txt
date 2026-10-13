@@ -11,6 +11,7 @@ cryptography==50.0.0
 flask-limiter==4.1.1
 python-docx==1.1.2
 apscheduler==3.10.4
+tzdata==2026.3  # #439: zoneinfo data, pinned — was only a transitive dep
 # Direct outbound HTTP from scan_service + voice_service. Was previously
 # transitive via flask-dance; declare explicitly so a future transitive
 # change can't silently break the app at boot.

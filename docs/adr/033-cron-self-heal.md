@@ -172,3 +172,9 @@ own observable side effects (rows updated) are preserved.
   liveness probe. `cron_audit` complements it: heartbeat proves
   the scheduler is alive *now*; `cron_audit` proves each nightly
   job has fired today.
+
+> **Amended 2026-10-12 (#439):** "worker 1" now means "the worker holding
+> the scheduler lock" (`scheduler_lock.try_acquire` in
+> `gunicorn.conf.py` `post_worker_init`). Still exactly one per container,
+> so the no-race reasoning above holds; a replacement worker now takes the
+> scheduler over instead of leaving it stopped until the next deploy.

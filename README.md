@@ -427,7 +427,7 @@ items don't promote, etc.
 #### Auto-heal at container boot (default — #167, no manual action required)
 
 As of 2026-05-28, the scheduler self-heals at container boot. After
-`scheduler.start()` runs in worker 1, a `replay_missed()` loop walks
+`scheduler.start()` runs in the scheduler worker, a `replay_missed()` loop walks
 every nightly job and replays any whose `cron_audit.last_fire_at`
 predates today's scheduled time. So when Railway recovers from a
 midnight outage, the four nightly crons run automatically inside

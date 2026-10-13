@@ -540,6 +540,8 @@ Report.
      Apply again creates nothing twice, and History reads "◐ partly applied".
      #438: Help → Sections shows "Nightly re-sort and the new week" at both
      widths (the rules themselves are cron behavior, covered by pytest).
+     #439: Help → Email digest lists the up-to-3-hours catch-up line at both
+     widths (the scheduler lock and catch-up are covered by pytest).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -684,6 +686,7 @@ Report.
   Plan: dateless move keeps date PASS         Plan: dateless move keeps date PASS
   Reflection: partial apply retry PASS        Reflection: partial apply retry PASS
   Help: nightly re-sort section PASS          Help: nightly re-sort section PASS
+  Help: digest catch-up line    PASS          Help: digest catch-up line    PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

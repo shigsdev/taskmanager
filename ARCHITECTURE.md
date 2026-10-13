@@ -974,8 +974,20 @@ commit — the check will fail otherwise.
 - `scheduler_heartbeat` — every 45s, proves scheduler is alive
   so non-scheduler gunicorn workers can read the heartbeat JSON
 
+**One scheduler per container, and it survives a worker kill (#439).**
+`gunicorn.conf.py` `post_worker_init` starts the scheduler in whichever
+worker wins an exclusive file lock (`scheduler_lock.try_acquire`, in the
+temp dir). The OS releases it when that worker exits, so the replacement
+for a killed worker takes over at boot; a second live worker never gets
+it. (It used to be "worker age 1", which a replacement never is.) Every
+job has a 1-hour misfire grace with coalescing, and at scheduler start
+`_digest_catch_up` sends today's digest if its time passed within the
+last 3 hours with no attempt recorded (`digest_service.should_catch_up`).
+`tzdata` is pinned; if `DIGEST_TZ` still can't load, `utils` logs an ERROR
+once and uses the server clock.
+
 **Resilience: missed-fire replay at startup (#167).** After
-`scheduler.start()` in worker 1, the boot path calls
+`scheduler.start()` in the scheduler worker, the boot path calls
 `cron_audit_service.replay_missed()` which walks
 `cron_jobs.JOB_ORDER` and re-runs any nightly cron whose
 `cron_audit.last_fire_at` predates today's scheduled fire. Closes

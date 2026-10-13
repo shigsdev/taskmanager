@@ -35,8 +35,8 @@ logging chain so they land in ``app_logs`` via ``DBLogHandler`` and
 surface on ``/api/debug/logs`` alongside real scheduler firings.
 
 The replay loop is gated to **scheduler-worker-only** (called from
-``_start_digest_scheduler`` which itself only runs in worker 1 via
-APScheduler's ``post_worker_init`` hook). Other gunicorn workers
+``_start_digest_scheduler`` which itself only runs in the one gunicorn
+worker holding the scheduler lock — ``post_worker_init``, #439). Other gunicorn workers
 never trigger replay → no multi-worker race.
 """
 from __future__ import annotations

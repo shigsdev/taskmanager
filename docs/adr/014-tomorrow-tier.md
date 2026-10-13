@@ -156,3 +156,9 @@ captured by the tier choice; the `due_date` is orthogonal metadata.
   function moves 1 task end-to-end, digest preview shows
   "TOMORROW: 2 tasks". Mobile (375x812) clean, no overflow, no
   console errors.
+
+> **Amended 2026-10-12 (#439):** the scheduler no longer lives in
+> "worker 1" (gunicorn `age == 1`). The worker holding an exclusive file
+> lock runs it (`scheduler_lock.py`), so the replacement for a killed
+> worker takes over; and a missed midnight roll is replayed at boot by
+> `cron_audit_service.replay_missed` (#167).

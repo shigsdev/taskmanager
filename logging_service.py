@@ -502,7 +502,8 @@ def configure_logging(app: Flask) -> DBLogHandler | None:
     # ``gunicorn.conf.py``, the master process imports ``app:app`` which
     # runs ``app = create_app()`` at module load → ``configure_logging()``
     # attaches DBLogHandler #1 to root. Workers fork inheriting #1. Then
-    # ``post_worker_init`` calls ``create_app()`` a SECOND time in worker 1
+    # ``post_worker_init`` calls ``create_app()`` a SECOND time in the
+    # scheduler worker (#439: the one holding the scheduler lock)
     # → ``configure_logging()`` would attach DBLogHandler #2. Every
     # subsequent ``logger.warning(...)`` would emit through BOTH handlers,
     # doubling every row in ``app_logs``.

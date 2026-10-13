@@ -2672,6 +2672,7 @@ Skip this line (too short)</pre>
                 <li>Time: <code>DIGEST_TIME</code> env var, default <strong>07:00</strong>.</li>
                 <li>Timezone: <code>DIGEST_TZ</code> env var, default <strong>America/New_York</strong>.</li>
                 <li>Recipient: <code>DIGEST_TO_EMAIL</code> env var. No digest is sent if this is unset.</li>
+                <li>If the app was restarting at the digest time (a deploy, say), the digest is sent as soon as it's back — up to 3 hours late. Later than that, that day's digest is skipped.</li>
             </ul>
 
             <h3>What's in it</h3>

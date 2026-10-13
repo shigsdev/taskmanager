@@ -849,7 +849,13 @@ def _start_digest_scheduler(app: Flask) -> None:
                     status="fail", error=f"{type(e).__name__}: {e}"
                 )
 
-    scheduler = BackgroundScheduler(timezone=tz)
+    # #439: APScheduler's default misfire grace is 1 second — a fire that
+    # starts late (busy executor, a container waking up) was dropped.
+    # An hour's grace, run once however many fires were missed.
+    scheduler = BackgroundScheduler(
+        timezone=tz,
+        job_defaults={"misfire_grace_time": 3600, "coalesce": True},
+    )
     scheduler.add_job(
         _send_scheduled_digest,
         "cron",
@@ -935,7 +941,8 @@ def _start_digest_scheduler(app: Flask) -> None:
         )
 
     # Heartbeat job. Gunicorn runs multiple workers but post_worker_init
-    # only starts the scheduler in worker 1 (to avoid duplicate emails),
+    # only starts the scheduler in one worker — the holder of the #439
+    # scheduler lock (to avoid duplicate emails),
     # so health._scheduler is None in the other workers and /healthz
     # would randomly return "warn: scheduler not registered" depending
     # on which worker the probe hit. The heartbeat job writes a small
@@ -974,7 +981,7 @@ def _start_digest_scheduler(app: Flask) -> None:
     # fire predates today's scheduled time. Wrapped in try/except so
     # a replay failure can NEVER block the scheduler from coming up
     # and serving normal traffic / the real cron fires later today.
-    # Only fires in worker 1 (the same worker that owns `scheduler`),
+    # Only fires in the scheduler worker (the one that owns `scheduler`),
     # so there's no multi-worker race.
     try:
         with app.app_context():
@@ -996,6 +1003,44 @@ def _start_digest_scheduler(app: Flask) -> None:
             type(exc).__name__, exc,
             exc_info=True,
         )
+
+    # #439: a deploy or restart across the digest time meant no scheduler
+    # at 07:00, and that day's digest was skipped (the nightly crons have
+    # the replay above; the digest had nothing). Tests drive this through
+    # _digest_catch_up directly with a fixed "now".
+    if not app.config.get("TESTING"):
+        _digest_catch_up(app, _send_scheduled_digest, hour, minute, tz)
+
+
+def _digest_catch_up(app: Flask, send, hour: int, minute: int, tz: str,
+                     now=None) -> bool:
+    """#439: send today's digest now if its time passed within the catch-up
+    window and nothing was attempted since (``digest_service.should_catch_up``).
+    Never raises — a catch-up failure must not stop the scheduler.
+    """
+    import logging as _logging
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo
+
+    _log = _logging.getLogger(__name__)
+    try:
+        from digest_service import get_last_send_result, should_catch_up
+
+        now = now or _dt.now(ZoneInfo(tz))
+        with app.app_context():
+            last = get_last_send_result()
+        if not should_catch_up(now, hour, minute, last):
+            return False
+        _log.warning(
+            "digest: today's %02d:%02d send was missed (scheduler not running "
+            "then) — sending now", hour, minute,
+        )
+        send()
+        return True
+    except Exception as exc:  # noqa: BLE001
+        _log.error("digest catch-up FAILED: %s: %s", type(exc).__name__, exc,
+                   exc_info=True)
+        return False
 
 
 # #248 (2026-05-27): The module-level `app = create_app()` runs WHENEVER

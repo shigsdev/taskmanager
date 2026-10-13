@@ -13,6 +13,24 @@ from typing import Any
 
 from flask import g, jsonify, request
 
+_tz_fallback_logged = False
+
+
+def _warn_tz_fallback() -> None:
+    """#439: log once per process that DIGEST_TZ couldn't be loaded and the
+    server's own clock is standing in for the user's time zone."""
+    global _tz_fallback_logged
+    if _tz_fallback_logged:
+        return
+    _tz_fallback_logged = True
+    import logging
+
+    logging.getLogger(__name__).error(
+        "DIGEST_TZ=%r could not be loaded (zoneinfo / tzdata) — using the "
+        "server clock instead; dates may be a day off in the evening",
+        os.environ.get("DIGEST_TZ", "America/New_York"),
+    )
+
 
 def local_today_date() -> date:
     """Return "today" in the user's configured timezone.
@@ -36,6 +54,9 @@ def local_today_date() -> date:
         return datetime.now(ZoneInfo(tz_name)).date()
     except Exception:  # noqa: BLE001
         # ZoneInfo / tzdata unavailable → fall back to server local date.
+        # #439: and say so — on Railway that is UTC, silently a day off
+        # every evening.
+        _warn_tz_fallback()
         # Not ideal on Railway-UTC, but better than crashing.
         return date.today()
 
@@ -87,6 +108,7 @@ def local_datetime_from_dt(dt: datetime | None) -> datetime | None:
         return dt.astimezone(ZoneInfo(tz_name))
     except Exception:  # noqa: BLE001
         # ZoneInfo / tzdata unavailable → fall back to the value as stored.
+        _warn_tz_fallback()  # #439
         return dt
 
 

@@ -83,6 +83,38 @@ def record_send_result(*, status: str, error: str | None = None) -> None:
         logger.exception("Failed to record digest send result")
 
 
+# #439: how late a missed digest may still be sent at scheduler start.
+CATCH_UP_HOURS = 3
+
+
+def should_catch_up(now, hour: int, minute: int, last: dict | None,
+                    window_hours: int = CATCH_UP_HOURS) -> bool:
+    """#439: should a scheduler that just started send today's digest now?
+
+    ``now`` is a timezone-aware datetime in the digest's zone. Yes when
+    today's digest time has passed by no more than ``window_hours`` and
+    the last recorded send attempt (``last["at"]``, any status) is from
+    before today's digest time. Later than the window it is skipped — an
+    afternoon "daily digest" is stale, and /healthz already reports a
+    missed day.
+    """
+    from datetime import datetime, timedelta
+
+    scheduled = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if now < scheduled or now - scheduled > timedelta(hours=window_hours):
+        return False
+    at = (last or {}).get("at")
+    if not at:
+        return True
+    try:
+        attempted = datetime.fromisoformat(at)
+    except (TypeError, ValueError):
+        return True
+    if attempted.tzinfo is None:
+        return True
+    return attempted < scheduled
+
+
 def get_last_send_result() -> dict | None:
     """Return the last recorded send outcome dict, or None if never set."""
     import json
