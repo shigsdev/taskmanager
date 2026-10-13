@@ -1306,12 +1306,21 @@ def realign_tiers_with_due_dates() -> int:
       alignment; this one preserves a deliberate placement. The task
       stays in Today until the user acts on it.
 
+    #438 (user decisions 2026-10-12, docs/design/438-week-rollover.md):
+    - A THIS_WEEK / NEXT_WEEK task whose date has passed goes to TODAY,
+      not BACKLOG — overdue stays in sight, as #170 / #386 already do.
+    - Once per ISO week, undated NEXT_WEEK tasks move to THIS_WEEK: the
+      week they were parked for has arrived. Keyed on the week rather
+      than "is it Monday" so a missed Monday run that is replayed later
+      still rolls. The first run ever only records the week.
+
     Returns the number of rows updated. Idempotent — re-running
     when nothing has drifted is a no-op.
     """
     from sqlalchemy.orm import Session
 
     skip_tiers = _FROZEN_TIERS | {Tier.INBOX}
+    week_tiers = {Tier.THIS_WEEK, Tier.NEXT_WEEK}
     today = _local_today_date()
     updated = 0
     with Session(db.engine) as session:
@@ -1329,16 +1338,56 @@ def realign_tiers_with_due_dates() -> int:
             # quietly demote it to BACKLOG / THIS_WEEK overnight.
             if t.tier == Tier.TODAY and t.due_date < today:
                 continue
-            # Compute the "right" tier for this due_date as of today.
-            # Inline computation so we don't have to import + monkey-
-            # around with the module-level helpers in a fresh session.
-            new_tier = _tier_for_due_date(t.due_date)
+            # #438: a week task whose day has passed comes to Today —
+            # it used to fall to Backlog on Monday, carrying its overdue
+            # date out of sight.
+            if t.tier in week_tiers and t.due_date < today:
+                new_tier = Tier.TODAY
+            else:
+                # Compute the "right" tier for this due_date as of today.
+                new_tier = _tier_for_due_date(t.due_date)
             if new_tier != t.tier:
                 t.tier = new_tier
                 updated += 1
-        if updated:
-            session.commit()
+        updated += _roll_undated_next_week(session, today)
+        session.commit()
         return updated
+
+
+# #438: the ISO week the undated-Next-Week roll last ran for.
+WEEK_ROLL_KEY = "week_roll_last_iso_week"
+
+
+def _roll_undated_next_week(session, today: date) -> int:
+    """#438: move undated NEXT_WEEK tasks to THIS_WEEK once per ISO week.
+
+    The first run (no marker yet) only records the current week: what is
+    in Next Week right now was put there meaning the coming week.
+    Leaves committing to the caller.
+    """
+    from models import AppSetting
+
+    iso = today.isocalendar()
+    week = f"{iso.year}-W{iso.week:02d}"
+    marker = session.scalars(
+        select(AppSetting).where(AppSetting.key == WEEK_ROLL_KEY)
+    ).first()
+    if marker is None:
+        session.add(AppSetting(key=WEEK_ROLL_KEY, value=week))
+        return 0
+    if marker.value == week:
+        return 0
+    rows = session.scalars(
+        select(Task).where(
+            Task.tier == Tier.NEXT_WEEK,
+            Task.due_date.is_(None),
+            Task.status == TaskStatus.ACTIVE,
+        )
+    ).all()
+    for t in rows:
+        t.tier = Tier.THIS_WEEK
+    marker.value = week
+    return len(rows)
 
 
 def promote_due_today_tasks() -> int:

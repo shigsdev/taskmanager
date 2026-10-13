@@ -968,7 +968,7 @@ commit — the check will fail otherwise.
 - `daily_digest` — DIGEST_TIME, builds plain-text digest
 - `tomorrow_roll` — 00:01 local, TOMORROW → TODAY (#27)
 - `promote_due_today` — 00:02 local, planning tasks with due=today → TODAY (#46)
-- `realign_tiers_with_due_dates` — 00:03 local, walk active non-frozen non-inbox tasks with due_date and run _tier_for_due_date; correct any drift (#108). Skips TODAY tasks with a past due_date so an unfinished-yesterday nag stays visible on the Today panel instead of being silently demoted to BACKLOG (#170)
+- `realign_tiers_with_due_dates` — 00:03 local, walk active non-frozen non-inbox tasks with due_date and run _tier_for_due_date; correct any drift (#108). Skips TODAY tasks with a past due_date so an unfinished-yesterday nag stays visible on the Today panel instead of being silently demoted to BACKLOG (#170). #438: a THIS_WEEK / NEXT_WEEK task with a past due_date goes to TODAY (not BACKLOG); and once per ISO week (marker `AppSetting` `week_roll_last_iso_week`, so a replayed late run still rolls; the first run only records) undated NEXT_WEEK tasks move to THIS_WEEK
 - `recurring_spawn` — 00:05 local, materialises today's
   RecurringTask templates into TODAY (#35)
 - `scheduler_heartbeat` — every 45s, proves scheduler is alive

@@ -803,9 +803,10 @@ class TestRealignPreservesOverdueToday:
             assert t2.tier == Tier.TOMORROW
 
     def test_overdue_non_today_task_still_realigns(self, app):
-        """The #170 guard is scoped to tier==TODAY only. A THIS_WEEK
-        task with a past due_date is genuine drift and must still move
-        to BACKLOG — the guard must not over-reach to other tiers."""
+        """The #170 guard is scoped to tier==TODAY only, so a THIS_WEEK
+        task with a past due_date still moves. #438 (user decision
+        2026-10-12): it moves to TODAY, where it shows as overdue — it
+        used to fall to BACKLOG out of sight."""
         from datetime import timedelta
 
         from models import Task, TaskStatus, TaskType, Tier, db
@@ -825,4 +826,4 @@ class TestRealignPreservesOverdueToday:
             realign_tiers_with_due_dates()
             db.session.expire_all()
             t2 = db.session.get(Task, tid)
-            assert t2.tier == Tier.BACKLOG
+            assert t2.tier == Tier.TODAY
