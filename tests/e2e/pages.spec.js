@@ -9907,3 +9907,74 @@ test.describe("Late answers stay out of what's on screen now (#441)", () => {
         await expect(page.locator("#detailTitle")).toHaveValue("E2E e2e-441-spawn");
     });
 });
+
+// #467: an overdue task dated before the calendar's first day (this Monday)
+// had no cell and vanished. Today's go on today's cell; others are listed
+// under their section in Unscheduled. Both carry the rust overdue stripe.
+test.describe("Calendar shows overdue tasks (#467)", () => {
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+    test("a Today task from last week is on today's cell; a Backlog one under Backlog", async ({ page }) => {
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+        const monday = new Date(now);
+        monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+        const before = new Date(monday);
+        before.setDate(monday.getDate() - 10);
+        const fake = (id, tier, due) => ({
+            id, title: "E2E 467 " + id, tier, type: "work", status: "active",
+            due_date: due || iso(before), parent_id: null, project_id: null, goal_id: null,
+            subtask_count: 0, checklist: [], notes: "", url: null, repeat: null,
+            sort_order: 0, created_at: "2026-01-01T00:00:00", updated_at: "2026-01-01T00:00:00",
+        });
+        await page.route("**/api/tasks", async (route, req) => {
+            if (req.method() !== "GET") return route.fallback();
+            const res = await route.fetch();
+            const rows = await res.json();
+            await route.fulfill({ response: res, json: rows.concat([
+                fake("e2e-467-today", "today"), fake("e2e-467-backlog", "backlog"),
+                fake("e2e-467-ontime", "today", iso(now)),
+            ]) });
+        });
+        await page.goto("/calendar?nosw=1");
+        await page.waitForLoadState("networkidle");
+
+        const todayCell = page.locator(`.calendar-cell[data-date="${iso(now)}"]`);
+        const todayItem = todayCell.locator("li", { hasText: "E2E 467 e2e-467-today" });
+        await expect(todayItem).toBeVisible();
+        await expect(todayItem).toHaveClass(/calendar-task-overdue/);
+        await expect(todayItem).toHaveAttribute("title", /overdue, was due/);
+        const stripe = await todayItem.evaluate((el) => getComputedStyle(el).borderLeftWidth);
+        expect(parseFloat(stripe)).toBeGreaterThan(0);
+
+        const backlogZone = page.locator('.calendar-unscheduled-zone[data-drop-tier="backlog"]');
+        const backlogItem = backlogZone.locator("li", { hasText: "E2E 467 e2e-467-backlog" });
+        await expect(backlogItem).toBeVisible();
+        await expect(backlogItem).toHaveClass(/calendar-task-overdue/);
+
+        // The quiet case: a task due today has no stripe.
+        const onTime = todayCell.locator("li", { hasText: "E2E 467 e2e-467-ontime" });
+        await expect(onTime).toBeVisible();
+        await expect(onTime).not.toHaveClass(/calendar-task-overdue/);
+        await expect(onTime).toHaveAttribute("title", "E2E 467 e2e-467-ontime");
+        const vw = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+        expect(vw[0]).toBeLessThanOrEqual(vw[1]);
+    });
+});
+
+// #468: with no filter on, the board's filter banner takes no room at all
+// (`display: flex` used to beat `[hidden]`, leaving an empty copper bar).
+test.describe("Filter banner hides when no filter is on (#468)", () => {
+    test("no height with no filters; shows once a search is typed", async ({ page }) => {
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const banner = page.locator("#filterBanner");
+        await expect(banner).toBeHidden();
+        expect(await banner.evaluate((el) => el.getBoundingClientRect().height)).toBe(0);
+        await page.fill("#taskSearchInput", "zzz-e2e-468-nothing");
+        await expect(banner).toBeVisible();
+        expect(await banner.evaluate((el) => el.getBoundingClientRect().height)).toBeGreaterThan(0);
+        await page.fill("#taskSearchInput", "");
+        await expect(banner).toBeHidden();
+    });
+});

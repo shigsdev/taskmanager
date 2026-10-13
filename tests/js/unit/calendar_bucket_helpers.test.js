@@ -481,3 +481,76 @@ describe("calendarRangeEndIso — #345 previews window", () => {
         expect(calendarRangeEndIso(null, 4)).toBe(null);
     });
 });
+
+// #467: a past-dated task used to land on its own day's cell — invisible
+// when that day is before the grid's first day (this Monday).
+describe("bucketTasks — overdue tasks (#467)", () => {
+    const { isOverdue, overdueTitle } = require("../../../static/calendar_bucket_helpers");
+    const START = "2026-05-25";   // the grid's Monday (TODAY is that Monday)
+    const MID_TODAY = "2026-05-27";
+
+    test("a Today task dated before the grid lands on today's cell", () => {
+        const t = { id: "a", tier: "today", due_date: "2026-05-08", parent_id: null };
+        const { byDate, unscheduled } = bucketTasks([t], TODAY, TOMORROW, START);
+        expect(byDate[TODAY]).toEqual([t]);
+        expect(byDate["2026-05-08"]).toBeUndefined();
+        expect(unscheduled).toEqual([]);
+    });
+
+    test("mid-week, an overdue Today task is on today's cell, not its past day", () => {
+        const t = { id: "a", tier: "today", due_date: "2026-05-25", parent_id: null };
+        const { byDate } = bucketTasks([t], MID_TODAY, "2026-05-28", START);
+        expect(byDate[MID_TODAY]).toEqual([t]);
+        expect(byDate["2026-05-25"]).toBeUndefined();
+    });
+
+    test("a Backlog task dated before the grid is listed as unscheduled", () => {
+        const t = { id: "b", tier: "backlog", due_date: "2026-01-02", parent_id: null };
+        const { byDate, unscheduled } = bucketTasks([t], TODAY, TOMORROW, START);
+        expect(byDate).toEqual({});
+        expect(unscheduled).toEqual([t]);
+    });
+
+    test("a past-dated Backlog task whose day is on the grid stays on it", () => {
+        const t = { id: "b", tier: "backlog", due_date: "2026-05-25", parent_id: null };
+        const { byDate, unscheduled } = bucketTasks([t], MID_TODAY, "2026-05-28", START);
+        expect(byDate["2026-05-25"]).toEqual([t]);
+        expect(unscheduled).toEqual([]);
+    });
+
+    test("a subtask dated before the grid in another section is suppressed", () => {
+        const t = { id: "s", tier: "backlog", due_date: "2026-01-02", parent_id: "p" };
+        const { byDate, unscheduled } = bucketTasks([t], TODAY, TOMORROW, START);
+        expect(byDate).toEqual({});
+        expect(unscheduled).toEqual([]);
+    });
+
+    test("a future or today date is untouched", () => {
+        const a = { id: "a", tier: "today", due_date: TODAY, parent_id: null };
+        const b = { id: "b", tier: "backlog", due_date: "2026-06-30", parent_id: null };
+        const { byDate } = bucketTasks([a, b], TODAY, TOMORROW, START);
+        expect(byDate[TODAY]).toEqual([a]);
+        expect(byDate["2026-06-30"]).toEqual([b]);
+    });
+
+    test("without a grid start, other sections keep their own day (old callers)", () => {
+        const t = { id: "b", tier: "backlog", due_date: "2026-01-02", parent_id: null };
+        const { byDate } = bucketTasks([t], TODAY, TOMORROW);
+        expect(byDate["2026-01-02"]).toEqual([t]);
+    });
+
+    test("isOverdue: only a date before today", () => {
+        expect(isOverdue({ due_date: "2026-05-24" }, TODAY)).toBe(true);
+        expect(isOverdue({ due_date: TODAY }, TODAY)).toBe(false);
+        expect(isOverdue({ due_date: "2026-05-26" }, TODAY)).toBe(false);
+        expect(isOverdue({ due_date: null }, TODAY)).toBe(false);
+        expect(isOverdue({}, TODAY)).toBe(false);
+    });
+
+    test("overdueTitle names the original date", () => {
+        expect(overdueTitle({ title: "Call the bank", due_date: "2026-10-08" }))
+            .toBe("Call the bank — overdue, was due Oct 8");
+        expect(overdueTitle({ title: "Old one", due_date: "2026-05-08" }))
+            .toBe("Old one — overdue, was due May 8");
+    });
+});

@@ -554,6 +554,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     background: var(--copper);
     color: var(--slate-0);
 }
+/* #467: a task whose due date has passed — on today's cell (Today section),
+   its own day, or Unscheduled. The stripe is the whole marker (user choice);
+   hover / aria-label say when it was due. */
+.calendar-cell-tasks li.calendar-task-overdue,
+.calendar-unscheduled-list li.calendar-task-overdue {
+    border-left: 3px solid var(--rust);
+}
 .calendar-cell-tasks li.dragging,
 .calendar-unscheduled-list li.dragging {
     opacity: 0.5;
@@ -1840,6 +1847,9 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     font-size: 0.85rem;
     color: var(--cream, #eee);
 }
+/* #468: the `display: flex` above beats the UA `[hidden]{display:none}`, so
+   with no filter on the hidden banner still drew as an empty copper bar. */
+.filter-banner[hidden] { display: none; }
 .filter-banner-icon { color: var(--copper); font-size: 0.95rem; }
 .filter-banner-text { font-weight: 700; }
 .filter-banner-chips {

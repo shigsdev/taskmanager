@@ -72,6 +72,8 @@
     // step if a newer call superseded us. The latest call wins —
     // intermediate stale calls drop silently.
     let _renderGeneration = 0;
+    // #467: today's ISO date as of the last render, for the overdue stripe.
+    let _calendarTodayIso = "";
 
     // #267 (2026-05-31): the day-cell ISO a drag STARTED in, captured on
     // dragstart. The cell drop handler reads it to tell the two drag
@@ -250,9 +252,12 @@
         // Jest can exercise them directly (per CLAUDE.md anti-pattern
         // #3 — don't string-match source; exercise the path).
         const tomorrowIso = _isoDate(_addDays(today, 1));
+        // #467: startIso — an overdue task outside Today dated before the
+        // grid has no cell; it is listed under its section instead.
         const { byDate, unscheduled } = window.calendarBucketHelpers.bucketTasks(
-            tasks, todayIso, tomorrowIso,
+            tasks, todayIso, tomorrowIso, startIso,
         );
+        _calendarTodayIso = todayIso;
         // #219: bail if a newer renderCalendar() call started while we
         // were awaiting the apiFetch calls above — its DOM mutation
         // will be more current than ours.
@@ -482,6 +487,14 @@
         const li = document.createElement("li");
         li.textContent = t.title;
         li.title = t.title;
+        // #467: rust stripe on a past-dated task, wherever it is listed;
+        // the hover / screen-reader text says when it was due.
+        const h = window.calendarBucketHelpers;
+        if (h.isOverdue(t, _calendarTodayIso)) {
+            li.classList.add("calendar-task-overdue");
+            li.title = h.overdueTitle(t);
+            li.setAttribute("aria-label", li.title);
+        }
         li.draggable = true;
         li.dataset.taskId = t.id;
         // Click vs drag are distinguished by the browser natively: a fast

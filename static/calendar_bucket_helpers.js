@@ -54,9 +54,16 @@
  * @param {Array<{id, title, parent_id, due_date, tier, ...}>} tasks - raw /api/tasks rows
  * @param {string} todayIso - "YYYY-MM-DD" for "today" (caller computes from local clock)
  * @param {string} tomorrowIso - "YYYY-MM-DD" for "tomorrow"
+ * @param {string} [startIso] - the grid's first day (#467). A past-dated
+ *   task outside Today whose day is before it has no cell, so it is listed
+ *   as unscheduled instead of vanishing. Omit to keep each task's own day.
  * @returns {{ byDate: Object<string, Array>, unscheduled: Array }}
+ *
+ * #467: a Today task whose date has passed sits on TODAY's cell, matching
+ * the board's Today list (it used to sit on its old day — invisible when
+ * that day was before this Monday).
  */
-function bucketTasks(tasks, todayIso, tomorrowIso) {
+function bucketTasks(tasks, todayIso, tomorrowIso, startIso) {
     const byDate = {};
     const unscheduled = [];
     for (const t of tasks) {
@@ -64,6 +71,9 @@ function bucketTasks(tasks, todayIso, tomorrowIso) {
         if (!cellDate) {
             if (t.tier === "today") cellDate = todayIso;
             else if (t.tier === "tomorrow") cellDate = tomorrowIso;
+        } else if (cellDate < todayIso) {
+            if (t.tier === "today") cellDate = todayIso;
+            else if (startIso && cellDate < startIso) cellDate = null;
         }
         if (cellDate) {
             // Scheduled — top-level OR subtask, render on its day.
@@ -200,6 +210,27 @@ function reorderTierWithCell(tierOrderedIds, cellNewOrder) {
 var CALENDAR_WEEK_OPTIONS = [2, 4, 8];
 
 /**
+ * #467: a task whose due date has passed. Every such row on the calendar
+ * (a cell or Unscheduled) carries the rust overdue stripe.
+ */
+function isOverdue(task, todayIso) {
+    return !!(task && task.due_date && task.due_date < todayIso);
+}
+
+var _MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * #467: the hover / screen-reader text for an overdue row — the stripe
+ * alone doesn't say how late it is. "Call the bank — overdue, was due Oct 8".
+ */
+function overdueTitle(task) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(task.due_date || ""));
+    var when = m ? _MONTHS[+m[2] - 1] + " " + (+m[3]) : String(task.due_date);
+    return task.title + " — overdue, was due " + when;
+}
+
+/**
  * Coerce a stored / user-supplied week count to one we actually offer.
  *
  * The value round-trips through localStorage, which returns strings and
@@ -245,11 +276,13 @@ if (typeof module !== "undefined" && module.exports) {
         bucketTasks, calendarReorderIds, reorderTierWithCell,
         groupUnscheduledByTier, CALENDAR_WEEK_OPTIONS,
         normaliseCalendarWeeks, calendarRangeEndIso,
+        isOverdue, overdueTitle,
     };
 } else if (typeof window !== "undefined") {
     window.calendarBucketHelpers = {
         bucketTasks, calendarReorderIds, reorderTierWithCell,
         groupUnscheduledByTier, CALENDAR_WEEK_OPTIONS,
         normaliseCalendarWeeks, calendarRangeEndIso,
+        isOverdue, overdueTitle,
     };
 }

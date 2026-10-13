@@ -560,6 +560,13 @@ Report.
      Click a recurring preview card, open another task before it answers —
      the other task stays open, no alert. The quiet cases: a plain save,
      a plain preview click, a plain tick all still work.
+     #467: on /calendar, a Today task dated before this Monday shows on
+     TODAY's cell with a rust left stripe (hover: "overdue, was due …"); a
+     Backlog task dated before this Monday is under Backlog & Freezer in
+     Unscheduled with the stripe; a task due today has no stripe.
+     #468: on the board with no filter on there is NO empty copper bar above
+     Focus; type in Search and the "Filters are on" banner appears, clear it
+     and it goes.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -710,6 +717,9 @@ Report.
   Focus: late save, other week  PASS          Focus: late save, other week  PASS
   Panels: late list stays out   PASS          Panels: late list stays out   PASS
   Preview: late click dropped   PASS          Preview: late click dropped   PASS
+  Calendar: overdue on today    PASS          Calendar: overdue on today    PASS
+  Calendar: old overdue listed  PASS          Calendar: old overdue listed  PASS
+  Board: no empty filter bar    PASS          Board: no empty filter bar    PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS
