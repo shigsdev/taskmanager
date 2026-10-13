@@ -16,7 +16,11 @@
 "use strict";
 
 function parseCapture(text) {
-    var result = { title: text, tier: "inbox" };
+    // #443: no default tier. A section hashtag sets one; otherwise the
+    // capture bar's own default applies (a /tier/<name> page files to that
+    // section) and, with none, the server's (Inbox). This used to start at
+    // "inbox", which made the tier page's default unreachable.
+    var result = { title: text };
 
     // 1. Detect a URL anywhere in the text
     var urlMatch = text.match(/https?:\/\/\S+/i);
@@ -98,10 +102,8 @@ function parseCapture(text) {
     var tierTags = Object.keys(tierMap).sort(function (a, b) {
         return b.length - a.length;
     });
-    // Longest-first scan + first-hit-wins. Can't use `if (result.tier)`
-    // as the stop condition because the default tier is "inbox" from
-    // line ~18 — that would break before scanning any tag. Track an
-    // explicit `tierMatched` flag instead.
+    // Longest-first scan + first-hit-wins, tracked with an explicit
+    // `tierMatched` flag.
     var tierMatched = false;
     for (var j = 0; j < tierTags.length; j++) {
         if (tierMatched) break;

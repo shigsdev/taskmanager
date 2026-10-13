@@ -10150,3 +10150,48 @@ test.describe("Failures keep the work (#442)", () => {
         await expect(page.locator(".sf-flare-track-start")).toBeEnabled();
     });
 });
+
+// #443: the capture bar on /tier/<name> said "Add a task to Today…" but
+// always filed to Inbox (parseCapture defaulted tier to "inbox").
+test.describe("Capture on a section page files to that section (#443)", () => {
+    const capture = async (page, text) => {
+        const [res] = await Promise.all([
+            page.waitForResponse((r) => r.url().endsWith("/api/tasks")
+                && r.request().method() === "POST"),
+            (async () => {
+                await page.fill("#captureInput", text);
+                await page.press("#captureInput", "Enter");
+            })(),
+        ]);
+        expect(res.status()).toBe(201);
+        return res.json();
+    };
+
+    test("/tier/today files to Today, a #tag still wins, the board still files to Inbox", async ({ page }, info) => {
+        const tag = "E2E443 " + info.project.name;
+        const made = [];
+        try {
+            await page.goto("/tier/today?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await expect(page.locator("#captureInput")).toHaveAttribute("placeholder", /Today/);
+            const a = await capture(page, `${tag} today default`);
+            made.push(a.id);
+            expect(a.tier).toBe("today");
+            await expect(page.locator(".task-card", { hasText: `${tag} today default` })).toBeVisible();
+
+            const b = await capture(page, `${tag} parked #backlog`);
+            made.push(b.id);
+            expect(b.tier).toBe("backlog");
+            expect(b.title).toBe(`${tag} parked`);
+
+            // The quiet case: the board's bar has no section of its own.
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const c = await capture(page, `${tag} plain`);
+            made.push(c.id);
+            expect(c.tier).toBe("inbox");
+        } finally {
+            for (const id of made) await page.request.delete(`/api/tasks/${id}`);
+        }
+    });
+});

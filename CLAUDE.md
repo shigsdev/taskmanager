@@ -574,6 +574,10 @@ Report.
      and Add All again works. On /strength-forge make writes fail: quick log,
      ✕ Undo, flare start and the log form's Save each say "… didn't save";
      the log form stays open with the entries.
+     #443: on /tier/tomorrow (and another section page) type in the capture
+     bar ("Add a task to Tomorrow…") and press Enter — the task lands in
+     THAT section; "#backlog" there still files to Backlog; the board's bar
+     with no tag still files to Inbox (the quiet case).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -730,6 +734,7 @@ Report.
   Voice: failed upload keeps audio PASS       Voice: failed upload keeps audio PASS
   Voice: failed Add keeps list  PASS          Voice: failed Add keeps list  PASS
   Strength: failed writes say so PASS         Strength: failed writes say so PASS
+  Tier page: capture files there PASS         Tier page: capture files there PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

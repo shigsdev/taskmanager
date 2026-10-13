@@ -16,10 +16,20 @@ const { parseCapture } = require("../../../static/parse_capture");
 // ---------------------------------------------------------------------------
 
 describe("parseCapture — tier shortcuts", () => {
-    test("default tier is inbox", () => {
+    // #443: no hashtag leaves tier unset, so a /tier/<name> page's capture
+    // default can apply; with no default the server files it to Inbox.
+    test("no section hashtag leaves tier unset", () => {
         const r = parseCapture("Buy groceries");
-        expect(r.tier).toBe("inbox");
+        expect(r.tier).toBeUndefined();
+        expect("tier" in r).toBe(false);
         expect(r.title).toBe("Buy groceries");
+    });
+
+    test("only a section hashtag sets tier (type, repeat and URL don't)", () => {
+        expect(parseCapture("Call mom #personal").tier).toBeUndefined();
+        expect(parseCapture("Standup #daily").tier).toBeUndefined();
+        expect(parseCapture("Read https://example.com/a").tier).toBeUndefined();
+        expect(parseCapture("Plan @Audit").tier).toBeUndefined();
     });
 
     test("#today sets tier to today", () => {
@@ -195,8 +205,8 @@ describe("parseCapture — prefix collisions", () => {
         const r = parseCapture("Team sync #weekly");
         expect(r.repeat.frequency).toBe("weekly");
         expect(r.title).toBe("Team sync");
-        // #week should NOT have matched — tier stays inbox
-        expect(r.tier).toBe("inbox");
+        // #week should NOT have matched — no tier set (#443)
+        expect(r.tier).toBeUndefined();
         // No leftover "ly" in the title
         expect(r.title).not.toContain("ly");
     });
@@ -205,7 +215,7 @@ describe("parseCapture — prefix collisions", () => {
         const r = parseCapture("Standup #weekdays");
         expect(r.repeat.frequency).toBe("weekdays");
         expect(r.title).toBe("Standup");
-        expect(r.tier).toBe("inbox");
+        expect(r.tier).toBeUndefined();
         expect(r.title).not.toContain("days");
     });
 
@@ -261,7 +271,7 @@ describe("parseCapture — edge cases", () => {
     test("empty string", () => {
         const r = parseCapture("");
         expect(r.title).toBe("");
-        expect(r.tier).toBe("inbox");
+        expect(r.tier).toBeUndefined();  // #443
     });
 
     test("only whitespace — title preserved (caller trims before calling)", () => {
@@ -271,7 +281,7 @@ describe("parseCapture — edge cases", () => {
         // its initial input.
         const r = parseCapture("   ");
         expect(r.title).toBe("   ");
-        expect(r.tier).toBe("inbox");
+        expect(r.tier).toBeUndefined();  // #443
     });
 
     test("multiple tier tags — longest tag wins (first-hit in longest-first scan)", () => {

@@ -27,7 +27,9 @@
         // data-default-tier="<tier>". Default the new task to that
         // tier — UNLESS the user wrote an explicit #tier tag in the
         // input, in which case parseCapture already set parsed.tier
-        // and we leave it alone.
+        // and we leave it alone. #443: parseCapture leaves tier unset
+        // without a tag (it used to say "inbox", so this never ran);
+        // with no default here either, the server files it to Inbox.
         const bar = document.getElementById("captureBar");
         const defaultTier = bar && bar.dataset.defaultTier;
         if (defaultTier && !parsed.tier) {

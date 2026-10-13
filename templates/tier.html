@@ -3,9 +3,9 @@
 {% block title %}{{ tier_label }} — Task Manager{% endblock %}
 
 {% block capture %}
-{# Same capture bar as the home/board view. New tasks land in the
-   server's default tier (inbox) — the JS captureTierDefault sets
-   them to the current tier when on a tier-detail page. #}
+{# Same capture bar as the home/board view. capture.js files a new
+   task to this page's section (data-default-tier) unless a #tag names
+   another (#443). #}
 <div class="capture-bar" id="captureBar"
      data-default-tier="{{ tier_value }}">
     <input type="text" id="captureInput" placeholder="Add a task to {{ tier_label }}…" autocomplete="off" spellcheck="true">
