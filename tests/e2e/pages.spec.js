@@ -9576,3 +9576,125 @@ test.describe("Reflection: a failed or partial Apply keeps the review (#437)", (
         await expect(page.locator("#reflApplyBtn")).toHaveText("Apply Selected (2)");
     });
 });
+
+test.describe("A failed first load says so, with a Retry (#440)", () => {
+    const fail = (route) => route.fulfill({ status: 500, json: { error: "Server error" } });
+    const noDialogs = (page) => {
+        const seen = [];
+        page.on("dialog", (d) => { seen.push(d.message()); d.dismiss().catch(() => {}); });
+        return seen;
+    };
+
+    test("/goals: message + Retry, and New Goal's panel still opens and closes", async ({ page }) => {
+        await page.route("**/api/goals?is_active=all", fail);
+        await page.goto("/goals?nosw=1");
+        const err = page.locator("#goalsBoard .load-error");
+        await expect(err).toContainText("Couldn't load your goals.");
+        await page.click("#addGoalBtn");
+        await expect(page.locator("#goalDetailOverlay")).toBeVisible();
+        await page.click("#goalDetailClose");
+        await expect(page.locator("#goalDetailOverlay")).toBeHidden();
+        await page.unroute("**/api/goals?is_active=all");
+        await err.locator("button", { hasText: "Retry" }).click();
+        await expect(page.locator("#goalsBoard .load-error")).toHaveCount(0);
+        await expect(page.locator("#goalsBoard .goal-card").first()).toBeVisible();
+    });
+
+    test("/projects: message + Retry, and the goal filter fills after the retry", async ({ page }) => {
+        await page.route("**/api/projects?is_active=all", fail);
+        await page.goto("/projects?nosw=1");
+        const err = page.locator("#projectsBoard .load-error");
+        await expect(err).toContainText("Couldn't load your projects.");
+        await page.click("#addProjectBtn");
+        await expect(page.locator("#projectDetailOverlay")).toBeVisible();
+        await page.click("#projectDetailClose");
+        await expect(page.locator("#projectDetailOverlay")).toBeHidden();
+        await page.unroute("**/api/projects?is_active=all");
+        await err.locator("button", { hasText: "Retry" }).click();
+        await expect(page.locator("#projectsBoard .load-error")).toHaveCount(0);
+        await expect.poll(() => page.locator("#projectFilterGoal option").count()).toBeGreaterThan(1);
+    });
+
+    test("board: a banner, no alert, and no 'All caught up'", async ({ page }) => {
+        const dialogs = noDialogs(page);
+        await page.route("**/api/tasks", (route, req) =>
+            req.method() === "GET" ? fail(route) : route.continue());
+        await page.goto("/?nosw=1");
+        const err = page.locator("#boardLoadError .load-error");
+        await expect(err).toContainText("Couldn't load your tasks.");
+        await expect(page.locator('.task-list[data-tier="inbox"].empty-state')).toHaveCount(0);
+        expect(dialogs).toEqual([]);
+        await page.unroute("**/api/tasks");
+        await err.locator("button", { hasText: "Retry" }).click();
+        await expect(page.locator("#boardLoadError")).toHaveCount(0);
+        await expect(page.locator(".task-card[data-id]").first()).toBeVisible();
+    });
+
+    test("calendar: a failed refresh keeps what's showing", async ({ page }) => {
+        await page.goto("/calendar?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const items = page.locator("#calendarGrid li");
+        const before = await items.count();
+        expect(before).toBeGreaterThan(0);
+        await page.route("**/api/tasks", fail);
+        await page.evaluate(() => window.taskDetailAfterSave());
+        await expect(page.locator("#calendarLoadError .load-error"))
+            .toContainText("Couldn't load the latest tasks (showing what loaded earlier).");
+        expect(await items.count()).toBe(before);
+        await page.unroute("**/api/tasks");
+        await page.locator("#calendarLoadError button", { hasText: "Retry" }).click();
+        await expect(page.locator("#calendarLoadError")).toHaveCount(0);
+    });
+
+    test("board Completed: message + Retry instead of Loading... for good", async ({ page }) => {
+        await page.route("**/api/tasks?status=archived", fail);
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        // Opening the section retries (it used to be marked loaded already).
+        await page.click("#tierCompleted .collapse-toggle");
+        const err = page.locator("#completedList .load-error");
+        await expect(err).toContainText("Couldn't load completed tasks.");
+        await expect(page.locator("#completedCount")).toHaveText("–");
+        await page.unroute("**/api/tasks?status=archived");
+        await err.locator("button", { hasText: "Retry" }).click();
+        await expect(page.locator("#completedList .load-error")).toHaveCount(0);
+    });
+
+    test("weekly focus: no slots to type into until it has loaded", async ({ page }) => {
+        await page.route("**/api/weekly-focus?week_offset=0", fail);
+        await page.goto("/?nosw=1");
+        const err = page.locator("#weeklyFocusSlots .load-error");
+        await expect(err).toContainText("Couldn't load this week's focus.");
+        // The goals list arriving must not draw empty, editable slots.
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator("#weeklyFocusSlots input, #weeklyFocusSlots textarea")).toHaveCount(0);
+        await expect(page.locator("#weeklyFocusPlanAll")).toBeDisabled();
+        await page.unroute("**/api/weekly-focus?week_offset=0");
+        await err.locator("button", { hasText: "Retry" }).click();
+        await expect(page.locator("#weeklyFocusSlots input").first()).toBeVisible();
+    });
+
+    test("/recurring, /recycle-bin and /settings say what didn't load", async ({ page }) => {
+        await page.route("**/api/recurring?all=1", fail);
+        await page.goto("/recurring?nosw=1");
+        await expect(page.locator("#recurringList .load-error"))
+            .toContainText("Couldn't load your recurring tasks.");
+        await page.unroute("**/api/recurring?all=1");
+        await page.locator("#recurringList button", { hasText: "Retry" }).click();
+        await expect(page.locator("#recurringList .load-error")).toHaveCount(0);
+
+        await page.route("**/api/recycle-bin", fail);
+        await page.goto("/recycle-bin?nosw=1");
+        await expect(page.locator("#recycleLoadError .load-error"))
+            .toContainText("Couldn't load the Recycle Bin.");
+        await expect(page.locator("#recycleSummaryText")).not.toHaveText("Loading…");
+        await page.unroute("**/api/recycle-bin");
+
+        await page.route("**/api/recycle-bin/summary", fail);
+        await page.route("**/api/settings/stats", fail);
+        await page.goto("/settings?nosw=1");
+        await expect(page.locator("#settingsBinCount")).toHaveText("?");
+        await expect(page.locator("#settingsStatsLoadError .load-error"))
+            .toContainText("Couldn't load the overview.");
+    });
+});

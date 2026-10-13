@@ -974,6 +974,15 @@ commit — the check will fail otherwise.
 - `scheduler_heartbeat` — every 45s, proves scheduler is alive
   so non-scheduler gunicorn workers can read the heartbeat JSON
 
+**Failed first loads (#440).** Every page's first data load that fails
+says so where its content goes — `static/load_error_helpers.js`
+(`showLoadError`: "Couldn't load <what>." + Retry, loaded globally from
+base.html) — instead of a blank page, "Loading…" forever, or an empty
+state / "0" that reads like real data. /goals and /projects bind their
+listeners before loading; the board isn't drawn until `/api/tasks` has
+answered once (`tasksLoaded`); a failed /calendar refresh keeps what was
+drawn; the weekly Focus panel draws slots only from a loaded week.
+
 **One scheduler per container, and it survives a worker kill (#439).**
 `gunicorn.conf.py` `post_worker_init` starts the scheduler in whichever
 worker wins an exclusive file lock (`scheduler_lock.try_acquire`, in the

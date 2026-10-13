@@ -185,6 +185,7 @@ EXPECTED_STATIC_FILES = (
     "static/import_helpers.js",  # #432 — import confirm endpoint per mode
     "static/plan_helpers.js",  # #436 — /plan row PATCH body
     "static/subtask_helpers.js",  # #433 — subtasks close / go with their parent
+    "static/load_error_helpers.js",  # #440 — Couldn't load + Retry
     "static/swipe.js",
     "static/utilities.js",  # #222 — /utilities admin actions
     "static/strength_forge_data.js",  # #282 — Strength Forge data

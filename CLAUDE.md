@@ -542,6 +542,14 @@ Report.
      widths (the rules themselves are cron behavior, covered by pytest).
      #439: Help → Email digest lists the up-to-3-hours catch-up line at both
      widths (the scheduler lock and catch-up are covered by pytest).
+     #440: make each page's first load fail (override fetch for its URL —
+     /api/tasks, /api/goals?is_active=all, /api/projects?is_active=all,
+     /api/recurring?all=1, /api/recycle-bin, /api/settings/*, /api/weekly-focus):
+     each says "Couldn't load … Retry" where its content goes, no "All caught
+     up" / "0" / "Loading…" forever, the Focus panel has no slots to type
+     into, New Goal / New Project panels open AND close, a failed calendar
+     refresh keeps what was drawn, and Retry (once the server answers) draws
+     the real page. The quiet case: a normal load shows no message anywhere.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -687,6 +695,7 @@ Report.
   Reflection: partial apply retry PASS        Reflection: partial apply retry PASS
   Help: nightly re-sort section PASS          Help: nightly re-sort section PASS
   Help: digest catch-up line    PASS          Help: digest catch-up line    PASS
+  Failed load: message + Retry  PASS          Failed load: message + Retry  PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

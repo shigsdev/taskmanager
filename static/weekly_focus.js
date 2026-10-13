@@ -103,8 +103,10 @@
         window.apiFetch("/api/goals").then(function (gs) {
             goalsForPicker = Array.isArray(gs) ? gs : [];
             // If we already rendered before goals arrived, re-render so
-            // the picker options surface.
-            if (state.slots !== undefined) render();
+            // the picker options surface. #440: only once the focus itself
+            // has loaded — the default state drew 3 empty, editable slots,
+            // and typing in one replaced text that was never shown.
+            if (focusLoaded) render();
         }).catch(function () { /* leave empty list */ });
 
         loadFocus();
@@ -112,15 +114,30 @@
 
     // ---- Read ----
 
+    // #440: whether the slots on screen are the loaded week's. While
+    // they aren't, there are no slots to type into — only a Retry.
+    var focusLoaded = false;
+
     async function loadFocus() {
+        focusLoaded = false;
         try {
             var data = await window.apiFetch(
                 "/api/weekly-focus?week_offset=" + currentWeekOffset,
             );
             state = data;
+            focusLoaded = true;
             render();
         } catch (err) {
             console.error("weekly-focus load failed:", err);
+            // #440: replace the slots (an earlier week's, or none) so
+            // nothing can be typed into the wrong week.
+            if (planAllBtn) planAllBtn.disabled = true;
+            if (window.loadErrorHelpers) {
+                window.loadErrorHelpers.showLoadError(
+                    slotsContainer,
+                    currentWeekOffset ? "next week's focus" : "this week's focus",
+                    err, loadFocus);
+            }
         }
     }
 

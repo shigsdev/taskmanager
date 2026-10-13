@@ -159,6 +159,29 @@
         host.appendChild(group);
     }
 
+    // #440: whether the calendar has drawn real data on this page yet.
+    let _calendarLoaded = false;
+
+    function _calendarShowLoadError(err) {
+        const layout = document.querySelector(".calendar-layout");
+        if (!layout || !window.loadErrorHelpers) return;
+        let host = document.getElementById("calendarLoadError");
+        if (!host) {
+            host = document.createElement("div");
+            host.id = "calendarLoadError";
+            layout.parentNode.insertBefore(host, layout);
+        }
+        const what = _calendarLoaded
+            ? "the latest tasks (showing what loaded earlier)"
+            : "your tasks";
+        window.loadErrorHelpers.showLoadError(host, what, err, () => renderCalendar());
+    }
+
+    function _calendarClearLoadError() {
+        const host = document.getElementById("calendarLoadError");
+        if (host) host.remove();
+    }
+
     async function renderCalendar() {
         const myGen = ++_renderGeneration;
         const grid = document.getElementById("calendarGrid");
@@ -184,7 +207,15 @@
             tasks = await window.apiFetch("/api/tasks");
         } catch (err) {
             console.error("Failed to load tasks for calendar:", err);
+            // #440: stop here. Drawing on would replace a calendar that
+            // was already showing with empty days (every refresh, not just
+            // the poll); on a first load it would read as "nothing
+            // scheduled". Say so above the calendar, with a Retry.
+            if (myGen === _renderGeneration) _calendarShowLoadError(err);
+            return;
         }
+        _calendarClearLoadError();
+        _calendarLoaded = true;
         // #99 (PR34): also pull recurring-template previews for the
         // 12-day window. Each preview = {template_id, title, type,
         // frequency, fire_date, ...}. Render as dashed-border items

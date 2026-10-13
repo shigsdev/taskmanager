@@ -1198,6 +1198,23 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     margin-left: 6px;
 }
 .loading-msg { color: var(--text-muted); padding: 8px; font-size: 0.85rem; }
+/* #440: a load that failed says so, with a Retry — never a blank page or
+   an empty state that reads like real data. */
+.load-error {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 10px 12px;
+    margin: 8px 0;
+    border: 1px solid var(--danger);
+    border-radius: 8px;
+    color: var(--danger);
+    font-size: 0.9rem;
+}
+.load-error-text { margin: 0; flex: 1 1 200px; min-width: 0; }
+.load-error-retry { min-height: 44px; }
+.board-load-error { margin: 12px 16px 0; }
 
 /* .task-checkbox (the per-card "complete" checkbox) was removed
    2026-05-08 — left-edge checkbox role moved to .bulk-select-check

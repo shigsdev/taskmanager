@@ -49,10 +49,12 @@ async function goalsInit() {
     // #372: this page hosts the task detail panel (#270 panel-only mode),
     // so app.js loadTasks() hands every panel mutation to this hook.
     window.taskDetailAfterSave = goalsAfterTaskSave;
-    await goalsLoad();
+    // #440: wire the buttons and the panel BEFORE the first load. They
+    // used to be bound after it, so a failed load left dead buttons — and
+    // once a later refresh drew the cards, a goal panel with no way to
+    // close it.
     goalsSetupFilters();
     goalsSetupDetailPanel();
-    goalsUpdateInboxBadge();
     // #343 touch drag. Registered on the document, not the chip: a
     // finger that leaves the element still has to be tracked.
     // touchmove must be non-passive because it preventDefaults to stop
@@ -60,6 +62,19 @@ async function goalsInit() {
     document.addEventListener("touchmove", onGoalsTouchMove,
                               { passive: false });
     document.addEventListener("touchend", onGoalsTouchEnd);
+    await goalsFirstLoad();
+    goalsUpdateInboxBadge();
+}
+
+// #440: a failed load says so in the board, with a Retry — not a blank page.
+async function goalsFirstLoad() {
+    try {
+        await goalsLoad();
+    } catch (err) {
+        console.error("goals load failed:", err);
+        window.loadErrorHelpers.showLoadError(
+            document.getElementById("goalsBoard"), "your goals", err, goalsFirstLoad);
+    }
 }
 
 // #379: bumped on every goalsLoad. The save hook and app.js's poll /

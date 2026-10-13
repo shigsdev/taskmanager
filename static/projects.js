@@ -51,7 +51,10 @@ async function projectsInit() {
     // #372: this page hosts the task detail panel (#270 panel-only mode),
     // so app.js loadTasks() hands every panel mutation to this hook.
     window.taskDetailAfterSave = projectsAfterTaskSave;
-    await projectsLoad();
+    // #440: wire the buttons and the panel BEFORE the first load. They
+    // used to be bound after it, so a failed load left dead buttons — and
+    // once a later refresh drew the cards, a project panel with no way to
+    // close it.
     projectsSetupFilters();
     projectsSetupDetailPanel();
     projectsSetupBulk();  // #90 (PR35)
@@ -61,6 +64,21 @@ async function projectsInit() {
     document.addEventListener("touchmove", onProjectsTouchMove,
                               { passive: false });
     document.addEventListener("touchend", onProjectsTouchEnd);
+    await projectsFirstLoad();
+}
+
+// #440: a failed load says so in the board, with a Retry — not a blank page.
+async function projectsFirstLoad() {
+    try {
+        await projectsLoad();
+    } catch (err) {
+        console.error("projects load failed:", err);
+        window.loadErrorHelpers.showLoadError(
+            document.getElementById("projectsBoard"), "your projects", err,
+            projectsFirstLoad);
+        return;
+    }
+    projectsFillGoalFilter();
 }
 
 // #379: bumped on every projectsLoad. The save hook and app.js's poll /
@@ -657,21 +675,28 @@ function projectsSetupFilters() {
     document
         .getElementById("projectFilterActive")
         .addEventListener("change", projectsRender);
-    // #96 (PR33): goal filter dropdown — populate from active goals,
-    // re-render on change.
+    // #96 (PR33): goal filter dropdown — re-render on change. Its options
+    // come from the loaded goals (projectsFillGoalFilter, #440).
     const goalSel = document.getElementById("projectFilterGoal");
-    if (goalSel) {
-        for (const g of projectsGoals.filter((x) => x.is_active)) {
-            const opt = document.createElement("option");
-            opt.value = g.id;
-            opt.textContent = g.title;
-            goalSel.appendChild(opt);
-        }
-        goalSel.addEventListener("change", projectsRender);
-    }
+    if (goalSel) goalSel.addEventListener("change", projectsRender);
     document
         .getElementById("addProjectBtn")
         .addEventListener("click", projectDetailNew);
+}
+
+// #96 / #440: the goal filter's options, from the loaded active goals.
+// Runs once a load has succeeded (the first one, or its Retry).
+let _projectsGoalFilterFilled = false;
+function projectsFillGoalFilter() {
+    const goalSel = document.getElementById("projectFilterGoal");
+    if (!goalSel || _projectsGoalFilterFilled) return;
+    _projectsGoalFilterFilled = true;
+    for (const g of projectsGoals.filter((x) => x.is_active)) {
+        const opt = document.createElement("option");
+        opt.value = g.id;
+        opt.textContent = g.title;
+        goalSel.appendChild(opt);
+    }
 }
 
 // --- Detail panel ------------------------------------------------------------

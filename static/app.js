@@ -110,12 +110,15 @@ async function loadTasks() {
         allTasks = await apiFetch(API);
     } catch (err) {
         console.error("Failed to load tasks:", err);
-        // Don't wipe existing tasks if fetch fails (offline/cache issue)
-        if (allTasks.length === 0) {
-            alert("Could not load tasks. Please check your connection and reload.");
-        }
+        // Don't wipe existing tasks if fetch fails (offline/cache issue).
+        // #440: before anything has loaded, say so above the board with a
+        // Retry — it used to alert (on every 60 s poll) and then draw an
+        // empty board reading "All caught up — inbox is empty".
+        if (!tasksLoaded) boardShowLoadError(err);
         return;
     }
+    tasksLoaded = true;  // #440
+    boardClearLoadError();
     // #270 (2026-05-31): a page can host the detail panel WITHOUT being the
     // full task board (e.g. /calendar embeds the panel so tasks open in
     // place instead of navigating to /). Such a host has no tier board to
@@ -679,7 +682,41 @@ function renderDayStrip() {
     }
 }
 
+// #440: whether /api/tasks has ever answered on this page. Until it has,
+// the board isn't drawn — empty sections would read like real data.
+let tasksLoaded = false;
+
+// #440: the "Couldn't load your tasks — Retry" banner sits above the board
+// (or the /tier/<name> list). Pages without either show nothing here —
+// they are panel hosts with their own load errors.
+function boardShowLoadError(err) {
+    const anchor = document.getElementById("tierBoard")
+        || document.querySelector("#tierDetailList[data-tier]");
+    if (!anchor || !window.loadErrorHelpers) return;
+    let host = document.getElementById("boardLoadError");
+    if (!host) {
+        host = document.createElement("div");
+        host.id = "boardLoadError";
+        // On the board it sits outside #tierBoard's padding — line it up.
+        if (anchor.id === "tierBoard") host.className = "board-load-error";
+        anchor.parentNode.insertBefore(host, anchor);
+    }
+    // The section counts and the Inbox badge would otherwise read the
+    // template's "0" — a count, when nothing has been counted.
+    document.querySelectorAll(".tier-count, #tierDetailCount, #inboxBadge, #todayRingLabel, #todayHeroCount")
+        .forEach((el) => { el.textContent = "–"; });
+    window.loadErrorHelpers.showLoadError(host, "your tasks", err, () => loadTasks());
+}
+
+function boardClearLoadError() {
+    const host = document.getElementById("boardLoadError");
+    if (host) host.remove();
+}
+
 function renderBoard() {
+    // #440: nothing loaded yet — leave the board undrawn (the banner says
+    // why) rather than drawing every section empty.
+    if (!tasksLoaded) return;
     renderDayStrip();
     // PR70 perf #4: was running filteredTasks() once per tier (7 tiers ×
     // search/project/goal/view filters over allTasks every iteration).
@@ -1586,6 +1623,10 @@ function updateTodayHero() {
         const MON = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
         wd.textContent = `${DOW[now.getDay()]} · ${MON[now.getMonth()]} ${now.getFullYear()}`;
     }
+    // #440: the counts and the ring need today's tasks. Until they have
+    // loaded, the date shows but no numbers (it read "7/7": today's
+    // completions over zero loaded tasks).
+    if (!tasksLoaded) return;
     const activeToday = filteredTasks().filter((t) => t.tier === "today").length;
     const cnt = document.getElementById("todayHeroCount");
     if (cnt) cnt.textContent = activeToday;
@@ -2132,7 +2173,24 @@ async function loadCompletedTasks() {
     }
     if (!list && !dedicatedList) return;  // no completed container on this page
 
-    allCompleted = await apiFetch(API + "?status=archived");
+    try {
+        allCompleted = await apiFetch(API + "?status=archived");
+    } catch (err) {
+        // #440: it used to stay on "Loading..." for good, and since the
+        // section was already marked loaded, re-opening it never retried.
+        console.error("Failed to load completed tasks:", err);
+        if (section) delete section.dataset.loaded;
+        // The counts would otherwise keep the template's "0".
+        for (const id of ["completedCount", "tierDetailCount"]) {
+            const c = document.getElementById(id);
+            if (c && (id === "completedCount" ? list : dedicatedList)) c.textContent = "–";
+        }
+        for (const el of [list, dedicatedList]) {
+            if (el) window.loadErrorHelpers.showLoadError(
+                el, "completed tasks", err, () => loadCompletedTasks());
+        }
+        return;
+    }
     if (list) renderCompletedList();
     if (dedicatedList) renderCompletedPage();
     // #284: the hero ring's "done today" count comes from allCompleted,
@@ -2338,7 +2396,18 @@ async function loadCancelledTasks() {
     if (!list) return;  // PR28 audit fix #4: section exists but list doesn't (template variation)
     list.innerHTML = "<div class='loading-msg'>Loading...</div>";
     section.dataset.loaded = "true";
-    allCancelled = await apiFetch(API + "?status=cancelled");
+    try {
+        allCancelled = await apiFetch(API + "?status=cancelled");
+    } catch (err) {
+        // #440: say so (with a Retry) instead of "Loading..." for good.
+        console.error("Failed to load cancelled tasks:", err);
+        delete section.dataset.loaded;
+        const count = document.getElementById("cancelledCount");
+        if (count) count.textContent = "–";  // not the template's "0"
+        window.loadErrorHelpers.showLoadError(
+            list, "cancelled tasks", err, () => loadCancelledTasks());
+        return;
+    }
     renderCancelledList();
 }
 

@@ -131,19 +131,37 @@
         return d.innerHTML;
     }
 
+    // #440: whether the list has ever loaded on this page.
+    var templatesLoaded = false;
+
     async function load() {
         // PR67 #132: window.apiFetch (auto-retry + recovery)
         // #355: is_active=all + split, so a template whose project or goal
         // is archived keeps that link visible in the editor instead of the
         // select reading back "" and detaching it on the next save.
-        var [tpls, projs, gls] = await Promise.all([
+        var tpls, projs, gls;
+        try {
+            [tpls, projs, gls] = await Promise.all([
             // #363: `all=1` is the param the route reads. This page sent
             // `active_only=false` from #63 on, which the route ignored, so a
             // paused template never rendered and Resume was unreachable.
             window.apiFetch("/api/recurring?all=1"),
             window.apiFetch("/api/projects?is_active=all"),
             window.apiFetch("/api/goals?is_active=all"),
-        ]);
+            ]);
+        } catch (err) {
+            // #440: the first load used to leave a blank page (and the bulk
+            // Project / Goal menus offering only "(none)"). A refresh that
+            // fails after a good load keeps what's showing.
+            console.error("recurring load failed:", err);
+            if (!templatesLoaded && window.loadErrorHelpers) {
+                window.loadErrorHelpers.showLoadError(
+                    document.getElementById("recurringList"),
+                    "your recurring tasks", err, load);
+            }
+            return;
+        }
+        templatesLoaded = true;
         allTemplates = Array.isArray(tpls) ? tpls : [];
         var projSplit = _splitActive(projs);
         var goalSplit = _splitActive(gls);

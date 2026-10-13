@@ -39,16 +39,39 @@
 
     // --- Loading -------------------------------------------------------------
 
+    // #440: a failed load is said in its own box inside the section (the
+    // summary row holds Empty Bin, so it can't be replaced), with a Retry.
+    function loadError(sectionId, hostId, what, err, retry) {
+        var section = document.getElementById(sectionId);
+        if (!section || !window.loadErrorHelpers) return;
+        var host = document.getElementById(hostId);
+        if (!host) {
+            host = document.createElement("div");
+            host.id = hostId;
+            section.appendChild(host);
+        }
+        window.loadErrorHelpers.showLoadError(host, what, err, retry);
+    }
+
+    function clearLoadError(hostId) {
+        var host = document.getElementById(hostId);
+        if (host) host.remove();
+    }
+
     function load() {
         // PR67 #132: window.apiFetch (auto-retry + recovery)
         Promise.all([
             window.apiFetch("/api/recycle-bin"),
             window.apiFetch("/api/recycle-bin/summary"),
         ]).then(function (results) {
+            clearLoadError("recycleLoadError");
             renderBatches(results[0].batches || []);
             renderSummary(results[1]);
         }).catch(function (err) {
             console.error("Failed to load recycle bin:", err);
+            // #440: it used to stay on "Loading…" with a blank list.
+            summaryText.textContent = "";
+            loadError("recycleSummary", "recycleLoadError", "the Recycle Bin", err, load);
         });
         loadDeleted();
     }
@@ -57,10 +80,13 @@
 
     function loadDeleted() {
         window.apiFetch("/api/tasks?status=deleted").then(function (tasks) {
+            clearLoadError("recycleDeletedLoadError");
             deletedTasks = Array.isArray(tasks) ? tasks : [];
             renderDeleted();
         }).catch(function (err) {
             console.error("Failed to load deleted tasks:", err);
+            loadError("recycleDeletedSection", "recycleDeletedLoadError",
+                      "your deleted tasks", err, loadDeleted);
         });
     }
 

@@ -5,17 +5,45 @@
 (function () {
     "use strict";
 
+    // #440: a section whose data didn't load says so, with a Retry, in a
+    // box at the end of that section — instead of "--", an empty table, or
+    // the template's "0".
+    function sectionLoadError(sectionId, what, err, retry) {
+        var section = document.getElementById(sectionId);
+        if (!section || !window.loadErrorHelpers) return;
+        var hostId = sectionId + "LoadError";
+        var host = document.getElementById(hostId);
+        if (!host) {
+            host = document.createElement("div");
+            host.id = hostId;
+            section.appendChild(host);
+        }
+        window.loadErrorHelpers.showLoadError(host, what, err, retry);
+    }
+
+    function sectionClearLoadError(sectionId) {
+        var host = document.getElementById(sectionId + "LoadError");
+        if (host) host.remove();
+    }
+
     // --- Load stats ----------------------------------------------------------
 
-    // PR67 #132: window.apiFetch (auto-retry + recovery)
-    window.apiFetch("/api/settings/stats")
-        .then(function (data) {
-            document.getElementById("statActiveTasks").textContent = data.active_tasks;
-            document.getElementById("statTotalTasks").textContent = data.total_tasks;
-            document.getElementById("statGoals").textContent = data.total_goals;
-            document.getElementById("statRecurring").textContent = data.recurring_templates;
-        })
-        .catch(function (err) { console.error("settings/stats failed:", err); });
+    function loadStats() {
+        // PR67 #132: window.apiFetch (auto-retry + recovery)
+        window.apiFetch("/api/settings/stats")
+            .then(function (data) {
+                sectionClearLoadError("settingsStats");
+                document.getElementById("statActiveTasks").textContent = data.active_tasks;
+                document.getElementById("statTotalTasks").textContent = data.total_tasks;
+                document.getElementById("statGoals").textContent = data.total_goals;
+                document.getElementById("statRecurring").textContent = data.recurring_templates;
+            })
+            .catch(function (err) {
+                console.error("settings/stats failed:", err);
+                sectionLoadError("settingsStats", "the overview", err, loadStats);
+            });
+    }
+    loadStats();
 
     // --- Load service status -------------------------------------------------
 
@@ -26,50 +54,57 @@
         email: "Email (digest)",
     };
 
-    // PR67 #132: window.apiFetch (auto-retry + recovery)
-    window.apiFetch("/api/settings/status")
-        .then(function (data) {
-            var tbody = document.getElementById("settingsServiceBody");
-            tbody.innerHTML = "";
+    function loadStatus() {
+        // PR67 #132: window.apiFetch (auto-retry + recovery)
+        window.apiFetch("/api/settings/status")
+            .then(function (data) {
+                sectionClearLoadError("settingsServices");
+                var tbody = document.getElementById("settingsServiceBody");
+                tbody.innerHTML = "";
 
-            Object.keys(serviceLabels).forEach(function (key) {
-                var tr = document.createElement("tr");
-                var tdName = document.createElement("td");
-                tdName.textContent = serviceLabels[key];
-                var tdStatus = document.createElement("td");
-                var present = data[key];
-                // Bug #48 — was "Configured / Not configured" which
-                // misleadingly implied "service works." Reality: this
-                // only checks env-var presence. Honest label: "Env var
-                // set / Env var not set." Use 'Test send' (Email
-                // row) or actually use the feature to verify the
-                // service really works end-to-end.
-                tdStatus.textContent = present ? "Env var set" : "Env var not set";
-                tdStatus.className = present ? "settings-ok" : "settings-warn";
-                tr.appendChild(tdName);
-                tr.appendChild(tdStatus);
+                Object.keys(serviceLabels).forEach(function (key) {
+                    var tr = document.createElement("tr");
+                    var tdName = document.createElement("td");
+                    tdName.textContent = serviceLabels[key];
+                    var tdStatus = document.createElement("td");
+                    var present = data[key];
+                    // Bug #48 — was "Configured / Not configured" which
+                    // misleadingly implied "service works." Reality: this
+                    // only checks env-var presence. Honest label: "Env var
+                    // set / Env var not set." Use 'Test send' (Email
+                    // row) or actually use the feature to verify the
+                    // service really works end-to-end.
+                    tdStatus.textContent = present ? "Env var set" : "Env var not set";
+                    tdStatus.className = present ? "settings-ok" : "settings-warn";
+                    tr.appendChild(tdName);
+                    tr.appendChild(tdStatus);
 
-                // For the email (SMTP) row specifically — add an inline "Test send"
-                // button. Other services (Whisper / Claude / Vision)
-                // need real audio / image input to test, so they don't
-                // get an inline test button; you exercise them by
-                // actually using the feature.
-                var tdAction = document.createElement("td");
-                if (key === "email" && present) {
-                    tdAction.appendChild(buildSmtpTestButton());
-                }
-                tr.appendChild(tdAction);
+                    // For the email (SMTP) row specifically — add an inline "Test send"
+                    // button. Other services (Whisper / Claude / Vision)
+                    // need real audio / image input to test, so they don't
+                    // get an inline test button; you exercise them by
+                    // actually using the feature.
+                    var tdAction = document.createElement("td");
+                    if (key === "email" && present) {
+                        tdAction.appendChild(buildSmtpTestButton());
+                    }
+                    tr.appendChild(tdAction);
 
-                tbody.appendChild(tr);
+                    tbody.appendChild(tr);
+                });
+
+                // Digest email info (booleans — never expose actual addresses)
+                document.getElementById("settingsDigestTo").textContent =
+                    data.digest_email ? "Env var set" : "(not set)";
+                document.getElementById("settingsDigestFrom").textContent =
+                    data.digest_from ? "Env var set" : "(not set)";
+            })
+            .catch(function (err) {
+                console.error("settings/status failed:", err);
+                sectionLoadError("settingsServices", "service status", err, loadStatus);
             });
-
-            // Digest email info (booleans — never expose actual addresses)
-            document.getElementById("settingsDigestTo").textContent =
-                data.digest_email ? "Env var set" : "(not set)";
-            document.getElementById("settingsDigestFrom").textContent =
-                data.digest_from ? "Env var set" : "(not set)";
-        })
-        .catch(function (err) { console.error("settings/status failed:", err); });
+    }
+    loadStatus();
 
     /**
      * Build the inline "Test send" button + result chip for the email
@@ -122,8 +157,14 @@
     function loadImports() {
         // PR67 #132: window.apiFetch (auto-retry + recovery)
         window.apiFetch("/api/settings/imports")
-            .then(function (logs) { renderImports(logs); })
-            .catch(function (err) { console.error("loadImports failed:", err); });
+            .then(function (logs) {
+                sectionClearLoadError("settingsImports");
+                renderImports(logs);
+            })
+            .catch(function (err) {
+                console.error("loadImports failed:", err);
+                sectionLoadError("settingsImports", "import history", err, loadImports);
+            });
     }
 
     function loadBinCount() {
@@ -138,7 +179,12 @@
                     badge.textContent = total;
                 }
             })
-            .catch(function (err) { console.error("loadBinCount failed:", err); });
+            .catch(function (err) {
+                console.error("loadBinCount failed:", err);
+                // #440: not the template's placeholder — say it's unknown.
+                var badge = document.getElementById("settingsBinCount");
+                if (badge) badge.textContent = "?";
+            });
     }
 
     function renderImports(logs) {
