@@ -9985,3 +9985,168 @@ test.describe("Filter banner hides when no filter is on (#468)", () => {
         await expect(banner).toBeHidden();
     });
 });
+
+// #442: a failure must not throw away work. Voice memo keeps the recording
+// after a failed upload and the reviewed list after a failed Add; Strength
+// Forge says so when a write didn't save.
+test.describe("Failures keep the work (#442)", () => {
+    const candidates = (tag) => [
+        { title: tag + " first", type: "personal", tier: "inbox", due_date: null,
+          route: "task", category: "personal_growth", is_task: true },
+        { title: tag + " second", type: "work", tier: "inbox", due_date: null,
+          route: "task", category: "personal_growth", is_task: true },
+    ];
+    const record = async (page) => {
+        await page.click("#voiceRecordBtn");
+        await expect(page.locator("#voiceStopBtn")).toBeVisible({ timeout: 5000 });
+        await page.waitForTimeout(600);
+        await page.click("#voiceStopBtn");
+    };
+
+    test("voice: a failed upload keeps the recording and Upload again resends it", async ({ page }) => {
+        const sizes = [];
+        await page.route("**/api/voice-memo", async (r) => {
+            sizes.push((r.request().postDataBuffer() || Buffer.alloc(0)).length);
+            if (sizes.length === 1) {
+                return r.fulfill({ status: 500, json: { error: "Whisper timed out" } });
+            }
+            return r.fulfill({ json: { transcript: "stubbed", candidates: candidates("E2E 442 up") } });
+        });
+        await page.goto("/voice-memo?nosw=1");
+        await record(page);
+        const msg = page.locator("#voiceErrorMessage");
+        await expect(msg).toContainText("Whisper timed out", { timeout: 10000 });
+        await expect(msg).toContainText("Your recording is kept");
+        const again = page.locator("#voiceRetryUpload");
+        await expect(again).toBeVisible();
+        expect(await page.evaluate(() => window.__mediaCaptureBusy)).toBe(true);
+        await again.click();
+        await expect(page.locator("#voiceCandidates .voice-candidate")).toHaveCount(2, { timeout: 10000 });
+        expect(sizes.length).toBe(2);
+        expect(sizes[0]).toBeGreaterThan(0);
+        expect(sizes[1]).toBe(sizes[0]);   // the same audio, not a new recording
+    });
+
+    test("voice: Try Again still records anew; an error with no recording offers no Upload again", async ({ page }) => {
+        await page.route("**/api/voice-memo", (r) =>
+            r.fulfill({ status: 500, json: { error: "Whisper timed out" } }));
+        await page.goto("/voice-memo?nosw=1");
+        await record(page);
+        await expect(page.locator("#voiceRetryUpload")).toBeVisible({ timeout: 10000 });
+        await page.click("#voiceRetry");
+        await expect(page.locator("#voiceRecordBtn")).toBeVisible();
+
+        // The quiet case: an error that isn't a failed upload (no recorder
+        // here) has nothing to resend.
+        await page.addInitScript(() => { delete window.MediaRecorder; });
+        await page.goto("/voice-memo?nosw=1");
+        await expect(page.locator("#voiceErrorMessage")).toContainText("doesn't support audio recording");
+        await expect(page.locator("#voiceRetryUpload")).toBeHidden();
+    });
+
+    test("voice: a failed Add keeps the reviewed list and its edits", async ({ page }) => {
+        await page.route("**/api/voice-memo", (r) =>
+            r.fulfill({ json: { transcript: "stubbed", candidates: candidates("E2E 442 add") } }));
+        let confirms = 0;
+        await page.route("**/api/voice-memo/confirm", (r) => {
+            confirms += 1;
+            if (confirms === 1) return r.fulfill({ status: 500, json: { error: "db down" } });
+            return r.fulfill({ json: { created: 2, tasks: [{ id: "a" }, { id: "b" }], goals: [], projects: [], recurring: [] } });
+        });
+        await page.goto("/voice-memo?nosw=1");
+        await record(page);
+        const rows = page.locator("#voiceCandidates .voice-candidate");
+        await expect(rows).toHaveCount(2, { timeout: 10000 });
+        await rows.nth(0).locator(".voice-candidate-title").fill("E2E 442 add edited");
+        await page.click("#voiceConfirmAll");
+        const err = page.locator("#voiceConfirmError");
+        await expect(err).toBeVisible();
+        await expect(err).toContainText("db down");
+        await expect(err).toContainText("check your Inbox");
+        await expect(page.locator("#voiceStateReview")).toBeVisible();
+        await expect(rows).toHaveCount(2);
+        await expect(rows.nth(0).locator(".voice-candidate-title")).toHaveValue("E2E 442 add edited");
+        await page.click("#voiceConfirmAll");
+        await expect(page.locator("#voiceDoneMessage")).toHaveText("Added 2 tasks.");
+        expect(confirms).toBe(2);
+    });
+
+    const dialogs = (page) => {
+        const seen = [];
+        page.on("dialog", (d) => { seen.push(d.message()); d.accept().catch(() => {}); });
+        return seen;
+    };
+
+    test("strength forge: a failed quick log and a failed Undo say so", async ({ page }) => {
+        const seen = dialogs(page);
+        await page.goto("/strength-forge?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const logBtn = page.locator(".sf-log-btn").first();
+        await page.route("**/api/strength-forge/sessions", (r) =>
+            r.request().method() === "POST"
+                ? r.fulfill({ status: 500, json: { error: "db down" } }) : r.fallback());
+        await logBtn.click();
+        await expect.poll(() => seen.length).toBe(1);
+        expect(seen[0]).toBe("Logging the workout didn't save: db down. The page now shows what's saved.");
+        await expect(logBtn).toBeEnabled();
+        await page.unroute("**/api/strength-forge/sessions");
+
+        // A real log, then an Undo the server refuses, then the real Undo.
+        const [made] = await Promise.all([
+            page.waitForResponse((r) => r.url().endsWith("/api/strength-forge/sessions")
+                && r.request().method() === "POST"),
+            logBtn.click(),
+        ]);
+        expect(made.status()).toBe(201);
+        const { id } = await made.json();
+        const undo = page.locator(".sf-track-del").first();
+        await expect(undo).toBeVisible();
+        await page.route(`**/api/strength-forge/sessions/${id}`, (r) =>
+            r.request().method() === "DELETE"
+                ? r.fulfill({ status: 500, json: { error: "db down" } }) : r.fallback());
+        await undo.click();
+        await expect.poll(() => seen.length).toBe(2);
+        expect(seen[1]).toBe("Undoing the log didn't save: db down. The page now shows what's saved.");
+        await page.unroute(`**/api/strength-forge/sessions/${id}`);
+        const del = await page.request.delete(`/api/strength-forge/sessions/${id}`);
+        expect(del.ok()).toBe(true);
+    });
+
+    test("strength forge: a failed log-form save keeps the entries and says so", async ({ page }) => {
+        const seen = dialogs(page);
+        await page.goto("/strength-forge?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.getByRole("button", { name: "🔁 Split" }).click();
+        await page.locator('.sf-panel[data-tab="split"] .sf-log-detail-btn').click();
+        const overlay = page.locator(".sf-logform-overlay");
+        await expect(overlay).toBeVisible();
+        const reps = page.locator(".sf-logform-ex .sf-logform-set input").first();
+        await reps.fill("7");
+        await page.route("**/api/strength-forge/sessions", (r) =>
+            r.request().method() === "POST"
+                ? r.fulfill({ status: 500, json: { error: "db down" } }) : r.fallback());
+        await page.locator(".sf-logform-save").click();
+        await expect.poll(() => seen.length).toBe(1);
+        expect(seen[0]).toBe("The workout didn't save: db down. Your entries are still in the form — press Save to try again.");
+        await expect(overlay).toBeVisible();
+        await expect(reps).toHaveValue("7");
+        await expect(page.locator(".sf-logform-save")).toBeEnabled();
+        await page.keyboard.press("Escape");
+        await page.evaluate(() => { for (const k of Object.keys(localStorage)) if (k.startsWith("sf-logdraft:v1:")) localStorage.removeItem(k); });
+    });
+
+    test("strength forge: a failed flare start says so and stays idle", async ({ page }) => {
+        const seen = dialogs(page);
+        await page.route("**/api/strength-forge/flare", (r) => r.request().method() === "GET"
+            ? r.fulfill({ json: { active: false } })
+            : r.fulfill({ status: 500, json: { error: "db down" } }));
+        await page.goto("/strength-forge?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.getByRole("button", { name: "🔴 Flare-Up" }).click();
+        const start = page.locator(".sf-flare-track-start");
+        await start.click();
+        await expect.poll(() => seen.length).toBe(1);
+        expect(seen[0]).toBe("Starting the flare didn't save: db down. The page now shows what's saved.");
+        await expect(page.locator(".sf-flare-track-start")).toBeEnabled();
+    });
+});

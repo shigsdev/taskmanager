@@ -54,9 +54,12 @@ function buildRecoveryUrl(loc) {
  * second dialog); `bulk` is a /api/tasks/bulk result, which comes back 200
  * with `errors` / `not_found` for the tasks that failed. The caller then
  * reloads, so the page shows what actually saved.
+ *
+ * #442: `tail` replaces that ending where the page does NOT reload — a form
+ * that keeps the user's entries, a voice memo that keeps the recording.
  */
-function actionFailureMessage(what, err, bulk) {
-    const tail = " The page now shows what's saved.";
+function actionFailureMessage(what, err, bulk, tail) {
+    tail = " " + (tail || "The page now shows what's saved.");
     if (err) {
         if (err.userNotified) return null;
         const reason = typeof err === "string" ? err : err.message;

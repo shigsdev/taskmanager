@@ -57,6 +57,12 @@
     const errorTranscriptWrap = document.getElementById("voiceErrorTranscriptWrap");
     const errorTranscript = document.getElementById("voiceErrorTranscript");
     const retryBtn = document.getElementById("voiceRetry");
+    // #442: a failed upload keeps its recording; this resends it.
+    const retryUploadBtn = document.getElementById("voiceRetryUpload");
+    const confirmErrorEl = document.getElementById("voiceConfirmError");
+    // { chunks, mimeType } of the recording whose upload failed, until it
+    // uploads or a new recording starts. Never written anywhere.
+    let keptRecording = null;
 
     // --- State ---------------------------------------------------------------
 
@@ -110,12 +116,13 @@
                 h && typeof h.blocksAutoReload === "function"
                     ? h.blocksAutoReload(name)
                     : (name === "recording" || name === "processing")
-            );
+            ) || !!keptRecording;   // #442: a reload would lose the kept audio
         }
     }
 
     function showError(message, transcript) {
         errorMessage.textContent = message || "Unknown error.";
+        if (retryUploadBtn) retryUploadBtn.style.display = keptRecording ? "" : "none";
         if (transcript) {
             errorTranscript.textContent = transcript;
             errorTranscriptWrap.style.display = "";
@@ -192,6 +199,7 @@
         startTimer();
         recordCapTimeoutId = setTimeout(stopRecording, MAX_RECORDING_MS);
         mediaRecorder.start();
+        keptRecording = null;   // #442: a new recording replaces a kept one
         showState("recording");
     }
 
@@ -296,13 +304,15 @@
                 credentials: "same-origin",
             });
         } catch (err) {
-            // Server may have transcribed but failed to parse — old
-            // path returned the transcript on the error body. apiFetch
-            // throws an Error with .message but no transcript access;
-            // surface the message; user can re-record on retry.
-            showError("Upload failed: " + err.message);
+            // #442: the recording used to be dropped here — up to 10
+            // minutes of talking. Keep it so Upload again can resend it.
+            keptRecording = { chunks: audioChunks, mimeType: mimeType };
+            showError("Upload failed: " + err.message + ". Your recording is "
+                + "kept — press Upload again to resend it, or Try Again to "
+                + "record a new one.");
             return;
         }
+        keptRecording = null;
         markStep(stepUpload, "done");
         markStep(stepTranscribe, "running");
 
@@ -327,6 +337,7 @@
 
     function renderReview(data) {
         candidatesEl.innerHTML = "";
+        if (confirmErrorEl) confirmErrorEl.hidden = true;   // #442
 
         // #37: split candidates into actionable tasks vs reflections
         // (is_task === false). Tasks render inline as before;
@@ -897,6 +908,7 @@
         }
 
         let data;
+        if (confirmErrorEl) confirmErrorEl.hidden = true;
         try {
             // PR67 #132: window.apiFetch (auto-retry + recovery).
             data = await window.apiFetch(CONFIRM_API, {
@@ -905,7 +917,16 @@
                 credentials: "same-origin",
             });
         } catch (err) {
-            showError("Confirm failed: " + err.message);
+            // #442: stay on the review — the list and every edit stay. The
+            // server adds tasks, goals and projects in separate steps (#470),
+            // so part of a failed batch may already be in.
+            const msg = window.apiHelpers.actionFailureMessage("Adding these", err, null,
+                "Your list is still here. Before adding again, check your Inbox: "
+                + "part of it may already have been added.");
+            if (msg && confirmErrorEl) {
+                confirmErrorEl.textContent = msg;
+                confirmErrorEl.hidden = false;
+            }
             return;
         }
 
@@ -929,6 +950,10 @@
     if (recordAgainBtn) recordAgainBtn.addEventListener("click", () => showState("idle"));
     if (recordAnotherBtn) recordAnotherBtn.addEventListener("click", () => showState("idle"));
     if (retryBtn) retryBtn.addEventListener("click", () => showState("idle"));
+    if (retryUploadBtn) retryUploadBtn.addEventListener("click", () => {
+        const kept = keptRecording;
+        if (kept) uploadAndProcess(kept.chunks, kept.mimeType);
+    });
 
     // Initial state — tell the user up front if recording isn't possible
     // here, instead of letting them tap and then fail.

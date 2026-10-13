@@ -81,6 +81,8 @@
             section land directly in that panel; uncheck a row to drop
             it from this batch.
         </p>
+        {# #442: a failed Add says so here and keeps the list (and its edits). #}
+        <p class="voice-error-message voice-confirm-error" id="voiceConfirmError" role="alert" hidden></p>
         <div class="voice-review-actions">
             <button class="btn" id="voiceConfirmAll" type="button">Add All</button>
             <button class="btn btn-sm" id="voiceConfirmSelected" type="button">Add Selected</button>
@@ -112,6 +114,8 @@
             <pre id="voiceErrorTranscript"></pre>
         </details>
         <div class="voice-error-actions">
+            {# #442: shown only while a failed upload's recording is kept. #}
+            <button class="btn" id="voiceRetryUpload" type="button" style="display:none">Upload again</button>
             <button class="btn" id="voiceRetry" type="button">Try Again</button>
             <a href="{{ url_for('index') }}" class="btn btn-sm">Go to Tasks</a>
         </div>

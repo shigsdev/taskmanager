@@ -567,6 +567,13 @@ Report.
      #468: on the board with no filter on there is NO empty copper bar above
      Focus; type in Search and the "Filters are on" banner appears, clear it
      and it goes.
+     #442: on /voice-memo make the upload fail (fetch override, fake mic):
+     the error says the recording is kept and Upload again resends the SAME
+     audio; Try Again still records anew. Make Add All fail: you stay on the
+     review with every row and edit, the message says to check the Inbox,
+     and Add All again works. On /strength-forge make writes fail: quick log,
+     ✕ Undo, flare start and the log form's Save each say "… didn't save";
+     the log form stays open with the entries.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -720,6 +727,9 @@ Report.
   Calendar: overdue on today    PASS          Calendar: overdue on today    PASS
   Calendar: old overdue listed  PASS          Calendar: old overdue listed  PASS
   Board: no empty filter bar    PASS          Board: no empty filter bar    PASS
+  Voice: failed upload keeps audio PASS       Voice: failed upload keeps audio PASS
+  Voice: failed Add keeps list  PASS          Voice: failed Add keeps list  PASS
+  Strength: failed writes say so PASS         Strength: failed writes say so PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

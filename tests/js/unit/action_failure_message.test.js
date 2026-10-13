@@ -84,3 +84,30 @@ describe("apiFetch marks the errors it already showed a prompt for (#430)", () =
         expect(err.userNotified).toBeFalsy();
     });
 });
+
+// #442: where the page does NOT re-read the server (a form that keeps the
+// user's entries, a voice memo that keeps the recording), the caller passes
+// its own ending instead of "The page now shows what's saved."
+describe("actionFailureMessage with a custom ending (#442)", () => {
+    test("the given ending replaces the default one", () => {
+        expect(actionFailureMessage("Saving the workout", new Error("db down"), null,
+            "Your entries are still here."))
+            .toBe("Saving the workout didn't save: db down. Your entries are still here.");
+    });
+
+    test("no ending given keeps the default", () => {
+        expect(actionFailureMessage("Logging the workout", new Error("x")))
+            .toBe("Logging the workout didn't save: x. The page now shows what's saved.");
+    });
+
+    test("the ending also applies to a bulk result", () => {
+        expect(actionFailureMessage("Adding", null, { errors: [{}], updated: 1 }, "Try again."))
+            .toBe("Adding: 1 of 2 didn't save. Try again.");
+    });
+
+    test("a reason the user was already told about still says nothing", () => {
+        const e = new Error("x");
+        e.userNotified = true;
+        expect(actionFailureMessage("Saving", e, null, "Kept.")).toBeNull();
+    });
+});

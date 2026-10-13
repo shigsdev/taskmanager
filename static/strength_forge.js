@@ -650,6 +650,16 @@
     }).catch(function () {});
   }
 
+  // #442: a write that didn't save says so (these used to fail silently),
+  // the way the board does since #430. `tail` replaces "The page now shows
+  // what's saved." where the page keeps the user's entries instead.
+  function sfWriteFailed(what, err, tail) {
+    var h = window.apiHelpers;
+    var msg = h ? h.actionFailureMessage(what, err, null, tail)
+      : what + " didn't save.";
+    if (msg) alert(msg);
+  }
+
   function logWorkout(planType, btn) {
     if (!window.apiFetch) return;
     if (btn) btn.disabled = true;
@@ -659,13 +669,20 @@
       loadTracking();
       loadLastResistance();
       if (btn) { btn.disabled = false; flashBtn(btn); }
-    }).catch(function () { if (btn) btn.disabled = false; });
+    }).catch(function (err) {
+      if (btn) btn.disabled = false;
+      sfWriteFailed("Logging the workout", err);
+      loadTracking();
+    });
   }
 
   function delSession(id) {
     if (!window.apiFetch) return;
     window.apiFetch("/api/strength-forge/sessions/" + id, { method: "DELETE" })
-      .then(loadTracking).catch(function () {});
+      .then(loadTracking).catch(function (err) {
+        sfWriteFailed("Undoing the log", err);   // #442
+        loadTracking();
+      });
   }
 
   function flashBtn(btn) {
@@ -1224,7 +1241,12 @@
       closeLogForm();
       loadTracking();
       loadLastResistance();
-    }).catch(function () { logformSaveBtn.disabled = false; });
+    }).catch(function (err) {
+      // #442: the form (and its on-device draft) keeps every entry.
+      logformSaveBtn.disabled = false;
+      sfWriteFailed("The workout", err,
+        "Your entries are still in the form — press Save to try again.");
+    });
   }
 
   // ============================================================
@@ -1386,19 +1408,28 @@
       .catch(function () {});
   }
 
+  // #442: each flare write says so on failure and re-reads the tracker,
+  // so the screen shows the flare the server actually has.
   function startFlare(btn) {
     if (!window.apiFetch) return;
     if (btn) btn.disabled = true;
     window.apiFetch("/api/strength-forge/flare", { method: "POST" })
       .then(function (d) { renderFlareTracker(d); })
-      .catch(function () { if (btn) btn.disabled = false; });
+      .catch(function (err) {
+        if (btn) btn.disabled = false;
+        sfWriteFailed("Starting the flare", err);
+        loadFlare();
+      });
   }
 
   function setFlarePhaseTracked(phase) {
     if (!window.apiFetch) return;
     window.apiFetch("/api/strength-forge/flare", {
       method: "PATCH", body: JSON.stringify({ phase: phase }),
-    }).then(function (d) { renderFlareTracker(d); }).catch(function () {});
+    }).then(function (d) { renderFlareTracker(d); }).catch(function (err) {
+      sfWriteFailed("Changing the flare phase", err);
+      loadFlare();
+    });
   }
 
   function endFlare(btn) {
@@ -1406,7 +1437,11 @@
     if (btn) btn.disabled = true;
     window.apiFetch("/api/strength-forge/flare", { method: "DELETE" })
       .then(function () { loadFlare(); })
-      .catch(function () { if (btn) btn.disabled = false; });
+      .catch(function (err) {
+        if (btn) btn.disabled = false;
+        sfWriteFailed("Ending the flare", err);
+        loadFlare();
+      });
   }
 
   // ============================================================
