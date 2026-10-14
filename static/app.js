@@ -106,6 +106,8 @@ async function loadTasks() {
     // Exposed on window so non-app.js modules (e.g. inbox_categorize.js)
     // can refresh the board after a write without a hard reload.
     window.loadTasks = loadTasks;
+    // #444: previews refresh alongside the tasks (one request, in parallel).
+    const previewsDone = _previewsWanted ? loadRecurringPreviews() : null;
     try {
         allTasks = await apiFetch(API);
     } catch (err) {
@@ -138,6 +140,7 @@ async function loadTasks() {
         _taskDetailRetryFocus();
         return;
     }
+    if (previewsDone) await previewsDone;
     renderBoard();
 }
 
@@ -214,7 +217,12 @@ async function loadProjects() {
 // covering This Week + Next Week. The backend filters already-spawned
 // same-day collisions and inactive templates. Failure is non-fatal —
 // the board still renders real tasks.
+// #444: set once a page has shown previews; from then on every loadTasks
+// fetches them again (they were loaded once and never refreshed).
+let _previewsWanted = false;
+
 async function loadRecurringPreviews() {
+    _previewsWanted = true;
     // 14-day window from today; adjust if we later support wider preview
     // ranges (e.g. the 4-week planning view).
     const today = new Date();
@@ -231,9 +239,13 @@ async function loadRecurringPreviews() {
         );
     } catch (err) {
         console.warn("Could not load recurring previews:", err);
-        allPreviews = [];
+        // #444: a failed refresh keeps the previews already showing.
+        if (!_previewsLoaded) allPreviews = [];
+        return;
     }
+    _previewsLoaded = true;
 }
+let _previewsLoaded = false;
 
 async function init() {
     // Pages with no detail panel (goals, review, etc.) load app.js only for
@@ -1602,6 +1614,7 @@ function updateInboxBadge() {
     const count = allTasks.filter((t) => t.tier === "inbox").length;
     badge.textContent = count;
     badge.classList.toggle("empty", count === 0);
+    badge.dataset.counted = String(Date.now());  // #444: newer than base.html's fetch
 }
 
 function updateTodayWarning() {
@@ -2063,6 +2076,7 @@ async function taskDelete(id) {
         return;
     }
     await loadTasks();
+    refreshDoneLists();   // #444: it may have been a completed / cancelled task
     taskDetailClose();
 }
 
@@ -2321,7 +2335,10 @@ function renderCompletedList() {
 
         const dateBadge = document.createElement("span");
         dateBadge.className = "badge";
-        dateBadge.textContent = task.updated_at.slice(0, 10);
+        // #444: the LOCAL date it was completed (slicing the UTC string
+        // showed tomorrow's date on an evening completion in the Americas).
+        dateBadge.textContent = window.dateHelpers.utcIsoToLocalDate(task.updated_at)
+            || String(task.updated_at || "").slice(0, 10);
         meta.appendChild(dateBadge);
 
         card.appendChild(meta);
@@ -2821,11 +2838,14 @@ function taskDetailOpen(task) {
     metaEl.textContent = "";
     if (task.id) {
         const createdLine = document.createElement("div");
-        createdLine.textContent =
-            `Created: ${new Date(task.created_at).toLocaleDateString()}`;
+        // #444: the server's zone-less UTC times read as UTC, not local.
+        const day = (s) => {
+            const d = window.dateHelpers.parseServerTimestamp(s);
+            return d ? d.toLocaleDateString() : "—";
+        };
+        createdLine.textContent = `Created: ${day(task.created_at)}`;
         const updatedLine = document.createElement("div");
-        updatedLine.textContent =
-            `Updated: ${new Date(task.updated_at).toLocaleDateString()}`;
+        updatedLine.textContent = `Updated: ${day(task.updated_at)}`;
         metaEl.appendChild(createdLine);
         metaEl.appendChild(updatedLine);
     }
@@ -3655,6 +3675,14 @@ function bulkOpenSubtasks(ids, opts) {
 // #433: ask the server to close those subtasks too — only when the confirm
 // just named them. If the cache missed some, the server refuses that task
 // and says why, rather than closing subtasks nobody was told about.
+// #444: after a bulk status change or a delete, the Completed / Cancelled
+// lists (and the Today ring, which counts done-today from the completed
+// list) follow too — they used to keep the old numbers until a reload.
+function refreshDoneLists() {
+    loadCompletedTasks();
+    loadCancelledTasks();
+}
+
 function withSubtaskConsent(updates, subs) {
     return subs.open ? Object.assign({}, updates, { close_subtasks: true }) : updates;
 }
@@ -3685,6 +3713,7 @@ async function bulkPatch(updates, successMessage) {
     }
     clearBulkSelection();
     await loadTasks();
+    if ("status" in updates) refreshDoneLists();
 }
 
 // Bulk move up/down within a tier. User-requested 2026-05-08:
@@ -3784,6 +3813,7 @@ async function bulkDelete() {
     if (failed) alert(`${failed} delete(s) failed`);
     clearBulkSelection();
     await loadTasks();
+    refreshDoneLists();   // #444: a deleted done task leaves those lists
 }
 
 // #71 (2026-04-26): staged bulk-edit. Type/Tier/Due/Goal/Project

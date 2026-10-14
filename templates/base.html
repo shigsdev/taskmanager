@@ -101,7 +101,9 @@
             <a href="{{ url_for('architecture_page') }}" class="nav-tab {% if active_page == 'architecture' %}active{% endif %}">Architecture</a>
             <a href="{{ url_for('print_page') }}" class="nav-tab {% if active_page == 'print' %}active{% endif %}">Print</a>
             <a href="{{ url_for('docs_page') }}" class="nav-tab {% if active_page == 'docs' %}active{% endif %}">Help</a>
-            <span class="inbox-badge" id="inboxBadge" title="Inbox items">0</span>
+            {# #444: "–" until counted (it said "0" on every page that doesn't
+               load the board); the script at the end of <body> fills it in. #}
+            <span class="inbox-badge empty" id="inboxBadge" title="Inbox items">–</span>
             {# #185: logout is POST-only (no state-mutating GET). Inline
                form so the navbar control stays a single "Log out" item. #}
             <form method="POST" action="{{ url_for('logout') }}" class="logout-form">
@@ -119,6 +121,29 @@
     </div>
     {% block scripts %}{% endblock %}
     <script>
+    // #444: the nav Inbox badge on every page. Only the board / tier pages,
+    // /goals and /projects count tasks themselves (they mark the badge
+    // data-counted, and this late answer never overwrites them). A plain
+    // fetch, silent on any failure: the login and unauthorized pages render
+    // this nav too, and must not raise apiFetch's sign-in prompt.
+    window.refreshInboxBadge = function () {
+        var badge = document.getElementById("inboxBadge");
+        if (!badge) return;
+        var asked = Date.now();
+        badge.dataset.asked = String(asked);
+        fetch("/api/tasks?tier=inbox", {
+            credentials: "same-origin", redirect: "manual",
+            headers: { Accept: "application/json" },
+        }).then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (rows) {
+                if (!Array.isArray(rows)) return;
+                if (Number(badge.dataset.counted || 0) > asked) return;
+                badge.textContent = rows.length;
+                badge.classList.toggle("empty", rows.length === 0);
+            }).catch(function () { /* leave "–" */ });
+    };
+    window.refreshInboxBadge();
+
     // --- Service worker auto-update (A + B: poll + banner fallback) ---
     // #331: `userIsBusy` is defined OUTSIDE the registration branch below.
     // It is pure DOM inspection with no service-worker dependency, and

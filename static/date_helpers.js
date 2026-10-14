@@ -64,11 +64,23 @@ function compareIsoDates(a, b) {
  * @returns {string|null} local "YYYY-MM-DD", or null if unparseable.
  */
 function utcIsoToLocalDate(s) {
+    const d = parseServerTimestamp(s);
+    return d ? localIsoDate(d) : null;
+}
+
+/**
+ * #444: a server timestamp as a Date. Zone-less values are UTC (see
+ * utcIsoToLocalDate); `new Date(s)` alone reads them as LOCAL time, which
+ * put the task panel's "Created / Updated" a day off near midnight.
+ *
+ * @param {string} s — ISO timestamp, with or without a zone suffix.
+ * @returns {Date|null} null if empty or unparseable.
+ */
+function parseServerTimestamp(s) {
     if (typeof s !== "string" || !s) return null;
     const hasTz = /[zZ]$|[+-]\d\d:?\d\d$/.test(s);
     const d = new Date(hasTz ? s : s + "Z");
-    if (isNaN(d.getTime())) return null;
-    return localIsoDate(d);
+    return isNaN(d.getTime()) ? null : d;
 }
 
 /**
@@ -87,7 +99,7 @@ function addDays(d, n) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-    module.exports = { localIsoDate, compareIsoDates, utcIsoToLocalDate, addDays };
+    module.exports = { localIsoDate, compareIsoDates, utcIsoToLocalDate, addDays, parseServerTimestamp };
 } else if (typeof window !== "undefined") {
-    window.dateHelpers = { localIsoDate, compareIsoDates, utcIsoToLocalDate, addDays };
+    window.dateHelpers = { localIsoDate, compareIsoDates, utcIsoToLocalDate, addDays, parseServerTimestamp };
 }

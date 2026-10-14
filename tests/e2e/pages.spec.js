@@ -9312,7 +9312,10 @@ test.describe("Subtasks close or go with their parent (#433)", () => {
             for (const t of [parent, plain, ...subs]) {
                 await expect.poll(() => statusOf(request, t.id)).toBe("archived");
             }
-            await expect(page.locator(`.task-card[data-id="${subs[0].id}"]`)).toHaveCount(0);
+            // Off the active board; since #444 the Completed list refreshes
+            // after a bulk status change, so it shows up there instead.
+            await expect(page.locator(`.task-card:not(.completed-card)[data-id="${subs[0].id}"]`)).toHaveCount(0);
+            await expect(page.locator(`#completedList .task-card[data-id="${subs[0].id}"]`)).toHaveCount(1);
         } finally {
             await cleanup(request, [...subs, parent, plain]);
         }
@@ -10193,5 +10196,112 @@ test.describe("Capture on a section page files to that section (#443)", () => {
         } finally {
             for (const id of made) await page.request.delete(`/api/tasks/${id}`);
         }
+    });
+});
+
+// #444: counts and lists that didn't follow what just changed.
+test.describe("Counts follow changes (#444)", () => {
+    const inboxCount = async (page) =>
+        (await (await page.request.get("/api/tasks?tier=inbox")).json()).length;
+
+    test("the nav Inbox badge shows the real count on pages that don't load the board", async ({ page }) => {
+        for (const path of ["/settings?nosw=1", "/calendar?nosw=1", "/reflection?nosw=1"]) {
+            await page.goto(path);
+            const n = await inboxCount(page);
+            await expect(page.locator("#inboxBadge")).toHaveText(String(n));
+        }
+    });
+
+    test("a bulk Mark complete updates the Completed count without a reload", async ({ page }, info) => {
+        const title = `E2E444 bulk ${info.project.name} ${Date.now()}`;
+        const made = await (await page.request.post("/api/tasks", {
+            data: { title, type: "work", tier: "inbox" } })).json();
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const count = page.locator("#completedCount");
+            await expect(count).not.toHaveText("–");
+            const before = Number(await count.textContent());
+            await page.evaluate((id) => {
+                const cb = document.querySelector(`.task-card[data-id="${id}"] .bulk-select-check`);
+                cb.checked = true;
+                cb.dispatchEvent(new Event("change", { bubbles: true }));
+            }, made.id);
+            const [res] = await Promise.all([
+                page.waitForResponse((r) => r.url().endsWith("/api/tasks/bulk")),
+                page.evaluate(() => bulkPatch({ status: "archived" })),
+            ]);
+            expect(res.ok()).toBe(true);
+            await expect(count).toHaveText(String(before + 1));
+        } finally {
+            await page.request.delete(`/api/tasks/${made.id}`);
+        }
+    });
+
+    test("Settings Undo re-reads the overview counts", async ({ page }) => {
+        const stamp = `${Date.now()}`;
+        const source = `E2E 444 import ${stamp}`;
+        const r = await page.request.post("/api/import/tasks/confirm", {
+            data: { candidates: [{ title: `E2E 444 imported ${stamp}`, type: "work", included: true }], source },
+        });
+        expect(r.ok()).toBe(true);
+        const logs = await (await page.request.get("/api/settings/imports")).json();
+        const batchId = logs.find((l) => l.source === source).batch_id;
+        try {
+            await page.goto("/settings?nosw=1");
+            await page.waitForLoadState("networkidle");
+            const active = page.locator("#statActiveTasks");
+            const before = Number(await active.textContent());
+            page.once("dialog", (d) => d.accept());
+            await page.locator(`button[data-batch-id="${batchId}"]`).click();
+            await expect(active).toHaveText(String(before - 1));
+        } finally {
+            await page.request.post(`/api/recycle-bin/undo/${batchId}`);
+            await page.request.post(`/api/recycle-bin/purge/${batchId}`, { data: { confirmation: "DELETE" } });
+        }
+    });
+
+    test("board recurring previews refresh with the tasks", async ({ page }) => {
+        const d = new Date();
+        d.setDate(d.getDate() + (((8 - d.getDay()) % 7) || 7));   // next Monday
+        const pad = (n) => String(n).padStart(2, "0");
+        const fire = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        let title = "E2E 444 preview before";
+        await page.route("**/api/recurring/previews**", (r) => r.fulfill({ json: [{
+            template_id: "e2e-444-tmpl", title, frequency: "weekly",
+            type: "work", fire_date: fire, project_id: null, goal_id: null,
+        }] }));
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const card = page.locator('.preview-card[data-template-id="e2e-444-tmpl"]');
+        await expect(card).toContainText("E2E 444 preview before");
+        title = "E2E 444 preview after";
+        await page.evaluate(() => window.loadTasks());
+        await expect(card).toContainText("E2E 444 preview after");
+    });
+
+    test.describe("dates are local, not UTC", () => {
+        test.use({ timezoneId: "America/New_York" });
+        test("a task completed at 02:30 UTC shows the previous local day", async ({ page }) => {
+            const done = {
+                id: "e2e-444-done", title: "E2E 444 done late", tier: "today", type: "work",
+                status: "archived", due_date: null, parent_id: null, project_id: null, goal_id: null,
+                subtask_count: 0, checklist: [], notes: "", url: null, repeat: null, sort_order: 0,
+                created_at: "2026-10-12T15:00:00", updated_at: "2026-10-13T02:30:00",
+            };
+            await page.route("**/api/tasks?status=archived", (r) => r.fulfill({ json: [done] }));
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.click("#tierCompleted .collapse-toggle");
+            const card = page.locator("#completedList .task-card", { hasText: "E2E 444 done late" });
+            await expect(card).toBeVisible();
+            await expect(card).toContainText("2026-10-12");
+            await expect(card).not.toContainText("2026-10-13");
+            await page.evaluate((t) => window.taskDetailOpen(t), done);
+            const meta = await page.locator("#detailMeta").textContent();
+            const local = await page.evaluate(() =>
+                new Date(Date.UTC(2026, 9, 13, 2, 30)).toLocaleDateString());
+            expect(meta).toContain(`Updated: ${local}`);
+        });
     });
 });

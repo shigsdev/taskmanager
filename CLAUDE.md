@@ -578,6 +578,13 @@ Report.
      bar ("Add a task to Tomorrow…") and press Enter — the task lands in
      THAT section; "#backlog" there still files to Backlog; the board's bar
      with no tag still files to Inbox (the quiet case).
+     #444: the nav Inbox badge on /settings, /calendar, /reflection,
+     /strength-forge … equals the Inbox count (it said "0"). Bulk Mark
+     complete on the board: the Completed count and the Today ring change
+     without a reload; panel Delete of a completed task drops it from
+     Completed. /settings Import History → Undo: Active Tasks and the badge
+     drop at once. Pause a template, refresh (or wait for the poll): its
+     board previews go. A completed card's date is the LOCAL day.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -735,6 +742,10 @@ Report.
   Voice: failed Add keeps list  PASS          Voice: failed Add keeps list  PASS
   Strength: failed writes say so PASS         Strength: failed writes say so PASS
   Tier page: capture files there PASS         Tier page: capture files there PASS
+  Nav badge: real Inbox count   PASS          Nav badge: real Inbox count   PASS
+  Bulk/Delete: done lists + ring PASS         Bulk/Delete: done lists + ring PASS
+  Settings: Undo updates counts PASS          Settings: Undo updates counts PASS
+  Board: previews refresh       PASS          Board: previews refresh       PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

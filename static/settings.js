@@ -208,8 +208,10 @@
             tdCount.textContent = log.task_count;
 
             var tdDate = document.createElement("td");
-            if (log.imported_at) {
-                var d = new Date(log.imported_at);
+            // #444: zone-less UTC from the server — read as UTC, not local.
+            var d = log.imported_at && window.dateHelpers
+                ? window.dateHelpers.parseServerTimestamp(log.imported_at) : null;
+            if (d) {
                 tdDate.textContent = d.toLocaleDateString() + " " + d.toLocaleTimeString();
             } else {
                 tdDate.textContent = "--";
@@ -291,9 +293,13 @@
         // PR67 #132: window.apiFetch (auto-retry + recovery)
         window.apiFetch("/api/recycle-bin/undo/" + batchId, { method: "POST" })
             .then(function () {
-                // Refresh the history table and the bin count.
+                // Refresh the history table and the bin count — and (#444)
+                // the overview counts and the nav Inbox badge, which the
+                // undo just changed too.
                 loadImports();
                 loadBinCount();
+                loadStats();
+                if (window.refreshInboxBadge) window.refreshInboxBadge();
             })
             .catch(function (err) {
                 alert("Undo failed: " + err.message);

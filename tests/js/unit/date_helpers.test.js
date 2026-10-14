@@ -104,3 +104,33 @@ describe("utcIsoToLocalDate (#294 — board hero ring 'done today')", () => {
         expect(utcIsoToLocalDate("not-a-date")).toBeNull();
     });
 });
+
+// #444: the server sends naive UTC timestamps ("2026-10-13T02:30:00", no
+// zone). `new Date()` reads those as LOCAL time, so the task panel's
+// "Created / Updated" could be a day off; parseServerTimestamp reads them
+// as UTC, as utcIsoToLocalDate already does.
+describe("parseServerTimestamp (#444)", () => {
+    const { parseServerTimestamp } = require("../../../static/date_helpers.js");
+
+    test("a zone-less value is UTC", () => {
+        expect(parseServerTimestamp("2026-10-13T02:30:00").toISOString())
+            .toBe("2026-10-13T02:30:00.000Z");
+    });
+
+    test("an explicit zone is respected", () => {
+        expect(parseServerTimestamp("2026-10-13T02:30:00Z").toISOString())
+            .toBe("2026-10-13T02:30:00.000Z");
+        expect(parseServerTimestamp("2026-10-13T02:30:00+02:00").toISOString())
+            .toBe("2026-10-13T00:30:00.000Z");
+    });
+
+    test("fractional seconds parse too", () => {
+        expect(parseServerTimestamp("2026-10-13T02:30:00.606470").getUTCHours()).toBe(2);
+    });
+
+    test("junk and empty give null", () => {
+        expect(parseServerTimestamp("")).toBeNull();
+        expect(parseServerTimestamp(null)).toBeNull();
+        expect(parseServerTimestamp("not a date")).toBeNull();
+    });
+});

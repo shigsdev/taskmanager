@@ -128,6 +128,7 @@ async function projectsLoad() {
     if (badge) {
         badge.textContent = inboxCount;
         badge.classList.toggle("empty", inboxCount === 0);
+        badge.dataset.counted = String(Date.now());  // #444
     }
 
     projectsRender();
