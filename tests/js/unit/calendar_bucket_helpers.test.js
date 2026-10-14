@@ -554,3 +554,66 @@ describe("bucketTasks — overdue tasks (#467)", () => {
             .toBe("Old one — overdue, was due May 8");
     });
 });
+
+// #445: a task dated after the grid's last day had no cell and vanished.
+// It is listed in a "Later" group instead, sorted by date.
+describe("bucketTasks — tasks after the grid (#445)", () => {
+    const { laterGroupLabel, shortDueLabel } = require("../../../static/calendar_bucket_helpers");
+    const START = "2026-05-25";
+    const END = "2026-06-07";   // 2-week grid: May 25 – Jun 7
+
+    test("a task dated after the last day goes to later, not byDate", () => {
+        const t = { id: "a", tier: "backlog", due_date: "2026-06-20", parent_id: null };
+        const { byDate, unscheduled, later } = bucketTasks([t], TODAY, TOMORROW, START, END);
+        expect(byDate).toEqual({});
+        expect(unscheduled).toEqual([]);
+        expect(later).toEqual([t]);
+    });
+
+    test("the last day itself stays on the grid", () => {
+        const t = { id: "a", tier: "backlog", due_date: END, parent_id: null };
+        const { byDate, later } = bucketTasks([t], TODAY, TOMORROW, START, END);
+        expect(byDate[END]).toEqual([t]);
+        expect(later).toEqual([]);
+    });
+
+    test("later is sorted by date, earliest first", () => {
+        const a = { id: "a", tier: "backlog", due_date: "2026-09-01", parent_id: null };
+        const b = { id: "b", tier: "today", due_date: "2026-06-08", parent_id: null };
+        const c = { id: "c", tier: "next_week", due_date: "2026-07-15", parent_id: null };
+        const { later } = bucketTasks([a, b, c], TODAY, TOMORROW, START, END);
+        expect(later.map((t) => t.id)).toEqual(["b", "c", "a"]);
+    });
+
+    test("a dated subtask after the grid is listed too", () => {
+        const s = { id: "s", tier: "backlog", due_date: "2026-06-20", parent_id: "p" };
+        const { later } = bucketTasks([s], TODAY, TOMORROW, START, END);
+        expect(later).toEqual([s]);
+    });
+
+    test("undated and overdue tasks are unaffected", () => {
+        const u = { id: "u", tier: "backlog", due_date: null, parent_id: null };
+        const o = { id: "o", tier: "backlog", due_date: "2026-01-02", parent_id: null };
+        const { unscheduled, later } = bucketTasks([u, o], TODAY, TOMORROW, START, END);
+        expect(unscheduled).toEqual([u, o]);
+        expect(later).toEqual([]);
+    });
+
+    test("without an end, a far date keeps its own day (old callers)", () => {
+        const t = { id: "a", tier: "backlog", due_date: "2026-09-01", parent_id: null };
+        const { byDate, later } = bucketTasks([t], TODAY, TOMORROW, START);
+        expect(byDate["2026-09-01"]).toEqual([t]);
+        expect(later).toEqual([]);
+    });
+
+    test("laterGroupLabel names the grid's last day", () => {
+        expect(laterGroupLabel("2026-10-25")).toBe("Later · after Oct 25");
+        expect(laterGroupLabel("2026-06-07")).toBe("Later · after Jun 7");
+    });
+
+    test("shortDueLabel adds the year only when it isn't this year", () => {
+        expect(shortDueLabel("2026-11-02", "2026-10-13")).toBe("Nov 2");
+        expect(shortDueLabel("2027-01-12", "2026-10-13")).toBe("Jan 12, 2027");
+        expect(shortDueLabel("bogus", "2026-10-13")).toBe("bogus");
+    });
+});

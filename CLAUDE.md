@@ -585,6 +585,12 @@ Report.
      Completed. /settings Import History → Undo: Active Tasks and the badge
      drop at once. Pause a template, refresh (or wait for the poll): its
      board previews go. A completed card's date is the LOCAL day.
+     #445: on /calendar at 2 weeks, a task dated in week 3 is in the side
+     panel's "Later · after <last day>" group, its date first, and on no
+     cell; click opens it; switch to 4 weeks and it is on its day and gone
+     from Later. With nothing past the grid there is NO Later group (the
+     quiet case). /settings Preview Digest with an overdue Today task: it is
+     listed ONCE, under Today, with a red "overdue" pill.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -746,6 +752,9 @@ Report.
   Bulk/Delete: done lists + ring PASS         Bulk/Delete: done lists + ring PASS
   Settings: Undo updates counts PASS          Settings: Undo updates counts PASS
   Board: previews refresh       PASS          Board: previews refresh       PASS
+  Calendar: Later group         PASS          Calendar: Later group         PASS
+  Calendar: no Later when none  PASS          Calendar: no Later when none  PASS
+  Digest: overdue Today once    PASS          Digest: overdue Today once    PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

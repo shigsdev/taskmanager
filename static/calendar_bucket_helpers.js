@@ -57,15 +57,19 @@
  * @param {string} [startIso] - the grid's first day (#467). A past-dated
  *   task outside Today whose day is before it has no cell, so it is listed
  *   as unscheduled instead of vanishing. Omit to keep each task's own day.
- * @returns {{ byDate: Object<string, Array>, unscheduled: Array }}
+ * @param {string} [endIso] - the grid's LAST day (#445). A task whose day is
+ *   after it has no cell either; it goes to `later`, sorted by date. Omit to
+ *   keep each task's own day.
+ * @returns {{ byDate: Object<string, Array>, unscheduled: Array, later: Array }}
  *
  * #467: a Today task whose date has passed sits on TODAY's cell, matching
  * the board's Today list (it used to sit on its old day — invisible when
  * that day was before this Monday).
  */
-function bucketTasks(tasks, todayIso, tomorrowIso, startIso) {
+function bucketTasks(tasks, todayIso, tomorrowIso, startIso, endIso) {
     const byDate = {};
     const unscheduled = [];
+    const later = [];
     for (const t of tasks) {
         let cellDate = t.due_date;
         if (!cellDate) {
@@ -75,7 +79,11 @@ function bucketTasks(tasks, todayIso, tomorrowIso, startIso) {
             if (t.tier === "today") cellDate = todayIso;
             else if (startIso && cellDate < startIso) cellDate = null;
         }
-        if (cellDate) {
+        if (cellDate && endIso && cellDate > endIso) {
+            // #445: past the grid's last day — listed (subtasks too: they
+            // were scheduled) in the side panel's Later group.
+            later.push(t);
+        } else if (cellDate) {
             // Scheduled — top-level OR subtask, render on its day.
             if (!byDate[cellDate]) byDate[cellDate] = [];
             byDate[cellDate].push(t);
@@ -86,7 +94,8 @@ function bucketTasks(tasks, todayIso, tomorrowIso, startIso) {
         // else: subtask with no day → suppressed. It's still visible on
         // the home board nested under its parent's detail card.
     }
-    return { byDate: byDate, unscheduled: unscheduled };
+    later.sort((a, b) => (a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0));
+    return { byDate: byDate, unscheduled: unscheduled, later: later };
 }
 
 /**
@@ -231,6 +240,25 @@ function overdueTitle(task) {
 }
 
 /**
+ * #445: a row's date in the Later group — "Nov 2", or "Jan 12, 2027" when
+ * it isn't this year. Anything that isn't YYYY-MM-DD comes back as given.
+ */
+function shortDueLabel(dueIso, todayIso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dueIso || ""));
+    if (!m) return String(dueIso);
+    var label = _MONTHS[+m[2] - 1] + " " + (+m[3]);
+    return m[1] === String(todayIso || "").slice(0, 4) ? label : label + ", " + m[1];
+}
+
+/**
+ * #445: the Later group's heading — "Later · after Oct 25" (the grid's last
+ * day; the group lists every task dated after it).
+ */
+function laterGroupLabel(endIso) {
+    return "Later · after " + shortDueLabel(endIso, endIso);
+}
+
+/**
  * Coerce a stored / user-supplied week count to one we actually offer.
  *
  * The value round-trips through localStorage, which returns strings and
@@ -276,13 +304,13 @@ if (typeof module !== "undefined" && module.exports) {
         bucketTasks, calendarReorderIds, reorderTierWithCell,
         groupUnscheduledByTier, CALENDAR_WEEK_OPTIONS,
         normaliseCalendarWeeks, calendarRangeEndIso,
-        isOverdue, overdueTitle,
+        isOverdue, overdueTitle, shortDueLabel, laterGroupLabel,
     };
 } else if (typeof window !== "undefined") {
     window.calendarBucketHelpers = {
         bucketTasks, calendarReorderIds, reorderTierWithCell,
         groupUnscheduledByTier, CALENDAR_WEEK_OPTIONS,
         normaliseCalendarWeeks, calendarRangeEndIso,
-        isOverdue, overdueTitle,
+        isOverdue, overdueTitle, shortDueLabel, laterGroupLabel,
     };
 }

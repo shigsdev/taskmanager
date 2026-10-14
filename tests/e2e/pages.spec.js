@@ -9972,6 +9972,87 @@ test.describe("Calendar shows overdue tasks (#467)", () => {
     });
 });
 
+// #445: a task dated after the calendar's last day had no cell and vanished.
+// It is listed, date first, in a "Later" group at the bottom of the side panel.
+test.describe("Calendar lists tasks after the grid (#445)", () => {
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    test("2 weeks: in Later with its date; 4 weeks: on its own day", async ({ page }) => {
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+        const monday = new Date(now);
+        monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+        const due = new Date(monday);
+        due.setDate(monday.getDate() + 20);   // week 3: off a 2-week grid, on a 4-week one
+        const lastDay = new Date(monday);
+        lastDay.setDate(monday.getDate() + 13);
+        const fake = {
+            id: "e2e-445-later", title: "E2E 445 later task", tier: "backlog", type: "work",
+            status: "active", due_date: iso(due), parent_id: null, project_id: null, goal_id: null,
+            subtask_count: 0, checklist: [], notes: "", url: null, repeat: null,
+            sort_order: 0, created_at: "2026-01-01T00:00:00", updated_at: "2026-01-01T00:00:00",
+        };
+        await page.route("**/api/tasks", async (route, req) => {
+            if (req.method() !== "GET") return route.fallback();
+            const res = await route.fetch();
+            expect(res.status()).toBe(200);
+            const rows = await res.json();
+            await route.fulfill({ response: res, json: rows.concat([fake]) });
+        });
+        await page.addInitScript(() => {
+            if (!sessionStorage.getItem("e2e445")) {
+                localStorage.setItem("calendarWeeks", "2");
+                sessionStorage.setItem("e2e445", "1");
+            }
+        });
+        await page.goto("/calendar?nosw=1");
+        await page.waitForLoadState("networkidle");
+
+        const later = page.locator(".calendar-later-zone");
+        await expect(later).toBeVisible();
+        const label = `${MONTHS[lastDay.getMonth()]} ${lastDay.getDate()}`;
+        await expect(later.locator(".calendar-unscheduled-group"))
+            .toHaveText(new RegExp(`^Later · after ${label} \\(\\d+\\)$`));
+        const row = later.locator("li", { hasText: "E2E 445 later task" });
+        await expect(row).toBeVisible();
+        const when = `${MONTHS[due.getMonth()]} ${due.getDate()}`
+            + (due.getFullYear() === now.getFullYear() ? "" : `, ${due.getFullYear()}`);
+        await expect(row.locator(".calendar-task-date")).toHaveText(`${when} · `);
+        await expect(row).toHaveAttribute("title", `E2E 445 later task — due ${when}`);
+        await expect(page.locator(".calendar-cell li", { hasText: "E2E 445 later task" })).toHaveCount(0);
+        // Not a drop target, and it doesn't count toward "Unscheduled (N)".
+        await expect(later).not.toHaveAttribute("data-drop-tier", /.*/);
+        // A click opens the task panel, like any other row.
+        await row.click();
+        await expect(page.locator("#detailTitle")).toHaveValue("E2E 445 later task");
+        await page.keyboard.press("Escape");
+
+        const vw = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+        expect(vw[0]).toBeLessThanOrEqual(vw[1]);
+
+        // 4 weeks: the day is on the grid now, so it's there and Later has it no more.
+        await page.click('.calendar-range-btn[data-weeks="4"]');
+        const cell = page.locator(`.calendar-cell[data-date="${iso(due)}"]`);
+        await expect(cell.locator("li", { hasText: "E2E 445 later task" })).toBeVisible();
+        await expect(page.locator(".calendar-later-zone li", { hasText: "E2E 445 later task" })).toHaveCount(0);
+    });
+
+    test("nothing after the grid: no Later group (the quiet case)", async ({ page }) => {
+        await page.route("**/api/tasks", async (route, req) => {
+            if (req.method() !== "GET") return route.fallback();
+            const res = await route.fetch();
+            expect(res.status()).toBe(200);
+            const rows = await res.json();
+            await route.fulfill({ response: res, json: rows.map((r) => ({ ...r, due_date: null })) });
+        });
+        await page.goto("/calendar?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator("#calendarUnscheduled h3")).toBeVisible();
+        await expect(page.locator(".calendar-later-zone")).toHaveCount(0);
+    });
+});
+
 // #468: with no filter on, the board's filter banner takes no room at all
 // (`display: flex` used to beat `[hidden]`, leaving an empty copper bar).
 test.describe("Filter banner hides when no filter is on (#468)", () => {

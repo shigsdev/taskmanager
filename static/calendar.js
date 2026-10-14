@@ -254,8 +254,9 @@
         const tomorrowIso = _isoDate(_addDays(today, 1));
         // #467: startIso — an overdue task outside Today dated before the
         // grid has no cell; it is listed under its section instead.
-        const { byDate, unscheduled } = window.calendarBucketHelpers.bucketTasks(
-            tasks, todayIso, tomorrowIso, startIso,
+        // #445: endIso — one dated after the grid goes to the Later group.
+        const { byDate, unscheduled, later } = window.calendarBucketHelpers.bucketTasks(
+            tasks, todayIso, tomorrowIso, startIso, endIso,
         );
         _calendarTodayIso = todayIso;
         // #219: bail if a newer renderCalendar() call started while we
@@ -270,7 +271,7 @@
         // a source to drag FROM. Tasks already in cells are also
         // draggable (between days). Without this, /calendar had nothing
         // draggable on the page at all.
-        _renderUnscheduled(unscheduled);
+        _renderUnscheduled(unscheduled, later, endIso);
         // #99 (PR34): bucket previews by fire_date for the per-cell render.
         const previewsByDate = {};
         for (const p of previews) {
@@ -604,7 +605,7 @@
     // group is now an always-present drop target (see _makeUnscheduledZone),
     // so the four groups render even when empty — you can drag a task INTO
     // This Week / Next Week / Backlog, not just clear its date.
-    function _renderUnscheduled(tasks) {
+    function _renderUnscheduled(tasks, later, endIso) {
         const panel = document.getElementById("calendarUnscheduled");
         if (!panel) return;
         panel.replaceChildren();
@@ -622,6 +623,37 @@
         for (const g of groups) {
             panel.appendChild(_makeUnscheduledZone(g));
         }
+        if (later && later.length) panel.appendChild(_makeLaterGroup(later, endIso));
+    }
+
+    // #445: tasks dated after the grid's last day, sorted by date, each row
+    // showing its date. Only drawn when there are some, and NOT a drop target
+    // (dropping on "later" means nothing) — its rows still drag onto a day or
+    // a section group and open the task panel like any other row.
+    function _makeLaterGroup(tasks, endIso) {
+        const h = window.calendarBucketHelpers;
+        const box = document.createElement("div");
+        box.className = "calendar-unscheduled-zone calendar-later-zone";
+        const label = document.createElement("div");
+        label.className = "calendar-unscheduled-group";
+        label.textContent = `${h.laterGroupLabel(endIso)} (${tasks.length})`;
+        box.appendChild(label);
+        const list = document.createElement("ul");
+        list.className = "calendar-unscheduled-list";
+        for (const t of tasks) {
+            const li = _makeTaskLi(t, null);
+            const when = h.shortDueLabel(t.due_date, _calendarTodayIso);
+            const date = document.createElement("span");
+            date.className = "calendar-task-date";
+            date.textContent = when + " · ";
+            // Date first: rows truncate with an ellipsis, so a trailing
+            // date would be the first thing cut off a long title.
+            li.prepend(date);
+            li.title = `${t.title} — due ${when}`;
+            list.appendChild(li);
+        }
+        box.appendChild(list);
+        return box;
     }
 
     function init() {

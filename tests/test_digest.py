@@ -341,6 +341,62 @@ class TestDigestOverdueLabelCorrectness:
         assert "Real overdue" in body
 
 
+class TestDigestOverdueTodayListedOnce:
+    """#445: an overdue task in Today was listed under Today AND again under
+    Overdue. Overdue now holds other sections only (same rule as /print);
+    the Today line carries the overdue mark instead."""
+
+    def test_plain_text_lists_an_overdue_today_task_once(self, app):
+        from digest_service import build_digest
+
+        today = date.today()
+        with app.app_context():
+            _make_task(
+                title="Late today item", tier=Tier.TODAY,
+                due_date=today - timedelta(days=3),
+            )
+            body = build_digest(target_date=today)
+        assert body.count("Late today item") == 1
+        today_block = body.split("TODAY'S TASKS")[1].split("\n\n")[0]
+        assert "Late today item" in today_block
+        assert "(overdue: " in today_block
+        assert "OVERDUE (" not in body
+
+    def test_html_lists_it_once_with_an_overdue_pill(self, app):
+        from digest_service import build_digest_html
+
+        today = date.today()
+        with app.app_context():
+            _make_task(
+                title="Late today item", tier=Tier.TODAY,
+                due_date=today - timedelta(days=3),
+            )
+            html = build_digest_html(target_date=today)
+        assert html.count("Late today item") == 1
+        row = html.split("Late today item")[1].split("</div>")[0]
+        assert ">overdue<" in row
+        assert "⚠ Overdue" not in html
+
+    def test_overdue_task_in_another_section_still_under_overdue(self, app):
+        from digest_service import build_digest, build_digest_html
+
+        today = date.today()
+        with app.app_context():
+            _make_task(
+                title="Old backlog item", tier=Tier.BACKLOG,
+                due_date=today - timedelta(days=3),
+            )
+            _make_task(title="On time today", tier=Tier.TODAY, due_date=today)
+            body = build_digest(target_date=today)
+            html = build_digest_html(target_date=today)
+        assert "⚠ OVERDUE (1)" in body
+        assert body.index("⚠ OVERDUE") < body.index("Old backlog item")
+        assert "Overdue · 1" in html
+        # The quiet case: a Today task due today gets no overdue pill.
+        on_time = html.split("On time today")[1].split("</div>")[0]
+        assert ">overdue<" not in on_time
+
+
 class TestDigestInactiveProjectAndDoneGoalFiltered:
     """PR62 audit fix #14: per-task lines were exposing inactive project
     names and DONE goal titles. The goal-section filter didn't reach the

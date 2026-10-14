@@ -192,9 +192,12 @@ def _build_digest_data(target_date: date | None = None) -> dict[str, Any]:
         if t.due_date == today and t.tier != Tier.TODAY
     ]
 
+    # #445: other sections only. An overdue Today task is already in
+    # today_tasks (marked overdue there); listing it here too said it twice.
+    # Same rule as /print (app.py print_page).
     overdue = [
         t for t in all_active
-        if t.due_date and t.due_date < today
+        if t.due_date and t.due_date < today and t.tier != Tier.TODAY
     ]
 
     goal_counts: dict[str, int] = {}
@@ -257,6 +260,7 @@ def _build_digest_data(target_date: date | None = None) -> dict[str, Any]:
             "project": proj_name,
             "goal": goal_title,
             "due_today": t.due_date == today,
+            "overdue": bool(t.due_date and t.due_date < today),  # #445
             "due_date_iso": t.due_date.isoformat() if t.due_date else None,
             "due_date_pretty": t.due_date.strftime("%b %d") if t.due_date else None,
             "today_iso": today_iso,  # for plain-text overdue-vs-future disambiguation
