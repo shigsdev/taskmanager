@@ -106,6 +106,17 @@
             });
     }
 
+    /**
+     * #446: is any listed overlay open? base.html's userIsBusy() asks this
+     * before the service worker's auto-reload, so an open goal panel, ✨ Plan
+     * review or modal shows the "Update available" banner instead of being
+     * reloaded away. Same list and same open test as Escape uses.
+     */
+    function anyOpen(doc, win) {
+        if (!doc || !win) return false;
+        return openOverlays(doc, win).some(function (o) { return o.open; });
+    }
+
     /** The document keydown handler. Returns what it did, for tests. */
     function handleKey(e, doc, win) {
         if (!e || e.defaultPrevented || e.isComposing) return "ignored";
@@ -142,6 +153,7 @@
         focusablesIn: focusablesIn,
         handleKey: handleKey,
         attachPanelKeys: attachPanelKeys,
+        anyOpen: anyOpen,
     };
 
     if (typeof module !== "undefined" && module.exports) {

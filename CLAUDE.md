@@ -591,6 +591,11 @@ Report.
      from Later. With nothing past the grid there is NO Later group (the
      quiet case). /settings Preview Digest with an overdue Today task: it is
      listed ONCE, under Today, with a red "overdue" pill.
+     #446: with focus off any field, `window.__userIsBusy()` is false on an
+     idle page (every page — the quiet case: true would strand the user on
+     old code), and true while the goal panel, project panel, /recurring
+     editor, ✨ Plan review, 💡 Auto-categorize review, Recycle Bin confirm
+     or a Strength Forge pop-up is open; false again once it closes.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -755,6 +760,8 @@ Report.
   Calendar: Later group         PASS          Calendar: Later group         PASS
   Calendar: no Later when none  PASS          Calendar: no Later when none  PASS
   Digest: overdue Today once    PASS          Digest: overdue Today once    PASS
+  Reload guard: idle pages quiet PASS         Reload guard: idle pages quiet PASS
+  Reload guard: open panel busy PASS          Reload guard: open panel busy PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

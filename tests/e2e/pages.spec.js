@@ -10053,6 +10053,124 @@ test.describe("Calendar lists tasks after the grid (#445)", () => {
     });
 });
 
+// #446: the service worker's auto-reload only held off for the task panel; an
+// open goal / project panel, recurring editor, ✨ Plan or 💡 Auto-categorize
+// review (paid calls) or a modal was reloaded away. Now any open panel or
+// pop-up counts as busy. The quiet case matters as much: an idle page must
+// NOT read busy, or the update would never apply.
+test.describe("Reload guard sees every open panel (#446)", () => {
+    const busy = (page) => page.evaluate(() => {
+        if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+        return window.__userIsBusy();
+    });
+
+    test("idle pages are not busy (the quiet case)", async ({ page }) => {
+        for (const path of [
+            "/", "/goals", "/projects", "/recurring", "/calendar", "/completed",
+            "/tier/today", "/recycle-bin", "/reflection", "/voice-memo",
+            "/strength-forge", "/settings", "/plan", "/scan", "/import",
+            "/review", "/docs", "/utilities",
+        ]) {
+            await page.goto(path + "?nosw=1");
+            await page.waitForLoadState("networkidle");
+            expect(await busy(page), path).toBe(false);
+        }
+    });
+
+    test("goal panel, project panel and recurring editor are busy until closed", async ({ page }) => {
+        for (const [path, btn, overlay] of [
+            ["/goals", "#addGoalBtn", "#goalDetailOverlay"],
+            ["/projects", "#addProjectBtn", "#projectDetailOverlay"],
+            ["/recurring", "#recurringNew", "#recurEditOverlay"],
+        ]) {
+            await page.goto(path + "?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator(btn).click();
+            await expect(page.locator(overlay)).toBeVisible();
+            expect(await busy(page), path).toBe(true);
+            await page.locator(overlay + " [data-panel-close]").first().click();
+            await expect(page.locator(overlay)).toBeHidden();
+            expect(await busy(page), path + " closed").toBe(false);
+        }
+    });
+
+    test("board: the Plan review is busy until closed", async ({ page }) => {
+        await page.route("**/api/weekly-focus?*", (r) => {
+            if (r.request().method() !== "GET") return r.fallback();
+            return r.fulfill({ json: {
+                slot_count: 3, week_start_date: "2026-10-05", fallback_from: null,
+                slots: [{ slot_order: 1, text: "E2E 446 focus", goal_id: null, goal_title: null }],
+            } });
+        });
+        await page.route("**/api/weekly-focus/1/plan*", (r) => r.fulfill({ json: { changes: [] } }));
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator(".weekly-focus-slot-plan").first().click();
+        const modal = page.locator("#weeklyFocusPlanModal");
+        await expect(modal).toBeVisible({ timeout: 5000 });
+        expect(await busy(page)).toBe(true);
+        await page.keyboard.press("Escape");
+        await expect(modal).toBeHidden();
+        expect(await busy(page)).toBe(false);
+    });
+
+    test("board: the Auto-categorize review is busy until closed", async ({ page, request }) => {
+        const t = await request.post("/api/tasks", {
+            data: { title: `E2E 446 inbox ${Date.now()}`, type: "work", tier: "inbox" },
+        });
+        expect(t.ok()).toBe(true);
+        const task = await t.json();
+        try {
+            await page.route("**/api/inbox/categorize", (r) => r.fulfill({ json: {
+                count: 1, capped: false,
+                suggestions: [{
+                    task_id: task.id, title: task.title, suggested_tier: "this_week",
+                    suggested_project_id: null, suggested_goal_id: null,
+                    suggested_due_date: null, suggested_type: "work", reason: "fixture",
+                }],
+            } }));
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            await page.locator("#autoCategorizeBtn").click();
+            const modal = page.locator("#autoCategorizeModal");
+            await expect(modal.locator(`tr[data-task-id="${task.id}"]`)).toBeVisible({ timeout: 5000 });
+            expect(await busy(page)).toBe(true);
+            await page.keyboard.press("Escape");
+            await expect(modal).toBeHidden();
+            expect(await busy(page)).toBe(false);
+        } finally {
+            await request.delete(`/api/tasks/${task.id}`);
+        }
+    });
+
+    test("recycle bin confirm and a Strength Forge pop-up are busy until closed", async ({ page }) => {
+        await page.route("**/api/recycle-bin/summary", (r) => r.fulfill({
+            json: { task_count: 1, goal_count: 0, batch_count: 1 } }));
+        await page.route("**/api/recycle-bin", (r) => r.fulfill({ json: { batches: [] } }));
+        await page.route("**/api/recycle-bin/empty", (r) =>
+            r.fulfill({ status: 500, json: { error: "must not run" } }));
+        await page.goto("/recycle-bin?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator("#recycleEmptyBtn").click();
+        const confirm = page.locator("#recycleModalOverlay");
+        await expect(confirm).toBeVisible({ timeout: 5000 });
+        expect(await busy(page)).toBe(true);
+        await page.keyboard.press("Escape");
+        await expect(confirm).toBeHidden();
+        expect(await busy(page)).toBe(false);
+
+        await page.goto("/strength-forge?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator(".sf-exrow-info").first().click();
+        const howTo = page.locator(".sf-modal-overlay");
+        await expect(howTo).toBeVisible();
+        expect(await busy(page)).toBe(true);
+        await page.keyboard.press("Escape");
+        await expect(howTo).toBeHidden();
+        expect(await busy(page)).toBe(false);
+    });
+});
+
 // #468: with no filter on, the board's filter banner takes no room at all
 // (`display: flex` used to beat `[hidden]`, leaving an empty copper bar).
 test.describe("Filter banner hides when no filter is on (#468)", () => {

@@ -314,3 +314,41 @@ describe("the five modals (#406)", () => {
         expect(order).toEqual(["m", "p"]);
     });
 });
+
+// #446: the service worker's auto-reload asks "is anything open?" so an open
+// goal panel, a ✨ Plan review (a paid call) or a modal isn't reloaded away.
+describe("anyOpen (#446)", () => {
+    const { anyOpen } = require("../../../static/panel_keys");
+
+    test("nothing open → false; a page with no overlays → false", () => {
+        document.body.innerHTML = `
+            <div class="detail-overlay" id="detailOverlay" style="display:none"></div>
+            <div class="weekly-focus-plan-modal" hidden></div>`;
+        expect(anyOpen(document, window)).toBe(false);
+        document.body.innerHTML = "<main><button>x</button></main>";
+        expect(anyOpen(document, window)).toBe(false);
+    });
+
+    test("a side panel other than the task panel → true", () => {
+        document.body.innerHTML = `
+            <div class="detail-overlay" id="goalDetailOverlay"></div>
+            <div class="detail-overlay" id="detailOverlay" style="display:none"></div>`;
+        expect(anyOpen(document, window)).toBe(true);
+    });
+
+    test.each([
+        "modal-overlay", "reflection-focus-modal", "weekly-focus-plan-modal",
+        "auto-categorize-modal", "voice-recur-overlay", "sf-modal-overlay",
+        "sf-logform-overlay", "sf-print-overlay",
+    ])("%s open → true, closed → false", (cls) => {
+        document.body.innerHTML = `<div class="${cls}" id="m"></div>`;
+        expect(anyOpen(document, window)).toBe(true);
+        document.getElementById("m").hidden = true;
+        expect(anyOpen(document, window)).toBe(false);
+    });
+
+    test("bad input → false", () => {
+        expect(anyOpen(null, window)).toBe(false);
+        expect(anyOpen(document, null)).toBe(false);
+    });
+});
