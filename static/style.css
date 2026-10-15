@@ -174,6 +174,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 .update-banner[hidden] { display: none; }
+/* #452: an author `display:` rule beats the UA stylesheet's
+   `[hidden] { display: none }` — #468's empty filter banner, the
+   Utilities status boxes, Strength Forge's collapsed detail rows.
+   One rule closes the class instead of one fix per component. No
+   element shows itself through style.display while keeping
+   `hidden` (audited 2026-10-15). */
+[hidden] { display: none !important; }
 .update-banner button {
     /* #224: update banner sits on the accent-blue strip. The button
        is the call-to-action, so it needs HIGH contrast vs the blue
@@ -1172,6 +1179,22 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     white-space: nowrap;
 }
 .reopen-dropdown button:hover { background: var(--surface-sunk); }
+/* #452: the card clips (overflow:hidden at <=600px, and inline from
+   swipe.js on touch devices) — 0 of 7 options were reachable. While
+   its menu is open the card doesn't clip; !important beats the
+   inline style. And it rises above the cards after it: a completed
+   card's opacity:0.7 makes each card its own stacking context, so the
+   menu's z-index only counted inside its card and the next cards
+   painted over it. */
+.task-card:has(.reopen-dropdown) {
+    overflow: visible !important;
+    position: relative;
+    z-index: 20;
+    opacity: 1;
+}
+/* …and with the card no longer clipping, its swipe strip (parked just past
+   the right edge) would peek out — and, even invisible, widen the page. */
+.task-card:has(.reopen-dropdown) .swipe-actions { display: none; }
 /* #261 (2026-05-29): on mobile, open downward + constrain height so
    all 6 options (Today / Tomorrow / This Week / Next Week / Backlog
    / Freezer) are reachable even when the row sits near the top of
@@ -3742,30 +3765,8 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     /* #140 — bump from 36px to meet 44px touch-target floor. */
     .project-filter-btn { white-space: nowrap; }
 
-    /* Swipe card: reveal actions on swipe left */
-    .task-card.swiped {
-        transform: translateX(-120px);
-        transition: transform 0.2s ease;
-    }
-    .task-card .swipe-actions {
-        position: absolute;
-        right: -120px;
-        top: 0;
-        bottom: 0;
-        width: 120px;
-        display: flex;
-        align-items: stretch;
-    }
-    .swipe-actions button {
-        flex: 1;
-        border: none;
-        color: #fff;
-        font-size: 0.75rem;
-        font-weight: 600;
-        cursor: pointer;
-    }
-    .swipe-action-move { background: var(--accent); }
-    .swipe-action-delete { background: var(--danger); }
+    /* (#452: the swipe-action rules moved out of this block — see
+       "Swipe actions" below the media queries.) */
 
     /* Bulk triage dropdown: full width on mobile */
     .triage-dropdown {
@@ -3780,6 +3781,9 @@ input[type="time"]::-webkit-calendar-picker-indicator {
    used to sit in the 600px block above; kept right here so their
    cascade position is unchanged — only the width condition moved. */
 @media (max-width: 767px) {
+    /* #452: the import-history table (400px) was cut 74px by the
+       section's overflow:hidden at 375. Let each table scroll. */
+    .settings-section table { display: block; overflow-x: auto; }
     /* #450: iOS Safari zooms the page when a focused field's text is under
        16px (and the installed PWA stays zoomed). Every field that opens the
        keyboard gets 16px at phone width, whatever its component rule says —
@@ -4141,6 +4145,10 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     align-items: center;
     gap: 12px;
     z-index: 150;
+    /* #452: fixed + left:50% shrink-wraps to the space right of the
+       midpoint — half the viewport — so it wrapped to three rows at
+       1280px. Size it to its content instead. */
+    width: max-content;
     max-width: calc(100vw - 24px);
 }
 .bulk-toolbar-summary {
@@ -4169,9 +4177,9 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .bulk-pending-chip:hover { background: #1d4ed8; }
 #bulkApplyChanges {
-    background: var(--success, #16a34a); color: #fff; border-color: transparent;
+    background: var(--success, #16a34a); color: var(--on-fill); border-color: transparent;  /* #451/#452 */
 }
-#bulkApplyChanges:hover { background: #15803d; }
+#bulkApplyChanges:hover { background: #a7b59f; }
 #bulkClearPending {
     background: transparent; border: 1px solid var(--border); color: var(--text);
 }
@@ -4344,6 +4352,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
         left: 8px;
         right: 8px;
         transform: none;
+        width: auto;  /* #452: left + right size it here */
         max-width: none;
         padding: 8px 10px;
         flex-wrap: wrap;
@@ -4719,6 +4728,40 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 @media (max-width: 600px) {
     .docs-page [id] { scroll-margin-top: 231px; }
 }
+
+/* === Swipe actions (#452) ===
+   swipe.js adds these on ANY touch device. They used to be styled
+   only at <=600px and sat 120px past the card's right edge while the
+   whole card slid left — still outside the card's box, so its
+   overflow:hidden showed blank space; on a wider touch screen they
+   showed unstyled inside the card. Now the card stays put and the
+   strip slides in from its right edge, inside the card (which clips
+   it while it's off). */
+.task-card .swipe-actions {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 120px;
+    display: flex;
+    align-items: stretch;
+    /* Above the card's own positioned controls — on a touch screen the
+       quick-action buttons carry #294's enlarged hit areas. */
+    z-index: 30;
+    transform: translateX(100%);
+    transition: transform 0.2s ease;
+}
+.task-card.swiped .swipe-actions { transform: translateX(0); }
+.swipe-actions button {
+    flex: 1;
+    border: none;
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.swipe-action-move { background: var(--accent); }
+.swipe-action-delete { background: var(--danger); }
 
 /* --- Architecture page (#42) --- */
 

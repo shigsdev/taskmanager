@@ -11,25 +11,32 @@
  * 3. touchend    — if the swipe crossed a threshold (60px), lock the card
  *                   in the "swiped" position; otherwise, snap it back
  *
- * The CSS class .swiped (defined in style.css) applies
- * transform: translateX(-120px) to slide the card left and expose the
- * .swipe-actions container sitting just off the right edge.
+ * #452: the card stays put; the .swipe-actions strip sits inside it,
+ * translated off its right edge (the card clips it), and slides in —
+ * following the finger, then locked by the CSS class .swiped. (It used
+ * to slide the whole card, buttons included, so they never left the
+ * clipped area and the user saw blank space.)
  */
 
 (function () {
     "use strict";
 
     const SWIPE_THRESHOLD = 60;  // minimum px to count as a swipe
-    const SWIPE_OFFSET = 120;    // how far the card slides (matches CSS)
+    const SWIPE_OFFSET = 120;    // width of the action strip (matches CSS)
 
     let activeCard = null;       // the currently swiped-open card (if any)
 
     /**
      * Reset a card back to its default (un-swiped) position.
      */
+    function actionsOf(card) {
+        return card.querySelector(".swipe-actions");
+    }
+
     function resetCard(card) {
         if (!card) return;
-        card.style.transform = "";
+        const actions = actionsOf(card);
+        if (actions) { actions.style.transform = ""; actions.style.transition = ""; }
         card.classList.remove("swiped");
         if (card === activeCard) activeCard = null;
     }
@@ -62,7 +69,8 @@
             currentX = 0;
             swiping = false;
             // Remove transition during drag for smooth tracking
-            card.style.transition = "none";
+            const actions = actionsOf(card);
+            if (actions) actions.style.transition = "none";
         }, { passive: true });
 
         card.addEventListener("touchmove", function (e) {
@@ -78,18 +86,22 @@
                 swiping = true;
                 // Clamp: don't let them drag further than SWIPE_OFFSET
                 currentX = Math.max(dx, -SWIPE_OFFSET);
-                card.style.transform = "translateX(" + currentX + "px)";
+                const actions = actionsOf(card);
+                if (actions) {
+                    actions.style.transform = "translateX(" + (SWIPE_OFFSET + currentX) + "px)";
+                }
             }
         }, { passive: true });
 
         card.addEventListener("touchend", function () {
             // Restore CSS transition for the snap animation
-            card.style.transition = "";
+            const actions = actionsOf(card);
+            if (actions) actions.style.transition = "";
 
             if (Math.abs(currentX) >= SWIPE_THRESHOLD) {
                 // Lock in swiped position
                 card.classList.add("swiped");
-                card.style.transform = "translateX(-" + SWIPE_OFFSET + "px)";
+                if (actions) actions.style.transform = "";  // .swiped shows it
                 activeCard = card;
             } else {
                 // Snap back

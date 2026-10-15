@@ -633,6 +633,12 @@ Report.
      the task panel's ✓ Complete is sage with dark text; /review Keep and
      Snooze have dark text; preview cards read muted cream and stay dark on
      hover (tints: dark_contrast.spec.js measures them).
+     #452: at 375 on a touch device, open the board's Completed section and
+     a card's Re-open ▾ — all seven sections show over the cards below and
+     the page doesn't widen; swipe a card left — Move and Delete slide in
+     inside it (also on a ~820px touch screen). /utilities and /strength-
+     forge show no box that should be hidden; at 1280 the bulk toolbar is
+     one row; /settings import history scrolls sideways at 375.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -811,6 +817,9 @@ Report.
   Capture: box gets its own row PASS         Capture: box gets its own row PASS
   Fields: 16px, no iOS zoom     PASS          Fields: 16px, no iOS zoom     PASS
   Contrast: selected/fills/previews PASS     Contrast: selected/fills/previews PASS
+  Re-open menu over the cards   PASS          Re-open menu over the cards   PASS
+  Swipe shows Move/Delete       SKIP (touch)  Swipe shows Move/Delete       PASS
+  Bulk toolbar one row          PASS          Settings table scrolls        PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS
