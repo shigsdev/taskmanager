@@ -25,7 +25,6 @@
     // DOM refs — docx input
     var docxInput = document.getElementById("importDocxInput");
     var docxFileInput = document.getElementById("importDocxFile");
-    var docxFileLabel = document.getElementById("importDocxFileLabel");
     var docxFileName = document.getElementById("importDocxFileName");
     var parseDocxBtn = document.getElementById("importParseDocxBtn");
     var backFromDocx = document.getElementById("importBackFromDocx");
@@ -34,7 +33,6 @@
     // DOM refs — goals input
     var goalsInput = document.getElementById("importGoalsInput");
     var fileInput = document.getElementById("importFile");
-    var fileLabel = document.getElementById("importFileLabel");
     var fileName = document.getElementById("importFileName");
     var parseGoalsBtn = document.getElementById("importParseGoalsBtn");
     var backFromGoals = document.getElementById("importBackFromGoals");
@@ -205,7 +203,6 @@
     var tasksExcelBtn = document.getElementById("importTasksExcelBtn");
     var tasksExcelInput = document.getElementById("importTasksExcelInput");
     var tasksExcelFile = document.getElementById("importTasksExcelFile");
-    var tasksExcelFileLabel = document.getElementById("importTasksExcelFileLabel");
     var tasksExcelFileName = document.getElementById("importTasksExcelFileName");
     var parseTasksExcelBtn = document.getElementById("importParseTasksExcelBtn");
     var backFromTasksExcel = document.getElementById("importBackFromTasksExcel");
@@ -215,9 +212,6 @@
         showSection(tasksExcelInput);
     });
     if (backFromTasksExcel) backFromTasksExcel.addEventListener("click", resetAll);
-    if (tasksExcelFileLabel) tasksExcelFileLabel.addEventListener("click", function () {
-        tasksExcelFile.click();
-    });
     if (tasksExcelFile) tasksExcelFile.addEventListener("change", function () {
         var file = tasksExcelFile.files[0];
         if (!file) return;
@@ -268,7 +262,6 @@
     var backFromProjectsText = document.getElementById("importBackFromProjectsText");
     var projectsTextStatus = document.getElementById("importProjectsTextStatus");
     var projectsExcelFile = document.getElementById("importProjectsExcelFile");
-    var projectsExcelFileLabel = document.getElementById("importProjectsExcelFileLabel");
     var projectsExcelFileName = document.getElementById("importProjectsExcelFileName");
     var parseProjectsExcelBtn = document.getElementById("importParseProjectsExcelBtn");
     var backFromProjectsExcel = document.getElementById("importBackFromProjectsExcel");
@@ -282,9 +275,6 @@
     });
     if (backFromProjectsText) backFromProjectsText.addEventListener("click", resetAll);
     if (backFromProjectsExcel) backFromProjectsExcel.addEventListener("click", resetAll);
-    if (projectsExcelFileLabel) projectsExcelFileLabel.addEventListener("click", function () {
-        projectsExcelFile.click();
-    });
     if (projectsExcelFile) projectsExcelFile.addEventListener("change", function () {
         var file = projectsExcelFile.files[0];
         if (!file) return;
@@ -372,7 +362,6 @@
     var backFromTranscript = document.getElementById("importBackFromTranscript");
     var transcriptStatus = document.getElementById("importTranscriptStatus");
     var transcriptFile = document.getElementById("importTranscriptFile");
-    var transcriptFileLabel = document.getElementById("importTranscriptFileLabel");
     var transcriptFileName = document.getElementById("importTranscriptFileName");
     var parseTranscriptUploadBtn = document.getElementById("importParseTranscriptUploadBtn");
     var backFromTranscriptUpload = document.getElementById("importBackFromTranscriptUpload");
@@ -386,9 +375,6 @@
     });
     if (backFromTranscript) backFromTranscript.addEventListener("click", resetAll);
     if (backFromTranscriptUpload) backFromTranscriptUpload.addEventListener("click", resetAll);
-    if (transcriptFileLabel) transcriptFileLabel.addEventListener("click", function () {
-        transcriptFile.click();
-    });
     if (transcriptFile) transcriptFile.addEventListener("change", function () {
         var file = transcriptFile.files[0];
         if (!file) return;
@@ -466,9 +452,6 @@
         parseGoalsBtn.disabled = false;
     });
 
-    fileLabel.addEventListener("click", function () {
-        fileInput.click();
-    });
 
     // --- Docx file input -----------------------------------------------------
 
@@ -479,9 +462,9 @@
         parseDocxBtn.disabled = false;
     });
 
-    docxFileLabel.addEventListener("click", function () {
-        docxFileInput.click();
-    });
+    // #455: no click handler on the file labels — their for= already opens
+    // the picker; an extra input.click() asked for a second one (the double
+    // trigger scan.js documents breaking iOS Safari's picker).
 
     // --- Parse docx ----------------------------------------------------------
 

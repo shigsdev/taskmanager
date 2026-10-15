@@ -37,8 +37,9 @@
                  shows its native Take Photo / Photo Library / Choose File
                  sheet on tap. One extra tap to get to the camera in exchange
                  for library access. -->
+            <!-- #455: clipped, not display:none, so the keyboard can reach it. -->
             <input type="file" id="scanFile" accept="image/jpeg,image/png,image/webp"
-                   style="display:none">
+                   class="file-input-clipped">
             <div class="scan-preview" id="scanPreview" style="display:none">
                 <img id="scanPreviewImg" alt="Preview">
             </div>

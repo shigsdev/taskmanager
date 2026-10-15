@@ -667,6 +667,10 @@ Report.
      /calendar each day's "+" (Tab to it, Enter) opens a new task dated that
      day; the date in the header wraps, never cut short. A click opens
      everything exactly as before (the quiet case).
+     #455: on /import open each file flow (Excel tasks / projects / goals,
+     .docx, transcript file) and /scan: Tab lands on the file picker, its
+     "Choose …" box shows the copper ring, and Enter opens the picker. A
+     click on the box opens ONE picker (it used to ask twice).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -855,6 +859,7 @@ Report.
   Tap targets: sizes unchanged  PASS          Tap targets: 44px / 24px floor PASS
   Keyboard: cards/rows/lines open PASS        Keyboard: cards/rows/lines open PASS
   Calendar: + adds on that day  PASS          Calendar: + adds on that day  PASS
+  Files: picker by keyboard     PASS          Files: picker by keyboard     PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

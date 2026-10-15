@@ -34,11 +34,13 @@
             <a href="/api/import/template/tasks.xlsx" download>Download the tasks template (.xlsx)</a>
             with all headers + a sample row.
         </p>
+        {# #455: the file input is clipped, not display:none, so it is a Tab stop;
+           the label shows its focus ring (.file-input-clipped). #}
         <div class="import-file-area">
             <label for="importTasksExcelFile" class="scan-file-label" id="importTasksExcelFileLabel">
                 Choose .xlsx file
             </label>
-            <input type="file" id="importTasksExcelFile" accept=".xlsx" style="display:none">
+            <input type="file" id="importTasksExcelFile" accept=".xlsx" class="file-input-clipped">
             <span id="importTasksExcelFileName" class="import-file-name"></span>
         </div>
         <div class="import-input-actions">
@@ -79,7 +81,7 @@
             <label for="importProjectsExcelFile" class="scan-file-label" id="importProjectsExcelFileLabel">
                 Choose .xlsx file
             </label>
-            <input type="file" id="importProjectsExcelFile" accept=".xlsx" style="display:none">
+            <input type="file" id="importProjectsExcelFile" accept=".xlsx" class="file-input-clipped">
             <span id="importProjectsExcelFileName" class="import-file-name"></span>
         </div>
         <div class="import-input-actions">
@@ -116,7 +118,7 @@
             <label for="importDocxFile" class="scan-file-label" id="importDocxFileLabel">
                 Choose .docx file
             </label>
-            <input type="file" id="importDocxFile" accept=".docx" style="display:none">
+            <input type="file" id="importDocxFile" accept=".docx" class="file-input-clipped">
             <span id="importDocxFileName" class="import-file-name"></span>
         </div>
 
@@ -142,7 +144,7 @@
             <label for="importFile" class="scan-file-label" id="importFileLabel">
                 Choose .xlsx file
             </label>
-            <input type="file" id="importFile" accept=".xlsx" style="display:none">
+            <input type="file" id="importFile" accept=".xlsx" class="file-input-clipped">
             <span id="importFileName" class="import-file-name"></span>
         </div>
 
@@ -179,7 +181,7 @@
             <label for="importTranscriptFile" class="scan-file-label" id="importTranscriptFileLabel">
                 Choose .md or .txt file
             </label>
-            <input type="file" id="importTranscriptFile" accept=".md,.txt,text/markdown,text/plain" style="display:none">
+            <input type="file" id="importTranscriptFile" accept=".md,.txt,text/markdown,text/plain" class="file-input-clipped">
             <span id="importTranscriptFileName" class="import-file-name"></span>
         </div>
         <div class="import-input-actions">
