@@ -10171,6 +10171,61 @@ test.describe("Reload guard sees every open panel (#446)", () => {
     });
 });
 
+// #447: text longer than its column used to reach Postgres and come back as
+// "Database error". The panels now stop typing at the limit, and what does
+// reach the server too long is refused with a message that says so.
+test.describe("Text stops at its column's limit (#447)", () => {
+    const typeOver = async (page, sel, limit) => {
+        await page.locator(sel).fill("x".repeat(limit - 2));
+        await page.locator(sel).press("End");
+        await page.keyboard.type("abcde");
+        expect(await page.locator(sel).inputValue()).toHaveLength(limit);
+    };
+
+    test("panels stop typing at the limit", async ({ page }) => {
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.evaluate(() => window.taskDetailOpenNew());
+        await expect(page.locator("#detailPanel")).toBeVisible();
+        await typeOver(page, "#detailTitle", 500);
+
+        await page.goto("/goals?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator("#addGoalBtn").click();
+        await typeOver(page, "#goalTitle", 500);
+        await typeOver(page, "#goalTargetQuarter", 20);
+
+        await page.goto("/recurring?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator("#recurringNew").click();
+        await typeOver(page, "#recurEditTitle", 500);
+
+        await page.goto("/projects?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.locator("#addProjectBtn").click();
+        await typeOver(page, "#projectName", 200);
+    });
+
+    test("a too-long capture says why and keeps the text", async ({ page, request }) => {
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const tag = `E2E 447 ${Date.now()} `;
+        const long = tag + "y".repeat(600);
+        const said = [];
+        page.on("dialog", (d) => { said.push(d.message()); d.dismiss(); });
+        const answered = page.waitForResponse((r) =>
+            r.request().method() === "POST" && r.url().endsWith("/api/tasks"));
+        await page.locator("#captureInput").fill(long);
+        await page.locator("#captureInput").press("Enter");
+        expect((await answered).status()).toBe(422);
+        await expect.poll(() => said.length).toBe(1);
+        expect(said[0]).toBe(`Capture failed: Title is too long: ${long.length} characters, the limit is 500.`);
+        await expect(page.locator("#captureInput")).toHaveValue(long);
+        const tasks = await (await request.get("/api/tasks")).json();
+        expect(tasks.some((t) => t.title.startsWith(tag))).toBe(false);
+    });
+});
+
 // #468: with no filter on, the board's filter banner takes no room at all
 // (`display: flex` used to beat `[hidden]`, leaving an empty copper bar).
 test.describe("Filter banner hides when no filter is on (#468)", () => {

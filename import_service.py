@@ -38,8 +38,19 @@ from models import (
     db,
 )
 from task_service import tier_for_candidate
+from utils import fit_length, max_length
 
 logger = logging.getLogger(__name__)
+
+# #447: an import is a batch — a value longer than its column is cut to fit
+# (utils.fit_length) so one long line can't fail every row with it.
+_TASK_TITLE_MAX = max_length(Task.__table__.c.title)
+_TASK_URL_MAX = max_length(Task.__table__.c.url)
+_GOAL_TITLE_MAX = max_length(Goal.__table__.c.title)
+_GOAL_QUARTER_MAX = max_length(Goal.__table__.c.target_quarter)
+_PROJECT_NAME_MAX = max_length(Project.__table__.c.name)
+_PROJECT_QUARTER_MAX = max_length(Project.__table__.c.target_quarter)
+_SOURCE_MAX = max_length(ImportLog.__table__.c.source)
 
 
 # --- OneNote text parsing ----------------------------------------------------
@@ -747,7 +758,7 @@ def create_tasks_from_import(
         if not candidate.get("included", True):
             continue
 
-        title = (candidate.get("title") or "").strip()
+        title = fit_length((candidate.get("title") or "").strip(), _TASK_TITLE_MAX)
         if not title:
             continue
 
@@ -806,6 +817,8 @@ def create_tasks_from_import(
 
         notes = (candidate.get("notes") or "").strip() or None
         url = (candidate.get("url") or "").strip() or None
+        if url and len(url) > _TASK_URL_MAX:
+            url = None  # #447: a cut URL wouldn't work; drop it, keep the task
 
         task = Task(
             title=title,
@@ -823,7 +836,7 @@ def create_tasks_from_import(
 
     if created:
         log = ImportLog(
-            source=source, task_count=len(created), batch_id=batch_id
+            source=fit_length(source, _SOURCE_MAX), task_count=len(created), batch_id=batch_id
         )
         db.session.add(log)
         db.session.commit()
@@ -855,7 +868,7 @@ def create_goals_from_import(
         if not candidate.get("included", True):
             continue
 
-        title = (candidate.get("title") or "").strip()
+        title = fit_length((candidate.get("title") or "").strip(), _GOAL_TITLE_MAX)
         if not title:
             continue
 
@@ -879,7 +892,7 @@ def create_goals_from_import(
             category=category,
             priority=priority,
             actions=candidate.get("actions") or None,
-            target_quarter=candidate.get("target_quarter") or None,
+            target_quarter=fit_length(candidate.get("target_quarter") or None, _GOAL_QUARTER_MAX),
             status=status,
             notes=candidate.get("notes") or None,
             batch_id=batch_id,
@@ -889,7 +902,7 @@ def create_goals_from_import(
 
     if created:
         log = ImportLog(
-            source=source, task_count=len(created), batch_id=batch_id
+            source=fit_length(source, _SOURCE_MAX), task_count=len(created), batch_id=batch_id
         )
         db.session.add(log)
         db.session.commit()
@@ -927,7 +940,7 @@ def create_projects_from_import(
     for candidate in candidates:
         if not candidate.get("included", True):
             continue
-        name = (candidate.get("name") or "").strip()
+        name = fit_length((candidate.get("name") or "").strip(), _PROJECT_NAME_MAX)
         if not name:
             continue
 
@@ -963,7 +976,9 @@ def create_projects_from_import(
             name=name,
             type=project_type,
             color=color,
-            target_quarter=(candidate.get("target_quarter") or "").strip() or None,
+            target_quarter=fit_length(
+                (candidate.get("target_quarter") or "").strip() or None, _PROJECT_QUARTER_MAX,
+            ),
             actions=(candidate.get("actions") or "").strip() or None,
             notes=(candidate.get("notes") or "").strip() or None,
             status=status,
@@ -977,7 +992,7 @@ def create_projects_from_import(
 
     if created:
         log = ImportLog(
-            source=source, task_count=len(created), batch_id=batch_id
+            source=fit_length(source, _SOURCE_MAX), task_count=len(created), batch_id=batch_id
         )
         db.session.add(log)
         db.session.commit()

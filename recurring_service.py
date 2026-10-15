@@ -34,11 +34,32 @@ from models import (
     Tier,
     db,
 )
-from utils import ValidationError  # noqa: F401 — re-exported for API layer
+from utils import (
+    ValidationError,  # noqa: F401 — re-exported for API layer
+    check_length,
+    fit_length,
+    max_length,
+)
 from utils import parse_enum as _parse_enum
 from utils import parse_uuid as _parse_uuid
 
 # --- Field parsers -----------------------------------------------------------
+
+
+# #447: column widths. A typed template title / url longer than these is
+# refused; the voice memo's candidate title and the subtask copies made at
+# spawn are cut to fit (they're batches — one long line mustn't sink them).
+_TITLE_MAX = max_length(RecurringTask.__table__.c.title)
+_URL_MAX = max_length(RecurringTask.__table__.c.url)
+_TASK_TITLE_MAX = max_length(Task.__table__.c.title)
+
+
+def _check_title(title: str) -> str:
+    return check_length(title, _TITLE_MAX, "title", "Title")
+
+
+def _check_url(value) -> str | None:
+    return check_length(value or None, _URL_MAX, "url", "URL")
 
 
 def _clean_subtasks_snapshot(value: object) -> list[dict]:
@@ -245,6 +266,8 @@ def create_recurring(data: dict) -> RecurringTask:
     title = (data.get("title") or "").strip()
     if not title:
         raise ValidationError("title is required", "title")
+    _check_title(title)
+    url = _check_url(data.get("url"))
 
     frequency = _parse_enum(RecurringFrequency, data.get("frequency"), "frequency")
     if frequency is None:
@@ -283,7 +306,7 @@ def create_recurring(data: dict) -> RecurringTask:
         goal_id=_parse_uuid(data.get("goal_id"), "goal_id"),
         notes=data.get("notes") or None,
         checklist=data.get("checklist") if isinstance(data.get("checklist"), list) else None,
-        url=data.get("url") or None,
+        url=url,
         subtasks_snapshot=_clean_subtasks_snapshot(data.get("subtasks_snapshot")),
         end_date=end_date,  # #101
         start_date=start_date,  # #147
@@ -321,7 +344,7 @@ def update_recurring(rt_id: uuid.UUID, data: dict) -> RecurringTask | None:
         title = (data["title"] or "").strip()
         if not title:
             raise ValidationError("title cannot be empty", "title")
-        rt.title = title
+        rt.title = _check_title(title)
 
     if "frequency" in data:
         rt.frequency = _parse_enum(
@@ -369,7 +392,7 @@ def update_recurring(rt_id: uuid.UUID, data: dict) -> RecurringTask | None:
         rt.checklist = data["checklist"] if isinstance(data["checklist"], list) else None
 
     if "url" in data:
-        rt.url = data["url"] or None
+        rt.url = _check_url(data["url"])
 
     if "subtasks_snapshot" in data:
         rt.subtasks_snapshot = _clean_subtasks_snapshot(data["subtasks_snapshot"])
@@ -820,7 +843,9 @@ def spawn_today_tasks(*, target_date: date | None = None) -> list[Task]:
             title = entry.get("title")
             if not isinstance(title, str) or not title.strip():
                 continue
-            title = title.strip()
+            # #447: a long snapshot title is cut to fit, so it can't fail
+            # every subtask spawned with it.
+            title = fit_length(title.strip(), _TASK_TITLE_MAX)
             sub = Task(
                 title=title,
                 type=parent.type,
@@ -920,7 +945,9 @@ def create_recurring_template_from_voice_candidate(
     or frequency); caller silently skips so one bad row doesn't kill
     the batch.
     """
-    title = (candidate.get("title") or "").strip()
+    # #447: a voice memo is a batch — cut a long title to fit rather than
+    # have create_recurring refuse it (the caller would silently drop it).
+    title = fit_length((candidate.get("title") or "").strip(), _TITLE_MAX)
     if not title:
         return None
     repeat = candidate.get("repeat") or {}

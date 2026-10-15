@@ -55,7 +55,7 @@
             <input type="hidden" id="recurEditId">
 
             <label for="recurEditTitle">Title</label>
-            <input type="text" id="recurEditTitle" required spellcheck="true">
+            <input type="text" id="recurEditTitle" required maxlength="500" spellcheck="true">
 
             <div class="form-row">
                 <div class="form-field">
@@ -152,7 +152,7 @@
             </div>
 
             <label for="recurEditUrl">Article / Link URL</label>
-            <input type="url" id="recurEditUrl" placeholder="https://…">
+            <input type="url" id="recurEditUrl" maxlength="2000" placeholder="https://…">
 
             <label for="recurEditEndDate">Stop after (optional)</label>
             <input type="date" id="recurEditEndDate">

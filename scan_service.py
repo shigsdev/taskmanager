@@ -34,6 +34,9 @@ from models import (
     db,
 )
 from task_service import tier_for_candidate
+from utils import fit_length, max_length
+
+_TASK_TITLE_MAX = max_length(Task.__table__.c.title)
 
 logger = logging.getLogger(__name__)
 
@@ -1370,7 +1373,9 @@ def create_tasks_from_candidates(
         if not candidate.get("included", True):
             continue
 
-        title = (candidate.get("title") or "").strip()
+        # #447: scan / voice memo / reflection are batches — a title longer
+        # than its column is cut to fit so one long line can't fail the rest.
+        title = fit_length((candidate.get("title") or "").strip(), _TASK_TITLE_MAX)
         if not title:
             continue
 

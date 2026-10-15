@@ -7,6 +7,8 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from sqlalchemy import event as _sa_event
+from sqlalchemy.orm import Session as _SASession
 
 import auth
 from app import create_app
@@ -30,6 +32,36 @@ _HB_COUNTER = 0
 # flakes with a 429 (PR 9's tight "5 per minute" transcript limit hit
 # this — TestTranscriptUploadAPI makes 7 calls).
 _limiter.enabled = False
+
+
+# #447: SQLite ignores String(n) widths; Postgres (prod) refuses a longer value
+# with DataError (StringDataRightTruncation) — which failed whole imports on
+# prod while every test passed. Check widths at flush, for every session, and
+# raise the same DataError Postgres would, so any write path that lets an
+# over-long value through fails HERE.
+def _check_string_widths(session, _flush_context, _instances):
+    from sqlalchemy import String, inspect
+    from sqlalchemy.exc import DataError
+
+    for obj in list(session.new) + list(session.dirty):
+        mapper = inspect(obj).mapper
+        for col in mapper.columns:
+            length = getattr(col.type, "length", None)
+            if not isinstance(col.type, String) or not length:
+                continue
+            attr = mapper.get_property_by_column(col).key
+            value = getattr(obj, attr, None)
+            if isinstance(value, str) and len(value) > length:
+                raise DataError(
+                    f"{col.table.name}.{col.name}", {},
+                    ValueError(
+                        f"value too long for type character varying({length}): "
+                        f"{col.table.name}.{col.name} has {len(value)}"
+                    ),
+                )
+
+
+_sa_event.listen(_SASession, "before_flush", _check_string_widths)
 
 
 @pytest.fixture(autouse=True)

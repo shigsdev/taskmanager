@@ -21,9 +21,20 @@ from models import (
 from recurring_service import cascade_parent_archive
 from utils import (
     ValidationError,  # noqa: F401 — re-exported for API layer
+    check_length,
+    max_length,
     parse_int,
 )
 from utils import parse_enum as _parse_enum
+
+# #447: column widths — a typed value longer than these is refused.
+_TITLE_MAX = max_length(Goal.__table__.c.title)
+_QUARTER_MAX = max_length(Goal.__table__.c.target_quarter)
+
+
+def _quarter(value: Any) -> str | None:
+    q = (value or "").strip() or None
+    return check_length(q, _QUARTER_MAX, "target_quarter", "Target quarter")
 
 
 def _parse_int(value: Any, field: str) -> int | None:
@@ -38,6 +49,8 @@ def create_goal(data: dict) -> Goal:
     title = (data.get("title") or "").strip()
     if not title:
         raise ValidationError("title is required", "title")
+    check_length(title, _TITLE_MAX, "title", "Title")
+    target_quarter = _quarter(data.get("target_quarter"))
 
     category = _parse_enum(GoalCategory, data.get("category"), "category")
     if category is None:
@@ -53,7 +66,7 @@ def create_goal(data: dict) -> Goal:
         priority=priority,
         priority_rank=_parse_int(data.get("priority_rank"), "priority_rank"),
         actions=data.get("actions") or None,
-        target_quarter=(data.get("target_quarter") or "").strip() or None,
+        target_quarter=target_quarter,
         status=_parse_enum(GoalStatus, data.get("status"), "status") or GoalStatus.NOT_STARTED,
         notes=data.get("notes") or None,
     )
@@ -108,7 +121,7 @@ def update_goal(goal_id: uuid.UUID, data: dict) -> Goal | None:
         title = (data["title"] or "").strip()
         if not title:
             raise ValidationError("title cannot be empty", "title")
-        goal.title = title
+        goal.title = check_length(title, _TITLE_MAX, "title", "Title")
 
     if "category" in data:
         goal.category = _parse_enum(GoalCategory, data["category"], "category") or goal.category
@@ -123,7 +136,7 @@ def update_goal(goal_id: uuid.UUID, data: dict) -> Goal | None:
         goal.actions = data["actions"] or None
 
     if "target_quarter" in data:
-        goal.target_quarter = (data["target_quarter"] or "").strip() or None
+        goal.target_quarter = _quarter(data["target_quarter"])
 
     if "status" in data:
         goal.status = _parse_enum(GoalStatus, data["status"], "status") or goal.status

@@ -118,6 +118,8 @@ _SCRUB_COMBINED_RE: re.Pattern[str] = re.compile(
 # correlation id ever contains. Rejects control chars (newlines etc.)
 # that `str.isascii()` would have let through — see make_request_id.
 _REQUEST_ID_RE: re.Pattern[str] = re.compile(r"[A-Za-z0-9._\-]+")
+_REQUEST_ID_MAX = 36
+_ROUTE_MAX = 200
 
 
 def _scrub_replace(m: re.Match[str]) -> str:
@@ -429,11 +431,13 @@ def _before_request() -> None:
     three punctuation chars a UUID / sane correlation id ever uses).
     """
     raw = request.headers.get("X-Request-ID", "")
-    if raw and len(raw) <= 64 and _REQUEST_ID_RE.fullmatch(raw):
+    # #447: <= 36 (app_logs.request_id is String(36), a UUID's length) — a
+    # longer one used to be accepted and then lose the log row on Postgres.
+    if raw and len(raw) <= _REQUEST_ID_MAX and _REQUEST_ID_RE.fullmatch(raw):
         g.request_id = raw
     else:
         g.request_id = str(uuid.uuid4())
-    g.route = request.path
+    g.route = request.path[:_ROUTE_MAX]  # #447: app_logs.route is String(200)
     g.method = request.method
     g.request_start = monotonic()
 

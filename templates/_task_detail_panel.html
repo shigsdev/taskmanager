@@ -11,7 +11,7 @@
             {# #116 (PR54): voice-to-text. Click 🎤 to dictate into the
                adjacent field. Hidden if Speech API is unavailable. #}
             <div class="field-with-voice">
-                <input type="text" id="detailTitle" required spellcheck="true">
+                <input type="text" id="detailTitle" required maxlength="500" spellcheck="true">
                 <button type="button" class="icon-btn voice-btn" data-voice-target="detailTitle" title="Voice input">🎤</button>
             </div>
 
@@ -67,7 +67,7 @@
                 <div class="form-field" style="flex:1">
                     <label for="detailUrl">Article / Link URL</label>
                     <div style="display:flex;gap:4px">
-                        <input type="url" id="detailUrl" placeholder="https://…" style="flex:1">
+                        <input type="url" id="detailUrl" maxlength="2000" placeholder="https://…" style="flex:1">
                         <a id="detailUrlOpen" href="#" target="_blank" rel="noopener noreferrer" class="btn-sm" style="display:none;white-space:nowrap">Open ↗</a>
                     </div>
                 </div>

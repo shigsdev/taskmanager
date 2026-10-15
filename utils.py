@@ -175,6 +175,42 @@ def parse_enum(enum_cls, value: Any, field: str):
         raise ValidationError(f"invalid {field}: {value!r}", field) from e
 
 
+def max_length(column) -> int:
+    """The width of a ``String(n)`` column, e.g. ``max_length(Task.__table__.c.title)``.
+
+    #447: limits are read from the model, never retyped, so a migration that
+    widens a column widens the check with it.
+    """
+    return column.type.length
+
+
+def check_length(value: str | None, limit: int, field: str, label: str) -> str | None:
+    """Return ``value``, or raise ValidationError when it won't fit its column.
+
+    #447: what the user TYPED is refused with a message that says how long it
+    is and what the limit is — Postgres would otherwise refuse it with an
+    opaque "Database error" (SQLite, in tests, never refuses at all).
+    """
+    if value is not None and len(value) > limit:
+        raise ValidationError(
+            f"{label} is too long: {len(value)} characters, the limit is {limit}.",
+            field,
+        )
+    return value
+
+
+def fit_length(value: str | None, limit: int) -> str | None:
+    """Return ``value`` cut to ``limit`` characters, ending in "…" when cut.
+
+    #447: what arrives in a BATCH (import, voice memo, scan, reflection,
+    recurring subtask copies) is cut to fit, so one long line can't fail
+    every other row with it.
+    """
+    if value is None or len(value) <= limit:
+        return value
+    return value[: limit - 1].rstrip() + "…"
+
+
 def parse_uuid(value: Any, field: str) -> uuid.UUID | None:
     """Parse a value into a UUID, or raise ValidationError."""
     if value is None or value == "":

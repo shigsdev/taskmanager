@@ -17,7 +17,11 @@ from models import (
     db,
 )
 from recurring_service import cascade_parent_archive
-from utils import ValidationError  # noqa: F401 — re-exported for API layer
+from utils import (
+    ValidationError,  # noqa: F401 — re-exported for API layer
+    check_length,
+    max_length,
+)
 from utils import parse_enum as _parse_enum
 from utils import parse_int as _parse_int
 from utils import parse_uuid as _parse_uuid
@@ -30,7 +34,22 @@ from utils import parse_uuid as _parse_uuid
 # sanitized before DB insertion" wasn't being met for this field.
 # Allow #RGB, #RRGGBB, #RRGGBBAA hex (with or without # prefix on
 # input — we always store with #). Reject anything else.
-_HEX_COLOR_RE = re.compile(r"^#?[0-9a-fA-F]{3}([0-9a-fA-F]{3}([0-9a-fA-F]{2})?)?$")
+# #447: #RRGGBBAA (9 chars with the #) no longer passes — the column is
+# String(7), so Postgres refused it after this check said yes.
+_HEX_COLOR_RE = re.compile(r"^#?[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$")
+
+# #447: column widths — a typed value longer than these is refused.
+_NAME_MAX = max_length(Project.__table__.c.name)
+_QUARTER_MAX = max_length(Project.__table__.c.target_quarter)
+
+
+def _check_name(name: str) -> str:
+    return check_length(name, _NAME_MAX, "name", "Name")
+
+
+def _quarter(value) -> str | None:
+    q = (value or "").strip() or None
+    return check_length(q, _QUARTER_MAX, "target_quarter", "Target quarter")
 
 
 def _parse_color(value: str | None) -> str | None:
@@ -110,6 +129,8 @@ def create_project(data: dict) -> Project:
     name = (data.get("name") or "").strip()
     if not name:
         raise ValidationError("name is required", "name")
+    _check_name(name)
+    target_quarter = _quarter(data.get("target_quarter"))
 
     project_type = _parse_enum(ProjectType, data.get("type", "work"), "type")
     # #66: when caller doesn't pass a color, fill in the per-type default
@@ -129,7 +150,7 @@ def create_project(data: dict) -> Project:
         name=name,
         type=project_type,
         color=color,
-        target_quarter=(data.get("target_quarter") or "").strip() or None,
+        target_quarter=target_quarter,
         actions=(data.get("actions") or "").strip() or None,
         notes=(data.get("notes") or "").strip() or None,
         status=_parse_enum(ProjectStatus, data.get("status", "not_started"), "status"),
@@ -222,7 +243,7 @@ def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
         name = (data["name"] or "").strip()
         if not name:
             raise ValidationError("name cannot be empty", "name")
-        project.name = name
+        project.name = _check_name(name)
 
     if "type" in data:
         project.type = _parse_enum(ProjectType, data["type"], "type")
@@ -231,7 +252,7 @@ def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
         project.color = _parse_color(data["color"])  # PR28 audit fix #3
 
     if "target_quarter" in data:
-        project.target_quarter = (data["target_quarter"] or "").strip() or None
+        project.target_quarter = _quarter(data["target_quarter"])
 
     if "actions" in data:
         project.actions = (data["actions"] or "").strip() or None

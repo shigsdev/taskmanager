@@ -1964,7 +1964,8 @@ def _reason(e: Exception) -> str:
     ValidationError's message is ours and safe to show; anything else
     (a database error especially) stays in the log — #189."""
     if isinstance(e, ValidationError):
-        return f" — {e}."
+        # #447: some messages end in "." already ("…the limit is 500.").
+        return f" — {str(e).rstrip('.')}."
     return " — something went wrong saving it."
 
 

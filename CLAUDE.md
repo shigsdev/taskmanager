@@ -596,6 +596,12 @@ Report.
      old code), and true while the goal panel, project panel, /recurring
      editor, ✨ Plan review, 💡 Auto-categorize review, Recycle Bin confirm
      or a Strength Forge pop-up is open; false again once it closes.
+     #447: the task panel title, goal title + quarter, recurring title + URL
+     and project name + quarter stop accepting typing at their limit
+     (500 / 20 / 500 / 2000 / 200 / 20). A capture of 600+ characters says
+     "Capture failed: Title is too long: N characters, the limit is 500." and
+     the text stays in the bar. An import with one 700-character line saves
+     every row, that one cut to 500 ending in "…". A normal save still works.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -762,6 +768,9 @@ Report.
   Digest: overdue Today once    PASS          Digest: overdue Today once    PASS
   Reload guard: idle pages quiet PASS         Reload guard: idle pages quiet PASS
   Reload guard: open panel busy PASS          Reload guard: open panel busy PASS
+  Text: fields stop at limit    PASS          Text: fields stop at limit    PASS
+  Text: long capture says why   PASS          Text: long capture says why   PASS
+  Text: long import line fits   PASS          Text: long import line fits   PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

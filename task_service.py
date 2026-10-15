@@ -15,11 +15,27 @@ from sqlalchemy.orm import joinedload, selectinload
 
 from models import RecurringTask, Task, TaskStatus, TaskType, Tier, db
 from utils import ValidationError  # noqa: F401 — re-exported for API layer
+from utils import check_length as _check_length
+from utils import max_length as _max_length
 from utils import parse_enum as _parse_enum
 from utils import parse_int as _parse_int
 from utils import parse_uuid as _parse_uuid
 
 # --- Task-specific coercion helpers ------------------------------------------
+
+# #447: column widths (Postgres refuses anything longer). Typed values are
+# refused with a clear message; see utils.check_length.
+_TITLE_MAX = _max_length(Task.__table__.c.title)
+_URL_MAX = _max_length(Task.__table__.c.url)
+_REASON_MAX = _max_length(Task.__table__.c.cancellation_reason)
+
+
+def _check_title(title: str) -> str:
+    return _check_length(title, _TITLE_MAX, "title", "Title")
+
+
+def _check_reason(reason: str | None) -> str | None:
+    return _check_length(reason, _REASON_MAX, "cancellation_reason", "Cancellation reason")
 
 
 def _parse_date(value: Any, field: str = "due_date") -> date | None:
@@ -39,9 +55,7 @@ def _parse_url(value: Any) -> str | None:
     url = str(value).strip()
     if not url.startswith(("http://", "https://")):
         raise ValidationError("url must start with http:// or https://", "url")
-    if len(url) > 2000:
-        raise ValidationError("url too long", "url")
-    return url
+    return _check_length(url, _URL_MAX, "url", "URL")
 
 
 def _parse_checklist(value: Any) -> list:
@@ -536,6 +550,7 @@ def create_task(data: dict) -> Task:
     title = (data.get("title") or "").strip()
     if not title:
         raise ValidationError("title is required", "title")
+    _check_title(title)
 
     task_type = _parse_enum(TaskType, data.get("type"), "type")
     if task_type is None:
@@ -746,7 +761,7 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
         title = (data["title"] or "").strip()
         if not title:
             raise ValidationError("title cannot be empty", "title")
-        task.title = title
+        task.title = _check_title(title)
 
     if "type" in data:
         task.type = _parse_enum(TaskType, data["type"], "type") or task.type
@@ -862,7 +877,7 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
         reason = data["cancellation_reason"]
         if reason is not None:
             reason = str(reason).strip()
-        task.cancellation_reason = reason or None
+        task.cancellation_reason = _check_reason(reason or None)
 
     if "checklist" in data:
         task.checklist = _parse_checklist(data["checklist"])
@@ -981,6 +996,8 @@ def cancel_parent_task(
     parent's ``cancellation_reason``; subtasks inherit the CANCELLED
     status only (no per-subtask reason — they were collateral).
     """
+    # #447: refuse an over-long reason before anything changes.
+    reason = _check_reason((reason or "").strip() or None)
     task = get_task(task_id)
     if task is None:
         return None
@@ -991,7 +1008,7 @@ def cancel_parent_task(
     # work to follow through on. Don't bulk-cancel them.
     if task.recurring_task_id is not None:
         task.status = TaskStatus.CANCELLED
-        task.cancellation_reason = (reason or "").strip() or None
+        task.cancellation_reason = reason
         db.session.commit()
         return task
     if open_subtasks and not cancel_subtasks:
@@ -1003,7 +1020,7 @@ def cancel_parent_task(
         for sub in open_subtasks:
             sub.status = TaskStatus.CANCELLED
     task.status = TaskStatus.CANCELLED
-    task.cancellation_reason = (reason or "").strip() or None
+    task.cancellation_reason = reason
     db.session.commit()
     return task
 

@@ -28,6 +28,8 @@ from task_service import (
 # caller / test patching ``tasks_api._serialize_repeat`` stays unaffected.
 from task_service import _serialize_repeat as _serialize_repeat  # noqa: F401
 from utils import enum_or_400 as _enum_or_400
+from utils import fit_length as _fit_length
+from utils import max_length as _max_length
 from utils import validate_json_body
 
 bp = Blueprint("tasks_api", __name__, url_prefix="/api/tasks")
@@ -368,4 +370,7 @@ def url_preview(email: str):  # noqa: ARG001
 
     parser = _TitleParser()
     parser.feed(raw)
-    return jsonify({"title": parser.title, "url": url})
+    # #447: the page's title becomes the task title — cut a very long one to
+    # fit Task.title, or the capture would be refused for text you never typed.
+    title = _fit_length(parser.title, _max_length(Task.__table__.c.title))
+    return jsonify({"title": title, "url": url})
