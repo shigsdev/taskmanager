@@ -660,6 +660,13 @@ Report.
      /recurring, /projects Select, Inbox triage, /scan, /reflection);
      tests/e2e/mobile_tap_targets.spec.js measures them. At 1280 nothing
      changes size (the quiet case).
+     #454: on /goals, /projects, /recurring and /calendar, Tab to a goal or
+     project card, a template row, or a calendar task and press Enter (Space
+     on a card too) — its panel opens with focus on ✕; Escape closes it and
+     focus is back on that card / row / line, also after Save on a goal. On
+     /calendar each day's "+" (Tab to it, Enter) opens a new task dated that
+     day; the date in the header wraps, never cut short. A click opens
+     everything exactly as before (the quiet case).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -846,6 +853,8 @@ Report.
   Projects: bulk checkbox on card PASS        Projects: bulk checkbox on card PASS
   Scan/Import: review rows fit  PASS          Scan/Import: review rows fit  PASS
   Tap targets: sizes unchanged  PASS          Tap targets: 44px / 24px floor PASS
+  Keyboard: cards/rows/lines open PASS        Keyboard: cards/rows/lines open PASS
+  Calendar: + adds on that day  PASS          Calendar: + adds on that day  PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

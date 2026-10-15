@@ -172,6 +172,7 @@ function goalsRender() {
     // project never appears on this page at all, so the obvious first
     // move ("file this project under a goal") would be impossible.
     board.appendChild(goalsUnassignedZoneEl());
+    window.panelKeys.afterRender(document);   // #454: a save replaced the focused card
 }
 
 function goalsFiltered() {
@@ -202,6 +203,8 @@ function goalCardEl(goal) {
     card.className = "goal-card";
     if (!goal.is_active) card.classList.add("goal-inactive");
     card.addEventListener("click", () => goalDetailOpen(goal));
+    // #454: and by keyboard — Enter / Space on the focused card.
+    window.panelKeys.makeOpener(card, `Open goal: ${goal.title}`, () => goalDetailOpen(goal));
 
     // #343: the whole CARD is the project drop target, not the project
     // list inside it. That is what makes the recorded decision work —
@@ -342,7 +345,9 @@ function goalDetailNew() {
     // A goal that does not exist yet can be neither archived nor deleted.
     document.getElementById("goalDangerZone").style.display = "none";
     document.getElementById("linkedTasksSection").style.display = "none";
-    document.getElementById("goalDetailOverlay").style.display = "";
+    const overlay = document.getElementById("goalDetailOverlay");
+    overlay.style.display = "";
+    window.panelKeys.opened(document, overlay, null, null);   // #454: focus back to + New
 }
 
 function goalDetailOpen(goal) {
@@ -368,11 +373,17 @@ function goalDetailOpen(goal) {
     section.style.display = "";
     goalRenderLinkedTasks(goal.id);
 
-    document.getElementById("goalDetailOverlay").style.display = "";
+    const overlay = document.getElementById("goalDetailOverlay");
+    overlay.style.display = "";
+    // #454: keyboard users land on ✕, and closing hands focus back to the card.
+    window.panelKeys.opened(document, overlay,
+        document.getElementById("goalDetailClose"), "data-goal-id");
 }
 
 function goalDetailClose() {
-    document.getElementById("goalDetailOverlay").style.display = "none";
+    const overlay = document.getElementById("goalDetailOverlay");
+    overlay.style.display = "none";
+    window.panelKeys.closed(document, overlay);   // #454
 }
 
 // #372: after a save / complete / cancel / delete from the task panel,

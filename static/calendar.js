@@ -294,9 +294,35 @@
                 if (iso < todayIso) cell.classList.add("calendar-cell-past");
                 cell.dataset.date = iso;
 
+                // #156/#270: add a task on this day, in place.
+                const addOnDay = function () {
+                    if (typeof taskDetailOpenNew === "function") {
+                        taskDetailOpenNew("", "work", iso);
+                    } else {
+                        window.location.href =
+                            "/?new_task_due=" + encodeURIComponent(iso);
+                    }
+                };
+
                 const header = document.createElement("div");
                 header.className = "calendar-cell-header";
-                header.textContent = _formatHeader(d);
+                const headerDate = document.createElement("span");
+                headerDate.className = "calendar-cell-date";
+                headerDate.textContent = _formatHeader(d);
+                header.appendChild(headerDate);
+                // #454: clicking a cell's empty space was the only way to
+                // add a task on that day — no keyboard path. A real button.
+                const addBtn = document.createElement("button");
+                addBtn.type = "button";
+                addBtn.className = "calendar-cell-add";
+                addBtn.textContent = "+";
+                addBtn.title = "Add a task on " + _formatHeader(d);
+                addBtn.setAttribute("aria-label", addBtn.title);
+                addBtn.addEventListener("click", function (e) {
+                    e.stopPropagation();   // the cell's own click would open it twice
+                    addOnDay();
+                });
+                header.appendChild(addBtn);
                 cell.appendChild(header);
 
                 const list = document.createElement("ul");
@@ -343,12 +369,7 @@
                     // fires AFTER but must not also open a create panel. Bail
                     // when the target is inside an existing list item.
                     if (e.target.closest("li")) return;
-                    if (typeof taskDetailOpenNew === "function") {
-                        taskDetailOpenNew("", "work", iso);
-                    } else {
-                        window.location.href =
-                            "/?new_task_due=" + encodeURIComponent(iso);
-                    }
+                    addOnDay();
                 });
 
                 cell.addEventListener("dragover", function (e) {
@@ -509,6 +530,9 @@
                 window.location.href = "/?task=" + encodeURIComponent(t.id);
             }
         });
+        // #454: and by keyboard. The task panel's #377 code hands focus back
+        // to this line (by data-task-id) when it closes.
+        window.panelKeys.makeOpener(li, "Open task: " + li.title, function () { li.click(); });
         li.addEventListener("dragstart", function (e) {
             li.classList.add("dragging");
             _dragSourceDate = sourceDate;

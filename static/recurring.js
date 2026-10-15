@@ -120,6 +120,11 @@
                 openEditor(rt);
             }
         });
+        // #454: and by keyboard — Enter / Space does what a click does.
+        // data-template-id finds the row again after a save re-renders it.
+        info.dataset.templateId = rt.id;
+        window.panelKeys.makeOpener(info, "Edit template: " + (rt.title || ""),
+            function () { info.click(); });
         row.appendChild(info);
         return row;
     }
@@ -183,6 +188,7 @@
             list.appendChild(renderRow(allTemplates[i]));
         }
         updateToolbar();
+        window.panelKeys.afterRender(document);   // #454
     }
 
     function showDropdown(anchor, items) {
@@ -359,6 +365,8 @@
         _setEditorMode(true);
         recurEditFreqChanged();
         _el("recurEditOverlay").style.display = "";
+        // #454: remember + New so closing returns there; the title keeps focus.
+        window.panelKeys.opened(document, _el("recurEditOverlay"), null, null);
         _el("recurEditTitle").focus();
     }
 
@@ -396,11 +404,15 @@
         _el("recurEditResult").textContent = "";
         recurEditFreqChanged();
         _el("recurEditOverlay").style.display = "";
+        // #454: keyboard users land on ✕; closing hands focus back to the row.
+        window.panelKeys.opened(document, _el("recurEditOverlay"),
+            _el("recurEditClose"), "data-template-id");
     }
 
     function closeEditor() {
         _el("recurEditOverlay").style.display = "none";
         _editId = null;
+        window.panelKeys.closed(document, _el("recurEditOverlay"));   // #454
     }
 
     function collectEditor() {

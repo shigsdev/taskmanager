@@ -140,6 +140,88 @@
         return "trapped";
     }
 
+    /**
+     * #454: a card, row or line that opens a panel on click becomes a button
+     * for the keyboard too: a Tab stop, announced as a button named `label`,
+     * opened by Enter or Space aimed at it (not at a checkbox or link inside
+     * it). The rules #372's projectTaskLineAffordance set, shared.
+     */
+    function makeOpener(el, label, onOpen) {
+        el.tabIndex = 0;
+        el.setAttribute("role", "button");
+        el.setAttribute("aria-label", label);
+        el.addEventListener("keydown", function (e) {
+            if (e.target !== el) return;
+            if (e.key !== "Enter" && e.key !== " ") return;
+            e.preventDefault();
+            e.stopPropagation();
+            onOpen();
+        });
+    }
+
+    /*
+     * #454: focus into a panel and back, for the panels #377 didn't cover
+     * (goal, project, /recurring editor) — the task panel's rules:
+     *   opened(doc, overlay, closeBtn, keyAttr) — before showing the panel's
+     *     content, remember what had focus (never a text field: refocusing
+     *     one pops the phone keyboard), then focus the ✕. A script-moved
+     *     focus only shows a ring after a keyboard open (:focus-visible).
+     *   closed(doc, overlay) — hand focus back to that element.
+     *   afterRender(doc) — a save re-renders the list and replaces the card
+     *     that was focused; find it again by `keyAttr` (e.g. data-goal-id),
+     *     only when focus fell to the page, never stealing it.
+     * One memory per overlay id.
+     */
+    var _openers = {};
+
+    function opened(doc, overlay, closeBtn, keyAttr) {
+        var key = overlay.id;
+        var el = doc.activeElement;
+        // Already open (a re-open from inside it): keep the first opener.
+        if (!_openers[key] || !_openers[key].open) {
+            _openers[key] = null;
+            if (el && el !== doc.body && !overlay.contains(el) &&
+                    !el.matches("input, textarea, select, [contenteditable]")) {
+                _openers[key] = {
+                    el: el, attr: keyAttr || null,
+                    value: keyAttr ? el.getAttribute(keyAttr) : null,
+                    open: true, pending: false,
+                };
+            }
+        }
+        if (closeBtn) closeBtn.focus();
+    }
+
+    function _twin(doc, memo) {
+        if (memo.el && memo.el.isConnected) return memo.el;
+        if (!memo.attr || !memo.value) return null;
+        var v = String(memo.value).replace(/["\\]/g, "\\$&");
+        return doc.querySelector("[" + memo.attr + "=\"" + v + "\"]");
+    }
+
+    function closed(doc, overlay) {
+        var memo = _openers[overlay.id];
+        if (!memo || !memo.open) return;
+        memo.open = false;
+        var target = _twin(doc, memo);
+        if (target) target.focus();
+        memo.pending = true;
+    }
+
+    function afterRender(doc) {
+        Object.keys(_openers).forEach(function (key) {
+            var memo = _openers[key];
+            if (!memo || !memo.pending) return;
+            var active = doc.activeElement;
+            _openers[key] = null;
+            // Focus is somewhere live (the card survived the render, or the
+            // user moved on): leave it.
+            if (active && active !== doc.body && active.isConnected) return;
+            var target = _twin(doc, memo);
+            if (target) target.focus();
+        });
+    }
+
     function attachPanelKeys(doc, win) {
         if (!doc || !win) return null;
         function onKey(e) { handleKey(e, doc, win); }
@@ -154,6 +236,10 @@
         handleKey: handleKey,
         attachPanelKeys: attachPanelKeys,
         anyOpen: anyOpen,
+        makeOpener: makeOpener,     // #454
+        opened: opened,             // #454
+        closed: closed,             // #454
+        afterRender: afterRender,   // #454
     };
 
     if (typeof module !== "undefined" && module.exports) {

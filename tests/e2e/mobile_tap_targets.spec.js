@@ -34,6 +34,7 @@ const SURFACES = [
     { path: "/", selector: ".badge-url", min: 1, floor: 24 },                    // 19
     { path: "/recurring", selector: ".recurring-row > input[type=checkbox]", min: 3, floor: 24, dims: "both" }, // 13
     { path: "/calendar", selector: ".calendar-cell-tasks li.calendar-task-link", min: 1 },  // 24
+    { path: "/calendar", selector: ".calendar-cell-add", min: 7, dims: "both" },   // #454's new + per day
     { path: "/scan", selector: "input[name=parseAs]", min: 3, floor: 24, dims: "both" },   // 13
     { path: "/reflection", selector: "#reflShowArchived", min: 1, floor: 24, dims: "both" }, // 13
     { path: "/reflection", selector: ".reflection-history-select", min: 1, floor: 24, dims: "both" }, // 22

@@ -352,3 +352,112 @@ describe("anyOpen (#446)", () => {
         expect(anyOpen(document, null)).toBe(false);
     });
 });
+
+// #454: cards / rows / calendar lines that only opened on a click, and focus
+// into and back out of the goal, project and /recurring panels.
+describe("makeOpener (#454)", () => {
+    const { makeOpener } = require("../../../static/panel_keys");
+    const key = (el, k, target) => {
+        const e = new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true });
+        (target || el).dispatchEvent(e);
+        return e;
+    };
+
+    test("a Tab stop, announced as a named button", () => {
+        document.body.innerHTML = `<div id="card"><input type="checkbox" id="cb"></div>`;
+        const card = document.getElementById("card");
+        makeOpener(card, "Open goal: Run a marathon", () => {});
+        expect(card.tabIndex).toBe(0);
+        expect(card.getAttribute("role")).toBe("button");
+        expect(card.getAttribute("aria-label")).toBe("Open goal: Run a marathon");
+    });
+
+    test.each(["Enter", " "])("%j on it opens, once, and isn't left to scroll the page", (k) => {
+        document.body.innerHTML = `<div id="card"></div>`;
+        const card = document.getElementById("card");
+        const onOpen = jest.fn();
+        makeOpener(card, "x", onOpen);
+        const e = key(card, k);
+        expect(onOpen).toHaveBeenCalledTimes(1);
+        expect(e.defaultPrevented).toBe(true);
+    });
+
+    test("other keys, and keys aimed at a control inside it, don't open", () => {
+        document.body.innerHTML = `<div id="card"><input type="checkbox" id="cb"></div>`;
+        const card = document.getElementById("card");
+        const onOpen = jest.fn();
+        makeOpener(card, "x", onOpen);
+        key(card, "a");
+        const e = key(card, " ", document.getElementById("cb"));
+        expect(onOpen).not.toHaveBeenCalled();
+        expect(e.defaultPrevented).toBe(false);   // Space still ticks the box
+    });
+});
+
+describe("opened / closed / afterRender (#454)", () => {
+    const { opened, closed, afterRender } = require("../../../static/panel_keys");
+    const page = () => {
+        document.body.innerHTML = `
+            <div id="list"><div class="card" data-goal-id="g1" tabindex="0">A</div>
+                           <input id="search" type="text"></div>
+            <div id="goalDetailOverlay"><button id="close">✕</button>
+                <input id="title" type="text"></div>`;
+        return {
+            card: () => document.querySelector("[data-goal-id=g1]"),
+            overlay: document.getElementById("goalDetailOverlay"),
+            close: document.getElementById("close"),
+        };
+    };
+
+    test("opening focuses ✕; closing hands focus back to the card", () => {
+        const p = page();
+        p.card().focus();
+        opened(document, p.overlay, p.close, "data-goal-id");
+        expect(document.activeElement).toBe(p.close);
+        closed(document, p.overlay);
+        expect(document.activeElement).toBe(p.card());
+    });
+
+    test("a save that re-renders the list: focus finds the new card", () => {
+        const p = page();
+        p.card().focus();
+        opened(document, p.overlay, p.close, "data-goal-id");
+        closed(document, p.overlay);
+        // The list is rebuilt: the focused card is gone, focus falls to body.
+        document.getElementById("list").innerHTML =
+            `<div class="card" data-goal-id="g1" tabindex="0">A (saved)</div>`;
+        expect(document.activeElement).toBe(document.body);
+        afterRender(document);
+        expect(document.activeElement).toBe(p.card());
+        expect(p.card().textContent).toBe("A (saved)");
+    });
+
+    test("never steals focus the user moved somewhere else", () => {
+        const p = page();
+        p.card().focus();
+        opened(document, p.overlay, p.close, "data-goal-id");
+        closed(document, p.overlay);
+        document.getElementById("search").focus();
+        afterRender(document);
+        expect(document.activeElement.id).toBe("search");
+    });
+
+    test("opened from a text field: ✕ still gets focus, nothing to hand back", () => {
+        const p = page();
+        document.getElementById("search").focus();
+        opened(document, p.overlay, p.close, "data-goal-id");
+        expect(document.activeElement).toBe(p.close);
+        p.close.blur();
+        closed(document, p.overlay);
+        expect(document.activeElement).toBe(document.body);
+    });
+
+    test("a re-open from inside the panel keeps the first opener", () => {
+        const p = page();
+        p.card().focus();
+        opened(document, p.overlay, p.close, "data-goal-id");
+        opened(document, p.overlay, p.close, "data-goal-id");   // e.g. after an archive
+        closed(document, p.overlay);
+        expect(document.activeElement).toBe(p.card());
+    });
+});

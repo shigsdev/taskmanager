@@ -263,6 +263,7 @@ function projectsRender() {
         section.appendChild(dropList);
         board.appendChild(section);
     }
+    window.panelKeys.afterRender(document);   // #454: a save replaced the focused card
 }
 
 // --- Drag-and-drop reorder (#62) ---------------------------------------------
@@ -504,6 +505,9 @@ function projectCardEl(project) {
             projectDetailOpen(project);
         }
     });
+    // #454: and by keyboard — Enter / Space on the focused card does what a
+    // click does (open it, or toggle it in Select mode).
+    window.panelKeys.makeOpener(card, `Open project: ${project.name}`, () => card.click());
     if (projectsBulkMode) {
         const cb = document.createElement("input");
         cb.type = "checkbox";
@@ -791,7 +795,9 @@ function projectDetailNew() {
     _projectCompletedSection = null;
     // No archive on a project that doesn't exist yet.
     document.getElementById("projectArchiveToggle").style.display = "none";
-    document.getElementById("projectDetailOverlay").style.display = "";
+    const overlay = document.getElementById("projectDetailOverlay");
+    overlay.style.display = "";
+    window.panelKeys.opened(document, overlay, null, null);   // #454: focus back to + New
 }
 
 function projectDetailOpen(project) {
@@ -815,7 +821,11 @@ function projectDetailOpen(project) {
     archiveBtn.style.display = "";
     archiveBtn.textContent = project.is_active ? "Archive" : "Unarchive";
 
-    document.getElementById("projectDetailOverlay").style.display = "";
+    const overlay = document.getElementById("projectDetailOverlay");
+    overlay.style.display = "";
+    // #454: keyboard users land on ✕, and closing hands focus back to the card.
+    window.panelKeys.opened(document, overlay,
+        document.getElementById("projectDetailClose"), "data-project-id");
 }
 
 // Task summary + the panel's task list. Split out of projectDetailOpen
@@ -881,7 +891,9 @@ function projectRenderSideTasks(projectId) {
 }
 
 function projectDetailClose() {
-    document.getElementById("projectDetailOverlay").style.display = "none";
+    const overlay = document.getElementById("projectDetailOverlay");
+    overlay.style.display = "none";
+    window.panelKeys.closed(document, overlay);   // #454
 }
 
 async function projectDetailSave(e) {

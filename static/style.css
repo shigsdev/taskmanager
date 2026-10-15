@@ -545,6 +545,38 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     font-weight: 500;
     letter-spacing: 0.02em;
     color: var(--cream-dim);
+    /* #454: the date, then the cell's + Add button on the right. */
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+}
+/* Wraps rather than truncating: cut short, "Monday, Oct 12" lost its day
+   number in a narrow cell. */
+.calendar-cell-date {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+/* #454: a real button to add a task on that day (the empty-space click
+   had no keyboard path). Quiet until hovered or focused. */
+.calendar-cell-add {
+    flex: 0 0 auto;
+    min-width: 24px;
+    min-height: 24px;
+    padding: 0 6px;
+    border: 1px solid var(--rule, var(--border));
+    border-radius: 4px;
+    background: transparent;
+    color: var(--cream-faint, var(--text-muted));
+    font: inherit;
+    font-size: 0.9rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.calendar-cell-add:hover,
+.calendar-cell-add:focus-visible {
+    color: var(--copper);
+    border-color: var(--copper);
 }
 .calendar-cell-tasks {
     list-style: none;
@@ -7209,6 +7241,7 @@ table.quality-gates code {
         min-height: 44px;
     }
     .sf-exrow-info { width: 44px; height: 44px; }
+    .calendar-cell-add { min-width: 44px; min-height: 44px; }   /* #454 */
 
     /* A task line in a calendar cell: 12px text, so 38px of line box plus
        the 3px top and bottom padding it already has. */

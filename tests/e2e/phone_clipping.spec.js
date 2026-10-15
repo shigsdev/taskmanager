@@ -119,8 +119,15 @@ test.describe("#452 swipe on a touch screen", () => {
             await expect(card.locator(".swipe-actions")).toHaveCount(1); // swipe.js wired it
             await card.scrollIntoViewIfNeeded();
             await card.locator(".reopen-btn").click();
-            const hits = await hittable(page, `#completedList .task-card[data-id="${t.id}"] .reopen-dropdown button`);
-            expect(hits).toEqual([true, true, true, true, true, true, true]);
+            // The menu opens downward: when the card came into view at the
+            // bottom edge (depends on how many completed cards the lane has),
+            // its options start below the screen. Bring the menu into view,
+            // as anyone would — what's checked is that nothing CLIPS or
+            // COVERS it once it's on screen.
+            const menu = card.locator(".reopen-dropdown");
+            await menu.evaluate((el) => el.scrollIntoView({ block: "nearest" }));
+            await expect.poll(() => hittable(page, `#completedList .task-card[data-id="${t.id}"] .reopen-dropdown button`))
+                .toEqual([true, true, true, true, true, true, true]);
             const m = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: innerWidth }));
             expect(m.sw).toBeLessThanOrEqual(m.iw);
             expect(m.iw).toBe(375);
