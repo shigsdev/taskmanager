@@ -1009,7 +1009,8 @@ async function bulkPatchProjects(updates) {
 
 function showProjectsBulkDropdown(anchorBtn, items) {
     // Reuse the same simple dropdown affordance pattern as app.js
-    // showBulkDropdown — render as an inline popover under the button.
+    // showBulkDropdown — a popover beside the button (#487: placed by
+    // menuHelpers.placeMenu so it stays on screen).
     document.querySelectorAll(".bulk-dropdown-popover").forEach((el) => el.remove());
     const pop = document.createElement("div");
     pop.className = "bulk-dropdown-popover";
@@ -1026,10 +1027,18 @@ function showProjectsBulkDropdown(anchorBtn, items) {
         pop.appendChild(a);
     }
     document.body.appendChild(pop);
-    const r = anchorBtn.getBoundingClientRect();
-    pop.style.position = "absolute";
-    pop.style.left = `${r.left + window.scrollX}px`;
-    pop.style.top = `${r.bottom + window.scrollY + 4}px`;
+    // #487: always placing it UNDER the button opened it below the screen
+    // (the button sits in the bottom toolbar). Above when it doesn't fit
+    // below, kept inside the screen's edges, scrolling if neither side fits.
+    pop.style.position = "fixed";
+    const place = window.menuHelpers.placeMenu(
+        anchorBtn.getBoundingClientRect(),
+        { width: pop.offsetWidth, height: pop.offsetHeight },
+        { width: document.documentElement.clientWidth, height: window.innerHeight },
+    );
+    pop.style.left = `${place.left}px`;
+    pop.style.top = `${place.top}px`;
+    if (place.maxHeight !== null) pop.style.maxHeight = `${place.maxHeight}px`;
     setTimeout(() => {
         const dismiss = (e) => {
             if (!pop.contains(e.target)) {

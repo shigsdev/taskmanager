@@ -1991,6 +1991,10 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     cursor: pointer;
     z-index: 2;
 }
+/* #487: the bulk checkbox above is absolute, and .project-card was never
+   positioned, so every card's checkbox stacked at the page's top-right
+   corner, under the nav. */
+.project-card { position: relative; }
 .project-card.bulk-selected {
     outline: 2px solid var(--accent, #2563eb);
     outline-offset: 2px;
@@ -2004,7 +2008,9 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     min-width: 180px;
     max-height: 300px;
     overflow-y: auto;
-    z-index: 100;
+    /* #487: above the bulk toolbar (150): a menu opened from its second row
+       goes up over its first row, and the toolbar painted over it. */
+    z-index: 160;
 }
 .bulk-dropdown-item {
     display: block;
@@ -3285,9 +3291,22 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .scan-candidate-title {
     flex: 1;
+    /* #487: a text box keeps a ~199px built-in minimum width, which pushed
+       the row's menus out of it (718px wide at 375 for Goals). */
+    min-width: 0;
     padding: 6px 8px;
     border: 1px solid var(--border);
     border-radius: 4px;
+    font-size: 0.9rem;
+}
+/* #487: the target-quarter box (goals, projects) had no rule at all and
+   showed the browser's inset border. Styled like the title box. */
+.scan-candidate-quarter {
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface-sunk);
+    color: var(--text);
     font-size: 0.9rem;
 }
 .scan-candidate-type {
@@ -3344,8 +3363,19 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .import-candidate-head { display: flex; align-items: center; gap: 8px; }
 .import-candidate input[type="checkbox"] { min-width: 18px; min-height: 18px; }
-.import-candidate-title { flex: 1; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-sunk); color: var(--text); }
+.import-candidate-title { flex: 1; min-width: 0; /* #487, as .scan-candidate-title */ padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-sunk); color: var(--text); }
 .import-candidate-type { padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-sunk); color: var(--text); }
+/* #487: on a phone the title shares the first line only with its
+   checkbox; the menus, the quarter box and the duplicate badge wrap onto
+   the next line instead of running out of the row. After both the scan
+   and import rules, so their `flex: 1` doesn't undo the basis. */
+@media (max-width: 600px) {
+    .scan-candidate,
+    .import-candidate-head { flex-wrap: wrap; }
+    .scan-candidate-title,
+    .import-candidate-title { flex-basis: calc(100% - 34px); }
+    .scan-candidate-quarter { flex: 1 1 140px; min-width: 0; }
+}
 /* (#84) expand toggle removed — full editor always visible. */
 .import-controls-hint {
     color: var(--text-muted, #888); font-size: 12px;

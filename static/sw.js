@@ -5,7 +5,7 @@
  * Bump CACHE_VERSION when deploying new static files.
  */
 
-var CACHE_VERSION = "v320";
+var CACHE_VERSION = "v321";
 var CACHE_NAME = "taskmanager-" + CACHE_VERSION;
 
 // HTML is intentionally NOT pre-cached (see fetch handler below — Bug #56).
@@ -46,6 +46,7 @@ var APP_SHELL = [
     "/static/reflection_helpers.js",
     "/static/reflection.js",
     "/static/goal_filter_helpers.js",
+    "/static/menu_helpers.js",  // #487
     "/static/date_helpers.js",
     // #193 (2026-05-22): these 6 page scripts are referenced by their
     // templates' <script src> but were never added here — so they

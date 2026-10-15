@@ -645,6 +645,13 @@ Report.
      tick two rows and scroll — "Analyze together" sticks just below the
      tabs (at 1280 too), not behind them. A /docs TOC jump lands its heading
      below the tabs. At 1280 the whole nav stays pinned (the quiet case).
+     #487: on /projects press Select — each card's checkbox sits on its own
+     card and ticks it. Open Type ▾, Status ▾, Priority ▾ and Goal ▾ at both
+     widths: each menu is wholly on screen (Goal ▾ opens upward and scrolls)
+     and its last option can be picked. /scan with the upload stubbed, as
+     Goals and as Projects, and /import Paste Project Names with a name that
+     already exists: at 375 nothing scrolls sideways, the title has its own
+     line, and the menus / quarter / "duplicate" badge wrap below it.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -827,6 +834,9 @@ Report.
   Swipe shows Move/Delete       SKIP (touch)  Swipe shows Move/Delete       PASS
   Bulk toolbar one row          PASS          Settings table scrolls        PASS
   Nav: whole bar pinned (unchanged) PASS      Nav: only the tabs pinned     PASS
+  Projects: bulk menus on screen PASS         Projects: bulk menus on screen PASS
+  Projects: bulk checkbox on card PASS        Projects: bulk checkbox on card PASS
+  Scan/Import: review rows fit  PASS          Scan/Import: review rows fit  PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

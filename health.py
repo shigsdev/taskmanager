@@ -173,6 +173,7 @@ EXPECTED_STATIC_FILES = (
     "static/reflection_helpers.js",  # #165 — Jest-importable reflection helpers
     "static/reflection.js",          # #165 — Weekly Reflection page
     "static/goal_filter_helpers.js",
+    "static/menu_helpers.js",  # #487 — keeps popup menus on screen
     "static/date_helpers.js",
     # #193 (2026-05-22): 6 page scripts referenced by templates but
     # never listed here (or in sw.js APP_SHELL). Kept in sync by the
