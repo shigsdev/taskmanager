@@ -500,8 +500,9 @@ Report.
      different goal), pick Project "(no project)" — the Goal stays, and
      Save keeps it; the same on a task whose goal came from its project
      blanks the Goal. In 💡 Auto-categorize, a task captured with a
-     project shows that project and its goal; flip the row's Type and
-     both are still selected; Apply leaves them on the task.
+     project shows that project and its goal; flip the row's Type and a
+     goal set by hand is still selected while the project of the other
+     type drops (#475); Apply leaves the task on that goal, no project.
      #429: double-click Save on a NEW recurring template, a new goal, a new
      project and ➕ New Task (or press Enter twice), double-tap Add All on a
      voice memo / scan, and a /review button: exactly one of each is made and
@@ -609,6 +610,14 @@ Report.
      #474: delete a task, then (in another tab still showing it) press its
      Done: "… didn't save: This task is in the Recycle Bin — restore it there
      first." and the card goes; it is still in the bin. Restore still works.
+     #475: open a work task on a work project whose goal came from the
+     project, change Type to Personal — Project shows "— None —" and Goal
+     clears; with a goal set by hand, Goal stays; Save keeps exactly that.
+     Capture "x @<name>" where <name> only matches a project of the other
+     type — the notice names that project and the task has none. /goals
+     Add linked task on an archived goal and the /recurring editor with a
+     project of the other type each say why and change nothing. A task
+     already on an archived project still saves unchanged (the quiet case).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -780,6 +789,8 @@ Report.
   Text: long import line fits   PASS          Text: long import line fits   PASS
   Help: corrected sections      PASS          Help: corrected sections      PASS
   Bin: done on a deleted task refused PASS    Bin: done on a deleted task refused PASS
+  Links: type change drops project PASS       Links: type change drops project PASS
+  Links: bad pick says why      PASS          Links: bad pick says why      PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

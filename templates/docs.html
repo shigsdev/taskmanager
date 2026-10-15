@@ -410,6 +410,7 @@
                 <li>One project hint per capture — the first <code>@</code>-token wins.</li>
                 <li>The token is letters and digits only; it ends at the first space or punctuation (so <code>(@audit)</code> works too).</li>
                 <li>If the token matches <strong>no</strong> active project — or matches <strong>two or more</strong> — the task is still created, just without a project, and the capture bar shows a brief notice so you know the hint didn't take.</li>
+                <li>Projects of the task's own type come first: if <code>@garden</code> matches one Work and one Personal project, a Personal task gets the Personal one. A hint that only matches one project of the other type gives no project, and the notice names the project it matched.</li>
                 <li>An explicit project assigned elsewhere is never overridden by a hint.</li>
                 <li>A task assigned to a project <strong>inherits that project's goal</strong> automatically (when you didn't set a goal yourself).</li>
             </ul>
@@ -2260,6 +2261,22 @@ Skip this line (too short)</pre>
                 <li><strong>Actions</strong> + <strong>Notes</strong> — free-text fields for next-actions and freeform context (mirrors Goals).</li>
             </ul>
 
+            <h3>A task's project matches its type</h3>
+            <p>
+                A task, or a repeating task, can only be on a project of its
+                own type: Work with Work, Personal with Personal. Picking a
+                project of the other type is refused, and the message says
+                which type to pick. Changing a task's <strong>Type</strong>
+                in the task panel takes it off a project of the other type
+                straight away, just as choosing
+                <strong>&ldquo;&mdash; None &mdash;&rdquo;</strong> would: a
+                goal that came from the project goes with it, and a goal you
+                set yourself stays. Changing the type from the bulk toolbar
+                or the repeating-task editor does the same when it saves. A
+                task that was already on a project of the other type keeps
+                it until you change its type or its project.
+            </p>
+
             <h3>Open a task</h3>
             <p>
                 Click (or tap) a task on a project card to open it in the
@@ -2534,6 +2551,16 @@ Skip this line (too short)</pre>
                 this, opening such a task and clicking Save &mdash;
                 changing nothing &mdash; would quietly drop the project
                 link, because the dropdown had no row to show for it.
+            </p>
+            <p>
+                Anything that still tries to make a new link &mdash; a
+                second tab, or the <strong>Add linked task</strong> box on
+                an archived goal &mdash; is refused with
+                <em>&ldquo;The goal &hellip; is archived &mdash; unarchive
+                it first.&rdquo;</em> (or &ldquo;The project &hellip;&rdquo;).
+                A project or goal that no longer exists is refused too. A
+                subtask still takes its parent's project and goal, archived
+                or not.
             </p>
 
             <h3>Deleting a goal for good</h3>

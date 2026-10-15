@@ -5373,7 +5373,9 @@ test.describe("Goals - archive, unarchive, and a guarded delete (#349)", () => {
         async ({ page, request }) => {
             // A disabled button with no explanation is its own usability
             // bug. The hint has to say what is in the way.
-            const goal = await makeGoal(request, { archived: true });
+            // #475: a NEW link to an archived goal is refused, so the task
+            // is linked first and the goal archived after.
+            const goal = await makeGoal(request);
             const taskRes = await request.post("/api/tasks", {
                 data: {
                     title: `E2E clinger ${Date.now()}`, type: "work",
@@ -5381,6 +5383,10 @@ test.describe("Goals - archive, unarchive, and a guarded delete (#349)", () => {
                 },
             });
             const task = await taskRes.json();
+            expect(task.goal_id).toBe(goal.id);
+            expect((await request.patch(`/api/goals/${goal.id}`, {
+                data: { is_active: false },
+            })).status()).toBe(200);
             try {
                 await page.goto("/goals?nosw=1");
                 await page.waitForLoadState("networkidle");
@@ -8727,15 +8733,18 @@ test.describe("Goal links survive a project change (#427)", () => {
         }
     });
 
-    test("💡 Auto-categorize: a task's own project and goal survive Apply", async ({
+    test("💡 Auto-categorize: a hand-set goal survives a Type flip; the other type's project is cleared (#475)", async ({
         page, request,
     }) => {
         const tag = uniq();
         const { g1, g2, p } = await seed(request, tag);
         const task = await (await request.post("/api/tasks", {
-            data: { title: `427 captured with a project ${tag}`, type: "work", tier: "inbox", project_id: p.id },
+            data: {
+                title: `427 captured with a project ${tag}`, type: "work", tier: "inbox",
+                project_id: p.id, goal_id: g2.id,
+            },
         })).json();
-        expect(task.goal_id).toBe(g1.id);
+        expect([task.project_id, task.goal_id]).toEqual([p.id, g2.id]);
 
         try {
             // The suggestion exactly as the server now sends it for this task
@@ -8746,12 +8755,12 @@ test.describe("Goal links survive a project change (#427)", () => {
                 suggestions: [{
                     task_id: task.id, title: task.title,
                     suggested_tier: "this_week",
-                    suggested_project_id: p.id, suggested_goal_id: g1.id,
+                    suggested_project_id: p.id, suggested_goal_id: g2.id,
                     suggested_due_date: null, suggested_type: "work",
                     reason: "fixture",
                     current_type: "work",
                     current_project_id: p.id, current_project_name: p.name,
-                    current_goal_id: g1.id, current_goal_title: g1.title,
+                    current_goal_id: g2.id, current_goal_title: g2.title,
                     current_due_date: null,
                 }],
             } }));
@@ -8762,25 +8771,31 @@ test.describe("Goal links survive a project change (#427)", () => {
             const row = page.locator(`#autoCategorizeRows tr[data-task-id="${task.id}"]`);
             await expect(row).toBeVisible({ timeout: 5000 });
 
-            // Flip Type to Personal: the Project and Goal lists re-filter to
-            // personal ones, and used to drop this work project and goal, so
-            // both showed "— None —" and Apply sent nulls.
-            await row.locator('select[data-field="type"]').selectOption("personal");
+            // The row shows the task's own project and goal (#427).
             await expect(row.locator('select[data-field="project"]')).toHaveValue(p.id);
-            await expect(row.locator('select[data-field="goal"]')).toHaveValue(g1.id);
-            await expect(row.locator('select[data-field="project"] option:checked'))
-                .toHaveText(p.name);
+            await expect(row.locator('select[data-field="goal"]')).toHaveValue(g2.id);
+
+            // Flip Type to Personal. #427: the goal lists re-filter to
+            // personal ones and used to drop a goal set by hand — it stays.
+            // #475: a task can only sit on a project of its own type, so the
+            // work project drops (it used to stay selected, and Apply wrote
+            // a personal task onto a work project).
+            await row.locator('select[data-field="type"]').selectOption("personal");
+            await expect(row.locator('select[data-field="project"]')).toHaveValue("");
+            await expect(row.locator('select[data-field="goal"]')).toHaveValue(g2.id);
 
             const patch = page.waitForRequest((r) =>
                 r.method() === "PATCH" && r.url().endsWith(`/api/tasks/${task.id}`));
             await row.locator("button", { hasText: "Apply" }).click();
             const body = (await patch).postDataJSON();
-            expect(body).toEqual({ tier: "this_week", type: "personal" });
+            expect(body).toEqual({
+                tier: "this_week", type: "personal", project_id: null, goal_id: g2.id,
+            });
             await expect(row).toHaveCount(0);
 
             const after = await (await request.get(`/api/tasks/${task.id}`)).json();
             expect([after.project_id, after.goal_id, after.type, after.tier])
-                .toEqual([p.id, g1.id, "personal", "this_week"]);
+                .toEqual([null, g2.id, "personal", "this_week"]);
         } finally {
             await page.unroute("**/api/inbox/categorize");
             await cleanup(request, { tasks: [task.id], projects: [p.id], goals: [g1.id, g2.id] });
@@ -10250,6 +10265,59 @@ test.describe("Done on a deleted task is refused (#474)", () => {
         await expect(card).toHaveCount(0);
         const after = await (await request.get(`/api/tasks/${task.id}`)).json();
         expect(after.status).toBe("deleted");
+    });
+});
+
+// #475: a task can only sit on a project of its own type. Changing Type in the
+// panel takes it off a project of the other type, as "(no project)" would
+// (#427): the goal that came from the project goes, a goal you set stays.
+test.describe("Type change takes the task off the other type's project (#475)", () => {
+    test("panel: Project clears, a hand-set goal stays, Save keeps both", async ({ page, request }) => {
+        const tag = `E2E 475 ${Date.now()}`;
+        const goal = async (title) => (await request.post("/api/goals", {
+            data: { title, category: "work", priority: "must" },
+        })).json();
+        const g1 = await goal(`${tag} project goal`);
+        const g2 = await goal(`${tag} my goal`);
+        const p = await (await request.post("/api/projects", {
+            data: { name: `${tag} Roadmaps`, type: "work", goal_id: g1.id },
+        })).json();
+        const mk = async (title, extra) => (await request.post("/api/tasks", {
+            data: { title: `${tag} ${title}`, type: "work", tier: "backlog", project_id: p.id, ...extra },
+        })).json();
+        const inherited = await mk("inherited");
+        const mine = await mk("mine", { goal_id: g2.id });
+        expect([inherited.goal_id, mine.goal_id]).toEqual([g1.id, g2.id]);
+
+        const retype = async (id) => {
+            await page.evaluate(async (tid) => {
+                const t = await fetch(`/api/tasks/${tid}`).then((r) => r.json());
+                window.taskDetailOpen(t);
+            }, id);
+            await expect(page.locator("#detailPanel")).toBeVisible();
+            expect(await page.inputValue("#detailProject")).toBe(p.id);
+            await page.selectOption("#detailType", "personal");
+            const shown = [await page.inputValue("#detailProject"), await page.inputValue("#detailGoal")];
+            await page.evaluate(() => document.getElementById("detailForm").requestSubmit());
+            await expect(page.locator("#detailOverlay")).toBeHidden({ timeout: 3000 });
+            const saved = await (await request.get(`/api/tasks/${id}`)).json();
+            return { shown, saved: [saved.type, saved.project_id, saved.goal_id] };
+        };
+
+        try {
+            await page.goto("/?nosw=1");
+            await page.waitForLoadState("networkidle");
+            expect(await retype(inherited.id)).toEqual({
+                shown: ["", ""], saved: ["personal", null, null],
+            });
+            expect(await retype(mine.id)).toEqual({
+                shown: ["", g2.id], saved: ["personal", null, g2.id],
+            });
+        } finally {
+            for (const t of [inherited.id, mine.id]) await request.delete(`/api/tasks/${t}`);
+            await request.delete(`/api/projects/${p.id}`);
+            for (const g of [g1.id, g2.id]) await request.delete(`/api/goals/${g}`);
+        }
     });
 });
 

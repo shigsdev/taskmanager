@@ -13,6 +13,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectinload
 
+from link_service import check_link_changes, unlink_other_type_project
 from models import RecurringTask, Task, TaskStatus, TaskType, Tier, db
 from utils import ValidationError  # noqa: F401 — re-exported for API layer
 from utils import check_length as _check_length
@@ -502,7 +503,9 @@ def _update_repeat(task: Task, repeat: dict | None) -> None:
 # --- CRUD --------------------------------------------------------------------
 
 
-def resolve_project_hint(hint: str) -> tuple[uuid.UUID | None, str | None]:
+def resolve_project_hint(
+    hint: str, task_type: str | None = None,
+) -> tuple[uuid.UUID | None, str | None]:
     """Resolve a capture-bar ``@project`` hint to a project_id (#207).
 
     The capture parser (``parse_capture.js``) can only lift the raw
@@ -518,6 +521,9 @@ def resolve_project_hint(hint: str) -> tuple[uuid.UUID | None, str | None]:
     * two or more        → ``(None, "<ambiguous warning>")`` — too vague
       to pick one safely, so the caller creates the task with no project
 
+    With ``task_type`` (#475), matches of that type are counted first; a
+    hint that only matches one project of the other type is a warning.
+
     The warning string is user-facing (surfaced by the capture bar);
     ``None`` means "nothing to tell the user".
     """
@@ -531,6 +537,20 @@ def resolve_project_hint(hint: str) -> tuple[uuid.UUID | None, str | None]:
         db.session.scalars(select(Project).where(Project.is_active.is_(True)))
     )
     matches = [p for p in projects if needle in p.name.lower()]
+    # #475: a task can only sit on a project of its own type, so a match of
+    # that type wins, and a match of only the other type is reported.
+    if task_type is not None:
+        own = [p for p in matches if p.type.value == task_type]
+        if len(own) == 1:
+            return own[0].id, None
+        if not own and len(matches) == 1:
+            other = matches[0]
+            return None, (
+                f'"@{cleaned}" matches {other.name}, a {other.type.value} '
+                "project — task created without a project."
+            )
+        if own:
+            matches = own
     if len(matches) == 1:
         return matches[0].id, None
     if not matches:
@@ -566,6 +586,14 @@ def create_task(data: dict) -> Task:
             raise ValidationError("parent task not found", "parent_id")
         if parent.parent_id is not None:
             raise ValidationError("subtasks cannot have their own subtasks", "parent_id")
+
+    # #475: refuse a missing / archived / other-type link. A subtask's
+    # links are its parent's, archived or not.
+    check_link_changes(
+        data, item_type=task_type,
+        inherited_project_id=parent.project_id if parent else None,
+        inherited_goal_id=parent.goal_id if parent else None,
+    )
 
     # Subtasks inherit goal and project from parent when not explicitly set
     goal_id = _parse_uuid(data.get("goal_id"), "goal_id")
@@ -751,6 +779,17 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
     # #386: whether this write moved the date decides if an explicit
     # tier=inbox still routes (see _auto_promote_tier_on_due_today).
     old_due_date = task.due_date
+    old_type = task.type
+
+    # #475: check a new project / goal before anything is written, against
+    # the type the task ends up with.
+    new_type = task.type
+    if "type" in data:
+        new_type = _parse_enum(TaskType, data["type"], "type") or task.type
+    check_link_changes(
+        data, item_type=new_type,
+        old_project_id=old_project_id, old_goal_id=old_goal_id,
+    )
 
     # Weekly-planner ignore flag is "stop suggesting until I touch the
     # task again". Any meaningful field change resets it so the next
@@ -870,6 +909,10 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
 
     if "goal_id" in data:
         task.goal_id = _parse_uuid(data["goal_id"], "goal_id")
+
+    # #475: a type change takes the task off a project of the other type.
+    # Before the repeat sync below, so the template follows.
+    unlink_other_type_project(task, old_type=old_type, data=data, old_goal_id=old_goal_id)
 
     if "due_date" in data:
         task.due_date = _parse_date(data["due_date"], "due_date")

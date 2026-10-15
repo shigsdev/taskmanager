@@ -2723,9 +2723,9 @@ function taskDetailOpen(task) {
     document.getElementById("detailType").value = task.type;
     // #98 (PR32): scope the project dropdown to projects matching this
     // task's type. Repopulating BEFORE setting detailProject's value
-    // ensures the value persists if it's a valid match (and gets
-    // dropped to "" if the task somehow has a cross-type project_id —
-    // which would be a data anomaly, but at least we surface it).
+    // ensures the value persists if it's a valid match. A stored
+    // cross-type project_id (old data, #475) stays selected as
+    // "(unavailable)" — opening a task never changes its links.
     // #355: pass task.project_id — populate runs BEFORE the assignment
     // below, so the select is empty and the stored id can't be read off
     // it. Without this an archived project matches no option, the select
@@ -2863,6 +2863,30 @@ function taskDetailToggleProject(type) {
     taskDetailPopulateProjects(type);
     // #142 (2026-05-09): mirror the type-filter on goals too.
     taskDetailPopulateGoals(type);
+}
+
+// #475: the Type select's change. A task can only sit on a project of its
+// own type, so one of the other type is dropped exactly as picking
+// "(no project)" would: a goal that came from it goes, one you set stays
+// (#427). The server unlinks it on Save as well; this shows it first.
+function taskDetailTypeChanged(type) {
+    const projSel = document.getElementById("detailProject");
+    const goalSel = document.getElementById("detailGoal");
+    const oldProjectId = projSel ? projSel.value : "";
+    const known = [...(allProjects || []), ...(archivedProjects || [])];
+    const h = window.filterHelpers;
+    if (!projSel || !h || h.projectAfterTypeChange(oldProjectId, type, known) === oldProjectId) {
+        taskDetailToggleProject(type);
+        return;
+    }
+    const newGoalId = goalSel
+        ? h.goalAfterProjectChange(oldProjectId, "", goalSel.value, known, null)
+        : null;
+    projSel.value = "";
+    projSel.dataset.prev = "";
+    if (goalSel) goalSel.value = newGoalId || "";
+    taskDetailToggleProject(type);
+    if (goalSel) goalSel.value = newGoalId || "";
 }
 
 // #117 (PR53/PR56): UI mirror of the server-side #77 cascade. When

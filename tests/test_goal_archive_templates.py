@@ -32,6 +32,7 @@ from models import (
     db,
 )
 from recurring_service import cascade_parent_archive
+from utils import ValidationError
 
 _MIGRATION = (
     Path(__file__).resolve().parent.parent
@@ -429,7 +430,11 @@ def test_project_move_onto_templates_own_goal_keeps_goal_marker(app):
         update_goal(g.id, {"is_active": False})
         assert _state(rt_id) == (False, False, True)
 
-        update_project(p.id, {"goal_id": str(g.id)})
+        # #475: moving a project onto an ARCHIVED goal is now refused
+        # outright, before the cascade runs — the marker survives either way.
+        with pytest.raises(ValidationError, match="is archived"):
+            update_project(p.id, {"goal_id": str(g.id)})
+        db.session.rollback()
         assert _state(rt_id) == (False, False, True)
 
         update_goal(g.id, {"is_active": True})

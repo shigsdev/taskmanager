@@ -177,14 +177,30 @@
                 var newType = typeSel.value;
                 var projCell = tr.querySelector(".auto-categorize-project");
                 var goalCell = tr.querySelector(".auto-categorize-goal");
+                // #475: a task can only sit on a project of its own type, so
+                // a project of the other type drops, with its goal (#427: a
+                // goal set by hand stays). The server unlinks it on Apply too.
+                var FH = window.filterHelpers;
+                var droppedProject = "";
+                var dropGoal = false;
                 if (projCell) {
                     var prevProjVal = projCell.querySelector("select").value;
+                    if (FH && FH.projectAfterTypeChange(prevProjVal, newType, availableProjects) !== prevProjVal) {
+                        droppedProject = prevProjVal;
+                        prevProjVal = "";
+                    }
                     projCell.innerHTML = "";
                     projCell.appendChild(projectSelect(prevProjVal, newType, _currentOptionFor(tr, "project")));
                     _wireProjectCascade(tr);
                 }
                 if (goalCell) {
                     var prevGoalVal = goalCell.querySelector("select").value;
+                    if (droppedProject && FH) {
+                        dropGoal = !FH.goalAfterProjectChange(
+                            droppedProject, "", prevGoalVal, availableProjects, null,
+                        );
+                    }
+                    if (dropGoal) { prevGoalVal = ""; }
                     goalCell.innerHTML = "";
                     goalCell.appendChild(goalSelect(prevGoalVal, newType, _currentOptionFor(tr, "goal")));
                 }

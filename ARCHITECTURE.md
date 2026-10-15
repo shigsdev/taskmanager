@@ -552,6 +552,22 @@ component is added, a data flow changes, or a security boundary shifts.
   dropdown — and the reported **goal cascade**, since
   `task_service.update_task` overwrites the task's goal with the
   destination project's when that project has one (#77).
+- **Project / goal links are checked on write** (#475, 2026-10-15):
+  `link_service.py` (models + utils only, so `task_service`,
+  `recurring_service` and `project_service` can all import it) refuses a
+  NEW link to a project or goal that doesn't exist, is archived, or — for
+  a project — is of the other type than the task or template (422 with a
+  plain message, before anything is written). Only a change is checked:
+  every editor re-sends the stored links on Save, and a subtask's links
+  (its parent's) and a task's goal from its project are inherited, so old
+  archived or mismatched links keep saving. A type change on
+  `update_task` / `update_recurring` takes the item off a project of the
+  other type (the goal goes too when it came from that project, #427);
+  the task panel mirrors it on the Type select
+  (`filter_helpers.projectAfterTypeChange`). The capture-bar
+  `resolve_project_hint` prefers the task's own type. Batch creators
+  (import, scan / voice / reflection candidates) still write links
+  directly — #481.
 - **Project drag between goal cards** (#343, 2026-09-30): goal cards
   did not render their projects at all; they now list them behind a
   collapsed `Projects (N)` toggle, and each chip is a drag source

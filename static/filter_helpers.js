@@ -232,6 +232,17 @@ function goalAfterProjectChange(oldProjectId, newProjectId, currentGoalId, allPr
     return old && old.goal_id && old.goal_id === currentGoalId ? null : currentGoalId;
 }
 
+// #475: what a task's Project select becomes when its Type changes. A task
+// can only sit on a project of its own type, so one of the other type (live
+// or archived — pass both lists) is dropped; the server unlinks it too. An id
+// in neither list is left alone: there is no type to compare.
+function projectAfterTypeChange(currentProjectId, newType, projects) {
+    if (!currentProjectId) return "";
+    if (!newType || !Array.isArray(projects)) return currentProjectId;
+    const proj = projects.find((p) => p && p.id === currentProjectId);
+    return proj && proj.type !== newType ? "" : currentProjectId;
+}
+
 // #434: a section's cards grouped by project for Work / Personal view.
 // Active projects first (in the order given), then archived ones — since
 // #353 archiving keeps a task's link, so these tasks are real and still
@@ -289,6 +300,7 @@ if (typeof module !== "undefined" && module.exports) {
         taskMatchesSearch,
         projectCascadeGoalId,
         goalAfterProjectChange,
+        projectAfterTypeChange,
         describeActiveFilters,
         groupTasksByProject,
     };
@@ -305,6 +317,7 @@ if (typeof module !== "undefined" && module.exports) {
         taskMatchesSearch,
         projectCascadeGoalId,
         goalAfterProjectChange,
+        projectAfterTypeChange,
         describeActiveFilters,
         groupTasksByProject,
     };

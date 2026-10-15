@@ -26,6 +26,7 @@ from datetime import UTC, date, datetime
 
 from sqlalchemy import or_, select
 
+from link_service import check_link_changes, unlink_other_type_project
 from models import (
     RecurringFrequency,
     RecurringTask,
@@ -293,6 +294,7 @@ def create_recurring(data: dict) -> RecurringTask:
     start_date = _parse_start_date(data.get("start_date"))  # #147
     end_date = _parse_end_date(data.get("end_date"))  # #101
     _validate_date_window(start_date, end_date)  # #177
+    check_link_changes(data, item_type=task_type, noun="template")  # #475
 
     rt = RecurringTask(
         title=title,
@@ -340,6 +342,18 @@ def update_recurring(rt_id: uuid.UUID, data: dict) -> RecurringTask | None:
     if rt is None:
         return None
 
+    # #475: check a new project / goal before anything is written, against
+    # the type the template ends up with.
+    old_type = rt.type
+    old_goal_id = rt.goal_id
+    new_type = rt.type
+    if "type" in data:
+        new_type = _parse_enum(TaskType, data["type"], "type") or rt.type
+    check_link_changes(
+        data, item_type=new_type, noun="template",
+        old_project_id=rt.project_id, old_goal_id=old_goal_id,
+    )
+
     if "title" in data:
         title = (data["title"] or "").strip()
         if not title:
@@ -384,6 +398,9 @@ def update_recurring(rt_id: uuid.UUID, data: dict) -> RecurringTask | None:
         if new_goal_id != rt.goal_id:
             rt.goal_id = new_goal_id
             rt.paused_by_goal_archive = False
+
+    # #475: a type change takes the template off a project of the other type.
+    unlink_other_type_project(rt, old_type=old_type, data=data, old_goal_id=old_goal_id)
 
     if "notes" in data:
         rt.notes = data["notes"] or None

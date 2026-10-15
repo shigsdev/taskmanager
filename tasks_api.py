@@ -102,7 +102,8 @@ def create(email: str):  # noqa: ARG001
     project_warning = None
     hint = data.pop("project_hint", None)
     if hint and not data.get("project_id"):
-        resolved_id, project_warning = resolve_project_hint(hint)
+        task_type = data.get("type") if isinstance(data.get("type"), str) else None
+        resolved_id, project_warning = resolve_project_hint(hint, task_type)
         if resolved_id is not None:
             data["project_id"] = resolved_id
     try:

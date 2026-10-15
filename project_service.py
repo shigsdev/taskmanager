@@ -6,6 +6,7 @@ import uuid
 
 from sqlalchemy import func, select
 
+from link_service import check_goal_link
 from models import (
     Project,
     ProjectPriority,
@@ -146,6 +147,9 @@ def create_project(data: dict) -> Project:
     if data.get("priority"):
         priority = _parse_enum(ProjectPriority, data["priority"], "priority")
     order_raw = data.get("priority_order", data.get("sort_order", 0))
+    goal_id = _parse_uuid(data.get("goal_id"), "goal_id")
+    if goal_id is not None:
+        check_goal_link(goal_id)  # #475
     project = Project(
         name=name,
         type=project_type,
@@ -155,7 +159,7 @@ def create_project(data: dict) -> Project:
         notes=(data.get("notes") or "").strip() or None,
         status=_parse_enum(ProjectStatus, data.get("status", "not_started"), "status"),
         priority=priority,
-        goal_id=_parse_uuid(data.get("goal_id"), "goal_id"),
+        goal_id=goal_id,
         priority_order=_parse_int(order_raw, "priority_order"),
     )
     db.session.add(project)
@@ -238,6 +242,13 @@ def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
     project = get_project(project_id)
     if project is None:
         return None
+
+    # #475: a NEW goal must exist and be live; the /projects panel re-sends
+    # the stored one (archived or not) on every save. Before any write.
+    if "goal_id" in data:
+        new_goal_id = _parse_uuid(data["goal_id"], "goal_id")
+        if new_goal_id is not None and new_goal_id != project.goal_id:
+            check_goal_link(new_goal_id)
 
     if "name" in data:
         name = (data["name"] or "").strip()
