@@ -674,6 +674,12 @@ Report.
      #456: open a project (and a goal) with a completed task, Tab to
      "Completed (N)" and press Tab — focus moves on (to its rows when open,
      else to Save), never back to ✕.
+     #457: tick a card, Tab to Status ▾ and press Enter — the first item has
+     focus, ↓ / ↑ move (wrapping), Escape closes it with focus back on
+     Status ▾. The same for Inbox triage, a completed card's Re-open, Due
+     date ▾ → Pick a date… (Enter applies, Escape closes), /projects Type ▾
+     and /recurring Frequency ▾ (which opens on screen). A mouse click on an
+     item, and a click outside, work as before.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -864,6 +870,7 @@ Report.
   Calendar: + adds on that day  PASS          Calendar: + adds on that day  PASS
   Files: picker by keyboard     PASS          Files: picker by keyboard     PASS
   Panels: Tab past Completed    PASS          Panels: Tab past Completed    PASS
+  Menus: arrows + Escape        PASS          Menus: arrows + Escape        PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

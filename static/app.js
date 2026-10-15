@@ -1943,9 +1943,11 @@ if (_bulkTriageBtn) _bulkTriageBtn.addEventListener("click", (e) => {
         dd.appendChild(btn);
     }
     e.target.parentElement.appendChild(dd);
+    // #457: arrows, Escape back to the button, menu roles.
+    const menu = window.menuHelpers.attachMenu(_bulkTriageBtn, dd);
     document.addEventListener("click", function close(ev) {
         if (!dd.contains(ev.target) && ev.target !== e.target) {
-            dd.remove();
+            menu.close(false);
             document.removeEventListener("click", close);
         }
     });
@@ -2372,9 +2374,11 @@ function renderCompletedList() {
                 dd.appendChild(opt);
             });
             reopenWrap.appendChild(dd);
+            // #457: arrows, Escape back to Re-open, menu roles.
+            const menu = window.menuHelpers.attachMenu(reopenBtn, dd);
             // Close on outside click
             document.addEventListener("click", function close() {
-                dd.remove();
+                menu.close(false);
                 document.removeEventListener("click", close);
             }, { once: true });
         });
@@ -3661,7 +3665,7 @@ function showBulkDropdown(anchor, items) {
         b.type = "button";
         b.textContent = label;
         b.addEventListener("click", () => {
-            dd.remove();
+            menu.close(false);
             onClick();
         });
         dd.appendChild(b);
@@ -3676,11 +3680,13 @@ function showBulkDropdown(anchor, items) {
     }
     if (left < margin) left = margin;
     dd.style.left = left + "px";
+    // #457: arrows, Escape back to the button, menu roles.
+    const menu = window.menuHelpers.attachMenu(anchor, dd);
     // Close on outside click
     setTimeout(() => {
         document.addEventListener("click", function close(ev) {
             if (!dd.contains(ev.target) && ev.target !== anchor) {
-                dd.remove();
+                menu.close(false);
                 document.removeEventListener("click", close);
             }
         });
@@ -4081,8 +4087,9 @@ function initBulkSelect() {
 
 // "Pick a date…" — show an inline native date input near the Due-date
 // button. Native pickers are platform-correct (calendar on touch
-// devices, keyboard input on desktop). Confirms via Enter / blur,
-// dismisses on Escape.
+// devices, keyboard input on desktop). Confirms via Enter or Apply,
+// dismisses on Escape (#457: neither worked before — this comment
+// claimed them).
 function promptCustomDate(anchor) {
     document.querySelectorAll(".bulk-date-pick").forEach((d) => d.remove());
     const wrap = document.createElement("div");
@@ -4101,10 +4108,13 @@ function promptCustomDate(anchor) {
     ok.textContent = "Apply";
     ok.addEventListener("click", () => {
         if (!input.value) return;
-        wrap.remove();
+        popup.close(false);
         stageBulkChange("due_date", input.value);  // #71: stage instead of fire
     });
     wrap.appendChild(ok);
+    input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); ok.click(); }
+    });
 
     document.body.appendChild(wrap);
     // Clamp horizontal position (same logic as showBulkDropdown)
@@ -4117,10 +4127,12 @@ function promptCustomDate(anchor) {
     if (left < margin) left = margin;
     wrap.style.left = left + "px";
     input.focus();
+    // #457: Escape closes it and returns focus to Due date ▾.
+    const popup = window.menuHelpers.attachMenu(anchor, wrap, { kind: "dialog" });
     setTimeout(() => {
         document.addEventListener("click", function close(ev) {
             if (!wrap.contains(ev.target) && ev.target !== anchor) {
-                wrap.remove();
+                popup.close(false);
                 document.removeEventListener("click", close);
             }
         });

@@ -1033,7 +1033,7 @@ function showProjectsBulkDropdown(anchorBtn, items) {
         a.textContent = item.label;
         a.addEventListener("click", (e) => {
             e.stopPropagation();
-            pop.remove();
+            menu.close(false);
             item.onClick();
         });
         pop.appendChild(a);
@@ -1051,10 +1051,12 @@ function showProjectsBulkDropdown(anchorBtn, items) {
     pop.style.left = `${place.left}px`;
     pop.style.top = `${place.top}px`;
     if (place.maxHeight !== null) pop.style.maxHeight = `${place.maxHeight}px`;
+    // #457: arrows, Escape back to the button, menu roles.
+    const menu = window.menuHelpers.attachMenu(anchorBtn, pop);
     setTimeout(() => {
         const dismiss = (e) => {
             if (!pop.contains(e.target)) {
-                pop.remove();
+                menu.close(false);
                 document.removeEventListener("click", dismiss);
             }
         };

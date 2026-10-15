@@ -196,24 +196,35 @@
         var dd = document.createElement("div");
         dd.className = "bulk-dropdown";
         dd.style.position = "fixed";
-        var rect = anchor.getBoundingClientRect();
-        dd.style.top = (rect.bottom + 4) + "px";
-        dd.style.left = rect.left + "px";
+        var menu = null;
         items.forEach(function (item) {
             var b = document.createElement("button");
             b.type = "button";
             b.textContent = item.label;
             b.addEventListener("click", function () {
-                dd.remove();
+                menu.close(false);
                 item.onClick();
             });
             dd.appendChild(b);
         });
         document.body.appendChild(dd);
+        // #487's placement (it always opened below its button) and #457's
+        // keyboard: arrows, Escape back to the button, menu roles.
+        var place = window.menuHelpers.placeMenu(
+            anchor.getBoundingClientRect(),
+            { width: dd.offsetWidth, height: dd.offsetHeight },
+            { width: document.documentElement.clientWidth, height: window.innerHeight });
+        dd.style.left = place.left + "px";
+        dd.style.top = place.top + "px";
+        if (place.maxHeight !== null) {
+            dd.style.maxHeight = place.maxHeight + "px";
+            dd.style.overflowY = "auto";
+        }
+        menu = window.menuHelpers.attachMenu(anchor, dd);
         setTimeout(function () {
             document.addEventListener("click", function close(e) {
                 if (!dd.contains(e.target) && e.target !== anchor) {
-                    dd.remove();
+                    menu.close(false);
                     document.removeEventListener("click", close);
                 }
             });

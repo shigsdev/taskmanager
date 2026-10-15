@@ -52,7 +52,92 @@
         return { left: left, top: top, maxHeight: maxHeight };
     }
 
-    var api = { placeMenu: placeMenu };
+    /**
+     * #457: where ↑ / ↓ / Home / End move focus in a menu of `count` items
+     * from index `current` (-1 = none yet). Wraps at both ends. Null for any
+     * other key.
+     */
+    function menuKeyTarget(count, current, key) {
+        if (!count) return null;
+        if (key === "Home") return 0;
+        if (key === "End") return count - 1;
+        if (key === "ArrowDown") return current < 0 ? 0 : (current + 1) % count;
+        if (key === "ArrowUp") return current < 0 ? count - 1 : (current - 1 + count) % count;
+        return null;
+    }
+
+    /**
+     * #457: keyboard and screen-reader behaviour for a popup the page has
+     * just put on screen. The opener gets aria-haspopup + aria-expanded.
+     *   kind "menu" (a list of choices): role=menu / menuitem, focus goes
+     *     to the first item, ↑ ↓ Home End move between items.
+     *   kind "dialog" (a small form, e.g. Pick a date…): focus is the
+     *     caller's business; no arrow keys.
+     * Both: Escape closes it and puts focus back on the opener; Tab out of
+     * it closes it. The page's own outside-click close still applies — it
+     * should call the returned close() (or just remove the element; a
+     * removed popup cleans up on its next key).
+     * Returns { close }. Escape is consumed, so panel_keys' document
+     * handler (#381) doesn't also close the panel underneath.
+     */
+    function attachMenu(anchor, menu, opts) {
+        var kind = (opts && opts.kind) || "menu";
+        var items = function () {
+            return Array.prototype.slice.call(menu.querySelectorAll("button:not([disabled])"));
+        };
+        if (anchor) {
+            anchor.setAttribute("aria-haspopup", kind === "menu" ? "menu" : "dialog");
+            anchor.setAttribute("aria-expanded", "true");
+        }
+        if (kind === "menu") {
+            menu.setAttribute("role", "menu");
+            items().forEach(function (b) {
+                b.setAttribute("role", "menuitem");
+                b.tabIndex = -1;
+            });
+        } else {
+            menu.setAttribute("role", "dialog");
+        }
+
+        var closedAlready = false;
+        function close(returnFocus) {
+            if (closedAlready) return;
+            closedAlready = true;
+            menu.removeEventListener("keydown", onKey);
+            if (menu.isConnected) menu.remove();
+            if (anchor) {
+                anchor.setAttribute("aria-expanded", "false");
+                if (returnFocus && anchor.isConnected) anchor.focus();
+            }
+        }
+        function onKey(e) {
+            if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                close(true);
+                return;
+            }
+            if (e.key === "Tab") {
+                // Let focus move on, but don't leave an open menu behind.
+                close(false);
+                return;
+            }
+            if (kind !== "menu") return;
+            var list = items();
+            var next = menuKeyTarget(list.length, list.indexOf(e.target), e.key);
+            if (next === null) return;
+            e.preventDefault();
+            list[next].focus();
+        }
+        menu.addEventListener("keydown", onKey);
+        if (kind === "menu") {
+            var first = items()[0];
+            if (first) first.focus();
+        }
+        return { close: close };
+    }
+
+    var api = { placeMenu: placeMenu, menuKeyTarget: menuKeyTarget, attachMenu: attachMenu };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     if (typeof window !== "undefined") window.menuHelpers = api;
 })();

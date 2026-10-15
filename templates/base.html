@@ -58,6 +58,9 @@
        [data-panel-close] ✕, and Tab stays inside it. One document listener;
        a no-op on pages with no panel open. #}
     <script src="{{ url_for('static', filename='panel_keys.js') }}"></script>
+    {# #457 (placement #487): every popup menu's position and keyboard —
+       ↑ ↓ Home End, Escape back to its button, menu roles. #}
+    <script src="{{ url_for('static', filename='menu_helpers.js') }}"></script>
 </head>
 <body>
     <header class="nav">
