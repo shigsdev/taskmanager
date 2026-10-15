@@ -129,6 +129,12 @@
             color: #555;
         }
 
+        /* #453: 44px tap targets at phone width (were 40 and 17). */
+        @media (max-width: 767px) {
+            .print-actions button { min-height: 44px; }
+            .print-actions a { display: inline-flex; align-items: center; min-height: 44px; }
+        }
+
         @media print {
             .print-actions { display: none; }
             body { padding: 0; }

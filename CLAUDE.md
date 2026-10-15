@@ -652,6 +652,14 @@ Report.
      Goals and as Projects, and /import Paste Project Names with a name that
      already exists: at 375 nothing scrolls sideways, the title has its own
      line, and the menus / quarter / "duplicate" badge wrap below it.
+     #453: at 375 every button, link, select and date/search box is at
+     least 44px tall (the board's search, Focus tabs, section headings,
+     bulk toolbar + its menus, calendar task lines, /plan's date, Strength
+     Forge ✕ / ℹ️, /utilities "View latest runs", /print) and every
+     checkbox/radio at least 24px (subtask, checklist, goal linked task,
+     /recurring, /projects Select, Inbox triage, /scan, /reflection);
+     tests/e2e/mobile_tap_targets.spec.js measures them. At 1280 nothing
+     changes size (the quiet case).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -837,6 +845,7 @@ Report.
   Projects: bulk menus on screen PASS         Projects: bulk menus on screen PASS
   Projects: bulk checkbox on card PASS        Projects: bulk checkbox on card PASS
   Scan/Import: review rows fit  PASS          Scan/Import: review rows fit  PASS
+  Tap targets: sizes unchanged  PASS          Tap targets: 44px / 24px floor PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

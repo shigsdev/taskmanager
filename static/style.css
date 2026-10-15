@@ -7167,3 +7167,66 @@ table.quality-gates code {
     .reflection-context-remove,
     .reflection-context-keep { min-height: 44px; }
 }
+
+/* #453: the rest of the deep review's sub-floor tap targets, measured at
+   375x812 (docs/design/453-tap-targets.md has each control's old size).
+   Floors: 44px tall for buttons, links, inputs and summaries (and 44 wide
+   for a glyph-only button: ✕, ↑, ℹ️); 24px for a checkbox or radio (WCAG
+   2.5.8 AA, the size .task-card .bulk-select-check already gets — a 44px
+   box would swallow the click meant for its row) and for the "Read ↗"
+   badge in a card's metadata line. At the end of the file so these win
+   over the mobile rules defined further up. Desktop is unchanged. */
+@media (max-width: 767px) {
+    #taskSearchInput,
+    #planStartDate,
+    .weekly-focus-tab,
+    .bulk-toolbar-actions .btn-sm,
+    .bulk-dropdown button,
+    .bulk-dropdown-item { min-height: 44px; }
+    #bulkActionMoveUp,
+    #bulkActionMoveDown { min-width: 44px; }
+
+    .tier-heading-link,
+    .utility-runs-link,
+    .sf-track-expandable {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+    }
+    .badge-url {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+    }
+
+    .checklist-item .remove-item,
+    .auto-categorize-close,
+    .sf-track-del {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 44px;
+        min-height: 44px;
+    }
+    .sf-exrow-info { width: 44px; height: 44px; }
+
+    /* A task line in a calendar cell: 12px text, so 38px of line box plus
+       the 3px top and bottom padding it already has. */
+    .calendar-cell-tasks li.calendar-task-link { line-height: 38px; }
+
+    .reflection-recently-deleted summary { padding: 12px 0; }
+
+    .subtask-row input[type="checkbox"],
+    .checklist-item input[type="checkbox"],
+    .linked-task-row input[type="checkbox"],
+    .recurring-row > input[type="checkbox"],
+    .project-bulk-cb,
+    .reflection-history-select,
+    #reflShowArchived,
+    input[name="parseAs"],
+    .tier[data-tier="inbox"] .task-card .triage-check,
+    .task-card .triage-check {
+        width: 24px;
+        height: 24px;
+    }
+}
