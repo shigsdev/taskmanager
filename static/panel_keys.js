@@ -45,6 +45,11 @@
         "select:not([disabled])",
         "textarea:not([disabled])",
         "[tabindex]:not([tabindex=\"-1\"])",
+        // #456: a <details>' summary is a Tab stop (the project / goal
+        // panel's "Completed (N)"); unlisted, Tab from it counted as "focus
+        // outside the panel" and jumped to ✕, past the rows and Save.
+        "summary",
+        "[contenteditable]:not([contenteditable=\"false\"])",
     ].join(", ");
 
     /**
@@ -88,6 +93,12 @@
         for (var n = el; n && n !== stop.parentElement; n = n.parentElement) {
             var cs = win.getComputedStyle(n);
             if (cs.display === "none" || cs.visibility === "hidden") return false;
+            // #456: inside a CLOSED <details>, only its own summary shows —
+            // the collapsed rows aren't rendered, so Tab can't land on them.
+            if (n !== el && n.tagName === "DETAILS" && !n.open) {
+                var summary = n.querySelector(":scope > summary");
+                if (!summary || !summary.contains(el)) return false;
+            }
         }
         return true;
     }

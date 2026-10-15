@@ -22,6 +22,11 @@ const PICKERS = [
 test.describe("#455 file pickers work from the keyboard", () => {
     for (const p of PICKERS) {
         test(`${p.path} ${p.input}: Tab-reachable, Enter opens the picker, label shows focus`, async ({ page }) => {
+            // Listen before the page loads: page.waitForEvent("filechooser")
+            // turns interception on asynchronously, and under the gate's
+            // parallel lanes an Enter pressed right after could beat it.
+            const choosers = [];
+            page.on("filechooser", (c) => choosers.push(c));
             await page.goto(`${p.path}?nosw=1`);
             if (p.open) await page.locator(p.open).click();
             await expect(page.locator(p.label)).toBeVisible();
@@ -39,9 +44,8 @@ test.describe("#455 file pickers work from the keyboard", () => {
             const outline = await page.locator(p.label).evaluate((el) => getComputedStyle(el).outlineStyle);
             expect(outline).not.toBe("none");
 
-            const chooser = page.waitForEvent("filechooser", { timeout: 3000 });
             await page.keyboard.press("Enter");
-            expect(await chooser).toBeTruthy();
+            await expect.poll(() => choosers.length, { timeout: 10000 }).toBe(1);
         });
     }
 

@@ -57,11 +57,15 @@ const measure = (page, sel) => page.evaluate((s) => ({
     iw: window.innerWidth,
 }), sel);
 
+// Half a pixel of slack for sub-pixel layout (a 24px box measured
+// 23.9998 under load); every real miss was 4px or more.
+const SLACK = 0.5;
+
 function expectFloor(m, { min = 1, floor = 44, dims = "h" }, label) {
     expect(m.boxes.length, `${label}: how many`).toBeGreaterThanOrEqual(min);
-    expect(Math.min(...m.boxes.map((b) => b.h)), `${label}: height`).toBeGreaterThanOrEqual(floor);
+    expect(Math.min(...m.boxes.map((b) => b.h)), `${label}: height`).toBeGreaterThanOrEqual(floor - SLACK);
     if (dims === "both") {
-        expect(Math.min(...m.boxes.map((b) => b.w)), `${label}: width`).toBeGreaterThanOrEqual(floor);
+        expect(Math.min(...m.boxes.map((b) => b.w)), `${label}: width`).toBeGreaterThanOrEqual(floor - SLACK);
     }
     expect(m.sw, `${label}: page width`).toBeLessThanOrEqual(m.iw);
 }

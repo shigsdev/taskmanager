@@ -106,3 +106,61 @@ test.describe("#454 open by keyboard, focus in and back", () => {
         await expect(page.locator("#goalDetailOverlay")).toBeHidden();
     });
 });
+
+// #456: the panel's "Completed (N)" summary was missing from the Tab trap's
+// list, so Tab from it jumped back to ✕, past the rows and Save / Archive.
+test.describe("#456 Tab from a Completed (N) summary", () => {
+    // A goal and a project, each with one completed task, so the panel has a
+    // "Completed (1)" section whatever the seed holds.
+    async function seed(page) {
+        return page.evaluate(async () => {
+            const post = async (url, body) => (await (await fetch(url, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body || {}),
+            })).json());
+            const tag = `E2E456 ${Date.now()}`;
+            const goal = await post("/api/goals", { title: tag, category: "work", priority: "should" });
+            const project = await post("/api/projects", { name: tag, type: "work" });
+            const task = await post("/api/tasks", { title: tag + " done", type: "work",
+                goal_id: goal.id, project_id: project.id });
+            await post(`/api/tasks/${task.id}/complete`);
+            return { goal: goal.id, project: project.id, task: task.id };
+        });
+    }
+    async function unseed(page, ids) {
+        await page.evaluate(async (t) => {
+            await fetch(`/api/tasks/${t.task}`, { method: "DELETE" });
+            await fetch(`/api/projects/${t.project}`, { method: "DELETE" });
+            await fetch(`/api/goals/${t.goal}`, { method: "DELETE" });
+        }, ids);
+    }
+
+    for (const where of ["projects", "goals"]) {
+        test(`/${where}: Tab moves on from the summary instead of jumping to ✕`, async ({ page }) => {
+            await page.goto(`/${where}?nosw=1`);
+            const ids = await seed(page);
+            try {
+                await page.reload();
+                await page.waitForLoadState("networkidle");
+                const overlay = where === "projects" ? "#projectDetailOverlay" : "#goalDetailOverlay";
+                const card = where === "projects"
+                    ? page.locator(`.project-card[data-project-id="${ids.project}"]`)
+                    : page.locator(`.goal-card[data-goal-id="${ids.goal}"]`);
+                await card.click({ position: { x: 8, y: 8 } });
+                const summary = page.locator(`${overlay} details > summary`).first();
+                await expect(summary).toBeVisible({ timeout: 10000 });
+
+                await summary.focus();
+                await page.keyboard.press("Tab");
+                const at = await page.evaluate((sel) => {
+                    const a = document.activeElement;
+                    return { inside: !!a.closest(sel), isClose: a.matches("[data-panel-close]") };
+                }, overlay);
+                expect(at.inside).toBe(true);
+                expect(at.isClose).toBe(false);
+            } finally {
+                await unseed(page, ids);
+            }
+        });
+    }
+});

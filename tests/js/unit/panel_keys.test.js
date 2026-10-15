@@ -461,3 +461,56 @@ describe("opened / closed / afterRender (#454)", () => {
         expect(document.activeElement).toBe(p.card());
     });
 });
+
+// #456: a project / goal panel's "Completed (N)" is a <details>; its
+// <summary> is a Tab stop the trap didn't know about, so Tab from it was
+// treated as "focus outside the panel" and jumped to ✕ — skipping the
+// completed rows and Save / Archive after it.
+describe("summary and contenteditable in the trap (#456)", () => {
+    const { focusablesIn, handleKey } = require("../../../static/panel_keys");
+    const panel = (open) => {
+        document.body.innerHTML = `
+            <div class="detail-overlay" id="projectDetailOverlay">
+                <button id="close" data-panel-close>✕</button>
+                <input id="name">
+                <details id="done"${open ? " open" : ""}>
+                    <summary id="sum">Completed (2)</summary>
+                    <ul><li id="row1" tabindex="0">A</li><li id="row2" tabindex="0">B</li></ul>
+                </details>
+                <div id="note" contenteditable="true">x</div>
+                <div id="off" contenteditable="false">y</div>
+                <button id="save">Save</button>
+                <button id="archive">Archive</button>
+            </div>`;
+        return document.getElementById("projectDetailOverlay");
+    };
+    const ids = (els) => els.map((el) => el.id);
+    const tab = (shift) => {
+        const e = new KeyboardEvent("keydown", { key: "Tab", shiftKey: !!shift, bubbles: true, cancelable: true });
+        return { result: handleKey(e, document, window), e };
+    };
+
+    test("a collapsed section: its summary counts, its hidden rows don't", () => {
+        expect(ids(focusablesIn(panel(false), window)))
+            .toEqual(["close", "name", "sum", "note", "save", "archive"]);
+    });
+
+    test("an open section: the summary and its rows", () => {
+        expect(ids(focusablesIn(panel(true), window)))
+            .toEqual(["close", "name", "sum", "row1", "row2", "note", "save", "archive"]);
+    });
+
+    test("Tab on the summary is a normal step, not a jump back to ✕", () => {
+        panel(false);
+        document.getElementById("sum").focus();
+        const { result, e } = tab(false);
+        expect(result).toBe("browser");
+        expect(e.defaultPrevented).toBe(false);
+    });
+
+    test("Shift+Tab on the summary is a normal step too", () => {
+        panel(false);
+        document.getElementById("sum").focus();
+        expect(tab(true).result).toBe("browser");
+    });
+});

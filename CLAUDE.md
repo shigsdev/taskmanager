@@ -671,6 +671,9 @@ Report.
      .docx, transcript file) and /scan: Tab lands on the file picker, its
      "Choose …" box shows the copper ring, and Enter opens the picker. A
      click on the box opens ONE picker (it used to ask twice).
+     #456: open a project (and a goal) with a completed task, Tab to
+     "Completed (N)" and press Tab — focus moves on (to its rows when open,
+     else to Save), never back to ✕.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -860,6 +863,7 @@ Report.
   Keyboard: cards/rows/lines open PASS        Keyboard: cards/rows/lines open PASS
   Calendar: + adds on that day  PASS          Calendar: + adds on that day  PASS
   Files: picker by keyboard     PASS          Files: picker by keyboard     PASS
+  Panels: Tab past Completed    PASS          Panels: Tab past Completed    PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
