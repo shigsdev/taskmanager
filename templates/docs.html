@@ -1643,8 +1643,8 @@ Skip this line (too short)</pre>
             <h3>Preview cards vs. real tasks</h3>
             <p>In the This Week and Next Week panels you'll see two card styles:</p>
             <ul>
-                <li><strong>Solid border</strong> — a real task. Has a due date, is checkable, can be edited or moved.</li>
-                <li><strong>Dashed border</strong> — a <em>preview</em> of a recurring template that will fire on that day. Not a real task row yet. Clicking a preview opens the template editor, not a detail panel.</li>
+                <li><strong>Solid border</strong> — a real task. Checkable, can be edited or moved.</li>
+                <li><strong>Dashed border</strong> — a <em>preview</em> of a recurring template that will fire on that day. Not a real task row yet. Clicking a preview opens the task panel of the most recent task that template made, where its <strong>Repeat</strong> settings edit the template. If it hasn't made a task yet, a message says the day it first will.</li>
             </ul>
             <p>
                 Previews disappear when the template fires (the real
@@ -1800,7 +1800,7 @@ Skip this line (too short)</pre>
             <ul>
                 <li><strong>Section</strong> — Today, Tomorrow, This Week, Next Week, Backlog, or Freezer. Never "Inbox" (that's the source).</li>
                 <li><strong>Project</strong> — picked from your active projects, or null if nothing fits.</li>
-                <li><strong>Goal</strong> — picked from your in-progress / not-started goals, or null. If a project is suggested, Claude usually mirrors that project's goal.</li>
+                <li><strong>Goal</strong> — picked from your goals that aren't done or archived (not started, in progress or on hold), or null. If a project is suggested, Claude usually mirrors that project's goal.</li>
                 <li><strong>Due date</strong> — Claude sets one only when the task title implies it (e.g. "Pay rent by 15th"). When it doesn't, a row whose section is <strong>Today</strong> or <strong>Tomorrow</strong> still pre-fills the date input with that section's date, so you can see what the <a href="#tiers">section&nbsp;→&nbsp;date auto-fill</a> will stamp on apply — switch the Section dropdown and it re-derives. Other sections leave the date blank unless you set one.</li>
                 <li><strong>Type</strong> — Work or Personal. Claude is told each task's current type and asked to keep it unless the title clearly says otherwise.</li>
                 <li><strong>Reason</strong> — one short sentence explaining the most-influential signal.</li>
@@ -1825,7 +1825,7 @@ Skip this line (too short)</pre>
             <ul>
                 <li>Uses <strong>Claude Haiku</strong> (the cheapest model) — about <strong>$0.001 per call</strong> for a 50-task batch.</li>
                 <li>Capped at <strong>50 tasks per call</strong>. If your inbox is larger, the modal hint explains; apply the first batch, then re-run.</li>
-                <li>Rate-limited to <strong>5 calls / minute</strong> — same per-route cap as voice memo + image scan.</li>
+                <li>Rate-limited to <strong>5 calls / minute</strong> — the same cap as ✨ Plan and Plan my week (voice memo and image scan allow 20).</li>
                 <li>Subtasks are excluded (they ride along with their parent).</li>
                 <li>Project + goal IDs are <strong>validated server-side</strong> before they reach the modal — if Claude hallucinates an ID, it's quietly dropped to null rather than letting a bad foreign-key reach the PATCH.</li>
                 <li>If <code>ANTHROPIC_API_KEY</code> isn't set, the endpoint returns 502 with a clear error and no DB writes happen.</li>
@@ -1915,12 +1915,13 @@ Skip this line (too short)</pre>
                     completions; this plan has 28 — too aggressive") and
                     pattern detection ("you've done 'Pay X bill' 4 weeks
                     running — recurring template candidate?").</li>
-                <li><strong>Recurring fires expected next week</strong> —
-                    treated as already-committed time; Claude won't
-                    re-suggest them as new tasks but may flag conflicts.</li>
+                <li><strong>Recurring tasks due in the week you're
+                    planning</strong> (from active templates, not yet
+                    spawned) — treated as already-committed time.</li>
                 <li><strong>Active projects + open goals</strong> —
                     so suggestions can link to the right project / goal.</li>
-                <li><strong>Stale freezer items (frozen &gt; 60 days)</strong>
+                <li><strong>Stale freezer items</strong> (in Freezer and
+                    not changed for more than 60 days)
                     — surfaced in a separate section as "thaw / delete /
                     keep frozen" hints, never mixed into the main plan.</li>
             </ul>
@@ -1972,8 +1973,8 @@ Skip this line (too short)</pre>
                 <li>Capped at <strong>100 active tasks per call</strong>
                     (rare to hit — most users carry &lt; 50 active).</li>
                 <li>Rate-limited <strong>5 calls / minute</strong> —
-                    same per-route cap as voice memo + image scan +
-                    inbox auto-categorize.</li>
+                    the same cap as 💡 Auto-categorize and ✨ Plan
+                    (voice memo and image scan allow 20).</li>
                 <li>Subtasks excluded — they ride with their parent.</li>
                 <li>All hallucinated IDs (project / goal / task) are
                     server-side validated before reaching the review UI;
@@ -2119,9 +2120,10 @@ Skip this line (too short)</pre>
         <section id="filters" class="docs-section">
             <h2>Filters (board, /completed, /tier/&lt;name&gt;)</h2>
             <p>
-                Three filter dimensions narrow what's visible on the
-                board (and the dedicated /completed and /tier pages).
-                All three persist across page loads via
+                Four filters narrow what's visible on the board (and
+                the /completed and /tier pages): type, project,
+                objective and search. All four persist across page
+                loads via
                 <code>localStorage</code>, so the filter you set on the
                 main board still applies when you click into a section
                 detail page.
@@ -2129,30 +2131,38 @@ Skip this line (too short)</pre>
 
             <h3>1. Type — All / Work / Personal</h3>
             <p>
-                Tabs at the top of every task page. Selecting Work or
-                Personal also reveals the project filter (next).
+                Tabs at the top of every task page. Choosing Work or
+                Personal also narrows the project chips (next) to that
+                type's projects.
             </p>
 
             <h3>2. Project</h3>
             <p>
-                A button row of project chips, visible when Work or
-                Personal is active. Click a chip to filter to that
-                project; click "All projects" to clear.
+                A row of project chips, always shown (all projects
+                under All, that type's under Work / Personal). Click a
+                chip to filter to that project; click
+                <strong>All</strong> to clear.
             </p>
 
             <h3>3. Objective (goal)</h3>
             <p>
-                Always-visible dropdown below the project filter.
-                Filters the visible tasks to those linked to the
-                chosen goal (directly via <code>goal_id</code>; the
-                project-cascade rule still applies upstream — see
-                <a href="#projects-feature">Projects</a>). Click the
-                ✕ to clear.
+                A row of goal chips, always shown. Filters the visible
+                tasks to those linked to the chosen goal (directly via
+                <code>goal_id</code>; the project-cascade rule still
+                applies upstream — see
+                <a href="#projects-feature">Projects</a>). Click
+                <strong>All</strong> to clear.
+            </p>
+
+            <h3>4. Search</h3>
+            <p>
+                The search box matches any part of a task's title, notes
+                or URL, ignoring case.
             </p>
             <p>
-                All three filters compose with AND semantics — e.g.
-                Type=Work + Project=Roadmap + Objective="Ship Q3"
-                shows only tasks matching all three.
+                The filters combine with AND — e.g. Type=Work +
+                Project=Roadmap + Objective="Ship Q3" shows only tasks
+                matching all three.
             </p>
             <p>
                 <strong>"Tasks are hidden" banner.</strong> Because every
@@ -2198,10 +2208,10 @@ Skip this line (too short)</pre>
             <ul>
                 <li>Mon–Sun grid. Each cell shows its date header + the existing tasks already due that day.</li>
                 <li><strong>Outlook: 2, 4 or 8 weeks.</strong> The buttons above the grid change how far ahead it runs — 14, 28 or 56 days, always starting from this Monday. Your choice is remembered on that device, so the phone can stay on 2 weeks while the laptop shows 8. Everything else works the same at every length: drag between days, drop on the Unscheduled panel, click an empty cell to add. Recurring previews fill the whole window too, however long it is.</li>
-                <li><strong>Overdue tasks</strong> (due date already passed) have a rust stripe down their left edge; hover one to see the day it was due. One in the <strong>Today</strong> section shows on <em>today's</em> cell, just as it does on the board's Today list. One in another section stays on its own day while that day is on the grid; if the day is before this Monday, it's listed in the Unscheduled panel under its section instead.</li>
+                <li><strong>Overdue tasks</strong> (due date already passed) have a rust stripe down their left edge; hover one to see the day it was due. One in the <strong>Today</strong> section shows on <em>today's</em> cell, just as it does on the board's Today list. One in another section stays on its own day while that day is on the grid; if the day is before this Monday, it's listed in the Unscheduled panel instead (under Inbox, This Week or Next Week if it's in one of those, otherwise under Backlog &amp; Freezer).</li>
                 <li>Tasks in cells are themselves draggable — drag any task between days to change its <code>due_date</code>.</li>
                 <li><strong>Drag up/down within the same day</strong> to reorder tasks inside that cell, just like the main board. The new order is saved and shared with the board (one sort order), so a task you move up here also moves up in its tier list. Dropping in a <em>different</em> day still reschedules (changes the date) — the two gestures don't conflict.</li>
-                <li>An <strong>Unscheduled</strong> side panel lists every task with no <code>due_date</code> (plus the overdue ones above whose day is off the grid), grouped into four sections: <strong>Inbox</strong>, <strong>This Week · no day</strong>, <strong>Next Week · no day</strong>, then <strong>Backlog &amp; Freezer</strong>. Each section is a <strong>drop target</strong> (shown even when empty): drop a task on it to move the task to that section (<code>tier</code>) with no specific day — the drop sets the tier and clears any <code>due_date</code>. Dropping on <em>Backlog &amp; Freezer</em> lands the task in <strong>Backlog</strong>. Drop any of these tasks on a day cell to give it that date instead.</li>
+                <li>An <strong>Unscheduled</strong> side panel lists the tasks with no <code>due_date</code> (plus the overdue ones above whose day is off the grid) — except Today and Tomorrow tasks, which sit on today's and tomorrow's cells, and subtasks, which stay with their parent on the board — grouped into four sections: <strong>Inbox</strong>, <strong>This Week · no day</strong>, <strong>Next Week · no day</strong>, then <strong>Backlog &amp; Freezer</strong>. Each section is a <strong>drop target</strong> (shown even when empty): drop a task on it to move the task to that section (<code>tier</code>) with no specific day — the drop sets the tier and clears any <code>due_date</code>. Dropping on <em>Backlog &amp; Freezer</em> lands the task in <strong>Backlog</strong>. Drop any of these tasks on a day cell to give it that date instead.</li>
                 <li>A task dated <strong>after the last day on the grid</strong> is listed at the bottom of that panel under <strong>Later · after &lt;last day&gt;</strong>, earliest first, each row starting with its date (the year too if it isn't this year). The group only shows when there's something in it, and it isn't a drop target, but its tasks still open on a click and drag onto a day or a section. Switch to a longer outlook and a task whose day is now on the grid moves to that day.</li>
                 <li><strong>Click a task</strong> (in any cell or the Unscheduled list) to open its detail panel <em>right on the calendar</em> — you stay on this page instead of jumping to the tasks board. Edits, complete, cancel and delete all refresh the calendar in place when you save.</li>
                 <li><strong>Click an empty part of a day cell</strong> to open the full new-task panel pre-dated to that day, so you can set every field before it's created — without leaving the calendar.</li>
@@ -2563,8 +2573,10 @@ Skip this line (too short)</pre>
             <p>
                 The <a href="{{ url_for('recycle_bin_page') }}">/recycle-bin</a>
                 page has two sections: <strong>Undone imports</strong>
-                — OneNote pastes, Excel goal imports, and image-scan
-                confirmations you've undone — and
+                — anything brought in as a batch that you've undone:
+                pasted or Excel task, goal and project imports, meeting
+                transcripts, image scans, voice memos, and the tasks, goals and
+                projects a reflection created — and
                 <strong>Deleted tasks</strong>, every task you've deleted.
             </p>
 
@@ -2593,7 +2605,10 @@ Skip this line (too short)</pre>
                 Every import tags its new rows with a shared
                 <code>batch_id</code>. When you click Undo on an
                 import in Settings → Import History, every row with
-                that <code>batch_id</code> is soft-deleted in one step.
+                that <code>batch_id</code> goes to the bin in one step:
+                its open and completed tasks are deleted (cancelled
+                ones are left as they are), and its goals and projects
+                are archived.
                 The Recycle Bin itself has no Undo; it restores and
                 purges batches that are already there.
             </p>
@@ -2659,23 +2674,24 @@ Skip this line (too short)</pre>
 
             <h3>What prints</h3>
             <ul>
-                <li><strong>Overdue</strong> — tasks with a due date before today, not archived.</li>
-                <li><strong>Today</strong> — everything in the Today section.</li>
-                <li><strong>This Week</strong> — everything in the This Week section.</li>
+                <li><strong>Overdue</strong> — open tasks from every section except Today whose due date has passed, with their due date. Only shown when there are some.</li>
+                <li><strong>Today</strong> — every open task in the Today section.</li>
+                <li><strong>This Week</strong> — every open task in the This Week section.</li>
+                <li>A <strong>Notes</strong> box at the end for writing on.</li>
             </ul>
 
             <h3>What doesn't</h3>
             <ul>
-                <li>Navigation chrome, capture bar, action buttons — hidden via <code>@media print</code> CSS.</li>
-                <li>Inbox, Tomorrow, Next Week, Backlog, Freezer, Completed. If you need to print a specific section, use the browser's Print to PDF after navigating there.</li>
+                <li>The page has no navigation or capture bar, and its <strong>Print</strong> / <strong>Back to Tasks</strong> buttons don't print.</li>
+                <li>Inbox, Tomorrow, Next Week, Backlog, Freezer and Completed — apart from their overdue tasks, which are in the Overdue list. To print one of those sections, use the browser's Print to PDF on that section's page.</li>
             </ul>
 
             <h3>Layout</h3>
             <ul>
                 <li>Checkbox column on the left for pen-and-paper completion.</li>
-                <li>Task titles with type, project, goal metadata inline.</li>
-                <li>Checklists (if any) render as nested checkboxes under the parent task.</li>
-                <li>Overdue tasks are visually highlighted.</li>
+                <li>Each Today and This Week task shows its type (work / personal) and due date; projects and goals aren't printed.</li>
+                <li>A Today or This Week task's checklist prints under it, ☐ / ☑ per item.</li>
+                <li>The Overdue list is in bold red.</li>
             </ul>
         </section>
 
@@ -2688,7 +2704,8 @@ Skip this line (too short)</pre>
             <p>
                 A daily digest is emailed via the Brevo transactional
                 email API (an HTTPS API, used because the host blocks
-                outbound SMTP). The schedule and contents are fixed;
+                outbound SMTP), or by SMTP when Brevo isn't set up. The
+                schedule and contents are fixed;
                 adjustments happen through environment variables on the
                 deploy.
             </p>
@@ -2701,19 +2718,20 @@ Skip this line (too short)</pre>
                 <li>If the app was restarting at the digest time (a deploy, say), the digest is sent as soon as it's back — up to 3 hours late. Later than that, that day's digest is skipped.</li>
             </ul>
 
-            <h3>What's in it</h3>
+            <h3>What's in it, in order</h3>
             <ol>
-                <li>Today's tasks (everything in the Today section).</li>
-                <li>Tasks due today from any other section (excluding those already listed above).</li>
-                <li>Overdue tasks from the other sections (due date before today, not archived). An overdue task in Today is listed once, under Today, marked overdue.</li>
-                <li>Goals that have active tasks in Today.</li>
-                <li>Tomorrow count and This Week remaining count.</li>
+                <li>Today's tasks (everything in the Today section). One whose due date has passed is marked overdue.</li>
+                <li><strong>Also due today</strong> — open tasks due today from the other sections.</li>
+                <li>Goals that have open tasks in Today (not archived or done goals).</li>
+                <li>How many tasks are in Tomorrow and in This Week, and how many you completed and cancelled in the past 7 days.</li>
+                <li><strong>⚠ Overdue</strong> — open tasks from the other sections whose due date has passed. Only shown when there are some.</li>
+                <li>An <strong>Open Task Manager</strong> button, when the app's address is set (<code>APP_URL</code>, https only).</li>
             </ol>
 
             <h3>Format</h3>
             <ul>
-                <li>Plain text only — no HTML. Renders reliably in corporate Outlook and any other email client.</li>
-                <li>Task content is sanitized (tabs, carriage returns, excess whitespace stripped) before going into the body.</li>
+                <li>An HTML email with a plain-text copy alongside, so a client that won't show HTML still gets the whole digest.</li>
+                <li>Task content is cleaned before going into the body: tabs become spaces, carriage returns are removed, and leading / trailing spaces are trimmed.</li>
                 <li>No API keys or session tokens ever appear in the digest body or server logs.</li>
             </ul>
 
@@ -2747,16 +2765,17 @@ Skip this line (too short)</pre>
             <h3>External Services</h3>
             <p>A status table shows whether each integration has its API key configured. The actual key values are never displayed.</p>
             <ul>
+                <li><strong>Google OAuth</strong> — sign-in.</li>
                 <li><strong>Google Vision</strong> — powers OCR for image scan.</li>
-                <li><strong>Anthropic</strong> — powers Claude parsing for image scan and voice memo.</li>
+                <li><strong>Anthropic</strong> — powers Claude for image scan, voice memo, meeting-transcript import, 💡 Auto-categorize, ✨ Plan, Plan my week and weekly reflection.</li>
                 <li><strong>Email (digest)</strong> — powers email digest delivery (Brevo transactional API by default; SMTP fallback). The Test send button verifies end-to-end.</li>
             </ul>
 
             <h3>Daily Digest controls</h3>
-            <p>See <a href="#digest">Email digest</a> above. The panel shows the configured recipient and From address, plus Preview and Send Now buttons.</p>
+            <p>See <a href="#digest">Email digest</a> above. The panel shows whether the recipient and From address are set (never the addresses themselves), plus Preview and Send Now buttons.</p>
 
             <h3>Import History</h3>
-            <p>Every bulk import is logged here with source, item count, date, and per-batch Undo/Restore actions. The Recycle Bin link shows a count of batches currently in the bin.</p>
+            <p>Every bulk import is logged here with source, item count and date, and an <strong>Undo</strong> button; an undone import reads <em>In Recycle Bin</em> (restore it from the <a href="#recycle-bin">Recycle Bin</a>). The Recycle Bin link's count is the tasks and goals from undone imports plus the tasks you deleted.</p>
 
             <h3>Quick Actions</h3>
             <p>Shortcut buttons to Weekly Review, Scan Image, Import, and Print View.</p>

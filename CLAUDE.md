@@ -602,6 +602,10 @@ Report.
      "Capture failed: Title is too long: N characters, the limit is 500." and
      the text stays in the bar. An import with one 700-character line saves
      every row, that one cut to 500 ending in "…". A normal save still works.
+     #448/#472: Help → Recurring (preview click), Filters (four, chips),
+     Plan my week, Auto-categorize, Calendar, Recycle bin, Print view, Email
+     digest (HTML + text, real order) and Settings read as corrected, at both
+     widths with no sideways scroll.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -771,6 +775,7 @@ Report.
   Text: fields stop at limit    PASS          Text: fields stop at limit    PASS
   Text: long capture says why   PASS          Text: long capture says why   PASS
   Text: long import line fits   PASS          Text: long import line fits   PASS
+  Help: corrected sections      PASS          Help: corrected sections      PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

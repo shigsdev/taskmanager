@@ -4,12 +4,12 @@ Builds a daily digest and sends it as a multipart message (HTML + a
 plain-text fallback). Transport is config-driven (ADR-035): the Brevo
 transactional HTTP API when ``BREVO_API_KEY`` is set (the Railway path —
 Railway blocks outbound SMTP on non-Pro plans), otherwise authenticated
-SMTP. The digest includes:
-- Overdue tasks (past due date) — surfaced first
-- Today's tasks (from the Today tier)
+SMTP. The digest includes, in this order (#212):
+- Today's tasks (from the Today tier; a past-dated one is marked overdue)
 - Tasks due today from other tiers
 - Goals that have active tasks in Today
 - Tomorrow / This Week / Past-7-day stats
+- Overdue tasks from the other tiers (#445) — last, only when there are any
 
 The HTML body uses inline styles + a 600px centered layout for broad
 email-client compatibility. The plain-text fallback is sent in the same
