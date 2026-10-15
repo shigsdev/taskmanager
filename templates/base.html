@@ -112,6 +112,30 @@
             {% endblock %}
         </nav>
     </header>
+    <script>
+    // #486: on a phone (<=600px) only the nav tabs stay pinned. The nav is
+    // sticky; a negative `top` of (distance from the nav's top to the tab
+    // strip, less a 6px margin) lets the app name and capture box scroll
+    // away before it sticks. Above 600px the nav is one row and `top` stays
+    // 0. --nav-pinned-h = what stays on screen, for anything else that
+    // sticks or jumps below the nav (reflection combine bar, docs anchors).
+    // Without JS the whole nav stays pinned, as before.
+    (function () {
+        var nav = document.querySelector(".nav");
+        var tabs = nav && nav.querySelector(".nav-links");
+        if (!nav || !tabs) return;
+        var phone = window.matchMedia("(max-width: 600px)");
+        function navPinSync() {
+            var hide = phone.matches ? Math.max(0, tabs.offsetTop - 6) : 0;
+            nav.style.top = hide ? -hide + "px" : "";
+            document.documentElement.style.setProperty(
+                "--nav-pinned-h", (nav.offsetHeight - hide) + "px");
+        }
+        navPinSync();
+        if (phone.addEventListener) phone.addEventListener("change", navPinSync);
+        if (window.ResizeObserver) new ResizeObserver(navPinSync).observe(nav);
+    })();
+    </script>
     <main>
         {% block content %}{% endblock %}
     </main>

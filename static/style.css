@@ -217,6 +217,9 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     background: var(--nav-bg);
     border-bottom: 1px solid var(--border-strong);
     position: sticky;
+    /* #486: base.html's pin script sets an inline negative `top` at <=600px
+       so only the tab strip stays on screen; 0 here is the no-JS fallback
+       (the whole nav pinned) and the desktop value. */
     top: 0;
     z-index: 100;
     flex-wrap: wrap;
@@ -3613,6 +3616,12 @@ input[type="time"]::-webkit-calendar-picker-indicator {
        icon-btns, under the 44px tap floor. Height only — the row's width
        (the 2026-04-18 overflow incident) is untouched. */
     .nav-links {
+        /* #486: the tabs go LAST (after the capture bar's order 10) on a
+           row of their own, so base.html's pin script can scroll the app
+           name and capture box away and leave only this strip pinned. */
+        order: 20;
+        flex-basis: 100%;
+        margin-left: 0;
         gap: 4px;
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
@@ -4577,7 +4586,8 @@ input[type="time"]::-webkit-calendar-picker-indicator {
        plus a 16px gap. At `top: 16px` the header covered the TOC's top
        ~75px mid-page, hiding its heading and first link. If the header's
        height changes, tests/e2e/docs_toc.spec.js goes red. */
-    top: 107px;
+    /* #486: follows --nav-pinned-h (set by base.html; 91px fallback). */
+    top: calc(var(--nav-pinned-h, 91px) + 16px);
     align-self: start;
     font-size: 0.9rem;
     line-height: 1.5;
@@ -4720,14 +4730,11 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 
 /* #400: an anchor jump (TOC click, or a /docs#section URL) scrolled the
    target to top: 0 — under the sticky .nav, hiding the section's own
-   heading. Stop it 16px below the header instead: 91px header on desktop,
-   215px at <=600px, where the nav's own mobile rule stacks it (165px before
-   #449 gave the capture box its own row). If the
-   header's height changes, tests/e2e/docs_toc.spec.js goes red. */
-.docs-page [id] { scroll-margin-top: 107px; }
-@media (max-width: 600px) {
-    .docs-page [id] { scroll-margin-top: 231px; }
-}
+   heading. Stop it 16px below what the header leaves on screen instead:
+   --nav-pinned-h (#486) is the whole 91px nav on desktop and only the tab
+   strip at <=600px, measured by base.html's pin script. If the header's
+   height changes, tests/e2e/docs_toc.spec.js goes red. */
+.docs-page [id] { scroll-margin-top: calc(var(--nav-pinned-h, 91px) + 16px); }
 
 /* === Swipe actions (#452) ===
    swipe.js adds these on ANY touch device. They used to be styled
@@ -5972,7 +5979,8 @@ table.quality-gates code {
    with no idea how many they have. */
 .reflection-combine-bar {
     position: sticky;
-    top: 0;
+    /* #486: at top: 0 it stuck UNDER the sticky nav (z 100). */
+    top: var(--nav-pinned-h, 0px);
     z-index: 2;
     display: flex;
     align-items: center;

@@ -82,7 +82,7 @@ test.describe("#397 /docs TOC scrolls on its own", () => {
 });
 
 // #400 (2026-10-09): a TOC jump scrolled the section to top: 0, under the
-// sticky .nav (91px desktop, 215px at <=600px since #449), hiding the section's own
+// sticky .nav (91px desktop; at <=600px only the ~59px tab strip since #486), hiding the section's own
 // heading — the first visible line was the next sub-heading. Both viewports:
 // the header covers the target on mobile too.
 test.describe("#400 a TOC jump lands with the section heading visible", () => {

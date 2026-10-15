@@ -639,6 +639,12 @@ Report.
      inside it (also on a ~820px touch screen). /utilities and /strength-
      forge show no box that should be hidden; at 1280 the bulk toolbar is
      one row; /settings import history scrolls sideways at 375.
+     #486: at 375 scroll the board (and /settings): the app name and capture
+     box scroll away and only the tab strip (~59px) stays at the top; at the
+     top of the page the capture box is there to type into. On /reflection
+     tick two rows and scroll — "Analyze together" sticks just below the
+     tabs (at 1280 too), not behind them. A /docs TOC jump lands its heading
+     below the tabs. At 1280 the whole nav stays pinned (the quiet case).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -820,6 +826,8 @@ Report.
   Re-open menu over the cards   PASS          Re-open menu over the cards   PASS
   Swipe shows Move/Delete       SKIP (touch)  Swipe shows Move/Delete       PASS
   Bulk toolbar one row          PASS          Settings table scrolls        PASS
+  Nav: whole bar pinned (unchanged) PASS      Nav: only the tabs pinned     PASS
+  Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS
