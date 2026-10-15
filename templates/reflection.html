@@ -18,9 +18,9 @@
 
         <div class="reflection-mode-tabs" role="tablist">
             <button type="button" class="reflection-mode-tab active"
-                    id="reflTabType" role="tab">⌨️ Type</button>
+                    id="reflTabType" role="tab" aria-selected="true">⌨️ Type</button>
             <button type="button" class="reflection-mode-tab"
-                    id="reflTabVoice" role="tab">🎙️ Record</button>
+                    id="reflTabVoice" role="tab" aria-selected="false">🎙️ Record</button>
         </div>
 
         {# #327: audio recovered from an interrupted session. Hidden
@@ -165,7 +165,7 @@
 
         <!-- Typed sub-state -->
         <div class="reflection-typed" id="reflTyped">
-            <textarea id="reflText" rows="10" maxlength="20000"
+            <textarea id="reflText" aria-label="Your reflection" rows="10" maxlength="20000"
                 placeholder="This week I shipped the backup feature but the auth refresh slipped. I want to drop the old CSV importer — nobody uses it. Next week is mostly about the calendar redesign…"></textarea>
             <div class="reflection-input-actions">
                 {# #333: two ways out of the writing state. "Finish" is the
@@ -377,7 +377,7 @@
     <!-- ✨ Use as Next Week's Focus picker (inline modal) -->
     <div class="reflection-focus-modal" id="reflFocusModal" style="display:none">
         <div class="reflection-focus-backdrop"></div>
-        <div class="reflection-focus-dialog" role="dialog"
+        <div class="reflection-focus-dialog" role="dialog" aria-modal="true"
              aria-labelledby="reflFocusTitle">
             <header>
                 <h3 id="reflFocusTitle">✨ Next Week's Focus</h3>

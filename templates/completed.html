@@ -6,7 +6,7 @@
 {# Capture bar deliberately does NOT set data-default-tier — new
    tasks typed here belong in Inbox, not Completed. #}
 <div class="capture-bar" id="captureBar">
-    <input type="text" id="captureInput" placeholder="Add a task…" autocomplete="off" spellcheck="true">
+    <input type="text" id="captureInput" aria-label="Add a task" placeholder="Add a task…" autocomplete="off" spellcheck="true">
     <select id="captureType" title="Task type">
         <option value="work">Work</option>
         <option value="personal">Personal</option>
@@ -31,7 +31,7 @@
 <div class="project-filter-bar" id="projectFilterBar"></div>
 {# #92 (PR25): always-visible objective/goal filter dropdown. #}
 <div class="task-search-bar">
-    <input type="search" id="taskSearchInput" placeholder="Search tasks (title, notes, URL)..." autocomplete="off" spellcheck="false" maxlength="200">
+    <input type="search" id="taskSearchInput" aria-label="Search tasks" placeholder="Search tasks (title, notes, URL)..." autocomplete="off" spellcheck="false" maxlength="200">
     <button type="button" id="taskSearchClear" class="btn-sm" title="Clear search">Clear</button>
     <span class="task-search-meta" id="taskSearchMeta"></span>
 </div>

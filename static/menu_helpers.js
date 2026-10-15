@@ -137,7 +137,28 @@
         return { close: close };
     }
 
-    var api = { placeMenu: placeMenu, menuKeyTarget: menuKeyTarget, attachMenu: attachMenu };
+    /**
+     * #458: the key rule for a typeahead list under a text box (the task
+     * panel's parent picker). With the list open and not empty: ↓ / ↑ move
+     * the highlight (wrapping, as menuKeyTarget), Enter picks the highlighted
+     * match ({pick}), Escape closes the list ({close}). Anything else — and
+     * every key while the list is closed — is null, so typing reaches the box
+     * and Escape reaches the panel underneath.
+     */
+    function comboKey(count, current, key, open) {
+        if (!open || !count) return null;
+        if (key === "Escape") return { close: true };
+        if (key === "Enter") return current >= 0 && current < count ? { pick: current } : null;
+        if (key === "ArrowDown" || key === "ArrowUp") {
+            return { move: menuKeyTarget(count, current, key) };
+        }
+        return null;
+    }
+
+    var api = {
+        placeMenu: placeMenu, menuKeyTarget: menuKeyTarget, attachMenu: attachMenu,
+        comboKey: comboKey,
+    };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     if (typeof window !== "undefined") window.menuHelpers = api;
 })();

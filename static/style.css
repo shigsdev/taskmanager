@@ -1420,6 +1420,11 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .parent-picker-result { padding: 6px 8px; cursor: pointer; font-size: 0.85rem; }
 .parent-picker-result:hover { background: var(--surface-sunk); }
+/* #458: the match ↓ / ↑ have highlighted (Enter picks it). */
+.parent-picker-result[aria-selected="true"] {
+    background: var(--surface-sunk);
+    box-shadow: inset 3px 0 0 var(--copper);
+}
 .parent-picker-current { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
 .parent-picker-chip { background: var(--accent, #2563eb); color: #fff; padding: 3px 8px; border-radius: 12px; font-size: 12px; min-width: 0; word-break: break-word; }
 .parent-picker-clear { background: transparent; border: 1px solid var(--border); color: var(--text); padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 12px; flex-shrink: 0; }
@@ -1506,6 +1511,9 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 /* (Removed 2026-05-08: rule that hid .task-checkbox on inbox — the
    checkbox itself was removed when selection became its primary role.) */
 .task-card:hover .task-quick-actions { opacity: 1; }
+/* #458: and when the keyboard is on one of them — Tab used to land on
+   buttons you couldn't see. */
+.task-quick-actions:focus-within { opacity: 1; }
 
 .task-quick-actions button {
     background: none;
@@ -4266,6 +4274,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     background: var(--accent, #2563eb); color: #fff;
     padding: 3px 8px; border-radius: 12px; font-size: 12px;
     cursor: pointer; user-select: none;
+    border: none; font-family: inherit; line-height: inherit;   /* #458: a <button> now */
 }
 .bulk-pending-chip:hover { background: #1d4ed8; }
 #bulkApplyChanges {
@@ -7283,4 +7292,31 @@ table.quality-gates code {
         width: 24px;
         height: 24px;
     }
+}
+
+/* #458: "Skip to main content" — off screen until a keyboard user tabs to
+   it (it is the first Tab stop), then shown over the top-left corner. */
+.skip-link {
+    position: absolute;
+    left: 8px;
+    top: -100px;
+    z-index: 10000;
+    padding: 10px 14px;
+    background: var(--card);
+    color: var(--text);
+    border: 1px solid var(--copper);
+    border-radius: 6px;
+    text-decoration: none;
+}
+.skip-link:focus { top: 8px; }
+main#main:focus,
+main#main:focus-visible { outline: none; }   /* the skip target, not a control */
+/* Land the content below the pinned nav (#486's height), not under it. */
+main#main { scroll-margin-top: var(--nav-pinned-h, 91px); }
+
+@media (max-width: 767px) {
+    /* #458 / #453: the staged-change chips and picker matches are tap
+       targets now that they are a button and options. */
+    .bulk-pending-chip { min-height: 44px; }
+    .parent-picker-result { min-height: 44px; display: flex; align-items: center; }
 }

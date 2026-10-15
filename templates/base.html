@@ -63,6 +63,8 @@
     <script src="{{ url_for('static', filename='menu_helpers.js') }}"></script>
 </head>
 <body>
+    {# #458: first Tab stop on every page — jumps past the nav. #}
+    <a class="skip-link" href="#main">Skip to main content</a>
     <header class="nav">
         <a href="{{ url_for('index') }}" class="brand">Task Manager</a>
         {# Top-left quick-upload: opens the Scan page for image→task.
@@ -139,7 +141,7 @@
         if (window.ResizeObserver) new ResizeObserver(navPinSync).observe(nav);
     })();
     </script>
-    <main>
+    <main id="main" tabindex="-1">
         {% block content %}{% endblock %}
     </main>
     <div id="updateBanner" class="update-banner" role="status" aria-live="polite" hidden>

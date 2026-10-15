@@ -166,6 +166,8 @@
         var typed = mode === "type";
         tabType.classList.toggle("active", typed);
         tabVoice.classList.toggle("active", !typed);
+        tabType.setAttribute("aria-selected", typed ? "true" : "false");   // #458
+        tabVoice.setAttribute("aria-selected", typed ? "false" : "true");
         typedWrap.style.display = typed ? "" : "none";
         voiceWrap.style.display = typed ? "none" : "";
         // #332: the draft restores asynchronously, so the text may have

@@ -512,6 +512,7 @@ function projectCardEl(project) {
         const cb = document.createElement("input");
         cb.type = "checkbox";
         cb.className = "project-bulk-cb";
+        cb.setAttribute("aria-label", `Select “${project.name}”`);   // #458
         cb.checked = projectsBulkSelected.has(project.id);
         if (cb.checked) card.classList.add("bulk-selected");
         cb.addEventListener("click", (e) => e.stopPropagation());

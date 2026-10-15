@@ -55,7 +55,7 @@
         <h2>Paste Project Names</h2>
         <p>One project name per line. All defaults (type=Work, etc.) editable in
            the preview. Bullets are stripped automatically.</p>
-        <textarea id="importProjectsText" class="import-textarea"
+        <textarea id="importProjectsText" class="import-textarea" aria-label="Project names, one per line"
                   placeholder="Roadmap&#10;Q3 Planning&#10;Hiring"
                   rows="10" spellcheck="true"></textarea>
         <div class="import-input-actions">
@@ -97,7 +97,7 @@
         <p>Copy text from OneNote and paste it below. Bullet points, numbered lists,
            and checkboxes are automatically detected.</p>
 
-        <textarea id="importText" class="import-textarea"
+        <textarea id="importText" class="import-textarea" aria-label="Tasks to import"
                   placeholder="Paste your OneNote text here...&#10;- Buy groceries&#10;- Call dentist&#10;☐ Review report"
                   rows="12" spellcheck="true"></textarea>
 
@@ -162,7 +162,7 @@
            Notes, or any plain text). Claude extracts action items as task
            candidates. If the transcript has an explicit "Action Items"
            section, that section is used directly.</p>
-        <textarea id="importTranscriptText" class="import-textarea"
+        <textarea id="importTranscriptText" class="import-textarea" aria-label="Meeting transcript"
                   placeholder="Paste transcript or meeting notes here…"
                   rows="12" spellcheck="true"></textarea>
         <div class="import-input-actions">

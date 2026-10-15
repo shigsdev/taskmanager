@@ -5,7 +5,7 @@
 {% block capture %}
 {# Same capture bar as the board so quick-add works on this page too. #}
 <div class="capture-bar" id="captureBar">
-    <input type="text" id="captureInput" placeholder="Add a task… (#today #week @project)" autocomplete="off" spellcheck="true">
+    <input type="text" id="captureInput" aria-label="Add a task" placeholder="Add a task… (#today #week @project)" autocomplete="off" spellcheck="true">
     <select id="captureType" title="Task type">
         <option value="work">Work</option>
         <option value="personal">Personal</option>
@@ -65,7 +65,7 @@
 
 <!-- Project detail / edit panel -->
 <div class="detail-overlay" id="projectDetailOverlay" style="display:none">
-    <div class="detail-panel" id="projectDetailPanel">
+    <div class="detail-panel" id="projectDetailPanel" role="dialog" aria-modal="true" aria-labelledby="projectDetailHeading">
         <div class="detail-header">
             <h3 id="projectDetailHeading">Project Detail</h3>
             <button class="icon-btn" id="projectDetailClose" title="Close" data-panel-close>✕</button>

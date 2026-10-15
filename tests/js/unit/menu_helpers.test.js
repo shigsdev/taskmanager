@@ -153,3 +153,40 @@ describe("attachMenu (#457)", () => {
         expect(document.activeElement).toBe(open);
     });
 });
+
+// #458: the key rule for a typeahead list (the task panel's parent picker).
+describe("comboKey (#458)", () => {
+    const { comboKey } = require("../../../static/menu_helpers.js");
+
+    test("↓ / ↑ move the highlight, wrapping", () => {
+        expect(comboKey(3, -1, "ArrowDown", true)).toEqual({ move: 0 });
+        expect(comboKey(3, 0, "ArrowDown", true)).toEqual({ move: 1 });
+        expect(comboKey(3, 2, "ArrowDown", true)).toEqual({ move: 0 });
+        expect(comboKey(3, -1, "ArrowUp", true)).toEqual({ move: 2 });
+        expect(comboKey(3, 0, "ArrowUp", true)).toEqual({ move: 2 });
+    });
+
+    test("Enter picks the highlighted match, only when one is highlighted", () => {
+        expect(comboKey(3, 1, "Enter", true)).toEqual({ pick: 1 });
+        expect(comboKey(3, -1, "Enter", true)).toBeNull();
+    });
+
+    test("Escape closes an open list", () => {
+        expect(comboKey(3, 1, "Escape", true)).toEqual({ close: true });
+        expect(comboKey(3, -1, "Escape", true)).toEqual({ close: true });
+    });
+
+    test("a closed or empty list takes no keys (Escape goes to the panel)", () => {
+        expect(comboKey(3, -1, "Escape", false)).toBeNull();
+        expect(comboKey(3, 0, "ArrowDown", false)).toBeNull();
+        expect(comboKey(3, 0, "Enter", false)).toBeNull();
+        expect(comboKey(0, -1, "ArrowDown", true)).toBeNull();
+        expect(comboKey(0, -1, "Escape", true)).toBeNull();
+    });
+
+    test("other keys are left alone (typing goes to the box)", () => {
+        expect(comboKey(3, 0, "a", true)).toBeNull();
+        expect(comboKey(3, 0, "Home", true)).toBeNull();
+        expect(comboKey(3, 0, "Tab", true)).toBeNull();
+    });
+});

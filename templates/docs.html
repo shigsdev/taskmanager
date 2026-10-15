@@ -7,7 +7,7 @@
    Reading docs doesn't preclude capturing a task; anything typed
    here lands in Inbox (the server's default). #}
 <div class="capture-bar" id="captureBar">
-    <input type="text" id="captureInput" placeholder="Add a task…" autocomplete="off" spellcheck="true">
+    <input type="text" id="captureInput" aria-label="Add a task" placeholder="Add a task…" autocomplete="off" spellcheck="true">
     <select id="captureType" title="Task type">
         <option value="work">Work</option>
         <option value="personal">Personal</option>
@@ -2077,6 +2077,21 @@ Skip this line (too short)</pre>
                 and <strong>Escape</strong> closes the menu and goes back to
                 its button. Due date ▾ → <em>Pick a date…</em> takes Enter to
                 apply the date and Escape to close.
+            </p>
+            <p>
+                <strong>Parent task</strong> — in a task's panel, type at
+                least two letters under <em>Parent task</em>, then
+                <strong>↑</strong> / <strong>↓</strong> to highlight a match and
+                Enter to pick it (Save keeps it, as with a click). Escape closes
+                the list of matches; a second Escape closes the panel.
+            </p>
+            <p>
+                <strong>Anywhere else</strong> — the first Tab on a page shows a
+                <em>Skip to main content</em> link; Enter on it jumps past the
+                menu bar. Tab onto a board card's quick buttons (Tomorrow, This
+                Week, …) and they show, just as they do when the mouse is over
+                the card. A staged bulk change (such as "Type: Personal") is a
+                button too: Tab to it and press Enter to drop it.
             </p>
         </section>
 

@@ -1374,6 +1374,7 @@ function taskCardEl(task) {
     const triageCheck = document.createElement("input");
     triageCheck.type = "checkbox";
     triageCheck.className = "triage-check";
+    triageCheck.setAttribute("aria-label", `Select “${task.title}” for triage`);   // #458
     triageCheck.addEventListener("click", (e) => e.stopPropagation());
     triageCheck.addEventListener("change", updateBulkTriageBtn);
     card.appendChild(triageCheck);
@@ -1388,6 +1389,7 @@ function taskCardEl(task) {
     bulkCheck.type = "checkbox";
     bulkCheck.className = "bulk-select-check";
     bulkCheck.title = "Select for bulk action";
+    bulkCheck.setAttribute("aria-label", `Select “${task.title}”`);   // #458
     bulkCheck.addEventListener("click", (e) => e.stopPropagation());
     bulkCheck.addEventListener("change", () => {
         card.classList.toggle("bulk-selected", bulkCheck.checked);
@@ -3015,12 +3017,14 @@ function taskDetailAddChecklistRow(text, checked) {
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.checked = checked;
+    cb.setAttribute("aria-label", "Checklist item done");   // #458
     row.appendChild(cb);
 
     const input = document.createElement("input");
     input.type = "text";
     input.value = text;
     input.placeholder = "Checklist item…";
+    input.setAttribute("aria-label", "Checklist item");
     row.appendChild(input);
 
     // #120 (PR57): per-row voice input. attachVoiceButton wires the
@@ -3074,11 +3078,38 @@ function _setupParentPicker(task) {
     }
     section.style.display = "";
 
+    // #458: a combobox for the keyboard and screen readers — ↓ / ↑ move
+    // the highlight, Enter picks it, Escape closes just the list
+    // (menuHelpers.comboKey). A click still picks.
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-autocomplete", "list");
+    input.setAttribute("aria-controls", "parentPickerResults");
+    results.setAttribute("role", "listbox");
+    results.setAttribute("aria-label", "Matching tasks");
+    let active = -1;
+    const options = () => Array.from(results.querySelectorAll("[role=option]"));
+    function setActive(i) {
+        active = i;
+        options().forEach((o, n) => o.setAttribute("aria-selected", n === i ? "true" : "false"));
+        const cur = options()[i];
+        if (cur) {
+            input.setAttribute("aria-activedescendant", cur.id);
+            cur.scrollIntoView({ block: "nearest" });
+        } else {
+            input.removeAttribute("aria-activedescendant");
+        }
+    }
+    function setOpen(open) {
+        results.style.display = open ? "" : "none";
+        input.setAttribute("aria-expanded", open ? "true" : "false");
+        if (!open) setActive(-1);
+    }
+
     // Reset state.
     input.value = "";
     hidden.value = task.parent_id || "";
-    results.style.display = "none";
     results.innerHTML = "";
+    setOpen(false);
 
     // Show current parent (if any) as a chip with a Clear button.
     function renderCurrent() {
@@ -3114,7 +3145,7 @@ function _setupParentPicker(task) {
         const q = input.value.trim().toLowerCase();
         results.innerHTML = "";
         if (q.length < 2) {
-            results.style.display = "none";
+            setOpen(false);
             return;
         }
         const matches = (typeof allTasks !== "undefined" ? allTasks : [])
@@ -3123,27 +3154,42 @@ function _setupParentPicker(task) {
                 && t.title.toLowerCase().includes(q))
             .slice(0, 10);
         if (matches.length === 0) {
-            results.style.display = "none";
+            setOpen(false);
             return;
         }
-        for (const m of matches) {
+        matches.forEach((m, n) => {
             const item = document.createElement("div");
             item.className = "parent-picker-result";
+            item.id = `parentPickerOpt-${n}`;
+            item.setAttribute("role", "option");
+            item.setAttribute("aria-selected", "false");
             item.textContent = m.title;
             item.title = m.title;
             item.addEventListener("click", () => {
                 hidden.value = m.id;
                 input.value = "";
-                results.style.display = "none";
+                setOpen(false);
                 renderCurrent();
             });
             results.appendChild(item);
-        }
-        results.style.display = "";
+        });
+        active = -1;
+        setOpen(true);
     }
     input.oninput = searchAndShow;
     input.onfocus = searchAndShow;
-    input.onblur = () => setTimeout(() => { results.style.display = "none"; }, 200);
+    input.onblur = () => setTimeout(() => setOpen(false), 200);
+    input.onkeydown = (e) => {
+        const open = results.style.display !== "none";
+        const r = window.menuHelpers.comboKey(options().length, active, e.key, open);
+        if (!r) return;
+        // Consumed: Enter mustn't save the form, Escape mustn't close the panel.
+        e.preventDefault();
+        e.stopPropagation();
+        if (r.move != null) setActive(r.move);
+        else if (r.pick != null) options()[r.pick].click();
+        else if (r.close) setOpen(false);
+    };
 }
 
 function taskDetailPopulateGoals(filterType, extraKeepIds, currentId) {
@@ -3526,6 +3572,7 @@ async function taskDetailLoadSubtasks(parentId) {
         const cb = document.createElement("input");
         cb.type = "checkbox";
         cb.title = "Complete subtask";
+        cb.setAttribute("aria-label", `Complete subtask “${sub.title}”`);   // #458
         cb.addEventListener("change", async () => {
             try {
                 await apiFetch(`${API}/${sub.id}`, {
@@ -3903,19 +3950,30 @@ function renderBulkPending() {
     }
     wrap.style.display = "";
     list.innerHTML = "";
-    for (const k of keys) {
-        const chip = document.createElement("span");
+    keys.forEach((k, i) => {
+        // #458: a button, so Tab reaches it and Enter / Space remove it.
+        const chip = document.createElement("button");
+        chip.type = "button";
         chip.className = "bulk-pending-chip";
         const label = _BULK_PENDING_LABELS[k] || k;
-        chip.textContent = `${label}: ${_displayValueForBulk(k, bulkPending[k])}`;
+        const text = `${label}: ${_displayValueForBulk(k, bulkPending[k])}`;
+        chip.textContent = text;
         // Click chip to remove that staged change.
         chip.title = "Click to remove";
+        chip.setAttribute("aria-label", `Remove staged change: ${text}`);
         chip.addEventListener("click", () => {
+            const hadFocus = document.activeElement === chip;
             delete bulkPending[k];
             renderBulkPending();
+            // Keep keyboard focus in the toolbar: the next chip, else Type ▾.
+            if (!hadFocus) return;
+            const left = list.querySelectorAll(".bulk-pending-chip");
+            const next = left[Math.min(i, left.length - 1)]
+                || document.getElementById("bulkActionType");
+            if (next) next.focus();
         });
         list.appendChild(chip);
-    }
+    });
 }
 
 async function applyStagedChanges() {
@@ -4101,6 +4159,7 @@ function promptCustomDate(anchor) {
     const input = document.createElement("input");
     input.type = "date";
     input.className = "bulk-date-input";
+    input.setAttribute("aria-label", "Due date");   // #458
     wrap.appendChild(input);
 
     const ok = document.createElement("button");

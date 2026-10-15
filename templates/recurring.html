@@ -4,7 +4,7 @@
 
 {% block capture %}
 <div class="capture-bar" id="captureBar">
-    <input type="text" id="captureInput" placeholder="Add a task… (#today #week @project)" autocomplete="off" spellcheck="true">
+    <input type="text" id="captureInput" aria-label="Add a task" placeholder="Add a task… (#today #week @project)" autocomplete="off" spellcheck="true">
     <select id="captureType" title="Task type">
         <option value="work">Work</option>
         <option value="personal">Personal</option>
@@ -45,7 +45,7 @@
    and saves to PATCH /api/recurring/<id>. Opened by clicking a row when
    NOT in bulk-select mode. #}
 <div class="detail-overlay" id="recurEditOverlay" style="display:none">
-    <div class="detail-panel" id="recurEditPanel">
+    <div class="detail-panel" id="recurEditPanel" role="dialog" aria-modal="true" aria-labelledby="recurEditHeading">
         <div class="detail-header">
             {# #323: same panel serves edit + create; JS swaps the heading. #}
             <h3 id="recurEditHeading">Edit recurring template</h3>

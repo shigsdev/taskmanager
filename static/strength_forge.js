@@ -40,7 +40,7 @@
   var modalOverlay, modalTitle, modalBody;
 
   function buildModal() {
-    modalTitle = el("div", { cls: "sf-modal-title" });
+    modalTitle = el("div", { cls: "sf-modal-title", attrs: { id: "sfModalTitle" } });
     var closeBtn = el("button", {
       cls: "sf-modal-close", text: "✕",
       // #417: panel_keys.js presses this on Escape (and traps Tab).
@@ -48,7 +48,12 @@
       on: { click: closeModal },
     });
     modalBody = el("div", { cls: "sf-modal-body" });
-    var card = el("div", { cls: "sf-modal", on: { click: function (e) { e.stopPropagation(); } } }, [
+    // #458: announced as a modal dialog named by its title.
+    var card = el("div", {
+      cls: "sf-modal",
+      attrs: { role: "dialog", "aria-modal": "true", "aria-labelledby": "sfModalTitle" },
+      on: { click: function (e) { e.stopPropagation(); } },
+    }, [
       el("div", { cls: "sf-modal-head" }, [modalTitle, closeBtn]),
       modalBody,
     ]);

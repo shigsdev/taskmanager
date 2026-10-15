@@ -1,5 +1,5 @@
 <div class="detail-overlay" id="detailOverlay" style="display:none">
-    <div class="detail-panel" id="detailPanel">
+    <div class="detail-panel" id="detailPanel" role="dialog" aria-modal="true" aria-labelledby="detailHeaderTitle">
         <div class="detail-header">
             <h3 id="detailHeaderTitle">Task Detail</h3>
             <button class="icon-btn" id="detailClose" title="Close" data-panel-close>✕</button>
@@ -209,7 +209,7 @@
                 {# #120 (PR57): voice input on subtask add. Triple-flex
                    row: input + 🎤 + + Add button. #}
                 <div style="display:flex;gap:4px;margin-top:4px">
-                    <input type="text" id="subtaskInput" placeholder="Add subtask…" style="flex:1" spellcheck="true">
+                    <input type="text" id="subtaskInput" aria-label="Add subtask" placeholder="Add subtask…" style="flex:1" spellcheck="true">
                     <button type="button" class="icon-btn voice-btn" data-voice-target="subtaskInput" title="Voice input">🎤</button>
                     <button type="button" class="btn-sm" id="addSubtaskBtn">+ Add</button>
                 </div>

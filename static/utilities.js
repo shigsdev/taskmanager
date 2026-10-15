@@ -415,9 +415,10 @@
     // name or goal title can never inject markup.
     // ============================================================
 
-    function buildGoalSelect(goals, currentGoalId) {
+    function buildGoalSelect(goals, currentGoalId, projectName) {
         const sel = document.createElement("select");
         sel.className = "pg-goal-select";
+        sel.setAttribute("aria-label", `Goal for “${projectName}”`);   // #458
         const none = document.createElement("option");
         none.value = "";
         none.textContent = "— None —";
@@ -449,7 +450,7 @@
         label.appendChild(document.createTextNode(" " + detail));
         row.appendChild(label);
 
-        const sel = buildGoalSelect(goals, project.goal_id);
+        const sel = buildGoalSelect(goals, project.goal_id, project.name);
         sel.addEventListener("change", function () {
             applyProjectGoal(card, project, sel.value);
         });

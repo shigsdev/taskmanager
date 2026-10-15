@@ -165,11 +165,14 @@
     function _refreshTabActive(offset) {
         var thisTab = document.getElementById("weeklyFocusTabThis");
         var nextTab = document.getElementById("weeklyFocusTabNext");
+        // #458: aria-selected says the same to a screen reader.
         if (thisTab) {
             thisTab.classList.toggle("active", offset === 0);
+            thisTab.setAttribute("aria-selected", offset === 0 ? "true" : "false");
         }
         if (nextTab) {
             nextTab.classList.toggle("active", offset === 1);
+            nextTab.setAttribute("aria-selected", offset === 1 ? "true" : "false");
         }
     }
 
@@ -237,6 +240,7 @@
         input.className = "weekly-focus-slot-input";
         input.maxLength = 200;
         input.placeholder = "e.g. Ship the auth refresh";
+        input.setAttribute("aria-label", "Focus " + slotOrder);   // #458
         input.value = row ? row.text : "";
         input.dataset.synced = input.value;   // #441
         input.addEventListener("blur", function () {
@@ -255,6 +259,7 @@
         var goalSelect = document.createElement("select");
         goalSelect.className = "weekly-focus-slot-goal";
         goalSelect.title = "Optionally link this focus to a Goal";
+        goalSelect.setAttribute("aria-label", "Goal for focus " + slotOrder);   // #458
         _fillGoalSelect(goalSelect, row);
         goalSelect.addEventListener("change", function () {
             // Goal change saves immediately (no blur needed — select
@@ -550,6 +555,7 @@
         cb.type = "checkbox";
         cb.checked = change._applied !== false;
         cb.className = "weekly-focus-plan-check";
+        cb.setAttribute("aria-label", "Apply: " + change.title);   // #458
         cb.addEventListener("change", function () {
             change._applied = cb.checked;
         });

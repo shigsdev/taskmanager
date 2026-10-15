@@ -680,6 +680,14 @@ Report.
      date ▾ → Pick a date… (Enter applies, Escape closes), /projects Type ▾
      and /recurring Frequency ▾ (which opens on screen). A mouse click on an
      item, and a click outside, work as before.
+     #458: the first Tab on a page shows "Skip to main content"; Enter lands
+     the page's content BELOW the pinned nav. Tab from a board card's ✓ onto
+     its quick buttons — they show (opacity 1). In a task panel type 2+
+     letters under Parent task, ↓ highlights a match, Enter picks it WITHOUT
+     saving; Escape closes the list only, a second Escape the panel; a click
+     still picks. Stage a bulk change — the chip looks the same, Enter on it
+     (or a click) drops it. a11y_gaps.spec.js checks every control on 19
+     pages has a name and every panel/dialog says role=dialog aria-modal.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -871,6 +879,10 @@ Report.
   Files: picker by keyboard     PASS          Files: picker by keyboard     PASS
   Panels: Tab past Completed    PASS          Panels: Tab past Completed    PASS
   Menus: arrows + Escape        PASS          Menus: arrows + Escape        PASS
+  Skip link: lands below nav    PASS          Skip link: lands below nav    PASS
+  Quick actions: show on Tab    PASS          Quick actions: always shown   PASS
+  Parent picker: arrows + Enter PASS          Parent picker: arrows + Enter PASS
+  Bulk chip: a button           PASS          Bulk chip: a button, 44px     PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

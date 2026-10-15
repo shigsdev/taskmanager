@@ -4,7 +4,7 @@
 
 {% block capture %}
 <div class="capture-bar" id="captureBar">
-    <input type="text" id="captureInput" placeholder="Add a task… (#today #week @project)" autocomplete="off" spellcheck="true">
+    <input type="text" id="captureInput" aria-label="Add a task" placeholder="Add a task… (#today #week @project)" autocomplete="off" spellcheck="true">
     <select id="captureType" title="Task type">
         <option value="work">Work</option>
         <option value="personal">Personal</option>
@@ -70,7 +70,7 @@
 
 <!-- Goal detail / edit panel -->
 <div class="detail-overlay" id="goalDetailOverlay" style="display:none">
-    <div class="detail-panel" id="goalDetailPanel">
+    <div class="detail-panel" id="goalDetailPanel" role="dialog" aria-modal="true" aria-labelledby="goalDetailHeading">
         <div class="detail-header">
             <h3 id="goalDetailHeading">Goal Detail</h3>
             <button class="icon-btn" id="goalDetailClose" title="Close" data-panel-close>✕</button>
@@ -163,7 +163,7 @@
             {# #375: collapsed "Completed (N)", loaded on first open. #}
             <div id="linkedCompletedTasks"></div>
             <div class="add-linked-task">
-                <input type="text" id="linkedTaskInput" placeholder="Add a task to this goal…">
+                <input type="text" id="linkedTaskInput" aria-label="Add a task to this goal" placeholder="Add a task to this goal…">
                 <select id="linkedTaskType" title="Task type">
                     <option value="work">Work</option>
                     <option value="personal">Personal</option>

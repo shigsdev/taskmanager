@@ -742,6 +742,7 @@
         const dialog = document.createElement("div");
         dialog.className = "voice-recur-dialog";
         dialog.setAttribute("role", "dialog");
+        dialog.setAttribute("aria-modal", "true");   // #458
         dialog.setAttribute("aria-label", "Make recurring");
 
         const h = document.createElement("h3");

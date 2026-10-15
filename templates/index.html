@@ -4,7 +4,7 @@
 
 {% block capture %}
 <div class="capture-bar" id="captureBar">
-    <input type="text" id="captureInput" placeholder="Add a task… (#today #week @project)" autocomplete="off" spellcheck="true">
+    <input type="text" id="captureInput" aria-label="Add a task" placeholder="Add a task… (#today #week @project)" autocomplete="off" spellcheck="true">
     <select id="captureType" title="Task type">
         <option value="work">Work</option>
         <option value="personal">Personal</option>
@@ -49,7 +49,7 @@
     <div class="goal-filter-bar" id="goalFilterBar"></div>
 </div>
 <div class="task-search-bar">
-    <input type="search" id="taskSearchInput" placeholder="Search tasks (title, notes, URL)..." autocomplete="off" spellcheck="false" maxlength="200">
+    <input type="search" id="taskSearchInput" aria-label="Search tasks" placeholder="Search tasks (title, notes, URL)..." autocomplete="off" spellcheck="false" maxlength="200">
     <button type="button" id="taskSearchClear" class="btn-sm" title="Clear search">Clear</button>
     <span class="task-search-meta" id="taskSearchMeta"></span>
 </div>
@@ -71,9 +71,9 @@
            tabs so the user can plan ahead before Monday rolls. #}
         <div class="weekly-focus-tabs" role="tablist">
             <button type="button" id="weeklyFocusTabThis"
-                    class="weekly-focus-tab active" role="tab">This Week</button>
+                    class="weekly-focus-tab active" role="tab" aria-selected="true">This Week</button>
             <button type="button" id="weeklyFocusTabNext"
-                    class="weekly-focus-tab" role="tab">Next Week</button>
+                    class="weekly-focus-tab" role="tab" aria-selected="false">Next Week</button>
         </div>
         <span class="weekly-focus-week" id="weeklyFocusWeek"></span>
         <span class="weekly-focus-fallback" id="weeklyFocusFallback" hidden>
@@ -95,7 +95,7 @@
    suggestions. Same structural shape as #autoCategorizeModal. #}
 <div class="weekly-focus-plan-modal" id="weeklyFocusPlanModal" style="display:none">
     <div class="weekly-focus-plan-backdrop"></div>
-    <div class="weekly-focus-plan-dialog" role="dialog" aria-labelledby="weeklyFocusPlanTitle">
+    <div class="weekly-focus-plan-dialog" role="dialog" aria-modal="true" aria-labelledby="weeklyFocusPlanTitle">
         <header>
             <h3 id="weeklyFocusPlanTitle">✨ Plan: <span id="weeklyFocusPlanFocus"></span></h3>
             <button type="button" id="weeklyFocusPlanClose" class="icon-btn" aria-label="Close" data-panel-close>✕</button>
@@ -141,7 +141,7 @@
     {# Review modal for the auto-categorize flow. Hidden by default;
        shown after POST /api/inbox/categorize returns. Each row is
        editable so the user can override Claude's pick before applying. #}
-    <div class="auto-categorize-modal" id="autoCategorizeModal" style="display:none" role="dialog" aria-labelledby="autoCategorizeTitle">
+    <div class="auto-categorize-modal" id="autoCategorizeModal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="autoCategorizeTitle">
         <div class="auto-categorize-backdrop"></div>
         <div class="auto-categorize-panel">
             <div class="auto-categorize-header">

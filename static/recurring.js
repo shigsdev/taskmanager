@@ -94,6 +94,7 @@
         var cb = document.createElement("input");
         cb.type = "checkbox";
         cb.dataset.id = rt.id;
+        cb.setAttribute("aria-label", "Select “" + rt.title + "”");   // #458
         cb.addEventListener("change", updateToolbar);
         row.appendChild(cb);
 

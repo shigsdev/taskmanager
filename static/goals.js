@@ -442,6 +442,7 @@ function goalLinkedTaskRow(task, goalId) {
     cb.type = "checkbox";
     cb.checked = task.status === "archived";
     cb.disabled = task.status === "archived";
+    cb.setAttribute("aria-label", `Complete “${task.title}”`);   // #458
     cb.addEventListener("change", async () => {
         // #433: a parent with open subtasks gets the board's question and
         // closes them with it; No leaves everything as it was.
