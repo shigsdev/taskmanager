@@ -3570,7 +3570,12 @@ input[type="time"]::-webkit-calendar-picker-indicator {
         order: 10;
         flex-basis: 100%;
         max-width: none;
+        /* #449: the type select + icon buttons left the text box 67px
+           (117px on /tier). The box takes the first row to itself; the
+           select and buttons wrap onto the next. */
+        flex-wrap: wrap;
     }
+    .capture-bar input[type="text"] { flex-basis: 100%; }
     /* #399: the type select (33px) and text input (34px) sat beside 44px
        icon-btns, under the 44px tap floor. Height only — the row's width
        (the 2026-04-18 overflow incident) is untouched. */
@@ -4683,11 +4688,12 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 /* #400: an anchor jump (TOC click, or a /docs#section URL) scrolled the
    target to top: 0 — under the sticky .nav, hiding the section's own
    heading. Stop it 16px below the header instead: 91px header on desktop,
-   165px at <=600px, where the nav's own mobile rule stacks it. If the
+   215px at <=600px, where the nav's own mobile rule stacks it (165px before
+   #449 gave the capture box its own row). If the
    header's height changes, tests/e2e/docs_toc.spec.js goes red. */
 .docs-page [id] { scroll-margin-top: 107px; }
 @media (max-width: 600px) {
-    .docs-page [id] { scroll-margin-top: 181px; }
+    .docs-page [id] { scroll-margin-top: 231px; }
 }
 
 /* --- Architecture page (#42) --- */

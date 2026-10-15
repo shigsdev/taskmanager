@@ -623,6 +623,9 @@ Report.
      button counts "Running… (Ns)", then the per-check result shows; make
      any Run answer 429 — the card reads "Failed: Too many runs — wait a
      minute and try again." (the limit itself is covered by pytest).
+     #449: at 375 the capture box has the first row to itself (the full bar
+     width) on the board, /tier/<name> and /goals, the type select and icon
+     buttons on the row below; at desktop it is one row as before.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -798,6 +801,7 @@ Report.
   Links: bad pick says why      PASS          Links: bad pick says why      PASS
   Utilities: tech-debt polls    PASS          Utilities: tech-debt polls    PASS
   Utilities: 429 says wait      PASS          Utilities: 429 says wait      PASS
+  Capture: box gets its own row PASS         Capture: box gets its own row PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS
