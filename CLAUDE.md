@@ -626,6 +626,9 @@ Report.
      #449: at 375 the capture box has the first row to itself (the full bar
      width) on the board, /tier/<name> and /goals, the type select and icon
      buttons on the row below; at desktop it is one row as before.
+     #450: at 375 every typing field (capture box + type select, search,
+     Focus slot selects, panel fields, review rows) computes to 16px, so iOS
+     doesn't zoom on tap; no page scrolls sideways; desktop sizes unchanged.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -802,6 +805,7 @@ Report.
   Utilities: tech-debt polls    PASS          Utilities: tech-debt polls    PASS
   Utilities: 429 says wait      PASS          Utilities: 429 says wait      PASS
   Capture: box gets its own row PASS         Capture: box gets its own row PASS
+  Fields: 16px, no iOS zoom     PASS          Fields: 16px, no iOS zoom     PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

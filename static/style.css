@@ -3770,6 +3770,16 @@ input[type="time"]::-webkit-calendar-picker-indicator {
    used to sit in the 600px block above; kept right here so their
    cascade position is unchanged — only the width condition moved. */
 @media (max-width: 767px) {
+    /* #450: iOS Safari zooms the page when a focused field's text is under
+       16px (and the installed PWA stays zoomed). Every field that opens the
+       keyboard gets 16px at phone width, whatever its component rule says —
+       a floor, so !important (the component rules it must beat are class,
+       id and type selectors of every weight). The :not() chain lists the
+       inputs that never open the keyboard. tests/e2e/ios_zoom_font.spec.js
+       checks every page. */
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),
+    select,
+    textarea { font-size: 16px !important; }
     .capture-bar select,
     .capture-bar input[type="text"] { min-height: 44px; }
     .nav-tab { min-height: 44px; }
