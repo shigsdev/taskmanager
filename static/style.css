@@ -82,6 +82,13 @@
     --muted:          var(--text-muted);
     --success:        var(--green);
     --warning:        var(--amber);
+    /* #451: row tints for a change that failed / landed (✨ Plan,
+       Auto-categorize, /plan, Focus plan, reflection Apply). 0.08 was
+       near-invisible on the dark slate. */
+    --tint-failed:    rgba(198, 74, 42, 0.24);
+    --tint-applied:   rgba(148, 164, 139, 0.18);
+    /* #451: text on the sage / amber fills (white was ~2.6:1). */
+    --on-fill:        var(--slate-0);
     --shadow-sm:      var(--shadow-1);
     --shadow-md:      var(--shadow-2);
     --shadow-lg:      var(--shadow-3);
@@ -1258,7 +1265,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .task-card .task-complete-btn:hover {
     background: var(--green);
-    color: #fff;
+    color: var(--on-fill);  /* #451 */
 }
 /* #294 touch target: on coarse-pointer (touch) devices extend the
    tappable area to 44×44 around the 28px visual button — keeps the
@@ -1460,7 +1467,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .task-quick-actions .quick-complete-btn:hover {
     background: var(--green);
-    color: #fff;
+    color: var(--on-fill);  /* #451 */
 }
 
 /* Inbox bulk triage checkbox */
@@ -1600,13 +1607,16 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     line-height: 1.8;
 }
 
-.btn-complete {
+/* #451: `.btn.btn-complete` — the panel's button is `btn btn-complete` and
+   `.btn` (same weight, later in this file) won, so it rendered copper with
+   white text (3.8:1). Now the intended sage, with dark text (7:1). */
+.btn.btn-complete {
     background: var(--green);
-    color: #fff;
+    color: var(--on-fill);
     border: none;
     font-weight: 600;
 }
-.btn-complete:hover { background: #15803d; }
+.btn.btn-complete:hover { background: #a7b59f; }
 /* Backlog #25: cancel-task button. Greyer than danger because cancellation
    is intentional record-keeping, not a destructive trash action. */
 .btn-cancel {
@@ -2802,10 +2812,10 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     gap: 4px;
     flex-shrink: 0;
 }
-.plan-row-applied { background: rgba(22, 163, 74, 0.08); }
+.plan-row-applied { background: var(--tint-applied); }  /* #451 */
 .plan-row-applied .plan-row-actions button { display: none; }
 .plan-row-ignored { opacity: 0.5; }
-.plan-row-failed { background: rgba(220, 38, 38, 0.08); }
+.plan-row-failed { background: var(--tint-failed); box-shadow: inset 3px 0 0 var(--rust); }  /* #451 */
 .plan-empty {
     color: var(--text-muted);
     font-style: italic;
@@ -2962,7 +2972,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     font-size: 0.8rem;
 }
 .auto-categorize-row-failed {
-    background: rgba(220, 38, 38, 0.08);
+    background: var(--tint-failed);  /* #451 */
 }
 .auto-categorize-footer {
     display: flex;
@@ -3180,11 +3190,11 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     border-radius: 8px;
     cursor: pointer;
 }
-.review-btn-keep { background: var(--success); color: #fff; }
+.review-btn-keep { background: var(--success); color: var(--on-fill); }  /* #451 */
 .review-btn-keep:hover { opacity: 0.9; }
 .review-btn-freeze { background: var(--accent); color: #fff; }
 .review-btn-freeze:hover { opacity: 0.9; }
-.review-btn-snooze { background: var(--warning, #f0ad4e); color: #fff; }
+.review-btn-snooze { background: var(--warning, #f0ad4e); color: var(--on-fill); }  /* #451 */
 .review-btn-snooze:hover { opacity: 0.9; }
 .review-btn-delete { background: var(--danger); color: #fff; }
 .review-btn-delete:hover { opacity: 0.9; }
@@ -3331,7 +3341,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .import-duplicate { opacity: 0.6; border-color: var(--warning, #b8860b); }
 .import-dup-badge {
     font-size: 11px; padding: 2px 6px;
-    background: var(--warning, #b8860b); color: #fff;
+    background: var(--warning, #b8860b); color: var(--on-fill);  /* #451 */
     border-radius: 4px; white-space: nowrap;
 }
 .import-review-actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -4110,7 +4120,9 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 
 /* Selected card highlight */
 .task-card.bulk-selected {
-    background: #e8f0fe;
+    /* #451: was #e8f0fe (near-white) under cream text, ~1.1:1. A
+       copper-tinted slate keeps it clearly selected and readable. */
+    background: #2e2418;
     border-color: var(--accent, #2980b9);
 }
 
@@ -4234,14 +4246,16 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     cursor: pointer;
 }
 .preview-card:hover {
-    background: #f4f4f5;
-    border-color: #6b7280;
+    /* #451: hover flipped to near-white (#f4f4f5) and the text was
+       grey on dark (2.5:1 / 3.9:1). Muted cream, dark hover. */
+    background: var(--slate-300);
+    border-color: #8b8f96;
 }
 .preview-card .task-title {
-    color: #4b5563;  /* slightly muted vs real tasks */
+    color: var(--cream-dim);  /* muted vs real tasks, 7:1 */
 }
 .preview-card .task-meta {
-    color: #6b7280;
+    color: var(--cream-faint);
 }
 /* Spacious variant inside the tier-detail page — more breathing room
    since we have the full page width. */
@@ -5523,7 +5537,8 @@ table.quality-gates code {
 }
 /* #422: a change that didn't apply stays listed, tinted like Auto-categorize's */
 .weekly-focus-plan-row-failed {
-    background: rgba(220, 38, 38, 0.08);
+    background: var(--tint-failed);  /* #451 */
+    box-shadow: inset 3px 0 0 var(--rust);
 }
 .weekly-focus-plan-check {
     flex-shrink: 0;
@@ -6045,7 +6060,8 @@ table.quality-gates code {
    are tinted like #422's and stay ticked for the retry. */
 .reflection-action-row.reflection-action-applied { opacity: 0.6; }
 .reflection-action-row.reflection-action-failed {
-    background: rgba(220, 38, 38, 0.08);
+    background: var(--tint-failed);  /* #451 */
+    box-shadow: inset 3px 0 0 var(--rust);
 }
 .reflection-action-applied-tag {
     color: var(--success, #16a34a);

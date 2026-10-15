@@ -629,6 +629,10 @@ Report.
      #450: at 375 every typing field (capture box + type select, search,
      Focus slot selects, panel fields, review rows) computes to 16px, so iOS
      doesn't zoom on tap; no page scrolls sideways; desktop sizes unchanged.
+     #451: tick a board card — it turns copper-tinted dark, text readable;
+     the task panel's ✓ Complete is sage with dark text; /review Keep and
+     Snooze have dark text; preview cards read muted cream and stay dark on
+     hover (tints: dark_contrast.spec.js measures them).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -806,6 +810,7 @@ Report.
   Utilities: 429 says wait      PASS          Utilities: 429 says wait      PASS
   Capture: box gets its own row PASS         Capture: box gets its own row PASS
   Fields: 16px, no iOS zoom     PASS          Fields: 16px, no iOS zoom     PASS
+  Contrast: selected/fills/previews PASS     Contrast: selected/fills/previews PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS
