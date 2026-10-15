@@ -60,9 +60,12 @@ function buildRecoveryUrl(loc) {
  */
 function actionFailureMessage(what, err, bulk, tail) {
     tail = " " + (tail || "The page now shows what's saved.");
+    // #474: a server reason may already end in "." ("…restore it there
+    // first.", "…the limit is 500.") — don't punctuate it twice.
+    const bare = (r) => String(r).replace(/\.+$/, "");
     if (err) {
         if (err.userNotified) return null;
-        const reason = typeof err === "string" ? err : err.message;
+        const reason = bare(typeof err === "string" ? err : err.message || "");
         return what + " didn't save" + (reason ? ": " + reason : "") + "." + tail;
     }
     if (bulk) {
@@ -71,7 +74,7 @@ function actionFailureMessage(what, err, bulk, tail) {
         const total = bad + (bulk.updated || 0);
         // #433: the server's reason, when it gave one (e.g. "2 open
         // subtask(s) — complete them too or close them individually first").
-        const reasons = [...new Set((bulk.errors || []).map((e) => e && e.message).filter(Boolean))];
+        const reasons = [...new Set((bulk.errors || []).map((e) => e && e.message).filter(Boolean).map(bare))];
         return what + ": " + bad + " of " + total + " didn't save"
             + (reasons.length ? " (" + reasons.join("; ") + ")" : "") + "." + tail;
     }

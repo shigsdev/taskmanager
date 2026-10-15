@@ -606,6 +606,9 @@ Report.
      Plan my week, Auto-categorize, Calendar, Recycle bin, Print view, Email
      digest (HTML + text, real order) and Settings read as corrected, at both
      widths with no sideways scroll.
+     #474: delete a task, then (in another tab still showing it) press its
+     Done: "… didn't save: This task is in the Recycle Bin — restore it there
+     first." and the card goes; it is still in the bin. Restore still works.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -776,6 +779,7 @@ Report.
   Text: long capture says why   PASS          Text: long capture says why   PASS
   Text: long import line fits   PASS          Text: long import line fits   PASS
   Help: corrected sections      PASS          Help: corrected sections      PASS
+  Bin: done on a deleted task refused PASS    Bin: done on a deleted task refused PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

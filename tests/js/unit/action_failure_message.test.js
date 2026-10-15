@@ -111,3 +111,18 @@ describe("actionFailureMessage with a custom ending (#442)", () => {
         expect(actionFailureMessage("Saving", e, null, "Kept.")).toBeNull();
     });
 });
+
+// #474: a server reason that already ends in "." isn't punctuated twice.
+describe("actionFailureMessage — one full stop (#474)", () => {
+    const MSG = "This task is in the Recycle Bin — restore it there first.";
+    test("single action", () => {
+        expect(actionFailureMessage("Completing the task", new Error(MSG))).toBe(
+            "Completing the task didn't save: This task is in the Recycle Bin — "
+            + "restore it there first. The page now shows what's saved.");
+    });
+    test("bulk reasons", () => {
+        const bulk = { updated: 1, not_found: [], errors: [{ id: "a", message: MSG }] };
+        expect(actionFailureMessage("Marking complete", null, bulk)).toContain(
+            "(This task is in the Recycle Bin — restore it there first).");
+    });
+});

@@ -686,6 +686,16 @@ _UPDATABLE_FIELDS = {
 _CLOSED_STATUSES = (TaskStatus.ARCHIVED, TaskStatus.CANCELLED)
 
 
+def _refuse_closing_from_bin(task: Task) -> None:
+    """#474: a task in the Recycle Bin can't be completed or cancelled —
+    that pulled it out of the bin (a stale tab's Done, the Shortcut's queue)
+    and left the subtasks that went with it behind. Restore it first."""
+    if task.status == TaskStatus.DELETED:
+        raise ValidationError(
+            "This task is in the Recycle Bin — restore it there first.", "status",
+        )
+
+
 def _apply_status_to_subtasks(
     task: Task, new_status: TaskStatus, close_subtasks: bool
 ) -> None:
@@ -800,6 +810,8 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
     if "status" in data:
         new_status = _parse_enum(TaskStatus, data["status"], "status") or task.status
         old_status = task.status
+        if new_status in _CLOSED_STATUSES:
+            _refuse_closing_from_bin(task)
         # When transitioning out of CANCELLED, clear the reason so a stale
         # explanation doesn't outlive the cancellation. Caller can still
         # set it explicitly in the same PATCH if they want to preserve it.
@@ -955,6 +967,7 @@ def complete_parent_task(task_id: uuid.UUID, complete_subtasks: bool = False) ->
     task = get_task(task_id)
     if task is None:
         return None
+    _refuse_closing_from_bin(task)
     open_subtasks = list_subtasks(task_id)
     # #230: recurring-spawn → silently leave subtasks open.
     if task.recurring_task_id is not None:
@@ -1001,6 +1014,7 @@ def cancel_parent_task(
     task = get_task(task_id)
     if task is None:
         return None
+    _refuse_closing_from_bin(task)
     open_subtasks = list_subtasks(task_id)
     # #230 (2026-05-25): recurring-spawn → silently leave subtasks open
     # (mirror of the complete_parent_task hook above). User intent: when

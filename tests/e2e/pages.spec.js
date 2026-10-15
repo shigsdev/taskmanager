@@ -10226,6 +10226,33 @@ test.describe("Text stops at its column's limit (#447)", () => {
     });
 });
 
+// #474: completing a task that's already in the Recycle Bin (here: a card still
+// showing in this tab after it was deleted elsewhere) brought it back as
+// completed. Now it's refused, the board says why, and it stays in the bin.
+test.describe("Done on a deleted task is refused (#474)", () => {
+    test("a stale card's ✓ says it's in the bin and the card goes", async ({ page, request }) => {
+        const tag = `E2E 474 ${Date.now()}`;
+        const task = await (await request.post("/api/tasks", {
+            data: { title: tag, type: "work", tier: "backlog" },
+        })).json();
+        const seen = [];
+        page.on("dialog", async (d) => { seen.push(d.message()); await d.accept(); });
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const card = page.locator(`.task-card[data-id="${task.id}"]`);
+        await expect(card).toBeVisible();
+        // Deleted elsewhere — this tab hasn't redrawn yet.
+        expect((await request.delete(`/api/tasks/${task.id}`)).status()).toBe(204);
+        await card.locator(".task-complete-btn").click();
+        await expect.poll(() => seen.length).toBe(1);
+        expect(seen[0]).toBe("Completing the task didn't save: This task is in the Recycle Bin — "
+            + "restore it there first. The page now shows what's saved.");
+        await expect(card).toHaveCount(0);
+        const after = await (await request.get(`/api/tasks/${task.id}`)).json();
+        expect(after.status).toBe("deleted");
+    });
+});
+
 // #468: with no filter on, the board's filter banner takes no room at all
 // (`display: flex` used to beat `[hidden]`, leaving an empty copper bar).
 test.describe("Filter banner hides when no filter is on (#468)", () => {
