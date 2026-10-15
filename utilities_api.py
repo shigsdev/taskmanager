@@ -35,7 +35,8 @@ workflow + email):
     POST /api/utilities/run-security-posture-scan
          — invokes scripts/check_security_posture.CHECKS (the
            #227 monthly audit).
-    POST /api/utilities/run-tech-debt-audit
+    POST /api/utilities/run-tech-debt-audit  (#477: background job,
+         polled via GET /api/utilities/tech-debt-audit-status)
          — invokes scripts/check_tech_debt.CHECKS (the #228 weekly
            audit; the dependency-drift check inside shells out to
            pip + npm so this endpoint is the slowest of the three,
@@ -72,6 +73,7 @@ from sqlalchemy import select
 
 from auth import login_required
 from models import Task, TaskStatus, Tier, db
+from rate_limit import UTILITY_RUN, UTILITY_RUN_MESSAGE, limiter
 from utils import local_today_date
 
 bp = Blueprint("utilities_api", __name__, url_prefix="/api/utilities")
@@ -183,6 +185,7 @@ def clear_stale_next_week_due_dates_count(email: str):  # noqa: ARG001
 
 @bp.post("/clear-stale-next-week-due-dates")
 @login_required
+@limiter.limit(UTILITY_RUN, error_message=UTILITY_RUN_MESSAGE)
 def clear_stale_next_week_due_dates_run(email: str):  # noqa: ARG001
     """#220 follow-up: clear stale today/past due_date on tasks
     stuck in tier=NEXT_WEEK from pre-#220 tier-button punts. Wraps
@@ -207,6 +210,7 @@ def clear_stale_next_week_due_dates_run(email: str):  # noqa: ARG001
 
 @bp.post("/trigger-backup")
 @login_required
+@limiter.limit(UTILITY_RUN, error_message=UTILITY_RUN_MESSAGE)
 def trigger_backup(email: str):  # noqa: ARG001
     """Dispatch the `daily-backup.yml` GitHub Actions workflow ad-hoc.
 
@@ -389,6 +393,7 @@ def _run_audit_script_checks(
 
 @bp.post("/run-bug-pattern-scan")
 @login_required
+@limiter.limit(UTILITY_RUN, error_message=UTILITY_RUN_MESSAGE)
 def run_bug_pattern_scan(email: str):  # noqa: ARG001
     """#236 — run the #226 weekly bug-pattern scanner in-process and
     return the findings inline. Skips the SendGrid email path (the UI
@@ -413,6 +418,7 @@ def run_bug_pattern_scan(email: str):  # noqa: ARG001
 
 @bp.post("/run-security-posture-scan")
 @login_required
+@limiter.limit(UTILITY_RUN, error_message=UTILITY_RUN_MESSAGE)
 def run_security_posture_scan(email: str):  # noqa: ARG001
     """#236 — run the #227 monthly security-posture audit in-process
     and return findings inline. Skips the SendGrid email path. The
@@ -499,6 +505,16 @@ _coverage_job_lock = __import__("threading").Lock()
 
 
 def _read_coverage_job_state() -> dict:
+    """The coverage job's state (#250). Thin wrapper — the shared file
+    logic is ``_read_job_state`` (#477 reuses it for the tech-debt job)."""
+    return _read_job_state(_COVERAGE_JOB_STATE_PATH)
+
+
+def _write_coverage_job_state(state: dict) -> None:
+    _write_job_state(_COVERAGE_JOB_STATE_PATH, state)
+
+
+def _read_job_state(path: Path) -> dict:
     """Return the current job state from the shared state file, or the
     idle default if the file is missing / malformed.
 
@@ -508,7 +524,7 @@ def _read_coverage_job_state() -> dict:
     mutate _COVERAGE_IDLE_STATE.
     """
     try:
-        text = _COVERAGE_JOB_STATE_PATH.read_text(encoding="utf-8")
+        text = path.read_text(encoding="utf-8")
         parsed = json.loads(text)
         if not isinstance(parsed, dict):
             return dict(_COVERAGE_IDLE_STATE)
@@ -520,22 +536,22 @@ def _read_coverage_job_state() -> dict:
         return dict(_COVERAGE_IDLE_STATE)
 
 
-def _write_coverage_job_state(state: dict) -> None:
+def _write_job_state(path: Path, state: dict) -> None:
     """Atomic write of the job state to the shared file. Uses a
     sibling `.tmp` file + `os.replace()` so readers never see a
     partial state — they get either the old file or the new file,
     never a half-written one.
     """
-    tmp = _COVERAGE_JOB_STATE_PATH.with_suffix(".json.tmp")
+    tmp = path.with_suffix(".json.tmp")
     try:
         tmp.write_text(json.dumps(state), encoding="utf-8")
         # `Path.replace` calls `os.replace`, which is atomic across
         # POSIX (and best-effort on Windows). For Railway prod
         # (Linux containers) this is truly atomic.
-        tmp.replace(_COVERAGE_JOB_STATE_PATH)
+        tmp.replace(path)
     except OSError as e:
         logger.warning(
-            "utilities: coverage state write failed (continuing): "
+            "utilities: job state write failed (continuing): "
             "%s: %s",
             type(e).__name__, e,
         )
@@ -701,6 +717,7 @@ def _run_coverage_audit_subprocess(json_path: str) -> None:
 
 @bp.post("/run-coverage-audit")
 @login_required
+@limiter.limit(UTILITY_RUN, error_message=UTILITY_RUN_MESSAGE)
 def run_coverage_audit(email: str):  # noqa: ARG001
     """#229b — kick off a coverage-audit subprocess in the background.
 
@@ -790,32 +807,95 @@ def coverage_audit_status(email: str):  # noqa: ARG001
     return jsonify(snapshot)
 
 
+# #477 (2026-10-15): the tech-debt audit is a background job too. Its
+# dependency-drift check shells out to `pip list --outdated` and `npm
+# outdated` (120 s timeout each) and code-duplication to jscpd (180 s),
+# so a synchronous POST could run past gunicorn's 120 s worker timeout,
+# which kills the worker mid-request. Same shape as the coverage job
+# above — one slot, state in a shared /tmp file, the page polls
+# /tech-debt-audit-status — so the UI reuses pollAsyncJob.
+_TECH_DEBT_JOB_STATE_PATH = _COVERAGE_JOB_STATE_PATH.with_name(
+    "taskmanager_tech_debt_audit_state.json",
+)
+_tech_debt_job_lock = __import__("threading").Lock()
+
+
+def _run_tech_debt_audit_job(started_iso: str) -> None:
+    """Background-thread target: run the checks, record complete / error.
+    Catches everything so the slot can't stay stuck at "running"."""
+    started = datetime.datetime.fromisoformat(started_iso)
+    result = None
+    try:
+        from scripts import check_tech_debt
+        # #243 — autofile to BACKLOG.md alongside the email channel.
+        result = _run_audit_script_checks(
+            check_tech_debt, audit_name="tech-debt",
+        )
+        update = {"status": "complete", "result": result, "error": None}
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            "utilities: tech-debt audit errored: %s: %s", type(e).__name__, e,
+        )
+        update = {"status": "error", "result": None,
+                  "error": f"{type(e).__name__}: {e}"}
+    finished = datetime.datetime.now(datetime.UTC)
+    with _tech_debt_job_lock:
+        cur = _read_job_state(_TECH_DEBT_JOB_STATE_PATH)
+        cur.update(update)
+        cur.update({
+            "finished_at": finished.isoformat(),
+            "duration_seconds": (finished - started).total_seconds(),
+        })
+        _write_job_state(_TECH_DEBT_JOB_STATE_PATH, cur)
+    logger.info(
+        "utilities: tech-debt audit %s (total=%s)", update["status"],
+        result["total"] if result else "-",
+    )
+
+
 @bp.post("/run-tech-debt-audit")
 @login_required
+@limiter.limit(UTILITY_RUN, error_message=UTILITY_RUN_MESSAGE)
 def run_tech_debt_audit(email: str):  # noqa: ARG001
-    """#236 — run the #228 weekly tech-debt audit in-process and
-    return findings inline. Skips the SendGrid email path.
-
-    Note: the `dependency-drift` check inside this audit shells out
-    to `pip list --outdated` and `npm outdated`, both of which can
-    take a few seconds on first call. On the Railway host the
-    runtime is normally < 5s; if it consistently exceeds 10s,
-    consider moving to a background-job pattern.
+    """#236 / #477 — start the #228 weekly tech-debt audit in the
+    background. Returns ``{status: "running", started_at}`` at once; the
+    page polls GET /api/utilities/tech-debt-audit-status, whose
+    ``result`` is the ``{total, per_check, findings}`` inline-scan shape
+    once ``status`` is "complete". 409 while a run is in flight.
     """
-    from scripts import check_tech_debt
-    # #243 — autofile to BACKLOG.md alongside the email channel.
-    result = _run_audit_script_checks(
-        check_tech_debt, audit_name="tech-debt",
-    )
-    logger.info(
-        "utilities: tech-debt audit triggered via UI, total=%d",
-        result["total"],
-    )
-    return jsonify(result)
+    import threading
+
+    with _tech_debt_job_lock:
+        cur = _read_job_state(_TECH_DEBT_JOB_STATE_PATH)
+        if cur["status"] == "running":
+            return jsonify({
+                "error": "A tech-debt audit is already running",
+                "started_at": cur["started_at"],
+            }), 409
+        started_iso = datetime.datetime.now(datetime.UTC).isoformat()
+        _write_job_state(_TECH_DEBT_JOB_STATE_PATH, {
+            **_COVERAGE_IDLE_STATE,
+            "status": "running",
+            "started_at": started_iso,
+        })
+    threading.Thread(
+        target=_run_tech_debt_audit_job, args=(started_iso,),
+        daemon=True, name="tech-debt-audit-runner",
+    ).start()
+    logger.info("utilities: tech-debt audit started via UI")
+    return jsonify({"status": "running", "started_at": started_iso})
+
+
+@bp.get("/tech-debt-audit-status")
+@login_required
+def tech_debt_audit_status(email: str):  # noqa: ARG001
+    """#477 — poll the tech-debt job (same shape as coverage-audit-status)."""
+    return jsonify(_read_job_state(_TECH_DEBT_JOB_STATE_PATH))
 
 
 @bp.post("/trigger-restore-drill")
 @login_required
+@limiter.limit(UTILITY_RUN, error_message=UTILITY_RUN_MESSAGE)
 def trigger_restore_drill(email: str):  # noqa: ARG001
     """Dispatch the `monthly-restore-drill.yml` GitHub Actions workflow
     ad-hoc.

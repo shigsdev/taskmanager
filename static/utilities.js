@@ -75,11 +75,17 @@
             cleanResultText: "Audit CLEAN — no findings across the 4 checks.",
             postRunHint: "Same checks as the 1st-of-month 13:00 UTC cron.",
         },
+        // #477 — async too: pip / npm outdated + jscpd could run past the
+        // server's 120 s request limit, so it runs in the background and
+        // the page polls, exactly like the coverage audit below.
         "run-tech-debt-audit": {
             runUrl: "/api/utilities/run-tech-debt-audit",
+            statusUrl: "/api/utilities/tech-debt-audit-status",
             inlineScan: true,
+            asyncJob: true,
+            pollIntervalMs: 2000,
             cleanResultText: "Audit CLEAN — no findings across the 4 checks.",
-            postRunHint: "Same checks as the Saturday 13:00 UTC weekly cron. (Slower than the other scans — pip outdated + jscpd duplication detection take ~5-15s.)",
+            postRunHint: "Same checks as the Saturday 13:00 UTC weekly cron.",
         },
         // #229b — async inline-scan (runs pytest --cov as a background
         // subprocess; the page polls for status every 2s and renders

@@ -618,6 +618,11 @@ Report.
      Add linked task on an archived goal and the /recurring editor with a
      project of the other type each say why and change nothing. A task
      already on an archived project still saves unchanged (the quiet case).
+     #477: on /utilities, Run the tech-debt audit (stub its run + status
+     answers — a real run auto-files rows into your local BACKLOG.md): the
+     button counts "Running… (Ns)", then the per-check result shows; make
+     any Run answer 429 — the card reads "Failed: Too many runs — wait a
+     minute and try again." (the limit itself is covered by pytest).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -791,6 +796,8 @@ Report.
   Bin: done on a deleted task refused PASS    Bin: done on a deleted task refused PASS
   Links: type change drops project PASS       Links: type change drops project PASS
   Links: bad pick says why      PASS          Links: bad pick says why      PASS
+  Utilities: tech-debt polls    PASS          Utilities: tech-debt polls    PASS
+  Utilities: 429 says wait      PASS          Utilities: 429 says wait      PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS

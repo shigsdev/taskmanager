@@ -44,3 +44,7 @@ PAID_API = "20 per minute"
 # OUTBOUND_FETCH — not a paid API; caps a route that holds a worker on a
 #   server-side outbound fetch (tasks url-preview).
 OUTBOUND_FETCH = "30 per minute"
+# #477: /utilities buttons that run an audit in this container or dispatch
+# a GitHub Actions workflow (each run spends CPU / Actions minutes).
+UTILITY_RUN = "5 per minute"
+UTILITY_RUN_MESSAGE = "Too many runs — wait a minute and try again."
