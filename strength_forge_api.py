@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import uuid
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify
 
 import strength_forge_service as svc
 from auth import login_required
+from utils import optional_json_body
 
 bp = Blueprint("strength_forge_api", __name__, url_prefix="/api/strength-forge")
 
@@ -28,6 +29,7 @@ def list_sessions(email: str):  # noqa: ARG001
 
 @bp.post("/sessions")
 @login_required
+@optional_json_body
 def create_session(email: str):  # noqa: ARG001
     """Log a completed workout (dated today).
 
@@ -35,8 +37,11 @@ def create_session(email: str):  # noqa: ARG001
     ``sets`` array — ``[{exercise_id, name, set_number, reps, resistance}]``
     — logs per-set detail (#287). Both paths are dated today.
     """
-    data = request.get_json(silent=True) or {}
-    plan_type = (data.get("plan_type") or "").strip()
+    data = g.json_body
+    plan_type = data.get("plan_type")
+    if plan_type is not None and not isinstance(plan_type, str):  # #476
+        return jsonify({"error": "plan_type must be text"}), 422
+    plan_type = (plan_type or "").strip()
     sets = data.get("sets")
     try:
         if isinstance(sets, list) and sets:
@@ -97,10 +102,14 @@ def start_flare(email: str):  # noqa: ARG001
 
 @bp.patch("/flare")
 @login_required
+@optional_json_body
 def update_flare(email: str):  # noqa: ARG001
     """Move the active flare to a protocol phase (body: {"phase": ...})."""
-    data = request.get_json(silent=True) or {}
-    phase = (data.get("phase") or "").strip()
+    data = g.json_body
+    phase = data.get("phase")
+    if phase is not None and not isinstance(phase, str):  # #476
+        return jsonify({"error": "phase must be text"}), 422
+    phase = (phase or "").strip()
     try:
         svc.set_flare_phase(phase)
     except ValueError as exc:

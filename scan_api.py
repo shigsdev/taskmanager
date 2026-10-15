@@ -31,7 +31,7 @@ _VALID_KINDS = {"tasks", "task", "goals", "goal", "projects", "project"}
 
 def _normalize_kind(raw: str | None) -> str:
     """Return canonical 'tasks' / 'goals' / 'projects'. Defaults to 'tasks'."""
-    if not raw:
+    if not raw or not isinstance(raw, str):  # #476: not text → the default
         return "tasks"
     raw = raw.strip().lower()
     if raw in ("goal", "goals"):

@@ -39,13 +39,28 @@ _limiter.enabled = False
 # prod while every test passed. Check widths at flush, for every session, and
 # raise the same DataError Postgres would, so any write path that lets an
 # over-long value through fails HERE.
+#
+# #476: same for Integer — SQLite stores anything up to 2**63, Postgres
+# `integer` refuses past ±2**31-1 ("integer out of range").
 def _check_string_widths(session, _flush_context, _instances):
-    from sqlalchemy import String, inspect
+    from sqlalchemy import BigInteger, Integer, SmallInteger, String, inspect
     from sqlalchemy.exc import DataError
 
     for obj in list(session.new) + list(session.dirty):
         mapper = inspect(obj).mapper
         for col in mapper.columns:
+            if isinstance(col.type, Integer) and not isinstance(
+                col.type, (BigInteger, SmallInteger),
+            ):
+                attr = mapper.get_property_by_column(col).key
+                value = getattr(obj, attr, None)
+                if (isinstance(value, int) and not isinstance(value, bool)
+                        and abs(value) > 2**31 - 1):
+                    raise DataError(
+                        f"{col.table.name}.{col.name}", {},
+                        ValueError(f"integer out of range: {col.table.name}.{col.name}"),
+                    )
+                continue
             length = getattr(col.type, "length", None)
             if not isinstance(col.type, String) or not length:
                 continue

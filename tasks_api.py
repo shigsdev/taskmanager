@@ -30,7 +30,7 @@ from task_service import _serialize_repeat as _serialize_repeat  # noqa: F401
 from utils import enum_or_400 as _enum_or_400
 from utils import fit_length as _fit_length
 from utils import max_length as _max_length
-from utils import validate_json_body
+from utils import optional_json_body, parse_bool, parse_text, validate_json_body
 
 bp = Blueprint("tasks_api", __name__, url_prefix="/api/tasks")
 
@@ -101,6 +101,8 @@ def create(email: str):  # noqa: ARG001
     # payload always wins — the hint only fills an empty slot.
     project_warning = None
     hint = data.pop("project_hint", None)
+    if hint is not None and not isinstance(hint, str):  # #476
+        return jsonify({"error": "project_hint must be text", "field": "project_hint"}), 422
     if hint and not data.get("project_id"):
         task_type = data.get("type") if isinstance(data.get("type"), str) else None
         resolved_id, project_warning = resolve_project_hint(hint, task_type)
@@ -150,14 +152,16 @@ def subtasks(email: str, task_id: uuid.UUID):  # noqa: ARG001
 
 @bp.post("/<uuid:task_id>/complete")
 @login_required
+@optional_json_body
 def complete(email: str, task_id: uuid.UUID):  # noqa: ARG001
     """Complete a task. For parent tasks with open subtasks, pass
     ``{"complete_subtasks": true}`` to archive them too, or omit to
     get a 422 with the count of open subtasks.
     """
-    data = request.get_json(silent=True) or {}
-    complete_subs = bool(data.get("complete_subtasks"))
+    data = g.json_body
     try:
+        # #476: only a real true/false — bool("false") closed the subtasks.
+        complete_subs = parse_bool(data.get("complete_subtasks", False), "complete_subtasks")
         task = complete_parent_task(task_id, complete_subtasks=complete_subs)
     except ValidationError as e:
         return jsonify({"error": str(e), "field": e.field}), 422
@@ -168,16 +172,17 @@ def complete(email: str, task_id: uuid.UUID):  # noqa: ARG001
 
 @bp.post("/<uuid:task_id>/cancel")
 @login_required
+@optional_json_body
 def cancel(email: str, task_id: uuid.UUID):  # noqa: ARG001
     """Cancel a task. #176 mirror of /complete: for parent tasks with
     open subtasks, pass ``{"cancel_subtasks": true}`` to cancel them
     too, or omit to get a 422 with the count of open subtasks. An
     optional ``{"cancellation_reason": "..."}`` is stored on the parent.
     """
-    data = request.get_json(silent=True) or {}
-    cancel_subs = bool(data.get("cancel_subtasks"))
-    reason = data.get("cancellation_reason")
+    data = g.json_body
     try:
+        cancel_subs = parse_bool(data.get("cancel_subtasks", False), "cancel_subtasks")  # #476
+        reason = parse_text(data.get("cancellation_reason"), "cancellation_reason")
         task = cancel_parent_task(
             task_id, cancel_subtasks=cancel_subs, reason=reason
         )
@@ -349,7 +354,8 @@ def url_preview(email: str):  # noqa: ARG001
     """
     data = g.json_body
 
-    url = (data.get("url") or "").strip()
+    url = data.get("url")
+    url = url.strip() if isinstance(url, str) else ""  # #476: a number is no URL
     if not url.startswith(("http://", "https://")):
         return jsonify({"error": "invalid url"}), 400
 

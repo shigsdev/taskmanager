@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -1105,6 +1106,19 @@ def find_recent_duplicate(
     ).first()
 
 
+def _finite_or_none(value: Any) -> float | None:
+    """A telemetry number, or None. #476: Infinity / NaN (Flask parses those
+    JSON literals) are dropped too — Postgres JSONB refuses them, which
+    failed the whole reflection save."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return None
+    return n if math.isfinite(n) else None
+
+
 def _normalise_raw_segments(
     raw_segments: list[dict[str, Any]] | None,
 ) -> list[dict[str, Any]]:
@@ -1133,16 +1147,8 @@ def _normalise_raw_segments(
             text = text[:20000]
 
         # Optional telemetry fields — coerce to float, drop if invalid.
-        duration = seg.get("duration_seconds")
-        try:
-            duration = float(duration) if duration is not None else None
-        except (TypeError, ValueError):
-            duration = None
-        cost = seg.get("cost_usd")
-        try:
-            cost = float(cost) if cost is not None else None
-        except (TypeError, ValueError):
-            cost = None
+        duration = _finite_or_none(seg.get("duration_seconds"))
+        cost = _finite_or_none(seg.get("cost_usd"))
 
         # recorded_at is a client-supplied ISO timestamp. Validate the
         # shape — anything that doesn't parse becomes None rather than

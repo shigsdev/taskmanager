@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import uuid
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify
 from sqlalchemy import and_, or_
 
 from auth import voice_action_or_login
@@ -35,7 +35,7 @@ from task_service import (
     get_task,
     update_task,
 )
-from utils import local_today_date
+from utils import local_today_date, optional_json_body
 
 bp = Blueprint("voice_review_api", __name__, url_prefix="/api/voice-review")
 
@@ -124,13 +124,14 @@ def complete(email: str, task_id: uuid.UUID):  # noqa: ARG001
 @bp.post("/<uuid:task_id>/move")
 @voice_action_or_login
 @limiter.limit("120 per minute")
+@optional_json_body
 def move(email: str, task_id: uuid.UUID):  # noqa: ARG001
     """Move a task to a WHITELISTED tier (today/tomorrow/next_week/backlog).
     The whitelist check is the load-bearing in-scope restriction — a voice
     token must never be able to set an arbitrary tier or any other field."""
-    data = request.get_json(silent=True) or {}
+    data = g.json_body
     tier = data.get("tier")
-    if tier not in _MOVE_WHITELIST:
+    if not isinstance(tier, str) or tier not in _MOVE_WHITELIST:
         return (
             jsonify(
                 {

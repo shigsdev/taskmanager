@@ -32,10 +32,11 @@ from __future__ import annotations
 
 import uuid
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from auth import login_required
 from rate_limit import LLM_HEAVY, limiter
+from utils import optional_json_body, strict_int
 from weekly_focus_service import (
     clear_slot,
     get_displayed_focus,
@@ -70,9 +71,10 @@ def index(email: str):  # noqa: ARG001
 
 @bp.patch("/<int:slot_order>")
 @login_required
+@optional_json_body
 def upsert(slot_order: int, email: str):  # noqa: ARG001
     """Upsert the text + optional goal link for a slot."""
-    data = request.get_json(silent=True) or {}
+    data = g.json_body
     text = data.get("text")
     goal_id_raw = data.get("goal_id")
     goal_id: uuid.UUID | None = None
@@ -106,12 +108,13 @@ def clear(slot_order: int, email: str):  # noqa: ARG001
 
 @bp.patch("/settings/slot-count")
 @login_required
+@optional_json_body
 def set_slots(email: str):  # noqa: ARG001
     """Update the configurable slot count (1-7)."""
-    data = request.get_json(silent=True) or {}
+    data = g.json_body
     raw = data.get("slot_count")
     try:
-        n = int(raw)
+        n = strict_int(raw)  # #476: Infinity was a 500
     except (TypeError, ValueError):
         return jsonify({"error": "slot_count must be an integer"}), 422
     n = set_slot_count(n)

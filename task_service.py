@@ -20,6 +20,7 @@ from utils import check_length as _check_length
 from utils import max_length as _max_length
 from utils import parse_enum as _parse_enum
 from utils import parse_int as _parse_int
+from utils import parse_text as _parse_text
 from utils import parse_uuid as _parse_uuid
 
 # --- Task-specific coercion helpers ------------------------------------------
@@ -64,6 +65,16 @@ def _parse_checklist(value: Any) -> list:
         return []
     if not isinstance(value, list):
         raise ValidationError("checklist must be a list", "checklist")
+    if not all(isinstance(item, dict) for item in value):  # #476
+        raise ValidationError("checklist items must be objects", "checklist")
+    return value
+
+
+def _check_repeat(value: Any) -> dict | None:
+    """#476: ``repeat`` is an object or null — a string or list reached
+    ``repeat.get`` in the template sync (500)."""
+    if value is not None and not isinstance(value, dict):
+        raise ValidationError("repeat must be an object or null", "repeat")
     return value
 
 
@@ -567,7 +578,7 @@ def resolve_project_hint(
 
 
 def create_task(data: dict) -> Task:
-    title = (data.get("title") or "").strip()
+    title = _parse_text(data.get("title"), "title").strip()
     if not title:
         raise ValidationError("title is required", "title")
     _check_title(title)
@@ -623,7 +634,7 @@ def create_task(data: dict) -> Task:
         goal_id=goal_id,
         due_date=_parse_date(data.get("due_date")),
         url=_parse_url(data.get("url")),
-        notes=(data.get("notes") or None),
+        notes=(_parse_text(data.get("notes"), "notes") or None),
         checklist=_parse_checklist(data.get("checklist")),
         sort_order=_parse_int(data.get("sort_order", 0), "sort_order"),
     )
@@ -633,11 +644,11 @@ def create_task(data: dict) -> Task:
     # a task with due_date=today in a planning tier (this_week / next_week
     # / backlog). Same hook as update_task; symmetric.
     _auto_promote_tier_on_due_today(task, data)
+    repeat = _check_repeat(data.get("repeat"))
     db.session.add(task)
     db.session.flush()  # assign task.id before linking recurring template
 
-    repeat = data.get("repeat")
-    if isinstance(repeat, dict):
+    if repeat is not None:
         _apply_repeat(task, repeat)
 
     db.session.commit()
@@ -807,7 +818,7 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
         task.planner_ignore = False
 
     if "title" in data:
-        title = (data["title"] or "").strip()
+        title = _parse_text(data["title"], "title").strip()
         if not title:
             raise ValidationError("title cannot be empty", "title")
         task.title = _check_title(title)
@@ -924,14 +935,12 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
         task.url = _parse_url(data["url"])
 
     if "notes" in data:
-        task.notes = data["notes"] or None
+        task.notes = _parse_text(data["notes"], "notes") or None
 
     if "cancellation_reason" in data:
         # Empty string normalizes to None so the field clears cleanly when
         # the user un-cancels a task (status → active) and re-cancels later.
-        reason = data["cancellation_reason"]
-        if reason is not None:
-            reason = str(reason).strip()
+        reason = _parse_text(data["cancellation_reason"], "cancellation_reason").strip()
         task.cancellation_reason = _check_reason(reason or None)
 
     if "checklist" in data:
@@ -941,7 +950,7 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
         task.sort_order = _parse_int(data["sort_order"], "sort_order")
 
     if "repeat" in data:
-        _update_repeat(task, data["repeat"])
+        _update_repeat(task, _check_repeat(data["repeat"]))
 
     # #28: after all explicit updates, if the tier is TODAY/TOMORROW
     # and due_date ended up null (and wasn't explicitly set in this

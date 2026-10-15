@@ -151,8 +151,8 @@ def bulk_patch(email: str):  # noqa: ARG001
     if not isinstance(updates, dict) or not updates:
         return jsonify({"error": "updates must be a non-empty dict"}), 422
     try:
-        parsed_ids = [uuid.UUID(s) for s in ids]
-    except (TypeError, ValueError):
+        parsed_ids = [uuid.UUID(s) for s in ids]  # #476: a number id → AttributeError
+    except (TypeError, ValueError, AttributeError):
         return jsonify({"error": "every entry in template_ids must be a UUID"}), 422
 
     updated = 0
@@ -184,8 +184,8 @@ def bulk_delete(email: str):  # noqa: ARG001
             "error": f"too many template_ids ({len(ids)}); max 200 per call",
         }), 422
     try:
-        parsed_ids = [uuid.UUID(s) for s in ids]
-    except (TypeError, ValueError):
+        parsed_ids = [uuid.UUID(s) for s in ids]  # #476: a number id → AttributeError
+    except (TypeError, ValueError, AttributeError):
         return jsonify({"error": "every entry in template_ids must be a UUID"}), 422
     deleted = 0
     not_found = 0

@@ -40,6 +40,9 @@ from utils import (
     check_length,
     fit_length,
     max_length,
+    parse_bool,
+    parse_text,
+    strict_int,
 )
 from utils import parse_enum as _parse_enum
 from utils import parse_uuid as _parse_uuid
@@ -60,7 +63,7 @@ def _check_title(title: str) -> str:
 
 
 def _check_url(value) -> str | None:
-    return check_length(value or None, _URL_MAX, "url", "URL")
+    return check_length(parse_text(value, "url") or None, _URL_MAX, "url", "URL")
 
 
 def _clean_subtasks_snapshot(value: object) -> list[dict]:
@@ -91,7 +94,7 @@ def _parse_day_of_week(value: object) -> int | None:
     if value is None:
         return None
     try:
-        v = int(value)
+        v = strict_int(value)  # #476
     except (TypeError, ValueError) as e:
         raise ValidationError("day_of_week must be integer 0-6", "day_of_week") from e
     if v < 0 or v > 6:
@@ -108,7 +111,7 @@ def _parse_days_of_week(value: object) -> list[int] | None:
     parsed: list[int] = []
     for x in value:
         try:
-            v = int(x)
+            v = strict_int(x)  # #476
         except (TypeError, ValueError) as e:
             raise ValidationError(
                 "days_of_week entries must be integers 0-6", "days_of_week"
@@ -130,7 +133,7 @@ def _parse_day_of_month(value: object) -> int | None:
     if value is None:
         return None
     try:
-        v = int(value)
+        v = strict_int(value)  # #476
     except (TypeError, ValueError) as e:
         raise ValidationError("day_of_month must be integer 1-31", "day_of_month") from e
     if v < 1 or v > 31:
@@ -142,7 +145,7 @@ def _parse_week_of_month(value: object) -> int | None:
     if value is None:
         return None
     try:
-        v = int(value)
+        v = strict_int(value)  # #476
     except (TypeError, ValueError) as e:
         raise ValidationError("week_of_month must be integer 1-4", "week_of_month") from e
     if v < 1 or v > 4:
@@ -264,7 +267,7 @@ def _validate_date_window(start_date: date | None, end_date: date | None) -> Non
 
 def create_recurring(data: dict) -> RecurringTask:
     """Create a new recurring task template."""
-    title = (data.get("title") or "").strip()
+    title = parse_text(data.get("title"), "title").strip()
     if not title:
         raise ValidationError("title is required", "title")
     _check_title(title)
@@ -306,7 +309,7 @@ def create_recurring(data: dict) -> RecurringTask:
         type=task_type,
         project_id=_parse_uuid(data.get("project_id"), "project_id"),
         goal_id=_parse_uuid(data.get("goal_id"), "goal_id"),
-        notes=data.get("notes") or None,
+        notes=parse_text(data.get("notes"), "notes") or None,
         checklist=data.get("checklist") if isinstance(data.get("checklist"), list) else None,
         url=url,
         subtasks_snapshot=_clean_subtasks_snapshot(data.get("subtasks_snapshot")),
@@ -355,7 +358,7 @@ def update_recurring(rt_id: uuid.UUID, data: dict) -> RecurringTask | None:
     )
 
     if "title" in data:
-        title = (data["title"] or "").strip()
+        title = parse_text(data["title"], "title").strip()
         if not title:
             raise ValidationError("title cannot be empty", "title")
         rt.title = _check_title(title)
@@ -403,7 +406,7 @@ def update_recurring(rt_id: uuid.UUID, data: dict) -> RecurringTask | None:
     unlink_other_type_project(rt, old_type=old_type, data=data, old_goal_id=old_goal_id)
 
     if "notes" in data:
-        rt.notes = data["notes"] or None
+        rt.notes = parse_text(data["notes"], "notes") or None
 
     if "checklist" in data:
         rt.checklist = data["checklist"] if isinstance(data["checklist"], list) else None
@@ -420,7 +423,8 @@ def update_recurring(rt_id: uuid.UUID, data: dict) -> RecurringTask | None:
         # change: a Pause on a template an archive already paused must stop
         # the next unarchive from waking it. Safe from the project_id trap
         # above because the /recurring editor's Save never sends is_active.
-        rt.is_active = bool(data["is_active"])
+        # #476: only a real true/false — bool("false") resumed the template.
+        rt.is_active = parse_bool(data["is_active"], "is_active")
         rt.paused_by_project_archive = False
         rt.paused_by_goal_archive = False  # #368
         if rt.is_active:

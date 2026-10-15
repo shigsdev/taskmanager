@@ -295,7 +295,10 @@ def submit(email: str):  # noqa: ARG001
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
             return jsonify({"error": "JSON body or audio file required"}), 400
-        transcript = (data.get("text") or "").strip()
+        text = data.get("text")
+        if text is not None and not isinstance(text, str):  # #476
+            return jsonify({"error": "text must be text"}), 422
+        transcript = (text or "").strip()
         input_mode = ReflectionInputMode.TYPED
 
     if not transcript or not transcript.strip():

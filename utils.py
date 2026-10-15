@@ -4,6 +4,7 @@ Centralizes common helpers to avoid duplication (per CLAUDE.md).
 """
 from __future__ import annotations
 
+import math
 import os
 import re
 import uuid
@@ -162,6 +163,28 @@ def validate_json_body(fn):
     return _wrapped
 
 
+def optional_json_body(fn):
+    """Decorator: the optional-body twin of ``validate_json_body`` (#476).
+
+    No body (or one that isn't JSON) → ``g.json_body = {}``; a JSON object
+    → itself; any other JSON (a list, string, number) →
+    ``{"error": "JSON body must be an object"}, 400``. Routes used to do
+    ``request.get_json(silent=True) or {}`` and then ``.get`` on a list.
+    """
+
+    @wraps(fn)
+    def _wrapped(*args, **kwargs):
+        data = request.get_json(silent=True)
+        if data is None:
+            data = {}
+        if not isinstance(data, dict):
+            return jsonify({"error": "JSON body must be an object"}), 400
+        g.json_body = data
+        return fn(*args, **kwargs)
+
+    return _wrapped
+
+
 # --- Service-layer coercion helpers ------------------------------------------
 
 
@@ -223,21 +246,63 @@ def parse_uuid(value: Any, field: str) -> uuid.UUID | None:
         raise ValidationError(f"invalid {field}", field) from e
 
 
+# Postgres `integer` — every Integer column in models.py.
+INT_MAX = 2**31 - 1
+
+
+def strict_int(value: Any) -> int:
+    """``int(value)`` without the bending (#476): ``True``/``False``, a
+    fraction (2.5 would become 2) and Infinity / NaN (Flask parses those
+    JSON literals; ``int(inf)`` is an OverflowError) raise TypeError /
+    ValueError like a bad ``int()`` argument, so callers keep their own
+    ``except (TypeError, ValueError)`` and message. A whole float (3.0)
+    and a numeric string ("4") still convert."""
+    if isinstance(value, bool):
+        raise TypeError("a boolean is not a whole number")
+    if isinstance(value, float) and not (math.isfinite(value) and value.is_integer()):
+        raise ValueError("not a whole number")
+    return int(value)
+
+
 def parse_int(value: Any, field: str, *, allow_none: bool = False) -> int | None:
     """Parse a value into an int, or raise ValidationError.
 
     Args:
         allow_none: If True, return None when value is None.
                     If False (default), None raises ValidationError.
+
+    #476: refuses what ``strict_int`` refuses, and a value outside the
+    Postgres ``integer`` range (it would be an opaque "Database error").
     """
     if value is None:
         if allow_none:
             return None
         raise ValidationError(f"{field} is required", field)
     try:
-        return int(value)
+        n = strict_int(value)
     except (TypeError, ValueError) as e:
         raise ValidationError(f"invalid {field}: must be an integer", field) from e
+    if abs(n) > INT_MAX:
+        raise ValidationError(f"{field} is too large", field)
+    return n
+
+
+def parse_bool(value: Any, field: str) -> bool:
+    """Only a real JSON ``true`` / ``false`` (#476). ``bool("false")`` is
+    True, which resumed paused templates and closed open subtasks."""
+    if not isinstance(value, bool):
+        raise ValidationError(f"{field} must be true or false", field)
+    return value
+
+
+def parse_text(value: Any, field: str) -> str:
+    """A text field's value: ``None`` → "", a string as is, anything else
+    refused (#476) — ``.strip()`` on a number was a 500."""
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ValidationError(f"{field} must be text", field)
+    return value
 
 
 # --- File upload validation --------------------------------------------------

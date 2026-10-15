@@ -19,9 +19,12 @@ from models import (
 )
 from recurring_service import cascade_parent_archive
 from utils import (
+    INT_MAX,
     ValidationError,  # noqa: F401 — re-exported for API layer
     check_length,
     max_length,
+    parse_text,
+    strict_int,
 )
 from utils import parse_enum as _parse_enum
 from utils import parse_int as _parse_int
@@ -49,7 +52,7 @@ def _check_name(name: str) -> str:
 
 
 def _quarter(value) -> str | None:
-    q = (value or "").strip() or None
+    q = parse_text(value, "target_quarter").strip() or None
     return check_length(q, _QUARTER_MAX, "target_quarter", "Target quarter")
 
 
@@ -127,7 +130,7 @@ def seed_default_projects() -> list[Project]:
 
 
 def create_project(data: dict) -> Project:
-    name = (data.get("name") or "").strip()
+    name = parse_text(data.get("name"), "name").strip()
     if not name:
         raise ValidationError("name is required", "name")
     _check_name(name)
@@ -155,8 +158,8 @@ def create_project(data: dict) -> Project:
         type=project_type,
         color=color,
         target_quarter=target_quarter,
-        actions=(data.get("actions") or "").strip() or None,
-        notes=(data.get("notes") or "").strip() or None,
+        actions=parse_text(data.get("actions"), "actions").strip() or None,
+        notes=parse_text(data.get("notes"), "notes").strip() or None,
         status=_parse_enum(ProjectStatus, data.get("status", "not_started"), "status"),
         priority=priority,
         goal_id=goal_id,
@@ -251,13 +254,15 @@ def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
             check_goal_link(new_goal_id)
 
     if "name" in data:
-        name = (data["name"] or "").strip()
+        name = parse_text(data["name"], "name").strip()
         if not name:
             raise ValidationError("name cannot be empty", "name")
         project.name = _check_name(name)
 
     if "type" in data:
-        project.type = _parse_enum(ProjectType, data["type"], "type")
+        # #476: null keeps the current value, as tasks / goals / templates
+        # do (it was NULL into a NOT NULL column → "Database error").
+        project.type = _parse_enum(ProjectType, data["type"], "type") or project.type
 
     if "color" in data:
         project.color = _parse_color(data["color"])  # PR28 audit fix #3
@@ -266,13 +271,13 @@ def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
         project.target_quarter = _quarter(data["target_quarter"])
 
     if "actions" in data:
-        project.actions = (data["actions"] or "").strip() or None
+        project.actions = parse_text(data["actions"], "actions").strip() or None
 
     if "notes" in data:
-        project.notes = (data["notes"] or "").strip() or None
+        project.notes = parse_text(data["notes"], "notes").strip() or None
 
     if "status" in data:
-        project.status = _parse_enum(ProjectStatus, data["status"], "status")
+        project.status = _parse_enum(ProjectStatus, data["status"], "status") or project.status
 
     if "priority" in data:
         if data["priority"] in (None, ""):
@@ -355,9 +360,12 @@ def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
     if "priority_order" in data or "sort_order" in data:
         raw = data.get("priority_order", data.get("sort_order"))
         try:
-            project.priority_order = int(raw)
+            order = strict_int(raw)  # #476
         except (TypeError, ValueError) as e:
             raise ValidationError("priority_order must be integer", "priority_order") from e
+        if abs(order) > INT_MAX:
+            raise ValidationError("priority_order must be integer", "priority_order")
+        project.priority_order = order
 
     unknown = set(data) - _UPDATABLE_FIELDS
     if unknown:

@@ -24,6 +24,7 @@ from utils import (
     check_length,
     max_length,
     parse_int,
+    parse_text,
 )
 from utils import parse_enum as _parse_enum
 
@@ -33,7 +34,7 @@ _QUARTER_MAX = max_length(Goal.__table__.c.target_quarter)
 
 
 def _quarter(value: Any) -> str | None:
-    q = (value or "").strip() or None
+    q = parse_text(value, "target_quarter").strip() or None
     return check_length(q, _QUARTER_MAX, "target_quarter", "Target quarter")
 
 
@@ -46,7 +47,7 @@ def _parse_int(value: Any, field: str) -> int | None:
 
 
 def create_goal(data: dict) -> Goal:
-    title = (data.get("title") or "").strip()
+    title = parse_text(data.get("title"), "title").strip()
     if not title:
         raise ValidationError("title is required", "title")
     check_length(title, _TITLE_MAX, "title", "Title")
@@ -65,10 +66,10 @@ def create_goal(data: dict) -> Goal:
         category=category,
         priority=priority,
         priority_rank=_parse_int(data.get("priority_rank"), "priority_rank"),
-        actions=data.get("actions") or None,
+        actions=parse_text(data.get("actions"), "actions") or None,
         target_quarter=target_quarter,
         status=_parse_enum(GoalStatus, data.get("status"), "status") or GoalStatus.NOT_STARTED,
-        notes=data.get("notes") or None,
+        notes=parse_text(data.get("notes"), "notes") or None,
     )
     db.session.add(goal)
     db.session.commit()
@@ -118,7 +119,7 @@ def update_goal(goal_id: uuid.UUID, data: dict) -> Goal | None:
         return None
 
     if "title" in data:
-        title = (data["title"] or "").strip()
+        title = parse_text(data["title"], "title").strip()
         if not title:
             raise ValidationError("title cannot be empty", "title")
         goal.title = check_length(title, _TITLE_MAX, "title", "Title")
@@ -133,7 +134,7 @@ def update_goal(goal_id: uuid.UUID, data: dict) -> Goal | None:
         goal.priority_rank = _parse_int(data["priority_rank"], "priority_rank")
 
     if "actions" in data:
-        goal.actions = data["actions"] or None
+        goal.actions = parse_text(data["actions"], "actions") or None
 
     if "target_quarter" in data:
         goal.target_quarter = _quarter(data["target_quarter"])
@@ -142,7 +143,7 @@ def update_goal(goal_id: uuid.UUID, data: dict) -> Goal | None:
         goal.status = _parse_enum(GoalStatus, data["status"], "status") or goal.status
 
     if "notes" in data:
-        goal.notes = data["notes"] or None
+        goal.notes = parse_text(data["notes"], "notes") or None
 
     if "is_active" in data:
         if not isinstance(data["is_active"], bool):

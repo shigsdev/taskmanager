@@ -181,9 +181,11 @@ def set_milestone(
             and _parse_date(target_date) is None):
         raise ValueError("target_date must be YYYY-MM-DD")
 
+    if label is not None and not isinstance(label, str):  # #476
+        raise ValueError("label must be text")
     if goal_id:
         try:
-            goal = db.session.get(Goal, uuid.UUID(goal_id))
+            goal = db.session.get(Goal, uuid.UUID(str(goal_id)))  # #476: str() — a number id
         except (TypeError, ValueError) as exc:
             raise ValueError("goal_id must be a UUID") from exc
         if goal is None:

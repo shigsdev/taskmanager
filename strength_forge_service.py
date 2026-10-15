@@ -7,10 +7,11 @@ across the UTC/local boundary (cf. the #181/#240 date-drift fixes).
 """
 from __future__ import annotations
 
+import math
 from datetime import timedelta
 
 from models import FlareState, WorkoutSession, WorkoutSet, db
-from utils import local_today_date
+from utils import INT_MAX, local_today_date, strict_int
 
 # The loggable plans: band A/B + military sessions 1-3 + the #315 band
 # isolation ("one muscle at a time") sessions + the #320 split-routine days
@@ -122,10 +123,22 @@ def _coerce_reps(raw) -> int | None:
     if raw is None or raw == "":
         return None
     try:
-        n = int(raw)
+        n = strict_int(raw)  # #476: Infinity was a 500, True was 1 rep
     except (TypeError, ValueError):
         return None
+    if n > INT_MAX:
+        return None
     return max(0, n)
+
+
+def _row_text(raw) -> str:
+    """A per-set text field. #476: a number (a resistance of 25) is kept as
+    "25"; anything else that isn't text counts as blank."""
+    if isinstance(raw, str):
+        return raw
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool) and math.isfinite(raw):
+        return str(raw)
+    return ""
 
 
 def _clean_set_entry(entry: dict) -> WorkoutSet | None:
@@ -134,15 +147,15 @@ def _clean_set_entry(entry: dict) -> WorkoutSet | None:
     if not isinstance(entry, dict):
         return None
     reps = _coerce_reps(entry.get("reps"))
-    resistance = (entry.get("resistance") or "").strip()[:40] or None
+    resistance = _row_text(entry.get("resistance")).strip()[:40] or None
     if reps is None and not resistance:
         return None  # blank row — drop it
-    exercise_id = (entry.get("exercise_id") or "").strip()[:50] or "unknown"
-    exercise_name = (entry.get("name") or entry.get("exercise_name") or "").strip()[:120]
+    exercise_id = _row_text(entry.get("exercise_id")).strip()[:50] or "unknown"
+    exercise_name = _row_text(entry.get("name") or entry.get("exercise_name")).strip()[:120]
     if not exercise_name:
         exercise_name = exercise_id
     try:
-        set_number = int(entry.get("set_number") or 1)
+        set_number = strict_int(entry.get("set_number") or 1)  # #476
     except (TypeError, ValueError):
         set_number = 1
     set_number = max(1, min(set_number, 99))

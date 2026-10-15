@@ -130,8 +130,8 @@ def reorder(email: str):  # noqa: ARG001
     if not isinstance(ids, list):
         return jsonify({"error": "ordered_ids must be a list", "field": "ordered_ids"}), 422
     try:
-        parsed = [uuid.UUID(s) for s in ids]
-    except (TypeError, ValueError):
+        parsed = [uuid.UUID(s) for s in ids]  # #476: a number id → AttributeError
+    except (TypeError, ValueError, AttributeError):
         return jsonify({
             "error": "every entry in ordered_ids must be a UUID",
             "field": "ordered_ids",

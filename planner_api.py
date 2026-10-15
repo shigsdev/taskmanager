@@ -25,11 +25,12 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify
 
 from auth import login_required
 from models import Task, db
 from rate_limit import LLM_HEAVY, limiter
+from utils import ValidationError, optional_json_body, parse_bool
 from weekly_planner_service import compute_weekly_plan
 
 bp = Blueprint("planner_api", __name__, url_prefix="/api/planner")
@@ -38,9 +39,10 @@ bp = Blueprint("planner_api", __name__, url_prefix="/api/planner")
 @bp.post("/weekly")
 @login_required
 @limiter.limit(LLM_HEAVY)
+@optional_json_body
 def weekly(email: str):  # noqa: ARG001
     """Generate a Mon–Sun plan for the requested week."""
-    body = request.get_json(silent=True) or {}
+    body = g.json_body
     raw_start = body.get("start_date")
     start_date: date | None = None
     if raw_start:
@@ -64,12 +66,16 @@ def weekly(email: str):  # noqa: ARG001
 
 @bp.post("/ignore/<uuid:task_id>")
 @login_required
+@optional_json_body
 def toggle_ignore(email: str, task_id: uuid.UUID):  # noqa: ARG001
     """Set or clear ``Task.planner_ignore`` without touching other fields."""
-    body = request.get_json(silent=True) or {}
+    body = g.json_body
     if "ignore" not in body:
         return jsonify({"error": "body must include 'ignore' boolean"}), 400
-    flag = bool(body["ignore"])
+    try:
+        flag = parse_bool(body["ignore"], "ignore")  # #476
+    except ValidationError as e:
+        return jsonify({"error": str(e), "field": e.field}), 422
 
     task = db.session.get(Task, task_id)
     if task is None:
