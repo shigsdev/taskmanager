@@ -894,22 +894,21 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
         # #77 (2026-04-26) + PR24 audit refinement (BUG-2):
         #   - Assigning a project WITH a goal → cascade the goal onto
         #     the task (always overwrite — feature, not bug).
-        #   - Assigning a project WITHOUT a goal → preserve the task's
-        #     existing goal (silent-data-loss otherwise — the audit
-        #     finding).
-        #   - Clearing the project (project_id → None) → clear the goal
-        #     only if it CAME from the old project (#427). A goal set by
-        #     hand stays — the bulk toolbar's "No project" used to wipe
-        #     the goal of every selected task, project or not.
+        #   - Assigning a project WITHOUT a goal, or clearing the project
+        #     (project_id → None) → drop the goal only if it CAME from the
+        #     old project (#427, #461). A goal set by hand stays (the
+        #     PR24 audit's silent-data-loss finding); the old project's
+        #     goal doesn't linger under a project it doesn't belong to —
+        #     the task panel's rule since 2026-05-04
+        #     (filter_helpers.goalAfterProjectChange), now the server's
+        #     too, so a drag or a bulk edit agrees with the panel.
         # If the caller ALSO sets goal_id explicitly in this same
         # payload, that wins via the next branch which writes after.
         from models import Project
-        if task.project_id is not None:
-            proj = db.session.get(Project, task.project_id)
-            if proj and proj.goal_id is not None:
-                task.goal_id = proj.goal_id
-            # else: project has no goal — preserve task's existing goal
-        elif old_project_id is not None:
+        proj = db.session.get(Project, task.project_id) if task.project_id is not None else None
+        if proj is not None and proj.goal_id is not None:
+            task.goal_id = proj.goal_id
+        elif old_project_id is not None and old_project_id != task.project_id:
             old_proj = db.session.get(Project, old_project_id)
             if (
                 old_proj is not None
@@ -980,7 +979,13 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
     # cannot themselves have subtasks (one-level-deep), so tasks with a
     # parent_id never cascade.
     if task.parent_id is None:
-        goal_changed = "goal_id" in data and task.goal_id != old_goal_id
+        # #461: a goal that changed because the project did (assigned a
+        # project with a goal, or dropped an inherited one) cascades too —
+        # this used to need "goal_id" in the payload. A goal changed by a
+        # type change (#475's unlink) doesn't: the subtasks keep theirs.
+        goal_changed = (
+            ("goal_id" in data or "project_id" in data) and task.goal_id != old_goal_id
+        )
         project_changed = "project_id" in data and task.project_id != old_project_id
         if goal_changed or project_changed:
             for sub in task.subtasks:

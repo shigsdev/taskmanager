@@ -4383,6 +4383,47 @@ test.describe("Projects - drag a task to another project (#344)", () => {
         expect(out.afterScroll).toBe(false);
         expect(out.afterJitter).toBe(true);
     });
+
+    // #461: dropping onto a project with NO goal now does what the task
+    // panel does (and "No project" does since #427): a goal that came from
+    // the old project goes, a goal set by hand stays.
+    test("drop on a goalless project drops an inherited goal, keeps a hand-set one (#461)", async ({
+        page, request,
+    }) => {
+        const stamp = Date.now();
+        const post = async (url, data) => {
+            const r = await request.post(url, { data });
+            expect(r.ok()).toBe(true);
+            return r.json();
+        };
+        const goal = await post("/api/goals", { title: `E2E461 goal ${stamp}`, category: "work", priority: "must" });
+        const mine = await post("/api/goals", { title: `E2E461 mine ${stamp}`, category: "work", priority: "should" });
+        const from = await post("/api/projects", { name: `E2E461 from ${stamp}`, type: "work", goal_id: goal.id });
+        const to = await post("/api/projects", { name: `E2E461 bare ${stamp}`, type: "work" });
+        const inherited = await post("/api/tasks", { title: `E2E461 inherited ${stamp}`, type: "work", tier: "inbox", project_id: from.id });
+        const handSet = await post("/api/tasks", { title: `E2E461 hand ${stamp}`, type: "work", tier: "inbox", project_id: from.id });
+        await request.patch(`/api/tasks/${handSet.id}`, { data: { goal_id: mine.id } });
+        expect(inherited.goal_id).toBe(goal.id);
+        try {
+            await page.goto("/projects?nosw=1");
+            await page.waitForLoadState("networkidle");
+            for (const t of [inherited, handSet]) {
+                await expect(taskLi(page, t.id)).toHaveCount(1, { timeout: 10000 });
+                const saved = page.waitForResponse((r) => r.url().endsWith(`/api/tasks/${t.id}`)
+                    && r.request().method() === "PATCH");
+                await dragTaskToCard(page, t.id, to.id);
+                expect((await saved).status()).toBe(200);
+            }
+            const a = await (await request.get(`/api/tasks/${inherited.id}`)).json();
+            const b = await (await request.get(`/api/tasks/${handSet.id}`)).json();
+            expect([a.project_id, a.goal_id]).toEqual([to.id, null]);
+            expect([b.project_id, b.goal_id]).toEqual([to.id, mine.id]);
+        } finally {
+            for (const t of [inherited, handSet]) await request.delete(`/api/tasks/${t.id}`);
+            for (const p of [from, to]) await request.delete(`/api/projects/${p.id}`);
+            for (const g of [goal, mine]) await request.delete(`/api/goals/${g.id}`);
+        }
+    });
 });
 
 test.describe("Goals - drag a project to another goal (#343)", () => {

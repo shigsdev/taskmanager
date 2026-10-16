@@ -2306,6 +2306,127 @@ class TestProjectGoalCascade:
         assert (a["project_id"], a["goal_id"]) == (None, None)
         assert (b["project_id"], b["goal_id"]) == (None, other["id"])
 
+    # --- #461: a project with no goal, the same rule as "No project" -----------
+
+    def _goalless_project(self, authed_client, name="Lonely"):
+        p = authed_client.post("/api/projects", json={"name": name, "type": "work"}).get_json()
+        assert p["goal_id"] is None
+        return p["id"]
+
+    def test_moving_to_a_goalless_project_drops_the_inherited_goal(self, authed_client):
+        """#461: the task panel already did this (2026-05-04 user report);
+        a drag or a single PATCH kept the old project's goal under the new
+        project."""
+        gid, pid = self._make_goal_and_project(authed_client)
+        bare = self._goalless_project(authed_client)
+        t = authed_client.post(
+            "/api/tasks", json={"title": "X", "type": "work", "project_id": pid},
+        ).get_json()
+        assert t["goal_id"] == gid
+        body = authed_client.patch(f"/api/tasks/{t['id']}", json={"project_id": bare}).get_json()
+        assert (body["project_id"], body["goal_id"]) == (bare, None)
+
+    def test_moving_to_a_goalless_project_keeps_a_goal_set_by_hand(self, authed_client):
+        gid, pid = self._make_goal_and_project(authed_client)
+        bare = self._goalless_project(authed_client)
+        other = authed_client.post(
+            "/api/goals", json={"title": "Other", "category": "work", "priority": "should"},
+        ).get_json()
+        t = authed_client.post(
+            "/api/tasks", json={"title": "X", "type": "work", "project_id": pid},
+        ).get_json()
+        authed_client.patch(f"/api/tasks/{t['id']}", json={"goal_id": other["id"]})
+        body = authed_client.patch(f"/api/tasks/{t['id']}", json={"project_id": bare}).get_json()
+        assert (body["project_id"], body["goal_id"]) == (bare, other["id"])
+
+    def test_bulk_move_to_a_goalless_project_drops_only_inherited_goals(self, authed_client):
+        gid, pid = self._make_goal_and_project(authed_client)
+        bare = self._goalless_project(authed_client)
+        other = authed_client.post(
+            "/api/goals", json={"title": "Other", "category": "work", "priority": "should"},
+        ).get_json()
+        inherited = authed_client.post(
+            "/api/tasks", json={"title": "A", "type": "work", "project_id": pid},
+        ).get_json()
+        direct = authed_client.post(
+            "/api/tasks", json={"title": "B", "type": "work", "goal_id": other["id"]},
+        ).get_json()
+        resp = authed_client.patch("/api/tasks/bulk", json={
+            "task_ids": [inherited["id"], direct["id"]],
+            "updates": {"project_id": bare},
+        })
+        assert resp.status_code == 200
+        a = authed_client.get(f"/api/tasks/{inherited['id']}").get_json()
+        b = authed_client.get(f"/api/tasks/{direct['id']}").get_json()
+        assert (a["project_id"], a["goal_id"]) == (bare, None)
+        assert (b["project_id"], b["goal_id"]) == (bare, other["id"])
+
+    def test_explicit_goal_still_wins_over_the_goalless_drop(self, authed_client):
+        gid, pid = self._make_goal_and_project(authed_client)
+        bare = self._goalless_project(authed_client)
+        t = authed_client.post(
+            "/api/tasks", json={"title": "X", "type": "work", "project_id": pid},
+        ).get_json()
+        body = authed_client.patch(
+            f"/api/tasks/{t['id']}", json={"project_id": bare, "goal_id": gid},
+        ).get_json()
+        assert (body["project_id"], body["goal_id"]) == (bare, gid)
+
+    def _parent_with_sub(self, authed_client, pid):
+        parent = authed_client.post(
+            "/api/tasks", json={"title": "Parent", "type": "work", "project_id": pid},
+        ).get_json()
+        sub = authed_client.post(
+            "/api/tasks", json={"title": "Sub", "type": "work", "parent_id": parent["id"]},
+        ).get_json()
+        assert (sub["project_id"], sub["goal_id"]) == (pid, parent["goal_id"])
+        return parent, sub
+
+    def test_subtasks_follow_a_goal_that_comes_from_a_project_change(self, authed_client):
+        """#461: the subtask cascade keyed on "goal_id" in the payload, so
+        assigning a project with a goal moved the subtask's project but left
+        it on the old goal."""
+        gid, pid = self._make_goal_and_project(authed_client)
+        g3 = authed_client.post(
+            "/api/goals", json={"title": "G3", "category": "work", "priority": "could"},
+        ).get_json()["id"]
+        p3 = authed_client.post(
+            "/api/projects", json={"name": "P3", "goal_id": g3},
+        ).get_json()["id"]
+        parent, sub = self._parent_with_sub(authed_client, pid)
+        authed_client.patch(f"/api/tasks/{parent['id']}", json={"project_id": p3})
+        s = authed_client.get(f"/api/tasks/{sub['id']}").get_json()
+        assert (s["project_id"], s["goal_id"]) == (p3, g3)
+
+    def test_subtasks_follow_an_inherited_goal_being_dropped(self, authed_client):
+        gid, pid = self._make_goal_and_project(authed_client)
+        bare = self._goalless_project(authed_client)
+        parent, sub = self._parent_with_sub(authed_client, pid)
+        authed_client.patch(f"/api/tasks/{parent['id']}", json={"project_id": None})
+        s = authed_client.get(f"/api/tasks/{sub['id']}").get_json()
+        assert (s["project_id"], s["goal_id"]) == (None, None)
+        # And onto a goalless project.
+        parent2, sub2 = self._parent_with_sub(authed_client, pid)
+        authed_client.patch(f"/api/tasks/{parent2['id']}", json={"project_id": bare})
+        s2 = authed_client.get(f"/api/tasks/{sub2['id']}").get_json()
+        assert (s2["project_id"], s2["goal_id"]) == (bare, None)
+
+    def test_a_subtask_on_its_own_goal_is_left_alone(self, authed_client):
+        gid, pid = self._make_goal_and_project(authed_client)
+        g3 = authed_client.post(
+            "/api/goals", json={"title": "G3", "category": "work", "priority": "could"},
+        ).get_json()["id"]
+        p3 = authed_client.post(
+            "/api/projects", json={"name": "P3", "goal_id": g3},
+        ).get_json()["id"]
+        own = authed_client.post(
+            "/api/goals", json={"title": "Own", "category": "work", "priority": "should"},
+        ).get_json()["id"]
+        parent, sub = self._parent_with_sub(authed_client, pid)
+        authed_client.patch(f"/api/tasks/{sub['id']}", json={"goal_id": own})
+        authed_client.patch(f"/api/tasks/{parent['id']}", json={"project_id": p3})
+        assert authed_client.get(f"/api/tasks/{sub['id']}").get_json()["goal_id"] == own
+
     def test_explicit_goal_in_same_payload_wins(self, authed_client):
         """If the caller sends BOTH project_id and goal_id, the explicit
         goal_id wins (caller intent over cascade)."""

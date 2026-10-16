@@ -701,6 +701,11 @@ Report.
      weekdays" / "↻ Monthly", their previews "🔁 Specific weekdays · …", and
      /recurring reads "Weekly on Mon, Wed, Fri" / "Monthly on the 2nd Tue" —
      no raw value (multi_day_of_week, a weekday number) anywhere.
+     #461: on /projects drag a task whose goal came from its project onto a
+     project with NO goal — its goal clears; a task whose goal you set by
+     hand keeps it (the panel's Project select already did this). Give a
+     parent with a subtask a project that has a goal — the subtask follows
+     to the new project AND goal.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -899,6 +904,7 @@ Report.
   Auto-categorize: late answer dropped PASS   Auto-categorize: late answer dropped PASS
   Auto-categorize: partial apply reloads PASS Auto-categorize: partial apply reloads PASS
   Repeat labels: words, not raw values PASS   Repeat labels: words, not raw values PASS
+  Projects: goalless drop drops inherited goal PASS  Projects: goalless drop drops inherited goal PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
