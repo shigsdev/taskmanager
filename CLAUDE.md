@@ -788,6 +788,11 @@ Report.
      /import review row (follows its Type) and a /plan row (stub the planner
      with task_type) list only that type — a Work + Personal selection says
      "both Work and Personal — pick one type" (pickers_by_type.spec.js).
+     #485: every copper button reads dark text — Save / + New Goal / the
+     /import buttons, Freeze on /review, an active filter chip, the Inbox
+     badge, today's day-strip cell, a bulk chip (and its hover stays
+     copper, not blue); a red Delete keeps white text (the quiet case).
+     copper_contrast.spec.js measures them and every copper fill on 19 pages.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -1001,6 +1006,7 @@ Report.
   Batch: unfit link dropped, said PASS        Batch: unfit link dropped, said PASS
   Projects: retype takes its tasks PASS       Projects: retype takes its tasks PASS
   Pickers: projects of own type PASS          Pickers: projects of own type PASS
+  Copper buttons: dark text     PASS          Copper buttons: dark text     PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

@@ -168,7 +168,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     gap: 12px;
     padding: 10px 16px;
     background: var(--accent);
-    color: #fff;
+    color: var(--on-fill);  /* #485: white on copper was 3.79:1 */
     font-size: 14px;
     font-weight: 500;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
@@ -187,7 +187,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
        background — white-on-blue is correct (intentional inversion,
        same pattern as .inbox-badge on the navbar). */
     background: #fff;
-    color: var(--accent);
+    color: var(--on-fill);  /* #485 */
     border: none;
     border-radius: 6px;
     padding: 6px 14px;
@@ -281,7 +281,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
    than full white. */
 .inbox-badge {
     background: var(--accent);
-    color: #fff;
+    color: var(--on-fill);  /* #485: white on copper was 3.79:1 */
     font-size: 0.75rem;
     font-weight: 700;
     padding: 2px 8px;
@@ -785,7 +785,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .day-cell-today {
     background: var(--accent, #2563eb);
-    color: #fff;
+    color: var(--on-fill);  /* #485: white on copper was 3.79:1 */
     border-style: solid;
     font-weight: 600;
 }
@@ -1182,7 +1182,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     color: var(--accent);
     border: 1px solid var(--accent);
 }
-.reopen-btn:hover { background: var(--accent); color: #fff; }
+.reopen-btn:hover { background: var(--accent); color: var(--on-fill); }  /* #485 */
 .reopen-dropdown {
     position: absolute;
     right: 0;
@@ -1426,7 +1426,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     box-shadow: inset 3px 0 0 var(--copper);
 }
 .parent-picker-current { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
-.parent-picker-chip { background: var(--accent, #2563eb); color: #fff; padding: 3px 8px; border-radius: 12px; font-size: 12px; min-width: 0; word-break: break-word; }
+.parent-picker-chip { background: var(--accent, #2563eb); color: var(--on-fill);  /* #485 */ padding: 3px 8px; border-radius: 12px; font-size: 12px; min-width: 0; word-break: break-word; }
 .parent-picker-clear { background: transparent; border: 1px solid var(--border); color: var(--text); padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 12px; flex-shrink: 0; }
 /* #260 (2026-05-29): the ✕ button was 24×16 effective on mobile —
    well below iOS's 44×44 minimum touch-target guideline. Users
@@ -1784,7 +1784,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     display: inline-block;
     padding: 7px 16px;
     background: var(--accent);
-    color: #fff;
+    color: var(--on-fill);  /* #485: white on copper was 3.79:1 */
     border: none;
     border-radius: var(--radius);
     font-size: 0.9rem;
@@ -1793,7 +1793,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     transition: background 0.15s;
 }
 .btn:hover { background: var(--accent-hover); }
-.btn-danger { background: var(--danger); }
+.btn-danger { background: var(--danger); color: #fff; }  /* #485: .btn is dark text now */
 .btn-danger:hover { background: #b91c1c; }
 
 .btn-sm {
@@ -1872,7 +1872,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .project-filter-btn.active {
     background: var(--accent);
-    color: #fff;
+    color: var(--on-fill);  /* #485 */
     border-color: var(--accent);
 }
 
@@ -2034,14 +2034,14 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .goal-filter-btn.active {
     background: var(--accent);
-    color: #fff;
+    color: var(--on-fill);  /* #485 */
     border-color: var(--accent);
 }
 
 /* === #90 (PR35): projects bulk-edit toolbar === */
 #projectsBulkToggle.active {
     background: var(--accent, #2563eb);
-    color: #fff;
+    color: var(--on-fill);  /* #485 */
     border-color: var(--accent, #2563eb);
 }
 .bulk-toolbar {
@@ -3305,7 +3305,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .review-btn-keep { background: var(--success); color: var(--on-fill); }  /* #451 */
 .review-btn-keep:hover { opacity: 0.9; }
-.review-btn-freeze { background: var(--accent); color: #fff; }
+.review-btn-freeze { background: var(--accent); color: var(--on-fill); }  /* #485 */
 .review-btn-freeze:hover { opacity: 0.9; }
 .review-btn-snooze { background: var(--warning, #f0ad4e); color: var(--on-fill); }  /* #451 */
 .review-btn-snooze:hover { opacity: 0.9; }
@@ -4007,7 +4007,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 
 .btn-stop {
     background: var(--accent, #2980b9);
-    color: white;
+    color: var(--on-fill);  /* #485 */
     padding: 14px 28px;
     border-radius: 8px;
     border: none;
@@ -4125,7 +4125,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     font-size: 11px; font-weight: 600; cursor: pointer;
     flex-shrink: 0;
 }
-.voice-candidate-route.route-task    { background: var(--accent, #2563eb); }
+.voice-candidate-route.route-task    { background: var(--accent, #2563eb); color: var(--on-fill); }  /* #485 */
 .voice-candidate-route.route-goal    { background: var(--success, #16a34a); }
 .voice-candidate-route.route-project { background: #ec4899; }
 .voice-candidate-title { flex: 1; min-width: 120px; padding: 6px 8px; }
@@ -4249,7 +4249,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .bulk-select-toggle:hover { background: var(--surface-sunk); }
 .bulk-select-toggle.active {
     background: var(--accent, #2980b9);
-    color: white;
+    color: var(--on-fill);  /* #485 */
     border-color: var(--accent, #2980b9);
 }
 
@@ -4317,12 +4317,12 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .bulk-pending-list { display: flex; gap: 6px; flex-wrap: wrap; }
 .bulk-pending-chip {
-    background: var(--accent, #2563eb); color: #fff;
+    background: var(--accent, #2563eb); color: var(--on-fill);  /* #485 */
     padding: 3px 8px; border-radius: 12px; font-size: 12px;
     cursor: pointer; user-select: none;
     border: none; font-family: inherit; line-height: inherit;   /* #458: a <button> now */
 }
-.bulk-pending-chip:hover { background: #1d4ed8; }
+.bulk-pending-chip:hover { background: var(--accent-hover); }  /* #485: was a light-theme blue */
 #bulkApplyChanges {
     background: var(--success, #16a34a); color: var(--on-fill); border-color: transparent;  /* #451/#452 */
 }
@@ -4601,7 +4601,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
    defined, and adding it now would restyle /utilities too.) */
 .recurring-toolbar #recurringNew {
     background: var(--accent);
-    color: #fff;
+    color: var(--on-fill);  /* #485 */
     border-color: var(--accent);
     font-weight: 600;
 }
@@ -4905,7 +4905,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     font-weight: 600;
     cursor: pointer;
 }
-.swipe-action-move { background: var(--accent); }
+.swipe-actions .swipe-action-move { background: var(--accent); color: var(--on-fill); }  /* #485 */
 .swipe-action-delete { background: var(--danger); }
 
 /* --- Architecture page (#42) --- */
@@ -5825,7 +5825,7 @@ table.quality-gates code {
 }
 .voice-candidate-recur-btn:hover {
     background: var(--accent, #2980b9);
-    color: #fff;
+    color: var(--on-fill);  /* #485 */
     border-color: var(--accent, #2980b9);
 }
 
@@ -6281,7 +6281,7 @@ table.quality-gates code {
     letter-spacing: 0.03em;
 }
 .reflection-op-badge.op-create { background: var(--success, #16a34a); }
-.reflection-op-badge.op-update { background: var(--accent, #2563eb); }
+.reflection-op-badge.op-update { background: var(--accent, #2563eb); color: var(--on-fill); }  /* #485 */
 .reflection-op-badge.op-delete { background: var(--danger, #c0392b); }
 .reflection-action-diff {
     font-size: 0.82rem;
