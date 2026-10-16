@@ -427,3 +427,35 @@ describe("groupTasksByProject (#434)", () => {
         expect(groupTasksByProject([], active, archived)).toEqual([]);
     });
 });
+
+// #483: pickers list only projects of the item's own type (the server has
+// refused the other type since #475).
+describe("projectsForTypes (#483)", () => {
+    const { projectsForTypes } = require("../../../static/filter_helpers");
+    const projects = [
+        { id: "w1", name: "Q2", type: "work" },
+        { id: "p1", name: "Garden", type: "personal" },
+        { id: "w2", name: "Launch", type: "work" },
+    ];
+
+    test("one type: that type's projects, in order", () => {
+        expect(projectsForTypes(projects, ["work"]))
+            .toEqual({ projects: [projects[0], projects[2]], mixed: false });
+        expect(projectsForTypes(projects, ["personal", "personal"]))
+            .toEqual({ projects: [projects[1]], mixed: false });
+    });
+
+    test("a selection of both types fits no project", () => {
+        expect(projectsForTypes(projects, ["work", "personal"]))
+            .toEqual({ projects: [], mixed: true });
+    });
+
+    test("no type known (empty selection, blanks): every project, as before", () => {
+        expect(projectsForTypes(projects, [])).toEqual({ projects, mixed: false });
+        expect(projectsForTypes(projects, [null, undefined, ""])).toEqual({ projects, mixed: false });
+    });
+
+    test("a bad project list is an empty one", () => {
+        expect(projectsForTypes(null, ["work"])).toEqual({ projects: [], mixed: false });
+    });
+});

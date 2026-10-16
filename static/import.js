@@ -674,6 +674,8 @@
             typeSelect.value = c.type || "work";
             typeSelect.addEventListener("change", function () {
                 currentCandidates[i].type = typeSelect.value;
+                // #483: the Project list follows the row's type.
+                if (typeof refillProjects === "function") refillProjects();
             });
             head.appendChild(typeSelect);
 
@@ -753,7 +755,22 @@
             });
             fieldsRow2.appendChild(_labeledField("Goal", goalSel));
 
-            var projSel = _selectFrom(importProjects, "id", "name", c.project_id);
+            // #483: only projects of the row's type (the server refuses the
+            // other since #475; #481 would drop it). A type change re-lists
+            // them and clears a pick that no longer fits.
+            var projSel = document.createElement("select");
+            projSel.className = "import-candidate-project";
+            var refillProjects = function () {
+                var fit = window.filterHelpers.projectsForTypes(
+                    importProjects, [currentCandidates[i].type || "work"]).projects;
+                var keep = currentCandidates[i].project_id || "";
+                if (keep && !fit.some(function (p) { return p.id === keep; })) keep = "";
+                var fresh = _selectFrom(fit, "id", "name", keep);
+                projSel.innerHTML = fresh.innerHTML;
+                projSel.value = keep;
+                currentCandidates[i].project_id = keep;
+            };
+            refillProjects();
             projSel.addEventListener("change", function () {
                 currentCandidates[i].project_id = projSel.value;
             });

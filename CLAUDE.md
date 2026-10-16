@@ -782,6 +782,12 @@ Report.
      nothing; OK retypes them all. /projects Select → Type ▾ Work asks the
      same and retypes them back. A project with no tasks changes type with
      no confirm, and a Save that keeps the type asks nothing (quiet cases).
+     #483: the /recurring editor's Project lists only the Type's projects
+     and re-lists (dropping an unfit pick) when Type changes; /recurring
+     Select → Project ▾, the board's Select → Project ▾ in the All view, an
+     /import review row (follows its Type) and a /plan row (stub the planner
+     with task_type) list only that type — a Work + Personal selection says
+     "both Work and Personal — pick one type" (pickers_by_type.spec.js).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -994,6 +1000,7 @@ Report.
   Bin: bulk-deleted subtask listed PASS       Bin: bulk-deleted subtask listed PASS
   Batch: unfit link dropped, said PASS        Batch: unfit link dropped, said PASS
   Projects: retype takes its tasks PASS       Projects: retype takes its tasks PASS
+  Pickers: projects of own type PASS          Pickers: projects of own type PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

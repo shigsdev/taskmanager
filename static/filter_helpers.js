@@ -243,6 +243,20 @@ function projectAfterTypeChange(currentProjectId, newType, projects) {
     return proj && proj.type !== newType ? "" : currentProjectId;
 }
 
+// #483: the projects a picker may offer for items of `types` (a task's or
+// template's type, or each selected one's). One shared type → that type's
+// projects; both types in the selection → none fit (mixed: true), since the
+// server refuses a project of the other type (#475); no known type → every
+// project, as before.
+function projectsForTypes(projects, types) {
+    const list = Array.isArray(projects) ? projects : [];
+    const known = new Set((types || []).filter((t) => t));
+    if (known.size === 0) return { projects: list, mixed: false };
+    if (known.size > 1) return { projects: [], mixed: true };
+    const [only] = known;
+    return { projects: list.filter((p) => p && p.type === only), mixed: false };
+}
+
 // #434: a section's cards grouped by project for Work / Personal view.
 // Active projects first (in the order given), then archived ones — since
 // #353 archiving keeps a task's link, so these tasks are real and still
@@ -301,6 +315,7 @@ if (typeof module !== "undefined" && module.exports) {
         projectCascadeGoalId,
         goalAfterProjectChange,
         projectAfterTypeChange,
+        projectsForTypes,
         describeActiveFilters,
         groupTasksByProject,
     };
@@ -318,6 +333,7 @@ if (typeof module !== "undefined" && module.exports) {
         projectCascadeGoalId,
         goalAfterProjectChange,
         projectAfterTypeChange,
+        projectsForTypes,
         describeActiveFilters,
         groupTasksByProject,
     };

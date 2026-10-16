@@ -510,6 +510,7 @@ def compute_weekly_plan(start_date: date | None = None) -> dict:
 
     active_serialized = [_serialize_active(t, today) for t in active]
     title_lookup = {a["id"]: a["title"] for a in active_serialized}
+    type_lookup = {str(t.id): t.type.value for t in active}   # #483
     stale_lookup = {s["id"]: s["title"] for s in stale_freezer}
 
     prompt = _PROMPT_TEMPLATE.format(
@@ -533,6 +534,7 @@ def compute_weekly_plan(start_date: date | None = None) -> dict:
     valid_task_ids = set(title_lookup.keys())
     valid_stale_ids = set(stale_lookup.keys())
     valid_project_ids = {p["id"] for p in projects}
+    project_types = {p["id"]: p["type"] for p in projects}   # #483
     valid_goal_ids = {g["id"] for g in goals}
 
     cleaned_per_task: list[dict] = []
@@ -549,6 +551,13 @@ def compute_weekly_plan(start_date: date | None = None) -> dict:
         if s is None or s["task_id"] in seen_ids:
             continue
         s["title"] = title_lookup[s["task_id"]]
+        # #483: the row's Project list follows the task's type, and a
+        # suggested project of the other type is dropped — applying it is
+        # refused (#475).
+        s["task_type"] = type_lookup.get(s["task_id"])
+        sp = s.get("suggested_project_id")
+        if sp and project_types.get(sp) != s["task_type"]:
+            s["suggested_project_id"] = None
         cleaned_per_task.append(s)
         seen_ids.add(s["task_id"])
 
@@ -559,6 +568,7 @@ def compute_weekly_plan(start_date: date | None = None) -> dict:
         cleaned_per_task.append({
             "task_id": tid,
             "title": title,
+            "task_type": type_lookup.get(tid),   # #483
             "action": "keep",
             "suggested_tier": None,
             "suggested_due_date": None,

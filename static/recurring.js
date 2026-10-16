@@ -263,7 +263,7 @@
 
     function _el(id) { return document.getElementById(id); }
 
-    function _populateEditorDropdowns(projectId, goalId) {
+    function _populateEditorDropdowns(projectId, goalId, type) {
         // Day-of-month options 1–31 (built once).
         var dom = _el("recurEditDayOfMonth");
         if (dom && dom.options.length === 0) {
@@ -296,10 +296,20 @@
             });
             return;
         }
+        // #483: live projects of the template's type only — the server
+        // refuses the other (#475). A stored link of the other type (old
+        // data) still shows, so editing another field doesn't detach it.
+        var live = window.filterHelpers
+            ? window.filterHelpers.projectsForTypes(allProjects, [type]).projects.slice()
+            : allProjects.slice();
+        if (projectId && !live.some(function (p) { return p.id === projectId; })) {
+            var stored = allProjects.find(function (p) { return p.id === projectId; });
+            if (stored) live.push(stored);
+        }
         h.renderValuePreservingOptions(
             proj,
             h.optionRowsPreservingValue({
-                live: allProjects, archived: archivedProjects, currentId: projectId,
+                live: live, archived: archivedProjects, currentId: projectId,
             }),
             function (p) { return p.name; },
             projectId,
@@ -342,8 +352,8 @@
     }
 
     function openCreator() {
-        _populateEditorDropdowns();
         var d = window.recurringHelpers.blankRecurringDraft();
+        _populateEditorDropdowns(null, null, d.type);   // #483: its type's projects
         _editId = null;
         _el("recurEditId").value = "";
         _el("recurEditTitle").value = d.title;
@@ -372,7 +382,7 @@
 
     function openEditor(rt) {
         // #355: hand the stored ids to populate — see _populateEditorDropdowns.
-        _populateEditorDropdowns(rt.project_id, rt.goal_id);
+        _populateEditorDropdowns(rt.project_id, rt.goal_id, rt.type);
         _setEditorMode(false);
         _editId = rt.id;
         _el("recurEditId").value = rt.id;
@@ -506,9 +516,20 @@
         });
         document.getElementById("recurringBulkProject").addEventListener("click", function (e) {
             var items = [{ label: "(none)", onClick: function () { bulkPatch({ project_id: null }); } }];
-            allProjects.forEach(function (p) {
+            // #483: only the selected templates' type; both types fit none.
+            var ids = getSelectedIds();
+            var types = allTemplates.filter(function (t) { return ids.indexOf(t.id) !== -1; })
+                .map(function (t) { return t.type; });
+            var fit = window.filterHelpers.projectsForTypes(allProjects, types);
+            fit.projects.forEach(function (p) {
                 items.push({ label: p.name, onClick: function () { bulkPatch({ project_id: p.id }); } });
             });
+            if (fit.mixed) {
+                items.push({
+                    label: "(the selected templates are both Work and Personal — pick one type)",
+                    onClick: function () {},
+                });
+            }
             showDropdown(e.currentTarget, items);
         });
         document.getElementById("recurringBulkGoal").addEventListener("click", function (e) {
@@ -531,6 +552,23 @@
 
         // #266: editor wiring.
         _el("recurEditFrequency").addEventListener("change", recurEditFreqChanged);
+        // #483: the Project list follows Type; a project of the other type
+        // is dropped (#475 — the server would unlink it on save anyway).
+        _el("recurEditType").addEventListener("change", function () {
+            var type = _el("recurEditType").value;
+            var keep = window.filterHelpers.projectAfterTypeChange(
+                _el("recurEditProject").value, type, allProjects.concat(archivedProjects));
+            var was = _el("recurEditProject").value;
+            var goal = _el("recurEditGoal").value;
+            // #427: a goal that came from the dropped project goes with it.
+            if (was && !keep) {
+                goal = window.filterHelpers.goalAfterProjectChange(
+                    was, null, goal || null, allProjects.concat(archivedProjects)) || "";
+            }
+            _populateEditorDropdowns(keep || null, goal || null, type);
+            _el("recurEditProject").value = keep || "";
+            _el("recurEditGoal").value = goal || "";
+        });
         // #429: one save at a time — a double click made two templates.
         _el("recurEditForm").addEventListener("submit", window.inflightSubmit(saveEditor));
         _el("recurEditClose").addEventListener("click", closeEditor);

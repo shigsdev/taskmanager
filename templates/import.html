@@ -233,6 +233,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='filter_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='import_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='import.js') }}"></script>
 {% endblock %}

@@ -239,7 +239,7 @@
             controls.appendChild(makeTierSelect(s.suggested_tier));
             controls.appendChild(makeDueDateInput(s.suggested_due_date));
         }
-        controls.appendChild(makeProjectSelect(s.suggested_project_id));
+        controls.appendChild(makeProjectSelect(s.suggested_project_id, s.task_type));
         controls.appendChild(makeGoalSelect(s.suggested_goal_id));
 
         li.querySelector(".plan-accept").addEventListener("click", function () { acceptRow(li, s); });
@@ -263,12 +263,14 @@
         return input;
     }
 
-    function makeProjectSelect(current) {
+    function makeProjectSelect(current, taskType) {
         var opts = [["", "— project —"]];
-        availableProjects.forEach(function (p) {
-            if (p.is_active === false) { return; }
-            opts.push([p.id, p.name]);
-        });
+        // #483: only the task's own type — the server refuses the other (#475).
+        window.filterHelpers.projectsForTypes(availableProjects, [taskType]).projects
+            .forEach(function (p) {
+                if (p.is_active === false) { return; }
+                opts.push([p.id, p.name]);
+            });
         return makeSelect(opts, current || "", "project");
     }
 

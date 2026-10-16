@@ -4152,16 +4152,30 @@ function initBulkSelect() {
     const projBtn = document.getElementById("bulkActionProject");
     if (projBtn) projBtn.addEventListener("click", () => {
         // #98 (PR32): scope to projects matching the active type tab.
-        // In "all" view, show every project so the user isn't blocked
-        // when picking across types.
-        const scoped = (currentView === "all")
-            ? allProjects
-            : allProjects.filter((p) => p.type === currentView);
+        // #483: in "all" view, to the selected tasks' type — the server
+        // refuses a project of the other type (#475). A selection of both
+        // types fits no project; say so instead of offering one that fails.
+        let scoped;
+        let mixed = false;
+        if (currentView === "all") {
+            const ids = new Set(getBulkSelectedIds());
+            // /completed selects done and cancelled cards too.
+            const types = [...allTasks, ...allCompleted, ...allCancelled]
+                .filter((t) => ids.has(t.id)).map((t) => t.type);
+            ({ projects: scoped, mixed } = projectsForTypes(allProjects, types));
+        } else {
+            scoped = allProjects.filter((p) => p.type === currentView);
+        }
         const items = [{ label: "(no project)", onClick: () => stageBulkChange("project_id", null) }];
         for (const p of scoped) {
             items.push({ label: p.name, onClick: () => stageBulkChange("project_id", p.id) });
         }
-        if (scoped.length === 0) {
+        if (mixed) {
+            items.push({
+                label: "(the selected tasks are both Work and Personal — pick one type)",
+                onClick: () => {},
+            });
+        } else if (scoped.length === 0) {
             const msg = projectsLoaded
                 ? `(no ${currentView === "all" ? "" : currentView + " "}projects available — create one on Projects page)`
                 : "(loading projects… try again in a moment)";
