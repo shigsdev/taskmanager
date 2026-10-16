@@ -8575,6 +8575,49 @@ test.describe("💡 Auto-categorize drops a stale answer (#421)", () => {
     });
 });
 
+// #423: when some rows fail, the ones that saved still leave the Inbox at
+// once — the board reloads behind the dialog, as ✨ Plan's does.
+test("💡 Auto-categorize partial failure: saved rows leave the Inbox (#423)", async ({ page, request }) => {
+    const stamp = Date.now();
+    const mk = async (title) => (await (await request.post("/api/tasks", {
+        data: { title, type: "work", tier: "inbox" },
+    })).json());
+    const ok = await mk(`E2E423 saves ${stamp}`);
+    const bad = await mk(`E2E423 fails ${stamp}`);
+    try {
+        const sug = (t) => ({
+            task_id: t.id, title: t.title, suggested_tier: "this_week",
+            suggested_project_id: null, suggested_goal_id: null,
+            suggested_due_date: null, suggested_type: "work", reason: "e2e",
+            current_type: "work",
+        });
+        await page.route("**/api/inbox/categorize", (r) => r.fulfill({ json: {
+            count: 2, capped: false, suggestions: [sug(ok), sug(bad)],
+        } }));
+        await page.route(`**/api/tasks/${bad.id}`, (r) => (r.request().method() === "PATCH"
+            ? r.fulfill({ status: 500, json: { error: "e2e" } })
+            : r.fallback()));
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const okCard = (tier) => page.locator(`.tier[data-tier="${tier}"] .task-card[data-id="${ok.id}"]`);
+        await expect(okCard("inbox")).toHaveCount(1);
+        await page.locator("#autoCategorizeBtn").click();
+        const modal = page.locator("#autoCategorizeModal");
+        await expect(modal.locator(`tr[data-task-id="${bad.id}"]`)).toBeVisible();
+        await page.locator("#autoCategorizeApplyAll").click();
+        await expect(page.locator("#autoCategorizeApplyAll")).toHaveText("Apply remaining (1 failed)");
+        await expect(modal).toBeVisible();
+        await expect(modal.locator(`tr[data-task-id="${ok.id}"]`)).toHaveCount(0);
+        await expect(modal.locator(`tr[data-task-id="${bad.id}"]`)).toHaveCount(1);
+        // The board behind it caught up without a reload.
+        await expect(okCard("inbox")).toHaveCount(0);
+        await expect(okCard("this_week")).toHaveCount(1);
+    } finally {
+        await request.delete(`/api/tasks/${ok.id}`);
+        await request.delete(`/api/tasks/${bad.id}`);
+    }
+});
+
 // #422: after a partial failure, "Apply remaining" must send only what
 // failed. A create_new that already landed must not be created twice.
 test.describe("✨ Plan retry skips what already landed (#422)", () => {

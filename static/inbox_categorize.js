@@ -521,6 +521,11 @@
             if (typeof window.loadTasks === "function") { window.loadTasks(); }
         } else {
             applyAllBtn.textContent = "Apply remaining (" + failed + " failed)";
+            // #423: the rows that did save have left the Inbox — show that
+            // on the board now, as ✨ Plan does, not on the next reload.
+            if (failed < rows.length && typeof window.loadTasks === "function") {
+                window.loadTasks();
+            }
         }
     }
 

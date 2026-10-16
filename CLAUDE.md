@@ -693,6 +693,9 @@ Report.
      the answer lands; open it again and only the new run's rows show. Apply
      all with a PATCH held, close, reopen: the new run stays open with its own
      "Apply all (N)". A plain run still applies and closes (the quiet case).
+     #423: 💡 Auto-categorize two Inbox tasks with one PATCH stubbed to 500,
+     Apply all — the dialog stays on the failed row ("Apply remaining (1
+     failed)") and the saved task has already left the Inbox column behind it.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -889,6 +892,7 @@ Report.
   Parent picker: arrows + Enter PASS          Parent picker: arrows + Enter PASS
   Bulk chip: a button           PASS          Bulk chip: a button, 44px     PASS
   Auto-categorize: late answer dropped PASS   Auto-categorize: late answer dropped PASS
+  Auto-categorize: partial apply reloads PASS Auto-categorize: partial apply reloads PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
