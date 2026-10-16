@@ -766,6 +766,10 @@ Report.
      "overdue, was due …" with its checklist; the Today one likewise under
      Today; Overdue holds only the Backlog one. A task due today prints
      plain (the quiet case).
+     #480: give an imported task a subtask that shares its batch (insert it
+     in the dev DB), tick only the subtask on /tier/today and bulk Delete:
+     it is listed under the Recycle Bin's Deleted tasks (it used to vanish).
+     Deleting the parent still takes the subtask along (the quiet case).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -975,6 +979,7 @@ Report.
   Reload guard: review screens busy PASS      Reload guard: review screens busy PASS
   Recycle bin: projects counted PASS          Recycle bin: projects counted PASS
   Print: overdue listed once   PASS          Print: overdue listed once   PASS
+  Bin: bulk-deleted subtask listed PASS       Bin: bulk-deleted subtask listed PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

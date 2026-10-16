@@ -779,7 +779,15 @@ def _apply_status_to_subtasks(
       way. A repeating-template task keeps them open (#230).
     - to DELETED: they go to the Recycle Bin with it (``_soft_delete``).
     - DELETED → ACTIVE (Restore): the ones that went with it come back.
+
+    #480: DELETED goes through ``_soft_delete`` for a subtask too (before
+    the early return below), so its ``batch_id`` is cleared and the
+    Recycle Bin lists it — a bulk Delete of an imported subtask used to
+    keep the batch id and vanish from the bin.
     """
+    if new_status == TaskStatus.DELETED:
+        _soft_delete(task)
+        return
     if task.parent_id is not None:
         return
     if new_status in _CLOSED_STATUSES:
@@ -797,8 +805,6 @@ def _apply_status_to_subtasks(
             )
         for sub in open_subs:
             sub.status = new_status
-    elif new_status == TaskStatus.DELETED:
-        _soft_delete(task)
     elif task.status == TaskStatus.DELETED and new_status == TaskStatus.ACTIVE:
         _restore_subtasks_deleted_with(task)
 
