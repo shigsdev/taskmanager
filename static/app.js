@@ -526,16 +526,10 @@ function _previewCardEl(preview) {
     return card;
 }
 
+// #460: the shared label (recurring_helpers.js) — this map printed
+// multi_day_of_week raw.
 function _frequencyLabel(freq) {
-    switch (freq) {
-        case "daily": return "daily";
-        case "weekdays": return "weekdays";
-        case "weekly": return "weekly";
-        case "day_of_week": return "weekly";
-        case "monthly_date": return "monthly (date)";
-        case "monthly_nth_weekday": return "monthly (nth weekday)";
-        default: return freq;
-    }
+    return window.recurringHelpers.repeatLabel({ frequency: freq });
 }
 
 // Clicking a preview opens the detail panel of the most-recent Task
@@ -1459,14 +1453,10 @@ function taskCardEl(task) {
     if (task.repeat) {
         const repeatBadge = document.createElement("span");
         repeatBadge.className = "badge badge-repeat";
-        const freqLabels = {
-            daily: "Daily",
-            weekdays: "Weekdays",
-            weekly: "Weekly",
-            monthly_date: "Monthly",
-            monthly_nth_weekday: "Monthly",
-        };
-        repeatBadge.textContent = "\u21BB " + (freqLabels[task.repeat.frequency] || "Repeat");
+        // #460: the shared label; this map had no day_of_week /
+        // multi_day_of_week, so those cards read just "Repeat".
+        repeatBadge.textContent = "\u21BB "
+            + window.recurringHelpers.repeatLabel(task.repeat, { short: true });
         meta.appendChild(repeatBadge);
     }
 

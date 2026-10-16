@@ -125,12 +125,67 @@ function recurringPausedLabel(rt) {
     return "PAUSED";
 }
 
+/**
+ * #460: the one human label for a repeat rule — the board card badge, the
+ * recurring previews, the /recurring list and a voice memo row all use it
+ * (each had its own map and showed raw values or nothing for some
+ * frequencies). Names follow the Repeat dropdown.
+ *
+ * @param {object} repeat  {frequency, day_of_week (0 = Mon), days_of_week,
+ *   day_of_month, week_of_month (1-4)}; previews carry only frequency.
+ * @param {object} [opts]  {short: true} → just the kind ("Weekly",
+ *   "Monthly"), for a badge.
+ * @returns {string} e.g. "Weekly on Mon", "Monthly on the 2nd Tue";
+ *   "Repeats" for an unknown frequency.
+ */
+const _REPEAT_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function _repeatOrdinal(n) {
+    const tens = n % 100;
+    if (tens >= 11 && tens <= 13) return n + "th";
+    return n + ({ 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th");
+}
+
+function repeatLabel(repeat, opts) {
+    const r = repeat || {};
+    const short = !!(opts && opts.short);
+    const day = (i) => (Number.isInteger(i) ? _REPEAT_DAYS[i] : undefined);
+    switch (r.frequency) {
+        case "daily": return "Daily";
+        case "weekdays": return "Weekdays";
+        case "weekly":
+        case "day_of_week": {
+            const d = day(r.day_of_week);
+            return !short && d ? "Weekly on " + d : "Weekly";
+        }
+        case "multi_day_of_week": {
+            const ds = (r.days_of_week || []).map(day).filter(Boolean);
+            return !short && ds.length ? "Weekly on " + ds.join(", ") : "Specific weekdays";
+        }
+        case "monthly_date": {
+            if (short) return "Monthly";
+            const n = r.day_of_month;
+            return Number.isInteger(n) && n >= 1 && n <= 31
+                ? "Monthly on the " + _repeatOrdinal(n) : "Monthly (same date)";
+        }
+        case "monthly_nth_weekday": {
+            if (short) return "Monthly";
+            const w = r.week_of_month;
+            const d = day(r.day_of_week);
+            return Number.isInteger(w) && w >= 1 && w <= 4 && d
+                ? "Monthly on the " + _repeatOrdinal(w) + " " + d : "Monthly (nth weekday)";
+        }
+        default: return "Repeats";
+    }
+}
+
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         buildRecurringEditPayload,
         blankRecurringDraft,
         recurringSubmitTarget,
         recurringPausedLabel,
+        repeatLabel,
     };
 } else if (typeof window !== "undefined") {
     window.recurringHelpers = {
@@ -138,5 +193,6 @@ if (typeof module !== "undefined" && module.exports) {
         blankRecurringDraft,
         recurringSubmitTarget,
         recurringPausedLabel,
+        repeatLabel,
     };
 }

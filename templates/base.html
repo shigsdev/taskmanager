@@ -45,6 +45,9 @@
        day early → tasks due today flagged as overdue. Pure local-date helper here,
        loaded globally before page-specific scripts run. #}
     <script src="{{ url_for('static', filename='date_helpers.js') }}"></script>
+    {# #460: repeatLabel — the board, /recurring and voice memo all name a
+       repeat rule with it. #}
+    <script src="{{ url_for('static', filename='recurring_helpers.js') }}"></script>
     {# #433: the "open subtasks close / go with it" confirm text, shared by
        the board (app.js on several pages) and the Goals tick box. #}
     <script src="{{ url_for('static', filename='subtask_helpers.js') }}"></script>

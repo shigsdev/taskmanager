@@ -45,21 +45,9 @@
         return a ? a.title + " (archived)" : "(none)";
     }
     function _freqSummary(rt) {
-        var base;
-        if (rt.frequency === "weekly" || rt.frequency === "day_of_week") {
-            var days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-            base = rt.frequency.replace("_", " ") + " — " + (days[rt.day_of_week] || "?");
-        } else if (rt.frequency === "multi_day_of_week") {
-            var dnames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-            var picked = (rt.days_of_week || []).map(function (i) { return dnames[i] || "?"; });
-            base = "multi day — " + picked.join(", ");
-        } else if (rt.frequency === "monthly_date") {
-            base = "monthly — day " + rt.day_of_month;
-        } else if (rt.frequency === "monthly_nth_weekday") {
-            base = "monthly — wk " + rt.week_of_month + " day " + rt.day_of_week;
-        } else {
-            base = rt.frequency;
-        }
+        // #460: the shared label — this printed a raw weekday number for
+        // monthly Nth weekday ("monthly — wk 2 day 1").
+        var base = window.recurringHelpers.repeatLabel(rt);
         // #147 (2026-05-02): show sunrise date when set. Pair-symmetric
         // with end_date below; both can coexist ("from X until Y").
         if (rt.start_date) base += " (from " + rt.start_date + ")";

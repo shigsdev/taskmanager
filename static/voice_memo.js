@@ -710,7 +710,7 @@
             recurBtn.type = "button";
             recurBtn.className = "voice-candidate-recur-btn";
             recurBtn.textContent = candidate.repeat
-                ? "↻ Recurring (" + (candidate.repeat.frequency || "?") + ")"
+                ? "↻ Recurring (" + window.recurringHelpers.repeatLabel(candidate.repeat) + ")"
                 : "↻ Make recurring";
             recurBtn.title =
                 "Open the recurring-template editor pre-filled with what Claude heard";

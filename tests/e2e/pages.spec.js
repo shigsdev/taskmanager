@@ -8618,6 +8618,42 @@ test("💡 Auto-categorize partial failure: saved rows leave the Inbox (#423)", 
     }
 });
 
+// #460: one label for a repeat rule everywhere it shows. The board badge had
+// no case for (specific) weekdays and read "Repeat"; /recurring printed
+// "monthly — wk 2 day 1"; previews printed multi_day_of_week raw.
+test("repeat labels read as words on the board and /recurring (#460)", async ({ page, request }) => {
+    const stamp = Date.now();
+    const mk = async (title, repeat) => {
+        const r = await request.post("/api/tasks", { data: { title, type: "work", tier: "this_week", repeat } });
+        expect(r.ok()).toBe(true);
+        return r.json();
+    };
+    const multi = await mk(`E2E460 multi ${stamp}`, { frequency: "multi_day_of_week", days_of_week: [0, 2, 4] });
+    const nth = await mk(`E2E460 nth ${stamp}`, { frequency: "monthly_nth_weekday", week_of_month: 2, day_of_week: 1 });
+    try {
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const badge = (t) => page.locator(`.task-card[data-id="${t.id}"] .badge-repeat`).first();
+        await expect(badge(multi)).toHaveText("↻ Specific weekdays");
+        await expect(badge(nth)).toHaveText("↻ Monthly");
+        // No raw frequency value anywhere on the board (cards, previews).
+        const raw = /multi_day_of_week|monthly_nth_weekday|monthly_date|day_of_week/;
+        expect(await page.locator("#board, main").first().innerText()).not.toMatch(raw);
+
+        await page.goto("/recurring?nosw=1");
+        await page.waitForLoadState("networkidle");
+        const meta = (title) => page.locator(".recurring-row", { hasText: title }).locator(".recurring-row-meta");
+        await expect(meta(`E2E460 multi ${stamp}`)).toContainText("Weekly on Mon, Wed, Fri");
+        await expect(meta(`E2E460 nth ${stamp}`)).toContainText("Monthly on the 2nd Tue");
+        expect(await page.locator("main").innerText()).not.toMatch(raw);
+    } finally {
+        for (const t of [multi, nth]) {
+            if (t.repeat && t.repeat.template_id) await request.delete(`/api/recurring/${t.repeat.template_id}`);
+            await request.delete(`/api/tasks/${t.id}`);
+        }
+    }
+});
+
 // #422: after a partial failure, "Apply remaining" must send only what
 // failed. A create_new that already landed must not be created twice.
 test.describe("✨ Plan retry skips what already landed (#422)", () => {
@@ -8764,7 +8800,7 @@ test.describe("Voice memo routes reach the server (#425)", () => {
         await dialog.locator("select").nth(1).selectOption("0");
         await dialog.getByRole("button", { name: "Save" }).click();
         await expect(dialog).toBeHidden();
-        await expect(rows.nth(2).locator(".voice-candidate-recur-btn")).toHaveText("↻ Recurring (weekly)");
+        await expect(rows.nth(2).locator(".voice-candidate-recur-btn")).toHaveText("↻ Recurring (Weekly on Mon)");   // #460: the shared label
 
         await page.click("#voiceConfirmAll");
         await expect(page.locator("#voiceDoneMessage")).toHaveText(

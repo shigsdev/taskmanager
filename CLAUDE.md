@@ -696,6 +696,11 @@ Report.
      #423: 💡 Auto-categorize two Inbox tasks with one PATCH stubbed to 500,
      Apply all — the dialog stays on the failed row ("Apply remaining (1
      failed)") and the saved task has already left the Inbox column behind it.
+     #460: make a "Specific weekdays" (Mon/Wed/Fri) and a "Monthly (nth
+     weekday)" (2nd Tue) repeating task: the board badges read "↻ Specific
+     weekdays" / "↻ Monthly", their previews "🔁 Specific weekdays · …", and
+     /recurring reads "Weekly on Mon, Wed, Fri" / "Monthly on the 2nd Tue" —
+     no raw value (multi_day_of_week, a weekday number) anywhere.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -893,6 +898,7 @@ Report.
   Bulk chip: a button           PASS          Bulk chip: a button, 44px     PASS
   Auto-categorize: late answer dropped PASS   Auto-categorize: late answer dropped PASS
   Auto-categorize: partial apply reloads PASS Auto-categorize: partial apply reloads PASS
+  Repeat labels: words, not raw values PASS   Repeat labels: words, not raw values PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
