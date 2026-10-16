@@ -51,8 +51,9 @@
 
     <!-- Review section (shown after scan) -->
     <div class="scan-review" id="scanReview" style="display:none">
-        <h2>Review Task Candidates</h2>
-        <p>Edit, include, or exclude each candidate before adding to inbox.</p>
+        <!-- #488: scan.js words these by kind (scanHelpers.scanReviewCopy). -->
+        <h2 id="scanReviewHeading">Review Task Candidates</h2>
+        <p id="scanReviewHint">Edit, include, or exclude each candidate before adding to inbox.</p>
 
         <div class="scan-candidates" id="scanCandidates"></div>
 
@@ -81,5 +82,6 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='scan_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='scan.js') }}"></script>
 {% endblock %}

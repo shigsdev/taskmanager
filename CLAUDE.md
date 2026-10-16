@@ -793,6 +793,10 @@ Report.
      badge, today's day-strip cell, a bulk chip (and its hover stays
      copper, not blue); a red Delete keeps white text (the quiet case).
      copper_contrast.spec.js measures them and every copper fill on 19 pages.
+     #488: on /scan (upload stubbed) scan as Goals — the review reads
+     "Review Goal Candidates" and "Add All to Goals" / "Add Selected to
+     Goals"; as Projects, "… to Projects"; Scan Another then Tasks reads
+     "Add All to Inbox" again (the quiet case).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -1007,6 +1011,7 @@ Report.
   Projects: retype takes its tasks PASS       Projects: retype takes its tasks PASS
   Pickers: projects of own type PASS          Pickers: projects of own type PASS
   Copper buttons: dark text     PASS          Copper buttons: dark text     PASS
+  Scan: review names its kind   PASS          Scan: review names its kind   PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

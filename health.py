@@ -182,6 +182,7 @@ EXPECTED_STATIC_FILES = (
     "static/goals.js",
     "static/review.js",
     "static/scan.js",
+    "static/scan_helpers.js",
     "static/settings.js",
     "static/recycle_bin.js",
     "static/recycle_bin_helpers.js",

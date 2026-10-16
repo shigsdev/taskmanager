@@ -39,6 +39,8 @@
     const ocrTextEl = document.getElementById("scanOcrText");
     const confirmAllBtn = document.getElementById("scanConfirmAll");
     const confirmSelectedBtn = document.getElementById("scanConfirmSelected");
+    const reviewHeading = document.getElementById("scanReviewHeading");
+    const reviewHint = document.getElementById("scanReviewHint");
     const rescanBtn = document.getElementById("scanRescan");
 
     const doneMessage = document.getElementById("scanDoneMessage");
@@ -242,6 +244,13 @@
                     data.kind === "goals" ? "goals"
                     : (data.kind === "projects" ? "projects" : "tasks");
                 ocrTextEl.textContent = data.ocr_text || "(no text)";
+                // #488: the review says where these go (goals / projects
+                // aren't the Inbox).
+                var copy = window.scanHelpers.scanReviewCopy(currentKind);
+                reviewHeading.textContent = copy.heading;
+                reviewHint.textContent = copy.hint;
+                confirmAllBtn.textContent = copy.addAll;
+                confirmSelectedBtn.textContent = copy.addSelected;
                 renderCandidates();
                 showSection(reviewSection);
             } else {
