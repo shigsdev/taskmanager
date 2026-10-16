@@ -855,12 +855,13 @@ test.describe("Tier-column drag updates due_date for today/tomorrow @noviewport"
         }
     });
 
-    test("dragging a dated task to This Week LEAVES the date alone (no canonical date)", async ({
+    test("dragging a due-today task to This Week sends no date; the server drops today's (#466)", async ({
         page, request,
     }) => {
         // Inverse — week ranges have no single canonical date, so the
-        // drop handler should NOT touch due_date. Server's _auto_promote
-        // route runs the OTHER direction (date→tier), not this one.
+        // drop handler sends no due_date. #466 (user decision 2026-10-16):
+        // the server then drops a date that doesn't fit This Week — today's
+        // kept the task on the Today panel and today's calendar square.
         const _now = new Date();
         const todayIso =
             _now.getFullYear() + "-" +
@@ -900,7 +901,9 @@ test.describe("Tier-column drag updates due_date for today/tomorrow @noviewport"
                 list.dispatchEvent(new DragEvent("dragover", { dataTransfer: dt, bubbles: true, cancelable: true }));
                 list.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
             }, task.id);
-            await patchPromise;
+            const patched = await patchPromise;
+            expect(patched.ok()).toBe(true);
+            expect(JSON.parse(patched.request().postData())).not.toHaveProperty("due_date");
             // #383: assert the reorder SUCCEEDED, not just that it
             // answered — it 500'd for months behind a bare await.
             expect((await reorderPromise).ok()).toBe(true);
@@ -909,8 +912,8 @@ test.describe("Tier-column drag updates due_date for today/tomorrow @noviewport"
             const refreshed = await refetch.json();
             // Tier moved...
             expect(refreshed.tier).toBe("this_week");
-            // ...but date is preserved.
-            expect(refreshed.due_date).toBe(todayIso);
+            // ...and today's date, which doesn't fit This Week, is gone.
+            expect(refreshed.due_date).toBeNull();
         } finally {
             await request.delete(`/api/tasks/${task.id}`);
         }
@@ -9697,8 +9700,11 @@ test.describe("/plan: accepting a move with no date keeps the task's date (#436)
         page, request,
     }) => {
         const s = Math.random().toString(36).slice(2, 8);
+        // #466: the move goes to Backlog, where a far date belongs — a move
+        // into This Week would now drop it (user decision 2026-10-16). The
+        // point here is #436's: a dateless move sends no due_date at all.
         const task = await (await request.post("/api/tasks", {
-            data: { title: `436 dated ${s}`, type: "work", tier: "backlog", due_date: "2027-03-15" },
+            data: { title: `436 dated ${s}`, type: "work", tier: "this_week", due_date: "2027-03-15" },
         })).json();
         expect(task.due_date).toBe("2027-03-15");
         await page.route("**/api/planner/weekly", (r) => r.fulfill({ json: {
@@ -9707,7 +9713,7 @@ test.describe("/plan: accepting a move with no date keeps the task's date (#436)
             goal_hints: [], day_by_day_plan: {}, stale_freezer_review: [],
             per_task_suggestions: [{
                 task_id: task.id, title: task.title, action: "move",
-                suggested_tier: "this_week", suggested_due_date: null,
+                suggested_tier: "backlog", suggested_due_date: null,
                 suggested_project_id: null, suggested_goal_id: null, reason: "436",
             }],
         } }));
@@ -9721,10 +9727,10 @@ test.describe("/plan: accepting a move with no date keeps the task's date (#436)
             const patched = page.waitForRequest((req) =>
                 req.method() === "PATCH" && req.url().endsWith(`/api/tasks/${task.id}`));
             await row.locator(".plan-accept").click();
-            expect(JSON.parse((await patched).postData())).toEqual({ tier: "this_week" });
+            expect(JSON.parse((await patched).postData())).toEqual({ tier: "backlog" });
             await expect(row.locator(".plan-accept")).toHaveText("Applied ✓");
             const saved = await (await request.get(`/api/tasks/${task.id}`)).json();
-            expect(saved.tier).toBe("this_week");
+            expect(saved.tier).toBe("backlog");
             expect(saved.due_date).toBe("2027-03-15");
         } finally {
             await request.delete(`/api/tasks/${task.id}`);

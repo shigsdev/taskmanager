@@ -245,10 +245,9 @@ def _auto_fill_tier_due_date(task: Task, data: dict) -> None:
       all (even setting it to ``None`` is user intent; don't second-
       guess). Means: only auto-fills when the field wasn't in the
       payload.
-    - Only fires for TODAY and TOMORROW. Moving back out to Backlog /
-      Freezer / etc. does NOT clear an auto-filled due_date — the
-      date is still meaningful as a reminder (per the backlog's
-      design note).
+    - Only fires for TODAY and TOMORROW. Moving back out to Inbox /
+      Freezer does NOT clear the date; This Week / Backlog drop one that
+      doesn't fit them (#466) and Next Week drops any (#220).
     """
     if "due_date" in data:
         return
@@ -267,7 +266,8 @@ def _redate_section_move(task: Task, data: dict) -> None:
     (``tierHelpers.dueDateForTier``), here so the bulk toolbar, the voice
     Shortcut, ✨ Plan and the review screens get it too. Runs even when
     the tier didn't change: "move to Today" on an overdue Today task
-    means do it today. Other sections keep the date (#466).
+    means do it today. This Week / Backlog drop a date that doesn't fit
+    (#466, ``_clear_unfitting_section_date``).
     """
     if "tier" not in data or "due_date" in data:
         return
@@ -277,6 +277,35 @@ def _redate_section_move(task: Task, data: dict) -> None:
         task.due_date = _local_today_date()
     elif task.tier == Tier.TOMORROW:
         task.due_date = _local_today_date() + timedelta(days=1)
+
+
+# #466: the sections whose section-only move drops a date that doesn't fit.
+# Next Week drops any date already (#220); Inbox and Freezer keep theirs.
+_DATE_FITTED_TIERS = frozenset({Tier.THIS_WEEK, Tier.BACKLOG})
+
+
+def _clear_unfitting_section_date(task: Task, data: dict, tier_before: Tier | None) -> None:
+    """#466 (user decision 2026-10-16): a write that MOVES an active task to
+    THIS_WEEK / BACKLOG without naming ``due_date`` drops a date that
+    doesn't fit there — overdue, today, or one that files to another
+    section. Kept, the 00:03 re-sort moved the task straight back out (a ✨
+    Plan "Promote to This Week" of a far-dated task was in Backlog next
+    morning; a due-today task moved to Backlog stayed on today's calendar
+    square, then came back). A date fits when it's after today and
+    ``_tier_for_due_date`` files it to that section. Same idea as #220's
+    Next Week clear, and like it only on an actual move.
+    """
+    if "tier" not in data or "due_date" in data:
+        return
+    if task.tier not in _DATE_FITTED_TIERS or task.tier == tier_before:
+        return
+    if task.due_date is None:
+        return
+    if task.status is not None and task.status != TaskStatus.ACTIVE:
+        return
+    if task.due_date > _local_today_date() and _tier_for_due_date(task.due_date) == task.tier:
+        return
+    task.due_date = None
 
 
 # #74 (2026-04-26): when a task's `due_date` is set, route the tier to
@@ -790,6 +819,7 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
     # #386: whether this write moved the date decides if an explicit
     # tier=inbox still routes (see _auto_promote_tier_on_due_today).
     old_due_date = task.due_date
+    tier_before = task.tier  # #466
     old_type = task.type
 
     # #475: check a new project / goal before anything is written, against
@@ -846,9 +876,8 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
         #   - task had no due_date to begin with (no-op)
         # Mirrors the spirit of _auto_fill_tier_due_date — that hook
         # auto-FILLS for TODAY/TOMORROW; this one auto-CLEARS for
-        # NEXT_WEEK. THIS_WEEK / BACKLOG / INBOX intentionally NOT
-        # included here — those punts may still want to keep the
-        # existing date as a reminder. Scoped to the reported case.
+        # NEXT_WEEK. THIS_WEEK / BACKLOG drop only a date that doesn't
+        # fit them (#466, _clear_unfitting_section_date); INBOX keeps it.
         if (
             task.tier != old_tier
             and task.tier == Tier.NEXT_WEEK
@@ -957,6 +986,7 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
     # drag-to-today, bulk tier change, capture-bar #today with no
     # explicit date, etc. #435: a tier-only move there replaces an older
     # date first.
+    _clear_unfitting_section_date(task, data, tier_before)  # #466
     _redate_section_move(task, data)
     _auto_fill_tier_due_date(task, data)
 

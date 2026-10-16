@@ -224,28 +224,29 @@ class TestTierPuntClearsStaleDueDate:
             assert updated.tier == Tier.NEXT_WEEK
             assert updated.due_date == next_tuesday
 
-    def test_punt_to_this_week_does_NOT_clear(self, app):
-        """Scope: hook only fires for tier→NEXT_WEEK. Tier→THIS_WEEK
-        is a different mental model (re-schedule within the week)
-        and should preserve the date as a reminder."""
+    def test_punt_to_this_week_clears_todays_date(self, app):
+        """#466 (user decision 2026-10-16): today doesn't fit This Week, so
+        the date goes — kept, the task stayed on the Today panel and
+        today's calendar square. A later-this-week date stays
+        (test_task_section_move_date.py)."""
         from task_service import update_task
         with app.app_context():
             t = _make_task(title="re-tier", tier=Tier.TODAY, due_date=_today())
             updated = update_task(t.id, {"tier": "this_week"})
             assert updated is not None
             assert updated.tier == Tier.THIS_WEEK
-            assert updated.due_date == _today()
+            assert updated.due_date is None  # #466
 
-    def test_punt_to_backlog_does_NOT_clear(self, app):
-        """Scope: hook only fires for tier→NEXT_WEEK. BACKLOG keeps
-        the date so the user can see "this was originally due X"."""
+    def test_punt_to_backlog_clears_todays_date(self, app):
+        """#466: today doesn't fit Backlog (it filed back to This Week the
+        next night). A far-off date still stays."""
         from task_service import update_task
         with app.app_context():
             t = _make_task(title="park", tier=Tier.TODAY, due_date=_today())
             updated = update_task(t.id, {"tier": "backlog"})
             assert updated is not None
             assert updated.tier == Tier.BACKLOG
-            assert updated.due_date == _today()
+            assert updated.due_date is None  # #466
 
 
 # --- on-write hook in update_task / create_task ----------------------------

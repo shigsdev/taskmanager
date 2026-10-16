@@ -532,8 +532,9 @@ Report.
      #435: tick a Today card, Section ▾ Tomorrow, Apply: the card shows ONLY in
      Tomorrow (not in Today too) and reads tomorrow's date.
      #436: on /plan (stub /api/planner/weekly), a MOVE row with no date on a
-     task dated weeks out: Accept (and, on another, Apply all remaining) moves
-     it and the date stays; the button reads "Apply all remaining".
+     task dated weeks out, to Backlog: Accept (and, on another, Apply all
+     remaining) moves it and the date stays (into This Week it now drops,
+     #466); the button reads "Apply all remaining".
      #437: on /reflection (stub the analysis POST to a real reflection id),
      propose a create plus an update of a task id that doesn't exist, Apply:
      the review stays, the create row reads "✓ applied" and is greyed, the
@@ -730,6 +731,12 @@ Report.
      parent and is NOT listed on its own under the bin's Deleted tasks;
      Recycle Bin → Restore on that batch brings both back. A subtask you
      completed before the undo stays completed (the quiet case).
+     #466: on the board, Move ▾ (the row at 375) a due-today task to Backlog —
+     its date is gone and it's off today's /calendar square; a Backlog task
+     dated ~6 weeks out moved to This Week loses that date and is still in
+     This Week after the 00:03 re-sort (pytest runs the re-sort); a task
+     dated ~6 weeks out moved to Backlog KEEPS its date (the quiet case).
+     Changing Section in the task panel keeps the date shown there.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -933,6 +940,7 @@ Report.
   Panel: deleted task shows Restore PASS      Panel: deleted task shows Restore PASS
   Reflection: unsaved finish keeps text PASS  Reflection: unsaved finish keeps text PASS
   Import undo: subtasks go + come back PASS   Import undo: subtasks go + come back PASS
+  Section move: unfitting date dropped PASS   Section move: unfitting date dropped PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

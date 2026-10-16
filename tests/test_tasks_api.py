@@ -2167,10 +2167,11 @@ class TestTierDueDateAutoFill:
         )
         assert resp.get_json()["due_date"] is None
 
-    def test_move_out_of_today_leaves_due_date_intact(
+    def test_move_out_of_today_to_backlog_drops_a_past_date(
         self, authed_client, app,
     ):
-        """#28 design note: moving OUT of TODAY doesn't clear due_date."""
+        """#28's "moving out of TODAY keeps due_date" no longer holds for
+        This Week / Backlog: #466 drops a date that doesn't fit there."""
         from datetime import date as _date
         with app.app_context():
             t = _make_task(
@@ -2182,7 +2183,7 @@ class TestTierDueDateAutoFill:
         )
         body = resp.get_json()
         assert body["tier"] == "backlog"
-        assert body["due_date"] == "2026-04-20"
+        assert body["due_date"] is None
 
     # --- bulk PATCH ---------------------------------------------------
 
