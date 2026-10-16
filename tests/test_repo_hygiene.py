@@ -335,3 +335,135 @@ def test_no_ms_per_day_date_math_in_static_js():
         + ", ".join(offenders)
         + " — use dateHelpers.addDays / tierHelpers.weekBounds"
     )
+
+
+# --- #459: two more mechanical guards from the deep review -----------------
+
+# Jinja {# … #} and HTML <!-- … --> comments, blanked line-for-line.
+_TEMPLATE_COMMENTS = re.compile(r"\{#.*?#\}|<!--.*?-->", re.S)
+
+
+def _blank(m):
+    return re.sub(r"[^\n]", " ", m.group())
+
+
+def _page_scripts():
+    """{name: source} for every page script: static/*.js plus templates
+    (their inline <script>s, template comments blanked). JS comments are
+    stripped by the callers."""
+    out = {p.name: p.read_text(encoding="utf-8")
+           for p in sorted((REPO_ROOT / "static").glob("*.js"))}
+    out.update({"templates/" + p.name: _TEMPLATE_COMMENTS.sub(_blank, p.read_text(encoding="utf-8"))
+                for p in sorted((REPO_ROOT / "templates").glob("*.html"))})
+    return out
+
+
+def test_page_scripts_blank_template_comments():
+    assert _TEMPLATE_COMMENTS.sub(_blank, "a{# x\ny #}b<!-- z -->c") == "a    \n    b          c"
+
+
+# `toISOString()` is the UTC instant, so its first 10 characters are the UTC
+# date: after 8 pm Eastern that is tomorrow. #424 removed every such date;
+# dateHelpers.localIsoDate is the local one.
+_ISO_DATE_CUT = re.compile(
+    r"toISOString\(\)\s*\.\s*(?:slice|substring|substr)\(\s*0\s*,\s*10\s*\)"
+    r"|toISOString\(\)\s*\.\s*split\(\s*['\"]T['\"]\s*\)\s*\[\s*0\s*\]"
+)
+
+
+def _iso_date_offenders(sources):
+    return sorted(
+        name for name, text in sources.items()
+        if _ISO_DATE_CUT.search(_JS_COMMENTS.sub("", text))
+    )
+
+
+def test_iso_date_detector_catches_it():
+    assert _iso_date_offenders({
+        "a.js": "const today = new Date().toISOString().slice(0, 10);\n",
+        "b.js": "var d = when.toISOString().split('T')[0];\n",
+        "c.js": 'var d = when.toISOString().substring(0,10);\n',
+        "d.js": "// was: new Date().toISOString().slice(0, 10)\nlocalIsoDate();\n",
+        "e.js": "body.at = new Date().toISOString();\n",   # a timestamp is fine
+    }) == ["a.js", "b.js", "c.js"]
+
+
+def test_no_utc_iso_dates_in_page_scripts():
+    offenders = _iso_date_offenders(_page_scripts())
+    assert not offenders, (
+        "toISOString() cut to a date (that's the UTC date, #459) in: "
+        + ", ".join(offenders) + " — use dateHelpers.localIsoDate"
+    )
+
+
+# A statement `apiFetch(...).then(...)` with no `.catch` turns a failed
+# request into an unhandled rejection: the page silently does nothing.
+# Chains that are returned, awaited or assigned belong to their caller and
+# aren't checked — only ones that start a statement.
+_API_FETCH_CALL = re.compile(r"(?:\bwindow\s*\.\s*)?\bapiFetch\s*\(")
+_CHAIN_LINK = re.compile(r"\s*\.\s*(then|catch|finally)\s*\(")
+_JS_STRING = re.compile(r"""'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|`(?:\\.|[^`\\])*`""", re.S)
+
+
+def _close_paren(text, open_at):
+    """Index just past the ')' matching the '(' at open_at (strings blanked)."""
+    depth = 0
+    for i in range(open_at, len(text)):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+    return len(text)
+
+
+def _uncaught_api_fetch_chains(text):
+    """Line numbers of statement-level apiFetch(...).then chains with no catch."""
+    code = _JS_STRING.sub(_blank, _JS_COMMENTS.sub(_blank, text))
+    bad = []
+    for m in _API_FETCH_CALL.finditer(code):
+        before = code[:m.start()].rstrip()
+        if before and before[-1] not in ";{}":
+            continue                       # returned, awaited, assigned, an argument…
+        end = _close_paren(code, m.end() - 1)
+        links = []
+        while True:
+            link = _CHAIN_LINK.match(code, end)
+            if not link:
+                break
+            links.append(link.group(1))
+            end = _close_paren(code, link.end() - 1)
+        if "then" in links and "catch" not in links:
+            bad.append(code.count("\n", 0, m.start()) + 1)
+    return bad
+
+
+def test_uncaught_api_fetch_detector_catches_it():
+    src = (
+        "function a() {\n"
+        "    apiFetch('/x').then(function (d) { draw(d); });\n"            # 2: bad
+        "    window.apiFetch(\"/y\").then((d) => draw(d)).catch(() => {});\n"
+        "    window.apiFetch('/z')\n"
+        "        .then((d) => { if (d) draw(d); })\n"
+        "        .finally(() => done());\n"                                 # 4: bad
+        "    return apiFetch('/r').then((d) => d.items);\n"
+        "    const p = apiFetch('/p').then((d) => d);\n"
+        "    await apiFetch('/w');\n"
+        "    apiFetch('/q', { body: JSON.stringify({ a: ')' }) }).then(f);\n"  # 10: bad
+        "    // apiFetch('/c').then(f);\n"
+        "}\n"
+    )
+    assert _uncaught_api_fetch_chains(src) == [2, 4, 10]
+
+
+def test_no_uncaught_api_fetch_chains_in_page_scripts():
+    offenders = {
+        name: lines for name, text in _page_scripts().items()
+        if (lines := _uncaught_api_fetch_chains(text))
+    }
+    assert not offenders, (
+        "apiFetch(...).then(...) with no .catch (#459 — a failed request "
+        "becomes a silent unhandled rejection): "
+        + ", ".join(f"{n} line {ls}" for n, ls in sorted(offenders.items()))
+    )

@@ -3,6 +3,10 @@ module.exports = {
   // Unit tests run in Node; DOM tests use jsdom (set per-file via docblock)
   testEnvironment: "node",
 
+  // #459: every test runs in US Eastern (the user's zone, with its DST
+  // changes), whatever the machine's own timezone is.
+  globalSetup: "./tests/js/global_setup.js",
+
   // Test file locations.
   //
   // Use a relative glob instead of `<rootDir>/tests/...`. On Windows when
