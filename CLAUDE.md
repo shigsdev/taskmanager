@@ -713,6 +713,12 @@ Report.
      Enter / ↓ / Escape / Tab work from the keyboard. On a ~820px touch
      screen Move ▾ shows and its items are 44px. At 375 the row under the
      title is unchanged and there is no Move ▾ (the quiet case).
+     #463: complete a subtask, delete its parent, open the subtask on
+     /completed and click its "deleted" Parent task link — the panel says
+     "This task is in the Recycle Bin." and shows Save + ↩ Restore only (no
+     Complete / Copy / Cancel / Delete); Restore brings it back and closes
+     the panel; a refused Restore (stub PATCH 500) says so and stays open.
+     The next task opened has its four buttons back (the quiet case).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -913,6 +919,7 @@ Report.
   Repeat labels: words, not raw values PASS   Repeat labels: words, not raw values PASS
   Projects: goalless drop drops inherited goal PASS  Projects: goalless drop drops inherited goal PASS
   Board: title click opens, Move ▾ PASS       Board: row under title (unchanged) PASS
+  Panel: deleted task shows Restore PASS      Panel: deleted task shows Restore PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

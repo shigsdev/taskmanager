@@ -2570,6 +2570,9 @@ function setupDetailPanel() {
         const id = document.getElementById("detailId").value;
         if (id) taskDelete(id);
     });
+    // #463: one restore at a time, like Save (#429).
+    document.getElementById("detailRestore")
+        .addEventListener("click", window.inflightSubmit(taskDetailRestore));
     document.getElementById("detailComplete").addEventListener("click", () => {
         const id = document.getElementById("detailId").value;
         if (id) {
@@ -2750,6 +2753,43 @@ function _setDetailCreateMode(isCreate) {
     if (hdr) hdr.textContent = isCreate ? "New Task" : "Task Detail";
 }
 
+// #463: a task in the Recycle Bin (a completed subtask's link to its deleted
+// parent opens one) had the normal buttons: ✓ Complete and ✕ Cancel are
+// refused for it (#474), Copy made an active copy, Delete deleted it again,
+// and nothing could bring it back. It gets a note and Restore instead. Save
+// stays — edits to a binned task are allowed and don't revive it.
+const _DETAIL_LIVE_ACTIONS = ["detailComplete", "detailDuplicate", "detailCancel", "detailDelete"];
+function _setDetailDeletedMode(isDeleted) {
+    for (const id of _DETAIL_LIVE_ACTIONS) {
+        const el = document.getElementById(id);
+        if (el) el.hidden = isDeleted;
+    }
+    for (const id of ["detailRestore", "detailDeletedNote"]) {
+        const el = document.getElementById(id);
+        if (el) el.hidden = !isDeleted;
+    }
+}
+
+// The Recycle Bin's Restore (the same PATCH), from the panel. A parent's
+// subtasks that went to the bin with it come back too (#433).
+async function taskDetailRestore() {
+    const id = document.getElementById("detailId").value;
+    if (!id) return;
+    try {
+        await apiFetch(`${API}/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ status: "active" }),
+        });
+    } catch (err) {
+        // #430: the panel stays open — the task is still in the bin.
+        await boardActionFailed("Restoring the task", err);
+        return;
+    }
+    await loadTasks();
+    refreshDoneLists();   // #444
+    taskDetailClose();
+}
+
 // #269: open the detail panel in create mode for a brand-new task, so the
 // user can fill in every field (Section, project, goal, due date, …) up
 // front instead of quick-capturing to Inbox and triaging later. Optional
@@ -2796,6 +2836,7 @@ function taskDetailOpen(task) {
     _detailOpenSnapshot = task ? JSON.parse(JSON.stringify(task)) : null;
     // #269: create mode when there's no id (a brand-new task).
     _setDetailCreateMode(!task.id);
+    _setDetailDeletedMode(task.status === "deleted");   // #463
     document.getElementById("detailId").value = task.id;
     document.getElementById("detailTitle").value = task.title;
     document.getElementById("detailTier").value = task.tier;

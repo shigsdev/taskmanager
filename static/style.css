@@ -1751,6 +1751,12 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     margin-top: 4px;
 }
 
+/* #463: shown above the actions for a task in the Recycle Bin. */
+.detail-deleted-note {
+    margin: 12px 0 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
 .detail-actions {
     display: flex;
     gap: 8px;

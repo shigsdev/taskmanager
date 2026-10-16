@@ -228,8 +228,14 @@
                 </div>
             </div>
 
+            {# #463: a task in the Recycle Bin (reached from a subtask's
+               parent link) gets Restore instead of Complete / Copy /
+               Cancel / Delete — see _setDetailDeletedMode in app.js. #}
+            <p class="detail-deleted-note" id="detailDeletedNote" hidden>This task is in the Recycle Bin.</p>
+
             <div class="detail-actions">
                 <button type="submit" class="btn">Save</button>
+                <button type="button" class="btn" id="detailRestore" title="Take it out of the Recycle Bin" hidden>↩ Restore</button>
                 <button type="button" class="btn btn-complete" id="detailComplete">✓ Complete</button>
                 {# #143 (2026-05-04): clone the task to TOMORROW so the user
                    can keep working on it the next day without retyping
