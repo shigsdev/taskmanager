@@ -799,7 +799,38 @@
         return "";
     }
 
+    /**
+     * #464: what a failed Finish & analyze (POST /api/reflection) means.
+     * The server saves the transcript and retires the draft BEFORE calling
+     * Claude, and an analysis failure says so with `saved: true`. Anything
+     * else — the rate limit (429, an HTML body), a dropped connection, a
+     * refused input — saved nothing and left the draft live, so the page
+     * must not say "it's in your history".
+     *   err — what apiFetch threw ({message, status, body}).
+     * Returns {saved, message}.
+     */
+    function submitFailure(err) {
+        var body = err && err.body;
+        var msg = err && err.message ? String(err.message) : "";
+        if (body && body.saved === true) {
+            return {
+                saved: true,
+                message: /^analysis failed/i.test(msg) ? msg : "Analysis failed: " + msg,
+            };
+        }
+        var reason = err && err.status === 429
+            ? "too many analyses in a minute — wait a minute and try again"
+            : (msg || "the request didn't go through");
+        return {
+            saved: false,
+            message: "Couldn't send it for analysis: " + reason.replace(/\.+$/, "")
+                + ". Nothing went to your history — your text is still here, and"
+                + " still saved as your draft.",
+        };
+    }
+
     var api = {
+        submitFailure: submitFailure,
         selectedKeys: selectedKeys,
         applyOutcome: applyOutcome,
         partialApplyText: partialApplyText,

@@ -235,3 +235,52 @@ describe("appendTranscriptSegment (#232 pause+resume)", () => {
         expect(appendTranscriptSegment("base", 42)).toBe("base 42");
     });
 });
+
+// #464: a failed Finish & analyze is "saved" only when the server says so.
+describe("submitFailure (#464)", () => {
+    const { submitFailure } = require("../../../static/reflection_helpers");
+    const httpErr = (status, body, message) =>
+        Object.assign(new Error(message), { status, body });
+
+    test("a saved 422 keeps the old behaviour and message", () => {
+        const out = submitFailure(httpErr(422, {
+            error: "Analysis failed: the model is busy.", saved: true, reflection_id: "r1",
+        }, "Analysis failed: the model is busy."));
+        expect(out).toEqual({ saved: true, message: "Analysis failed: the model is busy." });
+    });
+
+    test("a saved 500 adds the label once", () => {
+        const out = submitFailure(httpErr(500, { error: "boom", saved: true }, "boom"));
+        expect(out).toEqual({ saved: true, message: "Analysis failed: boom" });
+    });
+
+    test("a 429 (HTML body) saved nothing and says to wait", () => {
+        const out = submitFailure(httpErr(429, {}, "TOO MANY REQUESTS"));
+        expect(out.saved).toBe(false);
+        expect(out.message).toBe("Couldn't send it for analysis: too many analyses in a "
+            + "minute — wait a minute and try again. Nothing went to your history — your "
+            + "text is still here, and still saved as your draft.");
+    });
+
+    test("an unsaved 422 passes the server's reason through, one full stop", () => {
+        const out = submitFailure(httpErr(422, { error: "text must be text." }, "text must be text."));
+        expect(out).toEqual({
+            saved: false,
+            message: "Couldn't send it for analysis: text must be text. Nothing went to your "
+                + "history — your text is still here, and still saved as your draft.",
+        });
+    });
+
+    test("a network error (no status) saved nothing", () => {
+        const out = submitFailure(new TypeError("Failed to fetch"));
+        expect(out.saved).toBe(false);
+        expect(out.message).toMatch(/^Couldn't send it for analysis: Failed to fetch\. Nothing went/);
+    });
+
+    test("only saved === true counts", () => {
+        for (const saved of ["true", 1, null, undefined, false]) {
+            expect(submitFailure(httpErr(500, { error: "x", saved }, "x")).saved).toBe(false);
+        }
+        expect(submitFailure(null).saved).toBe(false);
+    });
+});

@@ -719,6 +719,12 @@ Report.
      Complete / Copy / Cancel / Delete); Restore brings it back and closes
      the panel; a refused Restore (stub PATCH 500) says so and stays open.
      The next task opened has its four buttons back (the quiet case).
+     #464: on /reflection type, then Finish & analyze with its POST made to
+     fail BEFORE saving (fetch override: 429 with an HTML body, or a dropped
+     connection) — you stay on the writing view with the text, the reason
+     shows under the buttons ("…Nothing went to your history…"), and the
+     draft keeps saving (reload: the text is back). A 422 with
+     {saved: true} still shows the error screen with the history line.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -920,6 +926,7 @@ Report.
   Projects: goalless drop drops inherited goal PASS  Projects: goalless drop drops inherited goal PASS
   Board: title click opens, Move ▾ PASS       Board: row under title (unchanged) PASS
   Panel: deleted task shows Restore PASS      Panel: deleted task shows Restore PASS
+  Reflection: unsaved finish keeps text PASS  Reflection: unsaved finish keeps text PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

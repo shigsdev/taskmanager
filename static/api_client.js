@@ -174,7 +174,12 @@
         }
         if (!resp.ok) {
             const body = await resp.json().catch(() => ({}));
-            throw new Error(body.error || resp.statusText);
+            const err = new Error(body.error || resp.statusText);
+            // #464: what the server said, for a caller that needs more than
+            // the message (e.g. /reflection's saved-before-failing flag).
+            err.status = resp.status;
+            err.body = body;
+            throw err;
         }
         // #214: cross-tab sync. After a successful task-affecting
         // mutation, ping every same-origin tab via a BroadcastChannel

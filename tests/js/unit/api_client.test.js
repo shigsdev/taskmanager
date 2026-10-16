@@ -131,6 +131,33 @@ describe("apiFetch — error paths", () => {
         await expect(apiFetch("/api/tasks")).rejects.toThrow("DB connection lost");
     });
 
+    // #464: callers can read what the server said, not just the message.
+    test("a non-ok answer's error carries status and the parsed body", async () => {
+        global.fetch = jest.fn(async () => ({
+            status: 422,
+            ok: false,
+            statusText: "Unprocessable Entity",
+            json: async () => ({ error: "Analysis failed: busy", saved: true, reflection_id: "r1" }),
+        }));
+        const err = await apiFetch("/api/reflection", { method: "POST" }).catch((e) => e);
+        expect(err.message).toBe("Analysis failed: busy");
+        expect(err.status).toBe(422);
+        expect(err.body).toEqual({ error: "Analysis failed: busy", saved: true, reflection_id: "r1" });
+    });
+
+    test("a non-JSON error body leaves body empty, status set", async () => {
+        global.fetch = jest.fn(async () => ({
+            status: 429,
+            ok: false,
+            statusText: "TOO MANY REQUESTS",
+            json: async () => { throw new Error("not json"); },
+        }));
+        const err = await apiFetch("/api/reflection", { method: "POST" }).catch((e) => e);
+        expect(err.message).toBe("TOO MANY REQUESTS");
+        expect(err.status).toBe(429);
+        expect(err.body).toEqual({});
+    });
+
     test("500 without JSON body throws statusText fallback", async () => {
         global.fetch = jest.fn(async () => ({
             status: 500,

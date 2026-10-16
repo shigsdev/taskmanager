@@ -758,6 +758,7 @@
         // submit buttons did not.
         if (submitInFlight) return;
         submitInFlight = true;
+        showInterimError("");   // #464: a new attempt clears the last failure note
         analyzeBtn.disabled = true;
         if (doneBtn) doneBtn.disabled = true;
         showState("analyzing");
@@ -775,12 +776,27 @@
         try {
             data = await window.apiFetch("/api/reflection", fetchOpts);
         } catch (err) {
-            // apiFetch throws on !ok. The 422/500 saved-but-unanalyzed
-            // body carries {saved:true, reflection_id}; apiFetch only
-            // surfaces .message, so we can't read saved flag here —
-            // tell the user the transcript was kept (always true now,
-            // backend persists before the Claude call) and point them
-            // at History.
+            // #464: the 422/500 saved-but-unanalyzed answer carries
+            // {saved: true, reflection_id}. Anything else — the rate limit,
+            // a dropped connection, a refused input — saved NOTHING and the
+            // draft is still live: back to writing with the text (as #431),
+            // never "it's in your history".
+            var failure = window.reflectionHelpers.submitFailure(err);
+            if (!failure.saved) {
+                markStep(stepSave, "fail");
+                // Done (voice) handed its segments over before posting —
+                // put them back so the next submit still carries them.
+                if (opts.json && opts.json.raw_segments && !rawSegments.length) {
+                    rawSegments = opts.json.raw_segments.slice();
+                }
+                showState("input");
+                // The text and this note are on the Type tab; Done came
+                // from Record, whose stream is already stopped.
+                if (voiceSubState !== "idle") showVoiceSubState("idle");
+                selectMode("type");
+                showInterimError(failure.message);
+                return;
+            }
             markStep(stepSave, "done");
             markStep(stepClaude, "fail");
             // #324: the server retires the draft right after persisting
@@ -790,7 +806,7 @@
             // draft holding text that is now a submitted reflection.
             // #341: clearing was never enough on its own — see clearDraftUi.
             clearDraftUi();
-            showErr(analysisErrorText(err), true);
+            showErr(failure.message, true);
             loadHistory();
             return;
         } finally {
