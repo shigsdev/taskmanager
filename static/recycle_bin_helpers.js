@@ -55,14 +55,18 @@ function binDeletedDate(updatedAt) {
  * @returns {{rows: Array<object>, hidden: number, total: number}}
  */
 function binDeletedTasks(tasks, limit) {
-    var list = (Array.isArray(tasks) ? tasks : []).filter(function (t) {
+    var all = Array.isArray(tasks) ? tasks : [];
+    // #465: every deleted task counts as "in the bin" for a subtask's
+    // parent — an undone import's tasks too, though they aren't listed.
+    var deletedIds = {};
+    all.forEach(function (t) { deletedIds[t.id] = true; });
+    var list = all.filter(function (t) {
         return !t.batch_id;
     });
-    var deletedIds = {};
-    list.forEach(function (t) { deletedIds[t.id] = true; });
     // #433: an open subtask that went to the bin with its parent comes back
     // with that parent's Restore, so it's counted on the parent's row
-    // instead of listed on its own.
+    // instead of listed on its own. #465: one that went with an undone
+    // import's task comes back with the batch's Restore — not listed either.
     var withParent = {};
     list = list.filter(function (t) {
         if (t.deleted_with_parent && t.parent_id && deletedIds[t.parent_id]) {

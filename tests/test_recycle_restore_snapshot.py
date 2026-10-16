@@ -153,6 +153,7 @@ def test_snapshot_records_exactly_what_undo_changed(app):
             "tasks": {str(a): "active", str(b): "archived"},
             "goals": [str(g_on)],
             "projects": [str(p_on)],
+            "subtasks": [],  # #465: open subtasks added later; none here
         }
 
 

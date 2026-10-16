@@ -311,6 +311,8 @@ def undo_batch(batch_id: uuid.UUID) -> dict:
     goals = _batch_goals(batch_id)
     projects = _batch_projects(batch_id)
 
+    taken = _open_added_subtasks(batch_id, tasks)
+
     # #367: record what this undo changes, BEFORE changing it, so restore
     # can put each row back exactly as it was. A row the undo leaves
     # alone (a cancelled task, a goal or project the user had already
@@ -324,11 +326,16 @@ def undo_batch(batch_id: uuid.UUID) -> dict:
         },
         "goals": [str(g.id) for g in goals if g.is_active],
         "projects": [str(p.id) for p in projects if p.is_active],
+        "subtasks": [str(s.id) for s in taken],
     }
 
     for task in tasks:
         if task.status == TaskStatus.ACTIVE or task.status == TaskStatus.ARCHIVED:
             task.status = TaskStatus.DELETED
+    # #465: like every other delete since #433 (task_service._soft_delete).
+    for sub in taken:
+        sub.status = TaskStatus.DELETED
+        sub.deleted_with_parent = True
     # #368: through the same function as the Archive button, so the
     # goal's running repeating templates pause and restore resumes them.
     for goal in goals:
@@ -351,7 +358,47 @@ def undo_batch(batch_id: uuid.UUID) -> dict:
         "tasks_removed": len(tasks),
         "goals_removed": len(goals),
         "projects_removed": len(projects),
+        "subtasks_removed": len(taken),
     }
+
+
+def _open_added_subtasks(batch_id: uuid.UUID, tasks: list[Task]) -> list[Task]:
+    """#465: the open subtasks someone added to the batch's tasks after the
+    import. The undo deletes their parent, so they go to the bin with it
+    (#433's rule: open ones only; done / cancelled stay where they are).
+    A subtask imported in this same batch is a batch row already.
+    """
+    taken: list[Task] = []
+    for task in tasks:
+        if task.parent_id is not None:
+            continue
+        if task.status not in (TaskStatus.ACTIVE, TaskStatus.ARCHIVED):
+            continue  # the undo leaves this parent alone
+        for sub in task.subtasks:
+            if sub.status == TaskStatus.ACTIVE and sub.batch_id != batch_id:
+                taken.append(sub)
+    return taken
+
+
+def _restore_taken_subtasks(snapshot: dict) -> int:
+    """#465: bring back the subtasks the undo took along — each one still
+    in the bin with its parent, once that parent is out of it. One the user
+    restored or changed meanwhile, or whose parent stays in the bin, is
+    left as it is."""
+    restored = 0
+    for raw in snapshot.get("subtasks") or []:
+        try:
+            sub = db.session.get(Task, uuid.UUID(raw))
+        except (ValueError, TypeError):
+            continue
+        if sub is None or sub.status != TaskStatus.DELETED or not sub.deleted_with_parent:
+            continue
+        if sub.parent is None or sub.parent.status == TaskStatus.DELETED:
+            continue
+        sub.status = TaskStatus.ACTIVE
+        sub.deleted_with_parent = False
+        restored += 1
+    return restored
 
 
 def undo_impact(batch_id: uuid.UUID) -> dict:
@@ -473,10 +520,12 @@ def restore_batch(batch_id: uuid.UUID) -> dict:
     goals = _batch_goals(batch_id)
     projects = _batch_projects(batch_id)
 
+    restored_subtasks = 0
     if log.undo_snapshot is not None:
         restored_tasks, restored_goals, restored_projects = _restore_from_snapshot(
             log.undo_snapshot, tasks, goals, projects,
         )
+        restored_subtasks = _restore_taken_subtasks(log.undo_snapshot)
     else:
         restored_tasks, restored_goals, restored_projects = _restore_legacy(
             tasks, goals, projects,
@@ -493,6 +542,7 @@ def restore_batch(batch_id: uuid.UUID) -> dict:
         "tasks_restored": restored_tasks,
         "goals_restored": restored_goals,
         "projects_restored": restored_projects,
+        "subtasks_restored": restored_subtasks,
     }
 
 
@@ -560,6 +610,23 @@ def purge_batch(batch_id: uuid.UUID, confirmation: str | None) -> dict:
             .values(paused_by_goal_archive=False)
         )
 
+    # #465: the subtasks the undo took along go with their parents (still
+    # in the bin with them). Otherwise the parent's delete would null their
+    # parent_id and leave them DELETED, hidden by deleted_with_parent, for
+    # good. One restored or changed meanwhile is not touched.
+    taken_ids = []
+    for raw in (log.undo_snapshot or {}).get("subtasks") or []:
+        try:
+            taken_ids.append(uuid.UUID(raw))
+        except (ValueError, TypeError):
+            continue
+    subtasks_purged = 0
+    for sub_id in taken_ids:
+        sub = db.session.get(Task, sub_id)
+        if sub is not None and sub.status == TaskStatus.DELETED and sub.deleted_with_parent:
+            db.session.delete(sub)
+            subtasks_purged += 1
+
     for task in tasks:
         db.session.delete(task)
     for goal in goals:
@@ -579,6 +646,7 @@ def purge_batch(batch_id: uuid.UUID, confirmation: str | None) -> dict:
         "tasks_purged": len(tasks),
         "goals_purged": len(goals),
         "projects_purged": len(projects),
+        "subtasks_purged": subtasks_purged,
     }
 
 

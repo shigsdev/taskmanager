@@ -91,6 +91,21 @@ describe("binDeletedTasks (#428)", () => {
         expect(byId.alone.parentDeleted).toBe(true);
     });
 
+    // #465: an import Undo takes the subtasks you added to its tasks; they
+    // come back with the batch's Restore, so they're not listed on their own
+    // — although the batch parent itself isn't listed here either.
+    test("a subtask that went with an undone import's task is not listed", () => {
+        const out = binDeletedTasks([
+            t("imported", "2026-10-16T10:00:00", { batch_id: "b1" }),
+            t("added", "2026-10-16T10:00:00", { parent_id: "imported", deleted_with_parent: true }),
+            t("own", "2026-10-15T10:00:00", { parent_id: "imported" }),
+        ]);
+        expect(out.rows.map((r) => r.id)).toEqual(["own"]);
+        expect(out.total).toBe(1);
+        // Deleted on its own: listed, and flagged — its parent is in the bin.
+        expect(out.rows[0].parentDeleted).toBe(true);
+    });
+
     test("a marked subtask whose parent isn't in the bin keeps its own row", () => {
         const out = binDeletedTasks([
             t("s1", "2026-10-12T10:00:00", { parent_id: "gone", deleted_with_parent: true }),

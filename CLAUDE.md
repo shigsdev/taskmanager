@@ -725,6 +725,11 @@ Report.
      shows under the buttons ("…Nothing went to your history…"), and the
      draft keeps saving (reload: the text is back). A 422 with
      {saved: true} still shows the error screen with the history line.
+     #465: import a task (/import or the API), give it a subtask, then
+     Settings → Import History → Undo — the subtask leaves the board with its
+     parent and is NOT listed on its own under the bin's Deleted tasks;
+     Recycle Bin → Restore on that batch brings both back. A subtask you
+     completed before the undo stays completed (the quiet case).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -927,6 +932,7 @@ Report.
   Board: title click opens, Move ▾ PASS       Board: row under title (unchanged) PASS
   Panel: deleted task shows Restore PASS      Panel: deleted task shows Restore PASS
   Reflection: unsaved finish keeps text PASS  Reflection: unsaved finish keeps text PASS
+  Import undo: subtasks go + come back PASS   Import undo: subtasks go + come back PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

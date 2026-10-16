@@ -2683,7 +2683,10 @@ Skip this line (too short)</pre>
                 that <code>batch_id</code> goes to the bin in one step:
                 its open and completed tasks are deleted (cancelled
                 ones are left as they are), and its goals and projects
-                are archived.
+                are archived. An open subtask you added to one of its
+                tasks afterwards goes with that task, as when you delete
+                a task yourself; a completed or cancelled one stays
+                where it is.
                 The Recycle Bin itself has no Undo; it restores and
                 purges batches that are already there.
             </p>
@@ -2703,8 +2706,8 @@ Skip this line (too short)</pre>
 
             <h3>Actions on a batch in the bin</h3>
             <ul>
-                <li><strong>Restore</strong> — put every row back exactly as it was before the undo: completed tasks stay completed, and a project or goal you had already archived stays archived. Anything you changed while the batch was in the bin stays as you left it.</li>
-                <li><strong>Purge</strong> — permanent delete. Requires typing <code>DELETE</code> in the confirmation dialog.</li>
+                <li><strong>Restore</strong> — put every row back exactly as it was before the undo: completed tasks stay completed, and a project or goal you had already archived stays archived, and the subtasks that went with a task come back with it. Anything you changed while the batch was in the bin stays as you left it.</li>
+                <li><strong>Purge</strong> — permanent delete, including the subtasks that went with its tasks. Requires typing <code>DELETE</code> in the confirmation dialog.</li>
             </ul>
             <p>
                 Undoing an import that created projects or goals
