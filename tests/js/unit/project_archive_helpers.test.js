@@ -115,3 +115,56 @@ describe("archiveConfirmMessage", () => {
         });
     });
 });
+
+// #482: changing a project's type retypes its tasks and repeating tasks
+// (user decision 2026-10-16), so /projects says how many first.
+describe("typeChangeMessage (#482)", () => {
+    const { typeChangeMessage } = require("../../../static/project_archive_helpers.js");
+    const projects = [
+        { id: "p1", name: "Kitchen", type: "work", task_counts: { active: 3, done: 1 } },
+        { id: "p2", name: "Garden", type: "work", task_counts: { active: 1, done: 0 } },
+        { id: "p3", name: "Empty", type: "work", task_counts: { active: 0, done: 0 } },
+        { id: "p4", name: "Home", type: "personal", task_counts: { active: 5, done: 0 } },
+    ];
+    const templates = [
+        { id: "t1", project_id: "p1", is_active: true },
+        { id: "t2", project_id: "p1", is_active: false },   // paused counts too
+        { id: "t3", project_id: "p9", is_active: true },
+    ];
+
+    test("one project: names it, counts tasks and repeating tasks", () => {
+        expect(typeChangeMessage(projects, ["p1"], "personal", templates))
+            .toBe('4 tasks and 2 repeating tasks on "Kitchen" become Personal too.');
+    });
+
+    test("singular words", () => {
+        expect(typeChangeMessage(projects, ["p2"], "personal", []))
+            .toBe('1 task on "Garden" becomes Personal too.');
+        expect(typeChangeMessage(
+            [{ id: "p5", name: "Solo", type: "work", task_counts: { active: 0, done: 0 } }],
+            ["p5"], "personal", [{ project_id: "p5", is_active: true }]))
+            .toBe('1 repeating task on "Solo" becomes Personal too.');
+    });
+
+    test("several projects are counted together", () => {
+        expect(typeChangeMessage(projects, ["p1", "p2"], "personal", templates))
+            .toBe("5 tasks and 2 repeating tasks on 2 projects become Personal too.");
+    });
+
+    test("a project already of that type isn't counted", () => {
+        expect(typeChangeMessage(projects, ["p2", "p4"], "personal", []))
+            .toBe('1 task on "Garden" becomes Personal too.');
+    });
+
+    test("nothing would move: no message (the quiet cases)", () => {
+        expect(typeChangeMessage(projects, ["p3"], "personal", templates)).toBe("");
+        expect(typeChangeMessage(projects, ["p1"], "work", templates)).toBe("");
+        expect(typeChangeMessage(projects, [], "personal", templates)).toBe("");
+        expect(typeChangeMessage(null, ["p1"], "personal", null)).toBe("");
+    });
+
+    test("Work reads as Work", () => {
+        expect(typeChangeMessage(projects, ["p4"], "work", []))
+            .toBe('5 tasks on "Home" become Work too.');
+    });
+});

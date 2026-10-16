@@ -62,9 +62,47 @@
         return "This will pause " + n + " " + noun + ": " + names + more + ". " + end;
     }
 
+    /**
+     * #482: changing a project's type takes its tasks and repeating tasks
+     * with it (user decision 2026-10-16; the server does it in
+     * update_project). The confirm before it: how many move, e.g.
+     * '4 tasks and 1 repeating task on "Kitchen" become Personal too.'
+     * Tasks = the card's active + done count (task_counts, #375);
+     * repeating tasks = every template on those projects, paused or not.
+     * A project already of `newType` moves nothing. "" when nothing moves —
+     * the quiet case asks nothing (the #351 rule).
+     */
+    function typeChangeMessage(projects, projectIds, newType, templates) {
+        if (!Array.isArray(projects) || !Array.isArray(projectIds)) return "";
+        var wanted = new Set(projectIds);
+        var changing = projects.filter(function (p) {
+            return p && wanted.has(p.id) && p.type !== newType;
+        });
+        if (!changing.length) return "";
+        var ids = new Set(changing.map(function (p) { return p.id; }));
+        var tasks = changing.reduce(function (n, p) {
+            var c = p.task_counts || {};
+            return n + (c.active || 0) + (c.done || 0);
+        }, 0);
+        var tmpls = (Array.isArray(templates) ? templates : []).filter(function (t) {
+            return t && t.project_id && ids.has(t.project_id);
+        }).length;
+        if (!tasks && !tmpls) return "";
+        var parts = [];
+        if (tasks) parts.push(tasks + " task" + (tasks === 1 ? "" : "s"));
+        if (tmpls) parts.push(tmpls + " repeating task" + (tmpls === 1 ? "" : "s"));
+        var where = changing.length === 1
+            ? "\"" + changing[0].name + "\""
+            : changing.length + " projects";
+        var verb = tasks + tmpls === 1 ? "becomes" : "become";
+        var label = newType === "personal" ? "Personal" : "Work";
+        return parts.join(" and ") + " on " + where + " " + verb + " " + label + " too.";
+    }
+
     var api = {
         templatesPausedBy: templatesPausedBy,
         archiveConfirmMessage: archiveConfirmMessage,
+        typeChangeMessage: typeChangeMessage,
         MAX_NAMED: MAX_NAMED,
     };
 

@@ -920,6 +920,8 @@ async function projectDetailSave(e) {
         alert("Name is required.");
         return;
     }
+    // #482: say first if the type change moves tasks with it.
+    if (id && !(await projectsConfirmTypeChange([id], data.type))) return;
 
     try {
         if (id) {
@@ -945,6 +947,23 @@ async function projectDetailSave(e) {
 // when none would pause, or when the lookup fails: the server cascade is
 // the control and the dialog is only information, so a failed fetch must
 // never block archiving.
+// #482: a type change takes the projects' tasks and repeating tasks with it
+// (server: project_service._retype_project_items). Ask first, naming how
+// many move; nothing to move asks nothing. Returns false if cancelled. A
+// failed template fetch still asks with the task count it has.
+async function projectsConfirmTypeChange(ids, newType) {
+    const h = window.projectArchiveHelpers;
+    if (!h || typeof h.typeChangeMessage !== "function") return true;
+    let templates = [];
+    try {
+        templates = await apiFetch("/api/recurring?all=1");
+    } catch (err) {
+        console.warn("Could not list repeating tasks for the type-change confirm:", err);
+    }
+    const msg = h.typeChangeMessage(projectsData, ids, newType, templates);
+    return !msg || confirm(msg);
+}
+
 async function projectsArchiveImpactMessage(ids) {
     const h = window.projectArchiveHelpers;
     if (!h) return "";
@@ -995,6 +1014,8 @@ function bulkSelectedIds() {
 async function bulkPatchProjects(updates) {
     const ids = bulkSelectedIds();
     if (!ids.length) { alert("Select at least one project."); return; }
+    // #482: a bulk Type change moves the projects' tasks too — ask first.
+    if (updates.type && !(await projectsConfirmTypeChange(ids, updates.type))) return;
     try {
         const result = await apiFetch("/api/projects/bulk", {
             method: "PATCH",

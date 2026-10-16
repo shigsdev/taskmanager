@@ -571,7 +571,11 @@ component is added, a data flow changes, or a security boundary shifts.
   reflection) run each row through `link_service.fit_batch_links` (#481):
   a link that doesn't fit is dropped from that row only, the row still
   saves, and the answer's `warning` (reflection: `summary.notes`) names
-  each dropped link (`batch_link_warning`).
+  each dropped link (`batch_link_warning`). A project's own type change
+  (`update_project`, so bulk Type ▾ too) retypes every task on it, their
+  subtasks and its repeating tasks in the same commit
+  (`_retype_project_items`, #482); /projects confirms the count first
+  (`projectArchiveHelpers.typeChangeMessage`).
 - **Project drag between goal cards** (#343, 2026-09-30): goal cards
   did not render their projects at all; they now list them behind a
   collapsed `Projects (N)` toggle, and each chip is a drag source

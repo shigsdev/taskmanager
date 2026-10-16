@@ -776,6 +776,12 @@ Report.
      project and this is a work task." A reflection apply whose summary has
      notes lists them on the done screen. A batch with fitting links reads
      exactly as before (the quiet case). Server rule: pytest.
+     #482: give a Work project two tasks (one with a subtask) and a repeating
+     task; open it, set Type to Personal, Save — the confirm reads "3 tasks
+     and 1 repeating task on "<name>" become Personal too."; Cancel changes
+     nothing; OK retypes them all. /projects Select → Type ▾ Work asks the
+     same and retypes them back. A project with no tasks changes type with
+     no confirm, and a Save that keeps the type asks nothing (quiet cases).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -987,6 +993,7 @@ Report.
   Print: overdue listed once   PASS          Print: overdue listed once   PASS
   Bin: bulk-deleted subtask listed PASS       Bin: bulk-deleted subtask listed PASS
   Batch: unfit link dropped, said PASS        Batch: unfit link dropped, said PASS
+  Projects: retype takes its tasks PASS       Projects: retype takes its tasks PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

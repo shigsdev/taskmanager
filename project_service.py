@@ -15,6 +15,7 @@ from models import (
     RecurringTask,
     Task,
     TaskStatus,
+    TaskType,
     db,
 )
 from recurring_service import cascade_parent_archive
@@ -241,6 +242,30 @@ _UPDATABLE_FIELDS = {
 }
 
 
+def _retype_project_items(project_id: uuid.UUID, new_type: ProjectType) -> None:
+    """#482: a project's tasks and repeating tasks take its new type.
+
+    User decision 2026-10-16 ("retype them too"): every task on the project
+    (any status, so its history matches), the subtasks of those tasks, and
+    every repeating task on it. Goal links are untouched. No commit — the
+    caller's. Only called when the type actually changes, so a Save that
+    re-sends the same type leaves old mismatched rows alone.
+    """
+    task_type = TaskType(new_type.value)
+    tasks = list(db.session.scalars(select(Task).where(Task.project_id == project_id)))
+    parent_ids = [t.id for t in tasks]
+    if parent_ids:
+        tasks += list(db.session.scalars(
+            select(Task).where(Task.parent_id.in_(parent_ids))
+        ))
+    for t in tasks:
+        t.type = task_type
+    for r in db.session.scalars(
+        select(RecurringTask).where(RecurringTask.project_id == project_id)
+    ):
+        r.type = task_type
+
+
 def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
     project = get_project(project_id)
     if project is None:
@@ -262,7 +287,10 @@ def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
     if "type" in data:
         # #476: null keeps the current value, as tasks / goals / templates
         # do (it was NULL into a NOT NULL column → "Database error").
-        project.type = _parse_enum(ProjectType, data["type"], "type") or project.type
+        new_type = _parse_enum(ProjectType, data["type"], "type") or project.type
+        if new_type != project.type:
+            _retype_project_items(project.id, new_type)
+        project.type = new_type
 
     if "color" in data:
         project.color = _parse_color(data["color"])  # PR28 audit fix #3
