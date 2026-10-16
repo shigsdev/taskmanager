@@ -1149,11 +1149,23 @@ https://example.com/foo
                 long it is and what the limit is — your text stays in the bar.
             </p>
 
+            <h3>A project or goal that doesn't fit</h3>
+            <p>
+                If a row's project or goal can't be used when you import —
+                it was deleted or archived since, or the project is
+                personal and the task is work (or the other way round) —
+                the task is still added, just without that link, and the
+                rest of the import saves. The finished screen says which,
+                for example <em>Added without a link: "Mow the lawn" —
+                "Garden" is a personal project and this is a work task.</em>
+                Voice memos and a reflection's new tasks work the same way.
+            </p>
+
             <h3>What the parser does NOT do (yet)</h3>
             <p>Understanding what's missing is as important as what's present:</p>
             <ul>
                 <li>No inline metadata shortcuts. <code>#today</code>, <code>#work</code>, <code>due:2026-01-15</code>, <code>@project</code> and similar tags are <strong>kept in the title</strong>, not parsed. All imported tasks land in <strong>Inbox</strong> with type=<strong>work</strong>.</li>
-                <li>No project or goal linkage during import — assign those after review via the task detail panel.</li>
+                <li>No project or goal linkage from the text — pick them per row on the review screen, or later in the task panel.</li>
                 <li>No URL extraction. A line containing <code>https://example.com/page</code> keeps that URL in the title; the dedicated <em>URL</em> field stays empty.</li>
                 <li>No subtasks from indentation. Flat list, always.</li>
             </ul>

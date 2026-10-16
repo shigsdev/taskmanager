@@ -566,8 +566,12 @@ component is added, a data flow changes, or a security boundary shifts.
   the task panel mirrors it on the Type select
   (`filter_helpers.projectAfterTypeChange`). The capture-bar
   `resolve_project_hint` prefers the task's own type. Batch creators
-  (import, scan / voice / reflection candidates) still write links
-  directly — #481.
+  (`import_service.create_tasks_from_import`,
+  `scan_service.create_tasks_from_candidates` — import, scan, voice memo,
+  reflection) run each row through `link_service.fit_batch_links` (#481):
+  a link that doesn't fit is dropped from that row only, the row still
+  saves, and the answer's `warning` (reflection: `summary.notes`) names
+  each dropped link (`batch_link_warning`).
 - **Project drag between goal cards** (#343, 2026-09-30): goal cards
   did not render their projects at all; they now list them behind a
   collapsed `Projects (N)` toggle, and each chip is a drag source

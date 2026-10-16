@@ -1341,6 +1341,7 @@ def create_tasks_from_candidates(
     source_prefix: str = "scan",
     *,
     commit: bool = True,
+    link_notes: list[str] | None = None,
 ) -> list[Task]:
     """Create Task records from confirmed candidates.
 
@@ -1364,6 +1365,9 @@ def create_tasks_from_candidates(
         source_prefix: Audit-log prefix recorded in ``ImportLog.source``
             (e.g. "scan", "voice"). Lets the recycle bin distinguish
             where a batch came from. Suffixed with a timestamp.
+        link_notes: #481 — a project / goal link that doesn't fit (gone,
+            archived, the other type) is dropped from that row and a note
+            saying why is appended here.
 
     Returns:
         List of newly created Task records.
@@ -1426,6 +1430,16 @@ def create_tasks_from_candidates(
         if isinstance(raw_goal_id, str) and raw_goal_id:
             with contextlib.suppress(ValueError):
                 goal_id = uuid.UUID(raw_goal_id)
+
+        # #481: a link that doesn't fit (gone, archived, the other type —
+        # a voice @project hint matches projects of either type) is dropped
+        # from this row only; a dangling id used to fail the whole batch.
+        from link_service import batch_link_note, fit_batch_links
+        project_id, goal_id, reasons = fit_batch_links(
+            project_id, goal_id, item_type=task_type,
+        )
+        if reasons and link_notes is not None:
+            link_notes.append(batch_link_note(title, reasons))
 
         task = Task(
             title=title,

@@ -770,6 +770,12 @@ Report.
      in the dev DB), tick only the subtask on /tier/today and bulk Delete:
      it is listed under the Recycle Bin's Deleted tasks (it used to vanish).
      Deleting the parent still takes the subtask along (the quiet case).
+     #481: on /import (Paste Tasks, parse stubbed) give a WORK row a
+     PERSONAL project and Import Now (real): both rows import, and the done
+     message ends "Added without a link: "<row>" — "<project>" is a personal
+     project and this is a work task." A reflection apply whose summary has
+     notes lists them on the done screen. A batch with fitting links reads
+     exactly as before (the quiet case). Server rule: pytest.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -980,6 +986,7 @@ Report.
   Recycle bin: projects counted PASS          Recycle bin: projects counted PASS
   Print: overdue listed once   PASS          Print: overdue listed once   PASS
   Bin: bulk-deleted subtask listed PASS       Bin: bulk-deleted subtask listed PASS
+  Batch: unfit link dropped, said PASS        Batch: unfit link dropped, said PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

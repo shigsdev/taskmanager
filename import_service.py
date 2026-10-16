@@ -721,6 +721,8 @@ def find_duplicate_goals(titles: list[str]) -> list[str]:
 def create_tasks_from_import(
     candidates: list[dict[str, Any]],
     source: str,
+    *,
+    link_notes: list[str] | None = None,
 ) -> list[Task]:
     """Create Task records from confirmed import candidates.
 
@@ -733,10 +735,15 @@ def create_tasks_from_import(
     Args:
         candidates: List of candidate dicts from the preview.
         source: Import source identifier for the log.
+        link_notes: #481 — a project / goal link that doesn't fit (gone,
+            archived, the other type) is dropped from that row and a note
+            saying why is appended here.
 
     Returns:
         List of newly created Task records.
     """
+    from link_service import batch_link_note, fit_batch_links
+
     # #89 (2026-04-26): pre-load goal + project lookups once so any
     # candidate carrying `linked_goal` or `linked_project` (Excel paths)
     # resolves O(1) instead of N queries. Lower-cased title/name is the
@@ -814,6 +821,14 @@ def create_tasks_from_import(
             linked_project_raw = (candidate.get("linked_project") or "").strip()
             if linked_project_raw:
                 project_id_val = project_index.get(linked_project_raw.lower())
+
+        # #481: a link that doesn't fit is dropped from this row only — a
+        # dangling id used to fail the whole batch at commit on Postgres.
+        project_id_val, goal_id_val, reasons = fit_batch_links(
+            project_id_val, goal_id_val, item_type=task_type,
+        )
+        if reasons and link_notes is not None:
+            link_notes.append(batch_link_note(title, reasons))
 
         notes = (candidate.get("notes") or "").strip() or None
         url = (candidate.get("url") or "").strip() or None

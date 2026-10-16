@@ -276,9 +276,11 @@ def confirm(email: str):  # noqa: ARG001
     recurring_skipped = 0  # #425: reported in `warning`, not just logged
     goals_created = []
     projects_created = []
+    link_notes: list[str] = []  # #481: links dropped from a row, and why
     try:
         tasks = create_tasks_from_candidates(
             task_candidates, source_prefix="voice", commit=False,
+            link_notes=link_notes,
         )
 
         # #155: route recurring candidates to the template create flow.
@@ -358,4 +360,10 @@ def confirm(email: str):  # noqa: ARG001
             f"nothing after it)."
         )
         response["warning"] = (existing + " " + msg).strip() if existing else msg
+    # #481: a project / goal that didn't fit was left off its row.
+    from link_service import batch_link_warning
+    link_msg = batch_link_warning(link_notes)
+    if link_msg:
+        existing = response.get("warning", "")
+        response["warning"] = (existing + " " + link_msg).strip() if existing else link_msg
     return jsonify(response), 201

@@ -99,3 +99,62 @@ def unlink_other_type_project(
     )
     if not goal_set_here and project.goal_id is not None and item.goal_id == project.goal_id:
         item.goal_id = None
+
+
+# --- #481: batches -----------------------------------------------------------
+#
+# A batch (import, scan, voice memo, reflection) keeps its rows: a link that
+# doesn't fit is dropped from that row only and the reason is reported,
+# instead of refusing (a single write) or failing the whole batch (a dangling
+# id at commit on Postgres). #447's "fit what comes in a batch".
+
+_BATCH_NOTES_SHOWN = 3
+
+
+def fit_batch_links(
+    project_id: uuid.UUID | None,
+    goal_id: uuid.UUID | None,
+    *,
+    item_type,
+    noun: str = "task",
+) -> tuple[uuid.UUID | None, uuid.UUID | None, list[str]]:
+    """The links a new batch row may keep, and why any were dropped."""
+    reasons: list[str] = []
+    if project_id is not None:
+        project = db.session.get(Project, project_id)
+        if project is None:
+            reasons.append("its project no longer exists")
+        elif not project.is_active:
+            reasons.append(f'the project "{project.name}" is archived')
+        elif item_type is not None and not project_type_matches(project, item_type):
+            reasons.append(
+                f'"{project.name}" is a {project.type.value} project and this is a '
+                f"{item_type.value} {noun}"
+            )
+        if reasons:
+            project_id = None
+    if goal_id is not None:
+        goal = db.session.get(Goal, goal_id)
+        if goal is None:
+            reasons.append("its goal no longer exists")
+            goal_id = None
+        elif not goal.is_active:
+            reasons.append(f'the goal "{goal.title}" is archived')
+            goal_id = None
+    return project_id, goal_id, reasons
+
+
+def batch_link_note(title: str, reasons: list[str]) -> str:
+    """One row's note: ``"<title>" — <reason>; <reason>``."""
+    return f'"{title}" — ' + "; ".join(reasons)
+
+
+def batch_link_warning(notes: list[str]) -> str | None:
+    """The sentence a batch answer carries, or None when nothing dropped."""
+    if not notes:
+        return None
+    shown = "; ".join(notes[:_BATCH_NOTES_SHOWN])
+    more = len(notes) - _BATCH_NOTES_SHOWN
+    if more > 0:
+        shown += f"; and {more} more"
+    return f"Added without a link: {shown}."

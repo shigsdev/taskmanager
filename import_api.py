@@ -34,6 +34,7 @@ from import_service import (
     parse_project_names_text,
     parse_transcript_text,
 )
+from link_service import batch_link_warning
 from rate_limit import LLM_HEAVY, limiter
 from utils import validate_json_body, validate_upload
 
@@ -149,15 +150,21 @@ def confirm_tasks(email: str):  # noqa: ARG001
         return jsonify({"error": "candidates must be a list"}), 422
 
     source = data.get("source", "onenote_import")
-    tasks = create_tasks_from_import(candidates, source=source)
+    link_notes: list[str] = []
+    tasks = create_tasks_from_import(candidates, source=source, link_notes=link_notes)
 
-    return jsonify({
+    body = {
         "created": len(tasks),
         "tasks": [
             {"id": str(t.id), "title": t.title, "tier": t.tier.value}
             for t in tasks
         ],
-    }), 201
+    }
+    # #481: say which rows lost a link that didn't fit.
+    warning = batch_link_warning(link_notes)
+    if warning:
+        body["warning"] = warning
+    return jsonify(body), 201
 
 
 # --- Meeting transcript (HyNote / Notion AI Meeting Notes / generic) --------

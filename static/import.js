@@ -1135,8 +1135,10 @@
                     source: source || (mode + "_import"),
                 }),
             });
+            // #481: and which rows lost a project / goal that didn't fit.
             doneMessage.textContent =
-                data.created + " " + window.importHelpers.importNoun(mode) + " imported successfully.";
+                data.created + " " + window.importHelpers.importNoun(mode) + " imported successfully."
+                + (data.warning ? " " + data.warning : "");
             showSection(doneSection);
         } catch (err) {
             alert("Confirm failed: " + err.message);

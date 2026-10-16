@@ -1740,6 +1740,9 @@ def apply_selected_actions(
         "failed": [],
         # #437: sent again after they had already landed — skipped.
         "already_applied": 0,
+        # #481: a created task's project / goal hint that didn't fit (gone,
+        # archived, the other type) is left off; each says which and why.
+        "notes": [],
     }
 
     # #437: what earlier applies of this reflection already landed. An
@@ -1855,10 +1858,12 @@ def apply_selected_actions(
                 "included": True,
             })
         try:
+            link_notes: list[str] = []
             task_objs = create_tasks_from_candidates(
-                task_candidates, source_prefix="reflection"
+                task_candidates, source_prefix="reflection", link_notes=link_notes,
             )
             summary["created"]["task"] = len(task_objs)
+            summary["notes"].extend(link_notes)
             for _i, a in creates["task"]:
                 _ok(a)
         except Exception:  # noqa: BLE001

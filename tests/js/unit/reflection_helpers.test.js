@@ -284,3 +284,25 @@ describe("submitFailure (#464)", () => {
         expect(submitFailure(null).saved).toBe(false);
     });
 });
+
+// #481: a task a reflection created without the project / goal its hint
+// named (gone, archived, the other type) is listed on the done screen.
+describe("linkNoteLines (#481)", () => {
+    const { linkNoteLines } = require("../../../static/reflection_helpers.js");
+
+    test("one line per note, prefixed", () => {
+        expect(linkNoteLines({ notes: ['"Mow" — "Yard" is a personal project and this is a work task'] }))
+            .toEqual(['Added without a link: "Mow" — "Yard" is a personal project and this is a work task']);
+    });
+
+    test("no notes, a missing list or no summary: nothing (the quiet case)", () => {
+        expect(linkNoteLines({ notes: [] })).toEqual([]);
+        expect(linkNoteLines({})).toEqual([]);
+        expect(linkNoteLines(null)).toEqual([]);
+    });
+
+    test("blank or non-string entries are skipped", () => {
+        expect(linkNoteLines({ notes: ["", null, 3, '"A" — x'] }))
+            .toEqual(['Added without a link: "A" — x']);
+    });
+});

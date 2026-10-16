@@ -574,7 +574,7 @@ class TestCreateTasksFromImport:
     def test_accepts_full_field_set_per_candidate(self, app):
         """#76: each candidate carries optional tier/due_date/goal_id/project_id/notes/url."""
         from import_service import create_tasks_from_import
-        from models import Goal, GoalCategory, GoalPriority, Project
+        from models import Goal, GoalCategory, GoalPriority, Project, ProjectType
         from task_service import _local_today_date
 
         # #386: a dated row is filed by its date, so the date must agree
@@ -584,7 +584,8 @@ class TestCreateTasksFromImport:
             goal = Goal(
                 title="g", category=GoalCategory.WORK, priority=GoalPriority.MUST,
             )
-            project = Project(name="p")
+            # #481: a personal task keeps only a personal project.
+            project = Project(name="p", type=ProjectType.PERSONAL)
             db.session.add_all([goal, project])
             db.session.commit()
             goal_id = str(goal.id)

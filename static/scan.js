@@ -427,7 +427,9 @@
                 currentKind === "goals" ? " added to your goals."
                 : (currentKind === "projects" ? " added to your projects."
                    : " added to your inbox.");
-            doneMessage.textContent = data.created + " " + label + suffix;
+            // #481: and which rows lost a project / goal that didn't fit.
+            doneMessage.textContent = data.created + " " + label + suffix
+                + (data.warning ? " " + data.warning : "");
             showSection(doneSection);
         } catch (err) {
             alert("Confirm failed: " + err.message);

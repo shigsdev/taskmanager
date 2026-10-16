@@ -1048,7 +1048,7 @@
         updateApplyLabel();
         showApplyMsg(
             H.partialApplyText(outcome.applied.length, outcome.failed.length),
-            (summary && summary.errors) || []
+            ((summary && summary.errors) || []).concat(H.linkNoteLines(summary))   // #481
         );
     });
 
@@ -1103,6 +1103,13 @@
                 doneSummary.appendChild(li);
             });
         }
+        // #481: a task made without the project / goal its hint named.
+        H.linkNoteLines(summary).forEach(function (line) {
+            var li = document.createElement("li");
+            li.className = "reflection-done-note";
+            li.textContent = line;
+            doneSummary.appendChild(li);
+        });
         showState("done");
     }
 

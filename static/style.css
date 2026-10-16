@@ -6314,6 +6314,7 @@ table.quality-gates code {
 }
 .reflection-done-summary { margin: 8px 0 0 18px; padding: 0; }
 .reflection-done-error { color: var(--danger, #c0392b); font-size: 0.85rem; }
+.reflection-done-note { color: var(--cream-dim); font-size: 0.85rem; }   /* #481 */
 
 /* Focus picker modal */
 .reflection-focus-modal { position: fixed; inset: 0; z-index: 200; }

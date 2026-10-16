@@ -12,6 +12,7 @@ from flask import Blueprint, g, jsonify, request
 
 from auth import login_required
 from import_service import create_projects_from_import
+from link_service import batch_link_warning
 from rate_limit import PAID_API, limiter
 from scan_service import (
     create_goals_from_candidates,
@@ -216,12 +217,18 @@ def confirm(email: str):  # noqa: ARG001
             ],
         }), 201
 
-    tasks = create_tasks_from_candidates(candidates)
-    return jsonify({
+    link_notes: list[str] = []
+    tasks = create_tasks_from_candidates(candidates, link_notes=link_notes)
+    body = {
         "kind": "tasks",
         "created": len(tasks),
         "tasks": [
             {"id": str(t.id), "title": t.title, "tier": t.tier.value}
             for t in tasks
         ],
-    }), 201
+    }
+    # #481: say which rows lost a link that didn't fit.
+    warning = batch_link_warning(link_notes)
+    if warning:
+        body["warning"] = warning
+    return jsonify(body), 201

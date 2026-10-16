@@ -117,6 +117,18 @@
     }
 
     /**
+     * linkNoteLines - #481: the lines for a task created without the
+     * project / goal its hint named (gone, archived, the other type).
+     * summary.notes holds '"<title>" — <reason>'; [] when there are none.
+     */
+    function linkNoteLines(summary) {
+        if (!summary || !Array.isArray(summary.notes)) return [];
+        return summary.notes
+            .filter(function (n) { return typeof n === "string" && n; })
+            .map(function (n) { return "Added without a link: " + n; });
+    }
+
+    /**
      * Given the proposed buckets and a checked-map keyed "bucket:index",
      * return the flat array of action objects the user selected. The
      * action objects are returned verbatim (the confirm endpoint
@@ -846,6 +858,7 @@
         changeSummary: changeSummary,
         focusCandidates: focusCandidates,
         applySummaryText: applySummaryText,
+        linkNoteLines: linkNoteLines,
         selectedActions: selectedActions,
         appendTranscriptSegment: appendTranscriptSegment,
         shouldAutosaveDraft: shouldAutosaveDraft,
