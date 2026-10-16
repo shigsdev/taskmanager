@@ -170,12 +170,15 @@
         <h2>Today</h2>
         {% if today_tasks %}
         {% for task in today_tasks %}
+        {# #479: past its date — printed here once, in the Overdue red. #}
+        {% set late = task.due_date and task.due_date < print_date %}
         <div class="print-task">
             <div class="print-checkbox"></div>
-            <div class="print-task-title">{{ task.title }}</div>
+            <div class="print-task-title{% if late %} print-overdue{% endif %}">{{ task.title }}</div>
             <div class="print-task-meta">
                 {{ task.type.value }}
-                {% if task.due_date %} · due {{ task.due_date.isoformat() }}{% endif %}
+                {% if late %} · overdue, was due {{ task.due_date.isoformat() }}
+                {% elif task.due_date %} · due {{ task.due_date.isoformat() }}{% endif %}
             </div>
         </div>
         {% if task.checklist %}
@@ -197,12 +200,15 @@
         <h2>This Week</h2>
         {% if week_tasks %}
         {% for task in week_tasks %}
+        {# #479: past its date — printed here once, in the Overdue red. #}
+        {% set late = task.due_date and task.due_date < print_date %}
         <div class="print-task">
             <div class="print-checkbox"></div>
-            <div class="print-task-title">{{ task.title }}</div>
+            <div class="print-task-title{% if late %} print-overdue{% endif %}">{{ task.title }}</div>
             <div class="print-task-meta">
                 {{ task.type.value }}
-                {% if task.due_date %} · due {{ task.due_date.isoformat() }}{% endif %}
+                {% if late %} · overdue, was due {{ task.due_date.isoformat() }}
+                {% elif task.due_date %} · due {{ task.due_date.isoformat() }}{% endif %}
             </div>
         </div>
         {% if task.checklist %}

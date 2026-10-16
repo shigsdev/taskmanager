@@ -1,7 +1,8 @@
 """Integration tests for the print view (Step 14).
 
 The print view at /print is a clean, printer-friendly page that shows:
-- Overdue tasks (past due date, not in Today tier)
+- Overdue tasks (past due date, not in Today or This Week — #479: those
+  are marked overdue in their own section)
 - Today's tasks
 - This Week's tasks
 - A blank notes area
@@ -316,3 +317,70 @@ class TestTZDriftFix180Export:
         assert resp.status_code == 200
         cd = resp.headers.get("Content-Disposition", "")
         assert f"taskmanager-backup-{pinned_today}.json" in cd
+
+
+# --- #479: an overdue task prints once -------------------------------------
+
+
+def _section(html: str, section_id: str) -> str:
+    """The HTML of one print section, up to the next section or the notes."""
+    start = html.index(f'id="{section_id}"')
+    ends = [i for i in (html.find('class="print-section"', start + 1),
+                        html.find('id="printNotes"', start + 1)) if i != -1]
+    return html[start:min(ends)]
+
+
+class TestOverduePrintsOnce479:
+    """#479: Overdue took every past-dated task except Today's, and This Week
+    took every This Week task, so an overdue This Week task printed twice;
+    an overdue Today task printed with no overdue mark at all. Now Overdue
+    holds the other sections only, and Today / This Week mark theirs (the
+    digest's #445 rule)."""
+
+    PINNED = date(2026, 10, 14)
+
+    def _get(self, client, monkeypatch, app, **task):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
+        monkeypatch.setattr("app.local_today_date", lambda: self.PINNED)
+        with app.app_context():
+            _make_task(**task)
+        return client.get("/print").data.decode()
+
+    def test_overdue_this_week_task_prints_once_under_this_week(self, client, monkeypatch, app):
+        html = self._get(client, monkeypatch, app, title="Late weekly",
+                         tier=Tier.THIS_WEEK, due_date=self.PINNED - timedelta(days=2))
+        assert html.count("Late weekly") == 1
+        week = _section(html, "printWeek")
+        assert "Late weekly" in week
+        assert "print-overdue" in week
+        assert "overdue, was due 2026-10-12" in week
+        assert 'id="printOverdue"' not in html
+
+    def test_overdue_today_task_is_marked_under_today(self, client, monkeypatch, app):
+        html = self._get(client, monkeypatch, app, title="Late today",
+                         tier=Tier.TODAY, due_date=self.PINNED - timedelta(days=1))
+        assert html.count("Late today") == 1
+        today = _section(html, "printToday")
+        assert "print-overdue" in today
+        assert "overdue, was due 2026-10-13" in today
+
+    def test_overdue_this_week_task_keeps_its_checklist(self, client, monkeypatch, app):
+        html = self._get(client, monkeypatch, app, title="Late with steps",
+                         tier=Tier.THIS_WEEK, due_date=self.PINNED - timedelta(days=2),
+                         checklist=[{"text": "step one", "checked": False}])
+        assert "step one" in _section(html, "printWeek")
+
+    def test_a_task_due_today_is_not_marked(self, client, monkeypatch, app):
+        # The quiet case: due today (or later) prints exactly as before.
+        html = self._get(client, monkeypatch, app, title="On time",
+                         tier=Tier.THIS_WEEK, due_date=self.PINNED)
+        week = _section(html, "printWeek")
+        assert "On time" in week
+        assert "print-overdue" not in week
+        assert "· due 2026-10-14" in week
+
+    def test_overdue_backlog_task_stays_under_overdue(self, client, monkeypatch, app):
+        html = self._get(client, monkeypatch, app, title="Late backlog",
+                         tier=Tier.BACKLOG, due_date=self.PINNED - timedelta(days=5))
+        assert "Late backlog" in _section(html, "printOverdue")
+        assert html.count("Late backlog") == 1

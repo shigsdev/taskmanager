@@ -553,9 +553,13 @@ def create_app(config: dict | None = None) -> Flask:
         # Audit fix #180 (2026-05-20): use DIGEST_TZ today, not server UTC —
         # at 9pm ET, today's tasks would otherwise render as "overdue".
         today = local_today_date()
+        # #479: Overdue holds the sections that don't print on their own.
+        # An overdue Today / This Week task prints once, in its own section,
+        # marked overdue there (print.html) — it used to print twice.
         overdue = [
             t for t in list_tasks(status=TaskStatus.ACTIVE)
-            if t.due_date and t.due_date < today and t.tier != Tier.TODAY
+            if t.due_date and t.due_date < today
+            and t.tier not in (Tier.TODAY, Tier.THIS_WEEK)
         ]
         return render_template(
             "print.html",

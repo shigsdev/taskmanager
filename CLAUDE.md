@@ -760,6 +760,12 @@ Report.
      "Restore 2 projects from this batch?" and brings them back, Purge names
      them too; Settings "Recycle Bin (N)" counts them. An empty bin still
      reads "No undone imports." with Empty Bin off (the quiet case).
+     #479: with a past-dated task in This Week, one in Today and one in
+     Backlog (insert them in the dev DB — the API re-files a past date),
+     /print lists the This Week one ONCE, under This Week, in red reading
+     "overdue, was due …" with its checklist; the Today one likewise under
+     Today; Overdue holds only the Backlog one. A task due today prints
+     plain (the quiet case).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -968,6 +974,7 @@ Report.
   Dark theme: no light leftovers PASS         Dark theme: no light leftovers PASS
   Reload guard: review screens busy PASS      Reload guard: review screens busy PASS
   Recycle bin: projects counted PASS          Recycle bin: projects counted PASS
+  Print: overdue listed once   PASS          Print: overdue listed once   PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
