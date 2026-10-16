@@ -74,12 +74,13 @@ test.describe("#451 dark-theme contrast", () => {
             <button class="review-btn review-btn-keep" id="b2">Keep</button>
             <button class="review-btn review-btn-snooze" id="b3">Snooze</button>
             <span class="import-dup-badge" id="b4">duplicate</span>
-            <div class="task-card"><div class="task-quick-actions"><button class="quick-complete-btn" id="b5">✓</button></div></div>`);
+            <div class="task-card"><button class="task-complete-btn" id="b5">✓</button></div>`);
         for (const id of ["#b1", "#b2", "#b3", "#b4"]) {
             expect(await text(page, id), id).toBeGreaterThanOrEqual(4.5);
         }
         await page.hover("#b5");
-        expect(await text(page, "#b5"), "quick ✓ on hover").toBeGreaterThanOrEqual(4.5);
+        // #462: the card's ✓ (the old .quick-complete-btn wasn't rendered any more).
+        expect(await text(page, "#b5"), "card ✓ on hover").toBeGreaterThanOrEqual(4.5);
     });
 
     test("recurring preview cards are readable, and stay dark on hover", async ({ page }) => {

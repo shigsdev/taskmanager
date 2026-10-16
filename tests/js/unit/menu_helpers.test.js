@@ -139,6 +139,37 @@ describe("attachMenu (#457)", () => {
         expect(menu.isConnected).toBe(false);
     });
 
+    // #462: a menu appended to <body> isn't next to its opener, so a plain
+    // Tab out of it would land at the end of the page.
+    test("tabFromOpener: Tab hands focus to the opener first, then lets Tab move on", () => {
+        const { open, menu } = setup();
+        attachMenu(open, menu, { tabFromOpener: true });
+        const e = key(document.activeElement, "Tab");
+        expect(e.defaultPrevented).toBe(false);
+        expect(menu.isConnected).toBe(false);
+        expect(document.activeElement).toBe(open);
+        expect(open.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    test("onClose runs once, whichever way it closes", () => {
+        for (const how of ["Escape", "Tab", "close"]) {
+            const { open, menu } = setup();
+            const onClose = jest.fn();
+            const m = attachMenu(open, menu, { onClose });
+            if (how === "close") m.close(false); else key(document.activeElement, how);
+            m.close(false);
+            expect(onClose).toHaveBeenCalledTimes(1);
+        }
+    });
+
+    test("without tabFromOpener, Tab leaves focus where it is (the quiet case)", () => {
+        const { open, menu } = setup();
+        attachMenu(open, menu);
+        const first = items()[0];
+        key(first, "Tab");
+        expect(document.activeElement).not.toBe(open);
+    });
+
     test("a dialog popup: Escape closes, arrows do nothing, focus untouched", () => {
         document.body.innerHTML = `<button id="open">Due date ▾</button>
             <div id="m"><input id="d" type="date"><button>Apply</button></div>`;

@@ -682,7 +682,7 @@ Report.
      item, and a click outside, work as before.
      #458: the first Tab on a page shows "Skip to main content"; Enter lands
      the page's content BELOW the pinned nav. Tab from a board card's ✓ onto
-     its quick buttons — they show (opacity 1). In a task panel type 2+
+     its quick buttons — they show (at 375; since #462 desktop has Move ▾). In a task panel type 2+
      letters under Parent task, ↓ highlights a match, Enter picks it WITHOUT
      saving; Escape closes the list only, a second Escape the panel; a click
      still picks. Stage a bulk change — the chip looks the same, Enter on it
@@ -706,6 +706,13 @@ Report.
      hand keeps it (the panel's Project select already did this). Give a
      parent with a subtask a project that has a goal — the subtask follows
      to the new project AND goal.
+     #462: at 1280 click the centre of a long board card title (Backlog /
+     Freezer columns) — the task opens and doesn't move; no button sits on
+     the title or badge line. Move ▾ (left of ✓) lists the other sections
+     (not Inbox) + "+ Subtask" (not on a subtask); Freezer moves the card;
+     Enter / ↓ / Escape / Tab work from the keyboard. On a ~820px touch
+     screen Move ▾ shows and its items are 44px. At 375 the row under the
+     title is unchanged and there is no Move ▾ (the quiet case).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -898,13 +905,14 @@ Report.
   Panels: Tab past Completed    PASS          Panels: Tab past Completed    PASS
   Menus: arrows + Escape        PASS          Menus: arrows + Escape        PASS
   Skip link: lands below nav    PASS          Skip link: lands below nav    PASS
-  Quick actions: show on Tab    PASS          Quick actions: always shown   PASS
+  Quick actions: Move ▾ on Tab  PASS          Quick actions: always shown   PASS
   Parent picker: arrows + Enter PASS          Parent picker: arrows + Enter PASS
   Bulk chip: a button           PASS          Bulk chip: a button, 44px     PASS
   Auto-categorize: late answer dropped PASS   Auto-categorize: late answer dropped PASS
   Auto-categorize: partial apply reloads PASS Auto-categorize: partial apply reloads PASS
   Repeat labels: words, not raw values PASS   Repeat labels: words, not raw values PASS
   Projects: goalless drop drops inherited goal PASS  Projects: goalless drop drops inherited goal PASS
+  Board: title click opens, Move ▾ PASS       Board: row under title (unchanged) PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

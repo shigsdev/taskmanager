@@ -79,9 +79,16 @@
      * removed popup cleans up on its next key).
      * Returns { close }. Escape is consumed, so panel_keys' document
      * handler (#381) doesn't also close the panel underneath.
+     * #462 opts:
+     *   tabFromOpener — the menu isn't next to its opener in the page (it was
+     *     appended to <body>): Tab puts focus back on the opener first, so the
+     *     browser's Tab moves on from there instead of off the end of the page.
+     *   onClose — called once when it closes, however it closes.
      */
     function attachMenu(anchor, menu, opts) {
         var kind = (opts && opts.kind) || "menu";
+        var tabFromOpener = !!(opts && opts.tabFromOpener);
+        var onClose = opts && opts.onClose;
         var items = function () {
             return Array.prototype.slice.call(menu.querySelectorAll("button:not([disabled])"));
         };
@@ -109,6 +116,7 @@
                 anchor.setAttribute("aria-expanded", "false");
                 if (returnFocus && anchor.isConnected) anchor.focus();
             }
+            if (typeof onClose === "function") onClose();
         }
         function onKey(e) {
             if (e.key === "Escape") {
@@ -119,7 +127,7 @@
             }
             if (e.key === "Tab") {
                 // Let focus move on, but don't leave an open menu behind.
-                close(false);
+                close(tabFromOpener);
                 return;
             }
             if (kind !== "menu") return;

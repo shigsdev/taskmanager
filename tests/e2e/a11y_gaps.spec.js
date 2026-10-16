@@ -55,16 +55,25 @@ test.describe("#458 every control has a name", () => {
 });
 
 test.describe("#458 keyboard and screen reader", () => {
-    test("Tab onto a card's quick action shows the row", async ({ page }, testInfo) => {
-        test.skip(testInfo.project.name === "chromium-mobile", "always shown on a phone");
+    // #458 made Tab onto the hidden hover bar show it; #462 replaced the bar
+    // with Move ▾ above 600px, so the keyboard meets a visible button.
+    test("Tab reaches a card's quick actions, and they're visible", async ({ page }, testInfo) => {
         await page.goto("/?nosw=1");
         await page.waitForLoadState("networkidle");
         const card = page.locator(".task-card:has(.task-quick-actions button)").first();
-        await card.locator(".task-complete-btn").focus();
-        await page.keyboard.press("Tab");
-        const first = card.locator(".task-quick-actions button").first();
-        await expect(first).toBeFocused();
-        await expect(card.locator(".task-quick-actions")).toHaveCSS("opacity", "1");
+        if (testInfo.project.name === "chromium-mobile") {
+            await card.locator(".task-complete-btn").focus();
+            await page.keyboard.press("Tab");
+            const first = card.locator(".task-quick-actions button").first();
+            await expect(first).toBeFocused();
+            await expect(first).toBeVisible();
+        } else {
+            await card.locator(".task-move-btn").focus();
+            await expect(card.locator(".task-move-btn")).toBeVisible();
+            await page.keyboard.press("Tab");
+            await expect(card.locator(".task-complete-btn")).toBeFocused();
+            await expect(card.locator(".task-quick-actions")).toBeHidden();
+        }
     });
 
     test("parent picker: ↓ highlights, Enter picks, Escape closes the list only", async ({ page, request }) => {

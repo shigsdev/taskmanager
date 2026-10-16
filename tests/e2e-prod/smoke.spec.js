@@ -919,33 +919,37 @@ test.describe("Prod smoke — feature surfaces", () => {
         }
     });
 
-    test("task cards give the title the full width — quick-actions are out of flow on desktop (#278)", async ({ page }) => {
+    test("task cards give the title the width — quick actions are a Move ▾ menu on desktop (#278, #462)", async ({ page }) => {
         // #278: the hover-only quick actions used to sit in the flex flow and
         // reserve up to 50% of the card width even while invisible, squeezing
-        // the title. They're now position:absolute on desktop so the body
-        // spans the card. Behavioral — asserts the live computed layout (not a
-        // source string-match). ui_audit guards overflow but NOT this (a
-        // revert wastes space without overflowing), so this is its own guard.
+        // the title. #278 made them an absolute overlay — on top of the title,
+        // clickable while invisible (#462). Now they're a Move ▾ menu and the
+        // row is hidden above 600px. Behavioral — asserts the live computed
+        // layout (not a source string-match). ui_audit guards overflow but NOT
+        // this (a revert wastes space without overflowing).
         await page.goto("/?nosw=1");
         await page.waitForLoadState("networkidle");
         const card = page.locator(".task-card").first();
         if (!(await card.count())) return; // no tasks on prod board → skip
         const layout = await card.evaluate((el) => {
             const qa = el.querySelector(".task-quick-actions");
+            const move = el.querySelector(".task-move-btn");
             const body = el.querySelector(".task-body");
             return {
                 hasQa: !!qa,
-                qaPosition: qa ? getComputedStyle(qa).position : null,
+                qaDisplay: qa ? getComputedStyle(qa).display : null,
+                moveShown: !!move && move.getBoundingClientRect().width > 0,
                 bodyPctOfCard: body
                     ? body.getBoundingClientRect().width / el.getBoundingClientRect().width
                     : 0,
             };
         });
         if (layout.hasQa) {
-            // Out of the flex flow → reclaims the reserved width.
-            expect(layout.qaPosition).toBe("absolute");
+            // #462: no row (visible or not) over the title; Move ▾ instead.
+            expect(layout.qaDisplay).toBe("none");
+            expect(layout.moveShown).toBe(true);
         }
-        // Body should now dominate the card (was ~40% before the fix).
+        // Body should dominate the card (was ~40% before #278).
         expect(layout.bodyPctOfCard).toBeGreaterThan(0.7);
     });
 

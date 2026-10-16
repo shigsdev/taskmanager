@@ -131,11 +131,9 @@ test.describe("Detail panel", () => {
         // card center): since #281 the mobile card wraps the tier-jump buttons
         // onto their own row below, so a center-of-card click can land on a
         // button (which stopPropagation's to move the tier, not open detail).
-        // The x/y offset also dodges the DESKTOP hover-overlay quick-actions —
-        // it's position:absolute right-anchored and (being opacity:0, not
-        // pointer-events:none) still intercepts hit-tests over the title's
-        // right/center. The title's left edge is always clear of both, and a
-        // click there bubbles to the card's open-detail handler.
+        // (Until #462 the desktop quick actions were an invisible overlay on
+        // the title too; they're a Move ▾ menu now.) The title's left edge is
+        // clear, and a click there bubbles to the card's open-detail handler.
         const firstCard = page.locator(".task-card").first();
         await firstCard.locator(".task-title").click({ position: { x: 4, y: 4 } });
 
@@ -9193,8 +9191,13 @@ test.describe("Board actions that fail say so (#430)", () => {
             await page.waitForLoadState("networkidle");
             await page.route(`**/api/tasks/${task.id}`, refuse("PATCH"));
             const card = cardIn(page, "backlog", task.id);
-            await card.hover();
-            await card.locator(".task-quick-actions button", { hasText: "Freezer" }).click();
+            // #462: a phone has the row under the title; above 600px, Move ▾.
+            if (page.viewportSize().width > 600) {
+                await card.locator(".task-move-btn").click();
+                await page.locator(".task-move-menu button", { hasText: "Freezer" }).click();
+            } else {
+                await card.locator(".task-quick-actions button", { hasText: "Freezer" }).click();
+            }
             await expect.poll(() => dialogs.length).toBe(1);
             expect(dialogs[0]).toBe("Moving the task didn't save: stub refusal. The page now shows what's saved.");
             await expect(cardIn(page, "backlog", task.id)).toBeVisible();

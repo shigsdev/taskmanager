@@ -1507,11 +1507,49 @@ function taskCardEl(task) {
     body.appendChild(meta);
     card.appendChild(body);
 
+    // Quick actions: the section jumps + Add Subtask. #462: one list, drawn
+    // twice — as the row under the title on a phone (<=600px, always shown)
+    // and as the Move ▾ menu above that. Above 600px they used to be an
+    // invisible-until-hover bar on top of the title (#278), clickable while
+    // invisible, so a click aimed at the title moved the task.
+    const quickActions = TIER_ORDER
+        .filter((t) => t !== task.tier && t !== "inbox")
+        .map((t) => ({
+            label: tierLabel(t),
+            title: `Move to ${tierLabel(t)}`,
+            run: () => taskMoveTier(task.id, t),
+        }));
+    // #78 followup (2026-04-26): + Subtask on parent-eligible cards.
+    // Subtasks can't have subtasks (1-level-deep model rule), so hide on
+    // tasks that already have a parent.
+    if (!task.parent_id) {
+        quickActions.push({
+            label: "+ Subtask",
+            title: "Add a subtask under this task",
+            className: "quick-subtask-btn",
+            run: () => taskCardAddSubtask(task),
+        });
+    }
+
+    // #462: Move ▾ (hidden on a phone, where the row below is shown).
+    const moveBtn = document.createElement("button");
+    moveBtn.type = "button";
+    moveBtn.className = "task-move-btn";
+    moveBtn.textContent = "Move ▾";
+    moveBtn.title = "Move to another section";
+    moveBtn.setAttribute("aria-haspopup", "menu");
+    moveBtn.setAttribute("aria-expanded", "false");
+    moveBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        taskCardMoveMenu(moveBtn, quickActions);
+    });
+    card.appendChild(moveBtn);
+
     // One-click complete (✓ icon, always visible on the right edge).
     // User-redesign 2026-05-08: when the left checkbox became selection,
     // this button took over as the dedicated "complete this task"
     // affordance so the dominant action stays one click. Lives outside
-    // the hover-only quick-actions row below for that reason.
+    // the quick actions for that reason.
     const completeBtn = document.createElement("button");
     completeBtn.textContent = "✓";
     completeBtn.title = "Mark complete";
@@ -1522,59 +1560,104 @@ function taskCardEl(task) {
     });
     card.appendChild(completeBtn);
 
-    // Quick actions (hover-only on desktop, always-visible on mobile).
-    // Holds the tier-jump shortcuts + Add Subtask. Complete moved out
-    // to .task-complete-btn above (always visible).
+    // The phone row (display:none above 600px).
     const actions = document.createElement("div");
     actions.className = "task-quick-actions";
-
-    const tierBtns = TIER_ORDER.filter((t) => t !== task.tier && t !== "inbox");
-    for (const t of tierBtns) {
+    for (const a of quickActions) {
         const btn = document.createElement("button");
-        btn.textContent = tierLabel(t);
-        btn.title = `Move to ${tierLabel(t)}`;
+        btn.textContent = a.label;
+        btn.title = a.title;
+        if (a.className) btn.className = a.className;
         btn.addEventListener("click", (e) => {
             e.stopPropagation();
-            taskMoveTier(task.id, t);
+            a.run();
         });
         actions.appendChild(btn);
     }
-
-    // #78 followup (2026-04-26): + Subtask button on parent-eligible cards.
-    // Subtasks can't have subtasks (1-level-deep model rule), so hide on
-    // tasks that already have a parent.
-    if (!task.parent_id) {
-        const subBtn = document.createElement("button");
-        subBtn.textContent = "+ Subtask";
-        subBtn.title = "Add a subtask under this task";
-        subBtn.className = "quick-subtask-btn";
-        subBtn.addEventListener("click", async (e) => {
-            e.stopPropagation();
-            const title = prompt("Subtask title:");
-            if (!title || !title.trim()) return;
-            try {
-                await apiFetch(API, {
-                    method: "POST",
-                    body: JSON.stringify({
-                        title: title.trim(),
-                        type: task.type,
-                        parent_id: task.id,
-                    }),
-                });
-                await loadTasks();
-            } catch (err) {
-                alert("Failed to add subtask: " + err.message);
-            }
-        });
-        actions.appendChild(subBtn);
-    }
-
     card.appendChild(actions);
 
     // Click to open detail
     card.addEventListener("click", () => taskDetailOpen(task));
 
     return card;
+}
+
+async function taskCardAddSubtask(task) {
+    const title = prompt("Subtask title:");
+    if (!title || !title.trim()) return;
+    try {
+        await apiFetch(API, {
+            method: "POST",
+            body: JSON.stringify({
+                title: title.trim(),
+                type: task.type,
+                parent_id: task.id,
+            }),
+        });
+        await loadTasks();
+    } catch (err) {
+        alert("Failed to add subtask: " + err.message);
+    }
+}
+
+// #462: a card's Move ▾ menu. It goes on <body>, position:fixed: inside the
+// card it would be placed relative to its tier (each .tier keeps the
+// scFadeUp animation's transform) and the next tier would paint over it.
+// Move ▾ again, a click elsewhere, Escape, Tab, a scroll or a resize
+// closes it.
+let taskCardOpenMenu = null;   // { anchor, close }
+
+function taskCardMoveMenu(anchor, items) {
+    const open = taskCardOpenMenu;
+    if (open) open.close();
+    if (open && open.anchor === anchor) return;   // Move ▾ again: just close
+
+    const dd = document.createElement("div");
+    dd.className = "task-move-menu";
+    for (const item of items) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = item.label;
+        b.title = item.title;
+        b.addEventListener("click", (e) => {
+            e.stopPropagation();
+            state.close();
+            item.run();
+        });
+        dd.appendChild(b);
+    }
+    dd.style.position = "fixed";
+    document.body.appendChild(dd);
+    const place = window.menuHelpers.placeMenu(
+        anchor.getBoundingClientRect(),
+        { width: dd.offsetWidth, height: dd.offsetHeight },
+        { width: document.documentElement.clientWidth, height: window.innerHeight },
+    );
+    dd.style.left = `${place.left}px`;
+    dd.style.top = `${place.top}px`;
+    if (place.maxHeight !== null) dd.style.maxHeight = `${place.maxHeight}px`;
+
+    const onOutside = (e) => { if (!dd.contains(e.target)) state.close(); };
+    const onScroll = (e) => { if (!dd.contains(e.target)) state.close(); };
+    const onResize = () => state.close();
+    const menu = window.menuHelpers.attachMenu(anchor, dd, {
+        tabFromOpener: true,
+        onClose: () => {
+            document.removeEventListener("click", onOutside);
+            window.removeEventListener("scroll", onScroll, true);
+            window.removeEventListener("resize", onResize);
+            if (taskCardOpenMenu === state) taskCardOpenMenu = null;
+        },
+    });
+    const state = { anchor, close: () => menu.close(false) };
+    taskCardOpenMenu = state;
+    // After this click has finished bubbling.
+    setTimeout(() => {
+        if (taskCardOpenMenu !== state) return;
+        document.addEventListener("click", onOutside);
+        window.addEventListener("scroll", onScroll, true);
+        window.addEventListener("resize", onResize);
+    }, 0);
 }
 
 function tierLabel(tier) {
