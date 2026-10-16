@@ -8490,6 +8490,91 @@ test.describe("✨ Plan drops a stale answer (#418)", () => {
     });
 });
 
+// #421: the 💡 Auto-categorize review is one shared dialog too (#418's
+// sibling). An answer — or an apply — that started under one run must never
+// write into the next one, or into a closed dialog.
+// (Reopening while a run is still thinking can't happen: #429 keeps the 💡
+// button disabled until the answer arrives.)
+test.describe("💡 Auto-categorize drops a stale answer (#421)", () => {
+    const sug = (id, title) => ({
+        task_id: id, title, suggested_tier: "this_week",
+        suggested_project_id: null, suggested_goal_id: null,
+        suggested_due_date: null, suggested_type: "work", reason: "e2e",
+        current_type: "work",
+    });
+    // Each POST /api/inbox/categorize waits for its own release(answer).
+    async function setUp(page) {
+        const releases = [];
+        const gates = [0, 1, 2].map(() => new Promise((res) => releases.push(res)));
+        let n = 0;
+        await page.route("**/api/inbox/categorize", async (r) => {
+            const suggestions = await gates[n++];
+            await r.fulfill({ json: { count: suggestions.length, capped: false, suggestions } });
+        });
+        await page.goto("/?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await expect(page.locator("#autoCategorizeBtn")).toBeVisible();
+        return releases;
+    }
+    const modal = (page) => page.locator("#autoCategorizeModal");
+    const rows = (page) => page.locator("#autoCategorizeRows tr");
+    async function open(page, nth) {
+        const asked = page.waitForRequest("**/api/inbox/categorize");
+        await page.locator("#autoCategorizeBtn").click();
+        await expect(modal(page)).toBeVisible();
+        await asked;   // run `nth` is now waiting on its answer
+    }
+
+    test("an answer that arrives after close leaves the dialog closed and empty", async ({ page }) => {
+        const release = await setUp(page);
+        await open(page, 0);
+        await page.keyboard.press("Escape");
+        release[0]([sug(910001, "E2E 421 row from A")]);
+        await page.waitForTimeout(400);
+        await expect(modal(page)).toBeHidden();
+        await expect(rows(page)).toHaveCount(0);
+        await expect(page.locator("#autoCategorizeApplyAll")).toBeHidden();
+    });
+
+    test("an Apply all still running never closes or rewrites the next run", async ({ page }) => {
+        const release = await setUp(page);
+        let releasePatch;
+        const patchGate = new Promise((res) => { releasePatch = res; });
+        await page.route("**/api/tasks/91000*", async (r) => {
+            await patchGate;
+            await r.fulfill({ status: 500, json: { error: "e2e" } });   // fails: the "Apply remaining" path
+        });
+        await open(page, 0);
+        release[0]([sug(910001, "E2E 421 row from A")]);
+        await expect(page.getByText("E2E 421 row from A")).toBeVisible();
+        await page.locator("#autoCategorizeApplyAll").click();
+        await page.keyboard.press("Escape");                 // close mid-apply
+        await expect(modal(page)).toBeHidden();
+        await open(page, 1);
+        release[1]([sug(920001, "E2E 421 row from B")]);
+        await expect(page.getByText("E2E 421 row from B")).toBeVisible();
+        releasePatch();
+        await page.waitForResponse("**/api/tasks/910001");
+        await page.waitForTimeout(400);
+        await expect(modal(page)).toBeVisible();
+        await expect(page.getByText("E2E 421 row from B")).toBeVisible();
+        await expect(page.locator("#autoCategorizeApplyAll")).toHaveText("Apply all (1)");
+        await expect(page.locator("#autoCategorizeApplyAll")).toBeEnabled();
+    });
+
+    test("the quiet case: one run, Apply all closes it", async ({ page }) => {
+        const release = await setUp(page);
+        await page.route("**/api/tasks/91000*", (r) => r.fulfill({ json: {} }));
+        await open(page, 0);
+        release[0]([sug(910001, "E2E 421 row from A")]);
+        await expect(page.getByText("E2E 421 row from A")).toBeVisible();
+        const reloaded = page.waitForRequest((q) => q.method() === "GET" && /\/api\/tasks(\?|$)/.test(q.url()));
+        await page.locator("#autoCategorizeApplyAll").click();
+        await expect(modal(page)).toBeHidden();
+        await reloaded;
+    });
+});
+
 // #422: after a partial failure, "Apply remaining" must send only what
 // failed. A create_new that already landed must not be created twice.
 test.describe("✨ Plan retry skips what already landed (#422)", () => {

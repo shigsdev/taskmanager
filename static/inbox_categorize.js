@@ -18,6 +18,11 @@
     var availableProjects = [];
     var availableGoals = [];
     var pendingSuggestions = [];
+    // #421: one shared dialog, like ✨ Plan's (#418). Each open is a run;
+    // an answer or an apply only touches the dialog while its run is current.
+    var guard = window.requestGuardHelpers.createRequestGuard();
+    var runToken = 0;
+    var defaultHint = "";
 
     document.addEventListener("DOMContentLoaded", function () {
         modal = document.getElementById("autoCategorizeModal");
@@ -26,6 +31,7 @@
         loadingEl = document.getElementById("autoCategorizeLoading");
         errorEl = document.getElementById("autoCategorizeError");
         hintEl = document.getElementById("autoCategorizeHint");
+        defaultHint = hintEl ? hintEl.textContent : "";
         applyAllBtn = document.getElementById("autoCategorizeApplyAll");
         cancelBtn = document.getElementById("autoCategorizeCancel");
         closeBtn = document.getElementById("autoCategorizeClose");
@@ -55,11 +61,17 @@
     };
 
     async function openModal() {
+        var mine = guard.begin();
+        runToken = mine;
         modal.style.display = "";
         loadingEl.style.display = "";
         errorEl.style.display = "none";
         table.style.display = "none";
         applyAllBtn.style.display = "none";
+        // An earlier run's Apply all may still be going; it no longer owns
+        // the button (#421).
+        applyAllBtn.disabled = false;
+        hintEl.textContent = defaultHint;
         rowsEl.innerHTML = "";
 
         // #211: re-sync the board's task cache BEFORE asking the
@@ -73,6 +85,7 @@
         // truth before the modal opens.
         if (typeof window.loadTasks === "function") {
             try { await window.loadTasks(); } catch (_) { /* non-fatal */ }
+            if (!guard.isCurrent(mine)) return;   // closed meanwhile (#421)
             // Re-run the button-visibility check so the button hides
             // itself if the refresh emptied the Inbox panel.
             if (typeof window.updateAutoCategorizeBtn === "function") {
@@ -93,6 +106,7 @@
             availableProjects = [];
             availableGoals = [];
         }
+        if (!guard.isCurrent(mine)) return;
 
         var result;
         try {
@@ -102,12 +116,16 @@
                 body: JSON.stringify({}),
             });
         } catch (err) {
+            if (!guard.isCurrent(mine)) return;
             loadingEl.style.display = "none";
             errorEl.style.display = "";
             errorEl.textContent =
                 "Couldn't reach the categorizer: " + (err.message || err);
             return;
         }
+        // #421: closed while Claude was thinking — don't draw into the
+        // hidden dialog.
+        if (!guard.isCurrent(mine)) return;
 
         loadingEl.style.display = "none";
         var suggestions = (result && result.suggestions) || [];
@@ -128,6 +146,7 @@
     }
 
     function closeModal() {
+        guard.cancel();
         modal.style.display = "none";
         rowsEl.innerHTML = "";
         pendingSuggestions = [];
@@ -443,6 +462,7 @@
     }
 
     async function applyRow(tr) {
+        var mine = runToken;
         var btn = tr.querySelector("button");
         btn.disabled = true;
         btn.textContent = "…";
@@ -454,7 +474,11 @@
                 body: JSON.stringify(payload),
             });
             tr.remove();
-            updateAfterRowChange();
+            if (guard.isCurrent(mine)) {
+                updateAfterRowChange();
+            } else if (typeof window.loadTasks === "function") {
+                window.loadTasks();   // the dialog was closed (#421)
+            }
         } catch (err) {
             btn.disabled = false;
             btn.textContent = "Retry";
@@ -463,6 +487,7 @@
     }
 
     async function applyAll() {
+        var mine = runToken;
         applyAllBtn.disabled = true;
         applyAllBtn.textContent = "Applying…";
         var rows = Array.from(rowsEl.querySelectorAll("tr"));
@@ -480,6 +505,13 @@
                 failed++;
                 tr.classList.add("auto-categorize-row-failed");
             }
+        }
+        // #421: closed (and maybe reopened) while applying — the changes are
+        // sent and the board catches up, but the dialog is no longer this
+        // run's to close or relabel.
+        if (!guard.isCurrent(mine)) {
+            if (typeof window.loadTasks === "function") { window.loadTasks(); }
+            return;
         }
         applyAllBtn.disabled = false;
         if (failed === 0) {

@@ -688,6 +688,11 @@ Report.
      still picks. Stage a bulk change — the chip looks the same, Enter on it
      (or a click) drops it. a11y_gaps.spec.js checks every control on 19
      pages has a name and every panel/dialog says role=dialog aria-modal.
+     #421: on the board, 💡 Auto-categorize with its answer slowed (fetch
+     override), close it while it's thinking — it stays closed and empty when
+     the answer lands; open it again and only the new run's rows show. Apply
+     all with a PATCH held, close, reopen: the new run stays open with its own
+     "Apply all (N)". A plain run still applies and closes (the quiet case).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -883,6 +888,7 @@ Report.
   Quick actions: show on Tab    PASS          Quick actions: always shown   PASS
   Parent picker: arrows + Enter PASS          Parent picker: arrows + Enter PASS
   Bulk chip: a button           PASS          Bulk chip: a button, 44px     PASS
+  Auto-categorize: late answer dropped PASS   Auto-categorize: late answer dropped PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
