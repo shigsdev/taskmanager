@@ -21,6 +21,13 @@
     const reviewSection = document.getElementById("scanReview");
     const doneSection = document.getElementById("scanDone");
 
+    // #473: a deploy reload waits while the review (a paid Vision + Claude
+    // call) is on screen — base.html's userIsBusy() asks window.reloadGuard.
+    const reloadGuard = window.reloadGuard || null;
+    if (reloadGuard) {
+        reloadGuard.add(function () { return reviewSection.style.display !== "none"; });
+    }
+
     const fileInput = document.getElementById("scanFile");
     const fileLabel = document.getElementById("scanFileLabel");
     const preview = document.getElementById("scanPreview");
@@ -222,10 +229,12 @@
 
         try {
             // PR67 #132: window.apiFetch (auto-retry + recovery)
-            var data = await window.apiFetch(UPLOAD_API, {
+            // #473: and while the scan itself is still being read.
+            var uploading = window.apiFetch(UPLOAD_API, {
                 method: "POST",
                 body: formData,
             });
+            var data = await (reloadGuard ? reloadGuard.during(uploading) : uploading);
 
             if (data.candidates && data.candidates.length > 0) {
                 currentCandidates = data.candidates;

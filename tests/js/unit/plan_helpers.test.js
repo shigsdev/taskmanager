@@ -48,3 +48,22 @@ describe("planRowPayload (#436)", () => {
             .toEqual({ project_id: "p1" });
     });
 });
+
+// #473: /plan holds off a deploy reload while a suggestion is still undecided.
+const { hasPendingRows } = require("../../../static/plan_helpers.js");
+
+describe("hasPendingRows (#473)", () => {
+    test("nothing shown yet: no rows, nothing pending", () => {
+        expect(hasPendingRows({})).toBe(false);
+        expect(hasPendingRows(null)).toBe(false);
+        expect(hasPendingRows(undefined)).toBe(false);
+    });
+
+    test("one row still pending", () => {
+        expect(hasPendingRows({ a: "accepted", b: "pending" })).toBe(true);
+    });
+
+    test("every row accepted or ignored: nothing left to lose", () => {
+        expect(hasPendingRows({ a: "accepted", b: "ignored" })).toBe(false);
+    });
+});

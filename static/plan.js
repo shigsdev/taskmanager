@@ -18,6 +18,18 @@
 
     function $(id) { return document.getElementById(id); }
 
+    // #473: a deploy reload waits while the plan (a paid Claude call) is
+    // being made, or is showing with a suggestion still undecided —
+    // base.html's userIsBusy() asks window.reloadGuard.
+    var reloadGuard = window.reloadGuard || null;
+    if (reloadGuard) {
+        reloadGuard.add(function () {
+            var results = $("planResults");
+            return !!results && results.style.display !== "none"
+                && window.planHelpers.hasPendingRows(rowState);
+        });
+    }
+
     function nextMondayIso() {
         var d = new Date();
         var dow = d.getDay();  // 0=Sun..6=Sat
@@ -79,11 +91,12 @@
 
         var plan;
         try {
-            plan = await window.apiFetch("/api/planner/weekly", {
+            var planning = window.apiFetch("/api/planner/weekly", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ start_date: startDate }),
             });
+            plan = await (reloadGuard ? reloadGuard.during(planning) : planning);
         } catch (err) {
             $("planLoading").style.display = "none";
             $("planError").style.display = "";

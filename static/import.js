@@ -62,6 +62,21 @@
     var doneMessage = document.getElementById("importDoneMessage");
     var againBtn = document.getElementById("importAgainBtn");
 
+    // #473: a deploy reload waits while a review or the confirm summary is
+    // on screen, or a Parse (usually a paid Claude call) is still running —
+    // base.html's userIsBusy() asks window.reloadGuard.
+    var reloadGuard = window.reloadGuard || null;
+    if (reloadGuard) {
+        reloadGuard.add(function () {
+            return reviewSection.style.display !== "none"
+                || confirmSection.style.display !== "none";
+        });
+    }
+    function parseFetch(url, opts) {
+        var p = window.apiFetch(url, opts);
+        return reloadGuard ? reloadGuard.during(p) : p;
+    }
+
     var currentMode = null; // "tasks" or "goals" or "projects"
     var currentSource = null; // override for ImportLog.source (e.g. "transcript_import")
     var currentCandidates = [];
@@ -228,7 +243,7 @@
         formData.append("file", file);
         try {
             // PR67 #132: window.apiFetch (auto-retry + recovery)
-            var data = await window.apiFetch("/api/import/tasks/upload-xlsx", {
+            var data = await parseFetch("/api/import/tasks/upload-xlsx", {
                 method: "POST", body: formData,
             });
             if (!parseGuard.isCurrent(mine)) return;
@@ -293,7 +308,7 @@
         var mine = parseGuard.begin();
         try {
             // PR67 #132: window.apiFetch (auto-retry + recovery)
-            var data = await window.apiFetch("/api/import/projects/parse", {
+            var data = await parseFetch("/api/import/projects/parse", {
                 method: "POST",
                 body: JSON.stringify({ text: text }),
             });
@@ -327,7 +342,7 @@
         formData.append("file", file);
         try {
             // PR67 #132: window.apiFetch (auto-retry + recovery)
-            var data = await window.apiFetch("/api/import/projects/upload", {
+            var data = await parseFetch("/api/import/projects/upload", {
                 method: "POST", body: formData,
             });
             if (!parseGuard.isCurrent(mine)) return;
@@ -409,7 +424,7 @@
         setStatus(transcriptStatus, "Extracting action items…", false);
         var mine = parseGuard.begin();
         try {
-            var data = await window.apiFetch("/api/import/transcript/parse", {
+            var data = await parseFetch("/api/import/transcript/parse", {
                 method: "POST",
                 body: JSON.stringify({ text: text }),
             });
@@ -431,7 +446,7 @@
         var formData = new FormData();
         formData.append("file", file);
         try {
-            var data = await window.apiFetch("/api/import/transcript/upload", {
+            var data = await parseFetch("/api/import/transcript/upload", {
                 method: "POST", body: formData,
             });
             if (!parseGuard.isCurrent(mine)) return;
@@ -481,7 +496,7 @@
 
         try {
             // PR67 #132: window.apiFetch (auto-retry + recovery)
-            var data = await window.apiFetch("/api/import/tasks/upload", {
+            var data = await parseFetch("/api/import/tasks/upload", {
                 method: "POST",
                 body: formData,
             });
@@ -522,7 +537,7 @@
 
         try {
             // PR67 #132: window.apiFetch (auto-retry + recovery)
-            var data = await window.apiFetch("/api/import/tasks/parse", {
+            var data = await parseFetch("/api/import/tasks/parse", {
                 method: "POST",
                 body: JSON.stringify({ text: text }),
             });
@@ -563,7 +578,7 @@
 
         try {
             // PR67 #132: window.apiFetch (auto-retry + recovery)
-            var data = await window.apiFetch("/api/import/goals/parse", {
+            var data = await parseFetch("/api/import/goals/parse", {
                 method: "POST",
                 body: formData,
             });

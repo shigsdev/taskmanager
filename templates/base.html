@@ -57,6 +57,9 @@
     {# #418/#441: drop an async answer whose screen has moved on (✨ Plan,
        the task panel's subtask and parent lists, recurring previews). #}
     <script src="{{ url_for('static', filename='request_guard_helpers.js') }}"></script>
+    {# #473: review screens (/scan, /import, /plan, /reflection) and paid
+       requests in flight tell the auto-update to wait (window.reloadGuard). #}
+    <script src="{{ url_for('static', filename='reload_guard_helpers.js') }}"></script>
     {# #381: Escape closes the top-most side panel (.detail-overlay) via its
        [data-panel-close] ✕, and Tab stays inside it. One document listener;
        a no-op on pages with no panel open. #}
@@ -210,6 +213,11 @@
         // this flag from their state switchers. User-hit 2026-09-24
         // during the #329 deploy.
         if (window.__mediaCaptureBusy) return true;
+        // #473: a review on the page (not an overlay) or a paid request
+        // still running — /scan, /import, /plan and /reflection register
+        // with window.reloadGuard.
+        var rg = window.reloadGuard;
+        if (rg && typeof rg.busy === "function" && rg.busy()) return true;
         return false;
     }
     window.__userIsBusy = userIsBusy;

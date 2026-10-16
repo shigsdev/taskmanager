@@ -1010,6 +1010,17 @@ re-checks the open goal id. The Focus slots update in place after a
 save (`static/weekly_focus_helpers.js`), so typing and focus in another
 slot survive, and a save goes to the week whose slots were edited.
 
+**Deploy reloads wait for the user (#331, #446, #473).** base.html polls
+for a new service worker every 60s and applies it (the page reloads)
+unless `userIsBusy()` objects: a focused field, any open panel or pop-up
+(`panelKeys.anyOpen`), live audio (`window.__mediaCaptureBusy`), or
+`window.reloadGuard.busy()` — `static/reload_guard_helpers.js`
+(`createReloadGuard`: add / during / busy, loaded globally from
+base.html). /scan, /import, /plan and /reflection register their review
+screens with `add` and wrap the paid request with `during`, so a review a
+Claude / Vision call produced isn't reloaded away. Busy shows the "New
+version available" bar instead.
+
 **One scheduler per container, and it survives a worker kill (#439).**
 `gunicorn.conf.py` `post_worker_init` starts the scheduler in whichever
 worker wins an exclusive file lock (`scheduler_lock.try_acquire`, in the

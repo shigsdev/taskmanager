@@ -154,7 +154,19 @@
     var recordCapTimeoutId = null;
     var focusSlotCount = 3;
 
+    // #473: a deploy reload waits while Claude is analyzing or its
+    // proposals are on screen — they can't be reopened later without a
+    // second paid call. base.html's userIsBusy() asks window.reloadGuard.
+    var shownState = "input";
+    var reloadGuard = window.reloadGuard || null;
+    if (reloadGuard) {
+        reloadGuard.add(function () {
+            return shownState === "analyzing" || shownState === "review";
+        });
+    }
+
     function showState(name) {
+        shownState = name;
         Object.keys(states).forEach(function (k) {
             if (states[k]) states[k].style.display = (k === name) ? "" : "none";
         });
@@ -1575,10 +1587,12 @@
                 reBtn.textContent = "Analyzing…";
                 var data;
                 try {
-                    data = await window.apiFetch(
+                    // #473: History's Re-analyze shows no "analyzing" screen.
+                    var analyzing = window.apiFetch(
                         "/api/reflection/" + r.id + "/analyze",
                         { method: "POST" },
                     );
+                    data = await (reloadGuard ? reloadGuard.during(analyzing) : analyzing);
                 } catch (err) {
                     reBtn.disabled = false;
                     reBtn.textContent = "↻ Re-analyze";

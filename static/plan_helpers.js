@@ -34,7 +34,20 @@
         return payload;
     }
 
-    var api = { planRowPayload: planRowPayload };
+    /**
+     * hasPendingRows - #473: is any suggestion still undecided?
+     * rowState maps task id -> "pending" | "accepted" | "ignored". While one
+     * is pending a deploy reload would throw the plan (a paid call) away;
+     * once every row is decided there is nothing left to lose.
+     */
+    function hasPendingRows(rowState) {
+        if (!rowState) return false;
+        return Object.keys(rowState).some(function (k) {
+            return rowState[k] === "pending";
+        });
+    }
+
+    var api = { planRowPayload: planRowPayload, hasPendingRows: hasPendingRows };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     if (typeof window !== "undefined") window.planHelpers = api;
 })();

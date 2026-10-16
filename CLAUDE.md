@@ -748,6 +748,12 @@ Report.
      task pill for a completed / cancelled / deleted parent is a dark tint
      (sage / amber / rust), and a field's 🎤 while listening turns red like
      the capture bar's (dark_contrast.spec.js measures all four).
+     #473: with the answer slowed (fetch override), `window.__userIsBusy()`
+     is true while /scan reads the image, /import parses, /plan plans and
+     /reflection analyzes, and on each review (and /import's summary). It
+     goes false again once the scan / import is added, every /plan row is
+     accepted or ignored, the reflection is applied, or Start Over / Rescan /
+     Cancel is pressed (the quiet case — true would strand you on old code).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -954,6 +960,7 @@ Report.
   Section move: unfitting date dropped PASS   Section move: unfitting date dropped PASS
   Voice: failed Add adds nothing, retry once PASS Voice: failed Add adds nothing, retry once PASS
   Dark theme: no light leftovers PASS         Dark theme: no light leftovers PASS
+  Reload guard: review screens busy PASS      Reload guard: review screens busy PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

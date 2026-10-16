@@ -168,6 +168,7 @@ EXPECTED_STATIC_FILES = (
     "static/tier_helpers.js",
     "static/reorder_helpers.js",
     "static/request_guard_helpers.js",  # #418 — drop a stale async answer
+    "static/reload_guard_helpers.js",  # #473 — reviews hold off a deploy reload
     "static/weekly_focus_helpers.js",  # #441 — slots keep typing
     "static/weekly_focus.js",
     "static/reflection_helpers.js",  # #165 — Jest-importable reflection helpers
