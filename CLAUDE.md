@@ -742,6 +742,12 @@ Report.
      again.", every row and edit stays; Add All again (real) adds each item
      ONCE (check the Inbox: no doubles). A plain Add All still says what it
      made (the quiet case). The all-or-nothing rule itself is pytest's.
+     #471: on /scan make the upload fail (fetch override) — the error box is a
+     dark rust box with cream text, not light pink. On /goals the progress
+     tracks are dark with the copper fill standing out. A task panel's Parent
+     task pill for a completed / cancelled / deleted parent is a dark tint
+     (sage / amber / rust), and a field's 🎤 while listening turns red like
+     the capture bar's (dark_contrast.spec.js measures all four).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -947,6 +953,7 @@ Report.
   Import undo: subtasks go + come back PASS   Import undo: subtasks go + come back PASS
   Section move: unfitting date dropped PASS   Section move: unfitting date dropped PASS
   Voice: failed Add adds nothing, retry once PASS Voice: failed Add adds nothing, retry once PASS
+  Dark theme: no light leftovers PASS         Dark theme: no light leftovers PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

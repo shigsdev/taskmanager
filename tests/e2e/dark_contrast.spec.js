@@ -43,6 +43,7 @@ const MEASURE = `
   window.__contrast = {
     text: (el) => ratio(over(parse(getComputedStyle(el).color), bgOf(el)), bgOf(el)),
     tint: (el) => ratio(bgOf(el), bgOf(el.parentElement)),
+    bgLum: (el) => lum(bgOf(el)),   // #471
   };
 })();
 `;
@@ -104,6 +105,39 @@ test.describe("#451 dark-theme contrast", () => {
             const r = await page.evaluate((s) => window.__contrast.tint(document.querySelector(s)), id);
             expect(r, `${id} tint vs panel`).toBeGreaterThanOrEqual(1.25);
             expect(await text(page, id), `${id} text`).toBeGreaterThanOrEqual(4.5);
+        }
+    });
+});
+
+test.describe("#471 light backgrounds left from before the dark theme", () => {
+    const bgLum = (page, sel) => page.evaluate((s) => window.__contrast.bgLum(document.querySelector(s)), sel);
+
+    test("the /scan error box, parent-task pills and listening 🎤 are dark and readable", async ({ page }) => {
+        await build(page, `
+            <div class="scan-status scan-error" id="e1">Scan failed: something went wrong</div>
+            <span class="badge parent-link-status parent-link-status-archived" id="s1">archived</span>
+            <span class="badge parent-link-status parent-link-status-cancelled" id="s2">cancelled</span>
+            <span class="badge parent-link-status parent-link-status-deleted" id="s3">deleted</span>
+            <button type="button" class="icon-btn voice-btn voice-listening" id="v1">●</button>`);
+        for (const id of ["#e1", "#s1", "#s2", "#s3", "#v1"]) {
+            expect(await text(page, id), `${id} text`).toBeGreaterThanOrEqual(4.5);
+        }
+        for (const id of ["#e1", "#s1", "#s2", "#s3"]) {
+            expect(await bgLum(page, id), `${id} background is dark`).toBeLessThan(0.1);
+        }
+        // The panel 🎤 says "listening" the way the capture bar's does.
+        const bg = await page.evaluate(() => getComputedStyle(document.getElementById("v1")).backgroundColor);
+        expect(bg).toBe("rgb(220, 38, 38)");
+    });
+
+    test("a goal's progress track is dark and its fill stands out", async ({ page }) => {
+        await build(page, `
+            <div class="goal-progress-row"><div class="progress-bar" id="pb"><div class="progress-fill" id="pf" style="width:40%"></div></div></div>
+            <div class="goal-progress-row"><div class="progress-bar"><div class="progress-fill complete" id="pc" style="width:100%"></div></div></div>`);
+        expect(await bgLum(page, "#pb"), "track is dark").toBeLessThan(0.1);
+        for (const id of ["#pf", "#pc"]) {
+            const r = await page.evaluate((s) => window.__contrast.tint(document.querySelector(s)), id);
+            expect(r, `${id} fill vs track`).toBeGreaterThanOrEqual(3);
         }
     });
 });

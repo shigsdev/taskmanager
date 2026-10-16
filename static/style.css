@@ -1457,11 +1457,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     border-radius: 3px;
     font-weight: 600;
     background: var(--bg-subtle, #f6f8fa);
-    color: #6b7280;
+    color: var(--cream-dim);   /* #471: was #6b7280 (~3:1 on the dark theme) */
 }
-.parent-link-status-archived { color: #166534; background: #dcfce7; }
-.parent-link-status-cancelled { color: #9a3412; background: #fed7aa; }
-.parent-link-status-deleted { color: #991b1b; background: #fecaca; }
+/* #471: were pastel pills from before the dark theme — the .badge-status-*
+   / .badge-priority-must tints. Plain --rust text is ~3.4:1 here, hence #e0876e. */
+.parent-link-status-archived { color: var(--sage); background: rgba(148, 164, 139, 0.16); }
+.parent-link-status-cancelled { color: var(--amber); background: rgba(210, 153, 34, 0.16); }
+.parent-link-status-deleted { color: #e0876e; background: rgba(198, 74, 42, 0.16); }
 
 /* Subtask section in detail panel */
 .subtask-section { margin-top: 12px; }
@@ -1901,8 +1903,9 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     margin-top: 2px;
 }
 .voice-btn.voice-listening {
-    background: #fee2e2;
-    color: #dc2626;
+    /* #471: was a light-pink square — now the capture bar's listening look. */
+    background: #dc2626;
+    color: #fff;
     animation: voice-pulse 1.2s ease-in-out infinite;
 }
 
@@ -2674,7 +2677,8 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .progress-bar {
     flex: 1;
     height: 6px;
-    background: #e5e7eb;
+    /* #471: was a light grey (#e5e7eb) strip — the Today ring's empty track. */
+    background: rgba(255, 247, 232, 0.09);
     border-radius: 3px;
     overflow: hidden;
     max-width: 200px;
@@ -3375,7 +3379,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     background: var(--surface-sunk);
     font-size: 0.9rem;
 }
-.scan-error { color: var(--danger); background: #fff0f0; }
+.scan-error {
+    /* #471: was light-pink (#fff0f0) — the dark rust box #224 / #442 gave
+       the reflection and voice-memo errors. */
+    background: rgba(198, 74, 42, 0.12);
+    border-left: 4px solid var(--danger);
+    color: var(--cream);
+}
 .scan-candidate {
     display: flex;
     align-items: center;
