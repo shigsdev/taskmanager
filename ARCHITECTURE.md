@@ -571,7 +571,14 @@ component is added, a data flow changes, or a security boundary shifts.
   reflection) run each row through `link_service.fit_batch_links` (#481):
   a link that doesn't fit is dropped from that row only, the row still
   saves, and the answer's `warning` (reflection: `summary.notes`) names
-  each dropped link (`batch_link_warning`). A project's own type change
+  each dropped link (`batch_link_warning`). Before that, the five
+  confirm endpoints (import tasks / goals / projects, scan, voice) pass
+  `candidates` through `batch_input.clean_rows` (#484, pure, no app
+  imports): a row that isn't an object is skipped and counted in
+  `warning` ("1 row couldn't be read and was skipped."), a number in a
+  text field becomes text, another shape there is dropped, and
+  `included` becomes a real boolean (`"false"` / `"no"` / `"0"` leave the
+  row out). A project's own type change
   (`update_project`, so bulk Type ▾ too) retypes every task on it, their
   subtasks and its repeating tasks in the same commit
   (`_retype_project_items`, #482); /projects confirms the count first

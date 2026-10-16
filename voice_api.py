@@ -19,6 +19,7 @@ import logging
 from flask import Blueprint, g, jsonify, request
 
 from auth import login_required
+from batch_input import clean_rows, join_warnings, skipped_warning
 from models import db
 from rate_limit import PAID_API, limiter
 from scan_service import (
@@ -198,6 +199,9 @@ def confirm(email: str):  # noqa: ARG001
     candidates = data.get("candidates", [])
     if not isinstance(candidates, list):
         return jsonify({"error": "candidates must be a list"}), 422
+    # #484: a row that isn't an object is skipped (and said); text
+    # fields become text; `included` becomes a real boolean.
+    candidates, skipped = clean_rows(candidates)
 
     # #67 (2026-04-26): split candidates by route. Tasks go to the
     # voice task creator; goals route through create_goals_from_import;
@@ -212,8 +216,6 @@ def confirm(email: str):  # noqa: ARG001
     project_candidates = []
     skipped_empty = 0  # PR24 TD-2: surface silent skips back to the user
     for c in candidates:
-        if not isinstance(c, dict):
-            continue
         # PR24 TD-2: titles can end up empty after the prefix-strip in
         # classify_voice_candidate (e.g. "goal:" with nothing after).
         # create_*_from_import silently drops empty titles, so the user
@@ -360,10 +362,13 @@ def confirm(email: str):  # noqa: ARG001
             f"nothing after it)."
         )
         response["warning"] = (existing + " " + msg).strip() if existing else msg
-    # #481: a project / goal that didn't fit was left off its row.
+    # #481: a project / goal that didn't fit was left off its row;
+    # #484: a row that couldn't be read was skipped.
     from link_service import batch_link_warning
-    link_msg = batch_link_warning(link_notes)
-    if link_msg:
-        existing = response.get("warning", "")
-        response["warning"] = (existing + " " + link_msg).strip() if existing else link_msg
+    warning = join_warnings(
+        response.get("warning"), batch_link_warning(link_notes),
+        skipped_warning(skipped),
+    )
+    if warning:
+        response["warning"] = warning
     return jsonify(response), 201

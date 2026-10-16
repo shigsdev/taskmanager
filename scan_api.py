@@ -11,6 +11,7 @@ import logging
 from flask import Blueprint, g, jsonify, request
 
 from auth import login_required
+from batch_input import clean_rows, join_warnings, skipped_warning
 from import_service import create_projects_from_import
 from link_service import batch_link_warning
 from rate_limit import PAID_API, limiter
@@ -184,12 +185,15 @@ def confirm(email: str):  # noqa: ARG001
     candidates = data.get("candidates", [])
     if not isinstance(candidates, list):
         return jsonify({"error": "candidates must be a list"}), 422
+    # #484: a row that isn't an object is skipped (and said); text
+    # fields become text; `included` becomes a real boolean.
+    candidates, skipped = clean_rows(candidates)
 
     kind = _normalize_kind(data.get("kind"))
 
     if kind == "goals":
         goals = create_goals_from_candidates(candidates)
-        return jsonify({
+        body = {
             "kind": "goals",
             "created": len(goals),
             "goals": [
@@ -201,21 +205,29 @@ def confirm(email: str):  # noqa: ARG001
                 }
                 for g in goals
             ],
-        }), 201
+        }
+        warning = skipped_warning(skipped)  # #484
+        if warning:
+            body["warning"] = warning
+        return jsonify(body), 201
 
     if kind == "projects":
         # #86 (2026-04-26): re-use the import_service creator so the same
         # batch_id + ImportLog pattern applies (recycle-bin batch undo
         # works for scan-created projects).
         projects = create_projects_from_import(candidates, source="scan_projects")
-        return jsonify({
+        body = {
             "kind": "projects",
             "created": len(projects),
             "projects": [
                 {"id": str(p.id), "name": p.name, "type": p.type.value}
                 for p in projects
             ],
-        }), 201
+        }
+        warning = skipped_warning(skipped)  # #484
+        if warning:
+            body["warning"] = warning
+        return jsonify(body), 201
 
     link_notes: list[str] = []
     tasks = create_tasks_from_candidates(candidates, link_notes=link_notes)
@@ -227,8 +239,11 @@ def confirm(email: str):  # noqa: ARG001
             for t in tasks
         ],
     }
-    # #481: say which rows lost a link that didn't fit.
-    warning = batch_link_warning(link_notes)
+    # #481: say which rows lost a link that didn't fit; #484: and how
+    # many rows couldn't be read.
+    warning = join_warnings(
+        batch_link_warning(link_notes), skipped_warning(skipped),
+    )
     if warning:
         body["warning"] = warning
     return jsonify(body), 201
