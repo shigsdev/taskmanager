@@ -737,6 +737,11 @@ Report.
      This Week after the 00:03 re-sort (pytest runs the re-sort); a task
      dated ~6 weeks out moved to Backlog KEEPS its date (the quiet case).
      Changing Section in the task panel keeps the date shown there.
+     #470: on /voice-memo (fake mic, upload stubbed) make the first Add All
+     answer 500 — "Nothing was added, and your list is still here — Add All
+     again.", every row and edit stays; Add All again (real) adds each item
+     ONCE (check the Inbox: no doubles). A plain Add All still says what it
+     made (the quiet case). The all-or-nothing rule itself is pytest's.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -941,6 +946,7 @@ Report.
   Reflection: unsaved finish keeps text PASS  Reflection: unsaved finish keeps text PASS
   Import undo: subtasks go + come back PASS   Import undo: subtasks go + come back PASS
   Section move: unfitting date dropped PASS   Section move: unfitting date dropped PASS
+  Voice: failed Add adds nothing, retry once PASS Voice: failed Add adds nothing, retry once PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

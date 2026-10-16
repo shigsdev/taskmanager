@@ -10628,7 +10628,9 @@ test.describe("Failures keep the work (#442)", () => {
         const err = page.locator("#voiceConfirmError");
         await expect(err).toBeVisible();
         await expect(err).toContainText("db down");
-        await expect(err).toContainText("check your Inbox");
+        // #470: the server answered, and Add All is one transaction there,
+        // so nothing landed — no "check your Inbox" any more.
+        await expect(err).toContainText("Nothing was added, and your list is still here — Add All again.");
         await expect(page.locator("#voiceStateReview")).toBeVisible();
         await expect(rows).toHaveCount(2);
         await expect(rows.nth(0).locator(".voice-candidate-title")).toHaveValue("E2E 442 add edited");

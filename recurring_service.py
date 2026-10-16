@@ -265,8 +265,9 @@ def _validate_date_window(start_date: date | None, end_date: date | None) -> Non
 # --- CRUD --------------------------------------------------------------------
 
 
-def create_recurring(data: dict) -> RecurringTask:
-    """Create a new recurring task template."""
+def create_recurring(data: dict, *, commit: bool = True) -> RecurringTask:
+    """Create a new recurring task template. ``commit=False`` flushes only
+    (#470: the voice Add All commits its whole batch once)."""
     title = parse_text(data.get("title"), "title").strip()
     if not title:
         raise ValidationError("title is required", "title")
@@ -317,7 +318,10 @@ def create_recurring(data: dict) -> RecurringTask:
         start_date=start_date,  # #147
     )
     db.session.add(rt)
-    db.session.commit()
+    if commit:
+        db.session.commit()
+    else:
+        db.session.flush()
     return rt
 
 
@@ -948,6 +952,8 @@ def seed_defaults() -> list[RecurringTask]:
 
 def create_recurring_template_from_voice_candidate(
     candidate: dict,
+    *,
+    commit: bool = True,
 ) -> RecurringTask | None:
     """Create a RecurringTask from a voice-memo review candidate (#155).
 
@@ -1003,7 +1009,10 @@ def create_recurring_template_from_voice_candidate(
         data["project_id"] = candidate["project_id"]
     if candidate.get("goal_id"):
         data["goal_id"] = candidate["goal_id"]
+    # #470: only a refused shape is "skip quietly". A database error goes up
+    # to the caller, which rolls back this item's savepoint — swallowing it
+    # here left the session failed for the rest of the batch (Postgres).
     try:
-        return create_recurring(data)
-    except Exception:  # noqa: BLE001 — bad shape; caller silently skips
+        return create_recurring(data, commit=commit)
+    except (ValidationError, ValueError, TypeError):
         return None

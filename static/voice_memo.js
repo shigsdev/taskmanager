@@ -918,12 +918,11 @@
                 credentials: "same-origin",
             });
         } catch (err) {
-            // #442: stay on the review — the list and every edit stay. The
-            // server adds tasks, goals and projects in separate steps (#470),
-            // so part of a failed batch may already be in.
+            // #442: stay on the review — the list and every edit stay.
+            // #470: the server adds the batch in one transaction, so an
+            // answered error saved nothing; only a lost answer may have.
             const msg = window.apiHelpers.actionFailureMessage("Adding these", err, null,
-                "Your list is still here. Before adding again, check your Inbox: "
-                + "part of it may already have been added.");
+                window.voiceMemoHelpers.confirmFailureTail(err));
             if (msg && confirmErrorEl) {
                 confirmErrorEl.textContent = msg;
                 confirmErrorEl.hidden = false;

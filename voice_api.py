@@ -19,6 +19,7 @@ import logging
 from flask import Blueprint, g, jsonify, request
 
 from auth import login_required
+from models import db
 from rate_limit import PAID_API, limiter
 from scan_service import (
     create_tasks_from_candidates,
@@ -264,42 +265,62 @@ def confirm(email: str):  # noqa: ARG001
         else:
             task_candidates.append(c)
 
-    tasks = create_tasks_from_candidates(task_candidates, source_prefix="voice")
+    # #470: the whole batch is ONE transaction. Each step used to commit on
+    # its own, so a failure part-way (a goal insert, a project insert) came
+    # back as an error with the tasks already saved, and Add All again
+    # (#442 keeps the list for it) made them twice. Now any failure saves
+    # nothing; the error says so, and a retry adds each item once.
+    from recurring_service import create_recurring_template_from_voice_candidate
 
-    # #155: route recurring candidates to the template create flow.
     recurring_created: list = []
     recurring_skipped = 0  # #425: reported in `warning`, not just logged
-    if recurring_candidates:
-        from recurring_service import create_recurring_template_from_voice_candidate
+    goals_created = []
+    projects_created = []
+    try:
+        tasks = create_tasks_from_candidates(
+            task_candidates, source_prefix="voice", commit=False,
+        )
+
+        # #155: route recurring candidates to the template create flow.
         for rc in recurring_candidates:
             try:
-                rec = create_recurring_template_from_voice_candidate(rc)
+                # #470: one bad item is still skipped on its own (as #155
+                # meant) — its savepoint rolls back, the batch goes on. It
+                # used to catch the error with no rollback, which on
+                # Postgres left the session failed for the steps after it.
+                with db.session.begin_nested():
+                    rec = create_recurring_template_from_voice_candidate(rc, commit=False)
                 if rec is not None:
                     recurring_created.append(rec)
                 else:
                     recurring_skipped += 1
-            except Exception as e:  # noqa: BLE001, S110
-                # Don't let one bad candidate kill the whole batch — the
-                # user can re-create it manually if it doesn't appear.
-                # Log so silent skips are observable in /api/debug/logs.
+            except Exception as e:  # noqa: BLE001
                 recurring_skipped += 1
-                import logging
-                logging.getLogger(__name__).warning(
+                logger.warning(
                     "voice recurring candidate skipped: %s: %s",
                     type(e).__name__, e,
                 )
 
-    goals_created = []
-    if goal_candidates:
-        from import_service import create_goals_from_import
-        goals_created = create_goals_from_import(goal_candidates, source="voice_goal")
+        if goal_candidates:
+            from import_service import create_goals_from_import
+            goals_created = create_goals_from_import(
+                goal_candidates, source="voice_goal", commit=False,
+            )
 
-    projects_created = []
-    if project_candidates:
-        from import_service import create_projects_from_import
-        projects_created = create_projects_from_import(
-            project_candidates, source="voice_project"
-        )
+        if project_candidates:
+            from import_service import create_projects_from_import
+            projects_created = create_projects_from_import(
+                project_candidates, source="voice_project", commit=False,
+            )
+
+        db.session.commit()
+    except Exception:  # noqa: BLE001
+        db.session.rollback()
+        logger.exception("voice memo Add All failed; nothing was saved")
+        return jsonify({
+            "error": "something went wrong on the server",
+            "saved": False,
+        }), 500
 
     response = {
         "created": (

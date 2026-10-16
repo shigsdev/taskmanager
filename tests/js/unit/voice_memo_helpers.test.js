@@ -56,3 +56,24 @@ describe("mimeTypeToExt", () => {
         expect(mimeTypeToExt("audio/mp4; codecs=mp4a")).toBe("mp4");
     });
 });
+
+// #470: Add All is one transaction on the server. An error the server
+// answered saved nothing; a lost answer may have saved everything.
+describe("confirmFailureTail (#470)", () => {
+    const { confirmFailureTail } = require("../../../static/voice_memo_helpers");
+    const answered = (status) => Object.assign(new Error("x"), { status, body: {} });
+
+    test("the server answered (500, 429, 422): nothing was added — add again", () => {
+        for (const status of [500, 429, 422]) {
+            expect(confirmFailureTail(answered(status))).toBe(
+                "Nothing was added, and your list is still here — Add All again.");
+        }
+    });
+
+    test("no answer (lost connection): it may have landed — check first", () => {
+        expect(confirmFailureTail(new TypeError("Failed to fetch"))).toBe(
+            "Your list is still here. The connection dropped before the server answered, "
+            + "so check your Inbox before adding again: it may already be there.");
+        expect(confirmFailureTail(null)).toMatch(/check your Inbox/);
+    });
+});

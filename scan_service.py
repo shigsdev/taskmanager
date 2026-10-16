@@ -1339,6 +1339,8 @@ def _normalise_voice_candidates(
 def create_tasks_from_candidates(
     candidates: list[dict[str, Any]],
     source_prefix: str = "scan",
+    *,
+    commit: bool = True,
 ) -> list[Task]:
     """Create Task records from confirmed candidates.
 
@@ -1443,7 +1445,12 @@ def create_tasks_from_candidates(
             source=source, task_count=len(created), batch_id=batch_id
         )
         db.session.add(log)
-        db.session.commit()
+        # #470: commit=False flushes only — the caller (voice Add All)
+        # commits the whole batch once.
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
     return created
 
 

@@ -847,6 +847,8 @@ def create_tasks_from_import(
 def create_goals_from_import(
     candidates: list[dict[str, Any]],
     source: str,
+    *,
+    commit: bool = True,
 ) -> list[Goal]:
     """Create Goal records from confirmed import candidates.
 
@@ -905,7 +907,11 @@ def create_goals_from_import(
             source=fit_length(source, _SOURCE_MAX), task_count=len(created), batch_id=batch_id
         )
         db.session.add(log)
-        db.session.commit()
+        # #470: commit=False flushes only — the caller commits the batch.
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
 
     return created
 
@@ -913,6 +919,8 @@ def create_goals_from_import(
 def create_projects_from_import(
     candidates: list[dict[str, Any]],
     source: str,
+    *,
+    commit: bool = True,
 ) -> list[Project]:
     """#80 (2026-04-26): create Project records from confirmed candidates.
 
@@ -995,6 +1003,10 @@ def create_projects_from_import(
             source=fit_length(source, _SOURCE_MAX), task_count=len(created), batch_id=batch_id
         )
         db.session.add(log)
-        db.session.commit()
+        # #470: commit=False flushes only — the caller commits the batch.
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
 
     return created

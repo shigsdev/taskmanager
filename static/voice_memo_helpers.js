@@ -125,8 +125,30 @@ function confirmSummary(data) {
     return d.warning ? msg + " " + d.warning : msg;
 }
 
+/**
+ * #470: what to say after a failed Add All. The server adds the whole batch
+ * in one transaction, so an error it ANSWERED (a 500, the rate limit, a
+ * refused list) saved nothing and adding again is safe. With no answer at
+ * all (the connection dropped) it may have saved everything before the
+ * reply was lost — the one case to check the Inbox first.
+ *
+ * @param {{status?: number}|null} err — what apiFetch threw
+ * @returns {string}
+ */
+function confirmFailureTail(err) {
+    if (err && typeof err.status === "number") {
+        return "Nothing was added, and your list is still here — Add All again.";
+    }
+    return "Your list is still here. The connection dropped before the server answered, "
+        + "so check your Inbox before adding again: it may already be there.";
+}
+
 if (typeof module !== "undefined" && module.exports) {
-    module.exports = { mimeTypeToExt, buildConfirmPayload, repeatProblem, confirmSummary };
+    module.exports = {
+        mimeTypeToExt, buildConfirmPayload, repeatProblem, confirmSummary, confirmFailureTail,
+    };
 } else if (typeof window !== "undefined") {
-    window.voiceMemoHelpers = { mimeTypeToExt, buildConfirmPayload, repeatProblem, confirmSummary };
+    window.voiceMemoHelpers = {
+        mimeTypeToExt, buildConfirmPayload, repeatProblem, confirmSummary, confirmFailureTail,
+    };
 }
