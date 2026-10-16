@@ -797,6 +797,9 @@ Report.
      "Review Goal Candidates" and "Add All to Goals" / "Add Selected to
      Goals"; as Projects, "… to Projects"; Scan Another then Tasks reads
      "Add All to Inbox" again (the quiet case).
+     #490: on /scan (upload stubbed, Add All real) a goal keeps its
+     category, priority, quarter and actions, a project its name, type and
+     quarter, a task its type (scan_confirm_roundtrip.spec.js reads each back).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -1012,6 +1015,7 @@ Report.
   Pickers: projects of own type PASS          Pickers: projects of own type PASS
   Copper buttons: dark text     PASS          Copper buttons: dark text     PASS
   Scan: review names its kind   PASS          Scan: review names its kind   PASS
+  Scan: fields reach the save   PASS          Scan: fields reach the save   PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

@@ -398,28 +398,10 @@
     // --- Confirm --------------------------------------------------------------
 
     async function confirmCandidates(allIncluded) {
-        var toSend = currentCandidates.map(function (c) {
-            // Projects use `name` instead of `title` per the import_service
-            // shape — translate so create_projects_from_import is happy.
-            var base = {
-                included: allIncluded ? true : c.included,
-            };
-            if (currentKind === "projects") {
-                base.name = c.title;
-                base.type = c.type || "work";
-                base.target_quarter = c.target_quarter || "";
-            } else if (currentKind === "goals") {
-                base.title = c.title;
-                base.category = c.category || "personal_growth";
-                base.priority = c.priority || "need_more_info";
-                base.target_quarter = c.target_quarter || "";
-                base.actions = c.actions || "";
-            } else {
-                base.title = c.title;
-                base.type = c.type || "work";
-            }
-            return base;
-        });
+        // #490: each kind's keys are built (and Jest-checked) in scan_helpers.
+        var toSend = window.scanHelpers.scanConfirmPayload(
+            currentKind, currentCandidates, allIncluded
+        );
 
         try {
             // PR67 #132: window.apiFetch (auto-retry + recovery)
