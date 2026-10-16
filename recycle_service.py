@@ -133,7 +133,9 @@ def list_bin() -> list[dict]:
     """Return all batches currently in the recycle bin, newest undo first.
 
     Each entry contains enough info to render the recycle bin UI:
-    batch_id, source, imported_at, undone_at, task_count, goal_count.
+    batch_id, source, imported_at, undone_at, task_count, goal_count,
+    project_count, and restore_goal_count / restore_project_count (what
+    Restore brings back).
     """
     stmt = (
         select(ImportLog)
@@ -185,6 +187,16 @@ def list_bin() -> list[dict]:
         snap = snapshots.get(gbid)
         if snap is None or str(gid) in (snap.get("goals") or []):
             restore_goal_counts[gbid] = restore_goal_counts.get(gbid, 0) + 1
+    # #478: the same for projects, now that the Restore dialog names them.
+    restore_project_counts: dict = {}
+    for pbid, pid in db.session.execute(
+        select(Project.batch_id, Project.id)
+        .where(Project.batch_id.in_(batch_ids))
+        .where(Project.is_active.is_(False))
+    ).all():
+        snap = snapshots.get(pbid)
+        if snap is None or str(pid) in (snap.get("projects") or []):
+            restore_project_counts[pbid] = restore_project_counts.get(pbid, 0) + 1
 
     entries = []
     for log in logs:
@@ -202,6 +214,7 @@ def list_bin() -> list[dict]:
                 "goal_count": goal_counts.get(log.batch_id, 0),
                 "restore_goal_count": restore_goal_counts.get(log.batch_id, 0),
                 "project_count": project_counts.get(log.batch_id, 0),
+                "restore_project_count": restore_project_counts.get(log.batch_id, 0),
             }
         )
     return entries

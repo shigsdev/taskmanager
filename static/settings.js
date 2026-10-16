@@ -174,8 +174,9 @@
                 var badge = document.getElementById("settingsBinCount");
                 if (badge) {
                     // #428: deleted tasks are listed in the bin too.
+                    // #478: and undone project imports.
                     var total = (data.task_count || 0) + (data.goal_count || 0) +
-                        (data.deleted_task_count || 0);
+                        (data.project_count || 0) + (data.deleted_task_count || 0);
                     badge.textContent = total;
                 }
             })

@@ -754,6 +754,12 @@ Report.
      goes false again once the scan / import is added, every /plan row is
      accepted or ignored, the reflection is applied, or Start Over / Rescan /
      Cancel is pressed (the quiet case — true would strand you on old code).
+     #478: import two projects (Import → Paste Project Names), Undo it in
+     Settings → Import History: /recycle-bin reads "2 projects across 1
+     batch." with Empty Bin ON, the row reads "2 projects", Restore asks
+     "Restore 2 projects from this batch?" and brings them back, Purge names
+     them too; Settings "Recycle Bin (N)" counts them. An empty bin still
+     reads "No undone imports." with Empty Bin off (the quiet case).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -961,6 +967,7 @@ Report.
   Voice: failed Add adds nothing, retry once PASS Voice: failed Add adds nothing, retry once PASS
   Dark theme: no light leftovers PASS         Dark theme: no light leftovers PASS
   Reload guard: review screens busy PASS      Reload guard: review screens busy PASS
+  Recycle bin: projects counted PASS          Recycle bin: projects counted PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

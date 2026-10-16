@@ -93,7 +93,45 @@ function binDeletedTasks(tasks, limit) {
     return { rows: rows.slice(0, shown), hidden: rows.length - shown, total: rows.length };
 }
 
+// #478: projects count in the bin too. The server always sent
+// project_count; the page added only tasks + goals, so a bin holding just
+// an undone project import read "No undone imports." with Empty Bin off.
+var _BIN_KINDS = ["task", "goal", "project"];
+
+function _binCount(counts, kind, key) {
+    if (!counts) return 0;
+    var v = counts[key || (kind + "_count")];
+    if (v == null) v = counts[kind + "_count"];   // e.g. no restore_* sent
+    return Number(v) || 0;
+}
+
+/** binItemTotal - tasks + goals + projects in a summary or batch. */
+function binItemTotal(counts) {
+    return _BIN_KINDS.reduce(function (sum, kind) {
+        return sum + _binCount(counts, kind);
+    }, 0);
+}
+
+/**
+ * binItemPhrase - "2 tasks, 1 goal and 3 projects", leaving out kinds
+ * with none; "nothing" when every count is zero. `keys` names which field
+ * to read per kind ({goal: "restore_goal_count", ...}); a missing one
+ * falls back to the plain <kind>_count.
+ */
+function binItemPhrase(counts, keys) {
+    var parts = [];
+    _BIN_KINDS.forEach(function (kind) {
+        var n = _binCount(counts, kind, keys && keys[kind]);
+        if (n) parts.push(n + " " + kind + (n === 1 ? "" : "s"));
+    });
+    if (!parts.length) return "nothing";
+    if (parts.length === 1) return parts[0];
+    return parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1];
+}
+
 var _recycleBinApi = {
+    binItemTotal: binItemTotal,
+    binItemPhrase: binItemPhrase,
     binDeletedTasks: binDeletedTasks,
     binSectionLabel: binSectionLabel,
     binDeletedDate: binDeletedDate,

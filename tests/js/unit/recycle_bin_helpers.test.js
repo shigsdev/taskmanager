@@ -139,3 +139,47 @@ describe("binDeletedDate (#428)", () => {
         expect(binDeletedDate("nope")).toBeNull();
     });
 });
+
+// #478: projects count too. A bin holding only undone project imports read
+// "No undone imports." with Empty Bin disabled, and the dialogs never named
+// the projects they restore or delete.
+const { binItemTotal, binItemPhrase } = require("../../../static/recycle_bin_helpers.js");
+
+describe("binItemTotal (#478)", () => {
+    test("tasks + goals + projects", () => {
+        expect(binItemTotal({ task_count: 1, goal_count: 2, project_count: 3 })).toBe(6);
+    });
+    test("a projects-only bin is not empty", () => {
+        expect(binItemTotal({ task_count: 0, goal_count: 0, project_count: 2 })).toBe(2);
+    });
+    test("missing counts are zero (the quiet case: an empty bin)", () => {
+        expect(binItemTotal({})).toBe(0);
+        expect(binItemTotal(null)).toBe(0);
+    });
+});
+
+describe("binItemPhrase (#478)", () => {
+    test("names each kind, singular and plural, leaving out zeros", () => {
+        expect(binItemPhrase({ task_count: 2, goal_count: 1, project_count: 3 }))
+            .toBe("2 tasks, 1 goal and 3 projects");
+        expect(binItemPhrase({ task_count: 1, goal_count: 0, project_count: 0 })).toBe("1 task");
+        expect(binItemPhrase({ task_count: 0, goal_count: 0, project_count: 1 })).toBe("1 project");
+        expect(binItemPhrase({ task_count: 3, goal_count: 0, project_count: 2 }))
+            .toBe("3 tasks and 2 projects");
+    });
+    test("nothing at all", () => {
+        expect(binItemPhrase({ task_count: 0, goal_count: 0, project_count: 0 })).toBe("nothing");
+    });
+    test("a caller can name which counts to read (Restore's)", () => {
+        const batch = { task_count: 1, goal_count: 2, restore_goal_count: 1,
+                        project_count: 2, restore_project_count: 0 };
+        expect(binItemPhrase(batch, {
+            task: "task_count", goal: "restore_goal_count", project: "restore_project_count",
+        })).toBe("1 task and 1 goal");
+    });
+    test("a missing restore count falls back to the plain count", () => {
+        expect(binItemPhrase({ task_count: 0, goal_count: 0, project_count: 2 }, {
+            task: "task_count", goal: "restore_goal_count", project: "restore_project_count",
+        })).toBe("2 projects");
+    });
+});

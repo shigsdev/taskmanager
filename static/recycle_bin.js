@@ -189,17 +189,15 @@
     }
 
     function renderSummary(data) {
-        var total = (data.task_count || 0) + (data.goal_count || 0);
-        if (total === 0) {
+        // #478: projects count — a projects-only bin used to read empty.
+        var H = window.recycleBinHelpers;
+        if (H.binItemTotal(data) === 0) {
             summaryText.textContent = "No undone imports.";
             emptyBtn.disabled = true;
             return;
         }
-        var parts = [];
-        if (data.task_count) parts.push(data.task_count + " task" + (data.task_count === 1 ? "" : "s"));
-        if (data.goal_count) parts.push(data.goal_count + " goal" + (data.goal_count === 1 ? "" : "s"));
         var batchWord = data.batch_count === 1 ? "batch" : "batches";
-        summaryText.textContent = parts.join(" and ") + " across " +
+        summaryText.textContent = H.binItemPhrase(data) + " across " +
             data.batch_count + " " + batchWord + ".";
         emptyBtn.disabled = false;
     }
@@ -241,10 +239,9 @@
 
             var counts = document.createElement("div");
             counts.className = "recycle-item-counts";
-            var countParts = [];
-            if (batch.task_count) countParts.push(batch.task_count + " task" + (batch.task_count === 1 ? "" : "s"));
-            if (batch.goal_count) countParts.push(batch.goal_count + " goal" + (batch.goal_count === 1 ? "" : "s"));
-            counts.textContent = countParts.length ? countParts.join(", ") : "0 items";
+            // #478: projects too (a projects-only batch read "0 items").
+            counts.textContent = window.recycleBinHelpers.binItemTotal(batch)
+                ? window.recycleBinHelpers.binItemPhrase(batch) : "0 items";
 
             header.appendChild(title);
             header.appendChild(dates);
@@ -282,12 +279,10 @@
         // #367: restore leaves a goal the user archived before the undo
         // alone, so count only the goals it will bring back. Purge below
         // still uses goal_count: it deletes every goal in the batch.
-        var goals = batch.restore_goal_count != null ? batch.restore_goal_count : batch.goal_count;
-        var body = "Restore " + batch.task_count + " task" +
-            (batch.task_count === 1 ? "" : "s") +
-            " and " + goals + " goal" +
-            (goals === 1 ? "" : "s") +
-            " from this batch back into your task list?";
+        // #478: the same for projects, which it now names.
+        var body = "Restore " + window.recycleBinHelpers.binItemPhrase(batch, {
+            goal: "restore_goal_count", project: "restore_project_count",
+        }) + " from this batch?";
         openModal({
             title: "Restore Batch",
             body: body,
@@ -305,11 +300,8 @@
     }
 
     function onPurge(batch) {
-        var body = "Permanently delete " + batch.task_count + " task" +
-            (batch.task_count === 1 ? "" : "s") +
-            " and " + batch.goal_count + " goal" +
-            (batch.goal_count === 1 ? "" : "s") +
-            " from this batch? This cannot be undone.";
+        var body = "Permanently delete " + window.recycleBinHelpers.binItemPhrase(batch) +
+            " from this batch? This cannot be undone.";   // #478: names projects
         openModal({
             title: "Purge Batch",
             body: body,
@@ -329,9 +321,10 @@
         // PR67 #132: window.apiFetch (auto-retry + recovery)
         window.apiFetch("/api/recycle-bin/summary")
             .then(function (data) {
+                // #478: names projects too.
                 var body = "Permanently delete everything in the recycle bin?\n" +
-                    data.task_count + " task(s) and " + data.goal_count + " goal(s) " +
-                    "across " + data.batch_count + " batch(es). " +
+                    window.recycleBinHelpers.binItemPhrase(data) + " across " +
+                    data.batch_count + " batch" + (data.batch_count === 1 ? "" : "es") + ". " +
                     "This cannot be undone.";
                 openModal({
                     title: "Empty Recycle Bin",

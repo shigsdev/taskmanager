@@ -364,3 +364,31 @@ def test_unknown_status_in_snapshot_is_skipped(app, caplog):
         warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
         assert warnings
         assert all("Secret plan" not in r.getMessage() for r in warnings)
+
+
+def test_list_bin_restore_project_count_excludes_projects_restore_leaves(app):
+    # #478: the Restore dialog now names projects; count only the ones
+    # Restore brings back (the undo archived them), like #367's goals.
+    with app.app_context():
+        bid, _ = _batch()
+        _project(bid)
+        _project(bid, active=False)
+        recycle_service.undo_batch(bid)
+
+        entry = next(e for e in recycle_service.list_bin() if e["batch_id"] == str(bid))
+        assert entry["project_count"] == 2
+        assert entry["restore_project_count"] == 1
+
+
+def test_list_bin_restore_project_count_legacy_batch_counts_every_inactive_project(app):
+    with app.app_context():
+        bid, _ = _batch()
+        _project(bid)
+        _project(bid, active=False)
+        recycle_service.undo_batch(bid)
+        log = _log(bid)
+        log.undo_snapshot = None
+        db.session.commit()
+
+        entry = next(e for e in recycle_service.list_bin() if e["batch_id"] == str(bid))
+        assert entry["restore_project_count"] == entry["project_count"] == 2
