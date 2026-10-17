@@ -71,6 +71,11 @@
         .print-task-title {
             flex: 1;
             font-size: 10pt;
+            /* #491: a bare-URL title has nothing to wrap on; a flex item
+               won't shrink below it (min-width: auto), so /print scrolled
+               sideways at 375 and ran off the printed page. */
+            min-width: 0;
+            overflow-wrap: anywhere;
         }
         .print-task-meta {
             font-size: 8pt;

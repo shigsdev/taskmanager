@@ -58,6 +58,13 @@ test.describe("#452 phone clipping", () => {
             await card.scrollIntoViewIfNeeded();
             await card.locator(".reopen-btn").click();
             await expect(card.locator(".reopen-dropdown button")).toHaveCount(7);
+            // #491: centre the open menu first. The Completed section is the
+            // board's last, so the card can sit at the screen's bottom edge
+            // and the menu (opening downward) run off it — elementFromPoint
+            // then finds nothing and the test failed under the gate's load
+            // with nothing clipped. A clipped menu still fails: its buttons
+            // stay under the card below.
+            await card.locator(".reopen-dropdown").evaluate((el) => el.scrollIntoView({ block: "center" }));
             const hits = await hittable(page, `#completedList .task-card[data-id="${t.id}"] .reopen-dropdown button`);
             expect(hits).toEqual([true, true, true, true, true, true, true]);
         } finally {

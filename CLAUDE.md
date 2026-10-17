@@ -387,6 +387,11 @@ Report.
      ```
      /usr/local/bin/python3.14 scripts/seed_dev_data.py
      ```
+     Since #491 the seed carries the rough shapes real use has — a
+     ~300-character title (Today), a bare-URL title (This Week) and an open
+     task on an archived project (Backlog). Look at those rows on the pages
+     you changed. Add `--many-backlog` (210 more Backlog tasks) when the
+     change touches a long list; re-run without it before the gates.
   2. Start the local bypass server:
      ```
      preview_start taskmanager-dev-bypass
@@ -805,6 +810,11 @@ Report.
      — every control has a name, and a row's tick box reads "Include
      “<title>”"; edit a row's title and its names follow
      (review_rows_named.spec.js). The rows look exactly as before.
+     #491: on the default seed, the bare-URL and ~300-character titles stay
+     inside their cards on the board, /tier/<name>, /calendar and /print at
+     both widths (board cards cut them to one line with "…"; /print wraps
+     them) and no page scrolls sideways (rough_text.spec.js); Work view
+     shows the open CoP task under "Community of Practice (archived)".
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -1022,6 +1032,7 @@ Report.
   Scan: review names its kind   PASS          Scan: review names its kind   PASS
   Scan: fields reach the save   PASS          Scan: fields reach the save   PASS
   Review rows: every control named PASS       Review rows: every control named PASS
+  Rough titles: stay on screen  PASS          Rough titles: stay on screen  PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

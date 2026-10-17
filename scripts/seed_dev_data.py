@@ -1,11 +1,18 @@
 """Seed the local dev database with realistic synthetic data.
 
 Usage:
-    /usr/local/bin/python3.14 scripts/seed_dev_data.py
+    /usr/local/bin/python3.14 scripts/seed_dev_data.py [--many-backlog]
 
 Populates tasks across all tiers, goals, projects, recurring templates,
 subtasks, completed tasks, and recycle-bin items.  Safe to re-run — it
 wipes existing data first so the seed is idempotent.
+
+#491: it also seeds the rough shapes real use has and short seed titles
+never did — a ~300-character title, a bare-URL title (one unbroken
+string), and an open task on an archived project (#434). Several shipped
+bugs (#138 calendar overflow, #447 long import lines) needed that kind of
+text. ``--many-backlog`` adds 210 more Backlog tasks for a >200-card
+section; it is off by default so the gate's lane copies stay small.
 """
 from __future__ import annotations
 
@@ -36,7 +43,7 @@ from models import (  # noqa: E402
 )
 
 
-def _seed():
+def _seed(many_backlog: bool = False):
     app = create_app()
     with app.app_context():
         # Wipe existing data (order matters for FK constraints)
@@ -408,6 +415,53 @@ def _seed():
             ),
         ])
 
+        # --- #491: the rough shapes real use has ----------------------------
+        tasks.extend([
+            # ~300 characters with ordinary word breaks: wraps on every
+            # card, calendar cell and panel without pushing anything out.
+            Task(
+                title=(
+                    "Draft the long-form write-up of everything we learned from "
+                    "the spring vendor review, including the pricing comparison, "
+                    "the security questionnaire answers, the reference calls with "
+                    "three existing customers, the migration risks we flagged, and "
+                    "the open questions legal still has about the data processing terms"
+                ),
+                tier=Tier.TODAY,
+                type=TaskType.WORK,
+                sort_order=9,
+            ),
+            # One unbroken string — the #138 shape: nothing to wrap on.
+            Task(
+                title=(
+                    "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz"
+                    "0123456789AbCdEfGhIj/edit?usp=sharing&ouid=104857600123456789012"
+                ),
+                tier=Tier.THIS_WEEK,
+                type=TaskType.PERSONAL,
+                sort_order=9,
+            ),
+            # #434: an OPEN task on an archived project (projects[6]).
+            Task(
+                title="Send the CoP survey results to the steering group",
+                tier=Tier.BACKLOG,
+                type=TaskType.WORK,
+                project_id=projects[6].id,
+                goal_id=goals[0].id,
+                sort_order=9,
+            ),
+        ])
+        if many_backlog:
+            tasks.extend(
+                Task(
+                    title=f"Backlog filler {n:03d} — someday maybe",
+                    tier=Tier.BACKLOG,
+                    type=TaskType.PERSONAL if n % 2 else TaskType.WORK,
+                    sort_order=100 + n,
+                )
+                for n in range(210)
+            )
+
         db.session.add_all(tasks)
         db.session.flush()
 
@@ -594,4 +648,4 @@ def _seed():
 
 
 if __name__ == "__main__":
-    _seed()
+    _seed(many_backlog="--many-backlog" in sys.argv[1:])
