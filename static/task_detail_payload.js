@@ -89,9 +89,32 @@ function buildTaskDetailPayload(form, originalTask) {
     return payload;
 }
 
+// #501: a repeating task's start date in the panel.
+const _REPEAT_ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** What to send as repeat.start_date. An existing template showed its start
+ *  date, so send the field as it is (blank = null: start right away). A NEW
+ *  repeat left blank sends nothing (undefined), so the server keeps #147's
+ *  default: the task's due date. */
+function repeatStartDateForSave(value, hadTemplate) {
+    const v = _REPEAT_ISO_DAY.test(String(value || "")) ? value : "";
+    if (hadTemplate) return v || null;
+    return v || undefined;
+}
+
+/** What Start on should show after a frequency is picked: on a NEW repeat
+ *  with the field still empty, the task's due date (#147's default made
+ *  visible). Never on an existing template, where blank means right away. */
+function repeatStartDatePrefill(current, hadTemplate, dueDate) {
+    if (current || hadTemplate) return current || "";
+    return _REPEAT_ISO_DAY.test(String(dueDate || "")) ? dueDate : "";
+}
+
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         buildTaskDetailPayload: buildTaskDetailPayload,
+        repeatStartDateForSave: repeatStartDateForSave,
+        repeatStartDatePrefill: repeatStartDatePrefill,
         detailFormDiffersFromSnapshot: detailFormDiffersFromSnapshot,
         _DETAIL_TRACKED_FIELDS: _DETAIL_TRACKED_FIELDS,
     };

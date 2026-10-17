@@ -58,6 +58,13 @@ describe("buildRecurringEditPayload — common fields", () => {
         expect(p.notes).toBe("hi");
         expect(p.end_date).toBe("2026-09-01");
     });
+
+    test("#501: the start date passes through, blank clears it", () => {
+        expect(buildRecurringEditPayload({ ...BASE, frequency: "daily", startDate: "2026-11-02" })
+            .start_date).toBe("2026-11-02");
+        expect(buildRecurringEditPayload({ ...BASE, frequency: "daily", startDate: "" })
+            .start_date).toBeNull();
+    });
 });
 
 describe("buildRecurringEditPayload — frequency branching + stale clearing", () => {
@@ -169,6 +176,7 @@ describe("blankRecurringDraft", () => {
         expect(d.url).toBe("");
         expect(d.notes).toBe("");
         expect(d.endDate).toBe("");
+        expect(d.startDate).toBe("");   // #501: a new template starts right away
         expect(d.projectId).toBe("");
         expect(d.goalId).toBe("");
         expect(d.frequency).toBe("daily");

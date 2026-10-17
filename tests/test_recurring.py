@@ -693,7 +693,9 @@ class TestRecurringTemplateIntegrityPR4:
             },
         )
         assert resp.status_code == 422
-        assert "end_date" in (resp.get_json().get("error") or "").lower()
+        # #501: the message is plain words now; the field still names it.
+        assert resp.get_json()["field"] == "end_date"
+        assert "Stop after" in resp.get_json()["error"]
 
     def test_update_recurring_start_after_end_422(self, authed_client, app):
         """update that would leave start_date > end_date is rejected."""

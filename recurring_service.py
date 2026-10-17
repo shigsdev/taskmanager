@@ -258,7 +258,7 @@ def _validate_date_window(start_date: date | None, end_date: date | None) -> Non
     """
     if start_date is not None and end_date is not None and start_date > end_date:
         raise ValidationError(
-            "start_date must be on or before end_date", "end_date"
+            "The start date must be on or before the Stop after date.", "end_date"
         )
 
 

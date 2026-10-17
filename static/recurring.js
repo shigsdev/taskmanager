@@ -361,6 +361,7 @@
         _el("recurEditGoal").value = d.goalId;
         _el("recurEditUrl").value = d.url;
         _el("recurEditEndDate").value = d.endDate;
+        _el("recurEditStartDate").value = d.startDate;   // #501
         _el("recurEditNotes").value = d.notes;
         _el("recurEditDay").value = String(d.dayOfWeek);
         _el("recurEditNthDay").value = String(d.dayOfWeek);
@@ -391,6 +392,7 @@
         _el("recurEditGoal").value = rt.goal_id || "";
         _el("recurEditUrl").value = rt.url || "";
         _el("recurEditEndDate").value = rt.end_date || "";
+        _el("recurEditStartDate").value = rt.start_date || "";   // #501
         _el("recurEditNotes").value = rt.notes || "";
         // Frequency-specific fields.
         if (rt.day_of_week != null) {
@@ -437,6 +439,7 @@
             url: _el("recurEditUrl").value,
             notes: _el("recurEditNotes").value,
             endDate: _el("recurEditEndDate").value,
+            startDate: _el("recurEditStartDate").value,   // #501
             dayOfWeek: f === "monthly_nth_weekday"
                 ? parseInt(_el("recurEditNthDay").value, 10)
                 : parseInt(_el("recurEditDay").value, 10),

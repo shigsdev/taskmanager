@@ -133,6 +133,12 @@
             {# #101 (PR30): optional sunset date for the recurring template.
                Visible whenever any repeat frequency is selected. NULL = forever. #}
             <div class="form-row" id="repeatEndDateField" style="display:none">
+                {# #501: the template's start date, shown and editable. #}
+                <div class="form-field">
+                    <label for="detailRepeatStartDate">Start on (optional)</label>
+                    <input type="date" id="detailRepeatStartDate">
+                    <small class="form-hint">The first one comes on or after this date. Blank = start right away.</small>
+                </div>
                 <div class="form-field">
                     <label for="detailRepeatEndDate">Stop after (optional)</label>
                     <input type="date" id="detailRepeatEndDate">

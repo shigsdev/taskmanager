@@ -111,6 +111,9 @@ def _serialize_repeat(task: Task) -> dict | None:
     # so the detail-panel form can pre-populate it.
     if rt.end_date is not None:
         result["end_date"] = rt.end_date.isoformat()
+    # #501: and the start date, so the panel can show and change it.
+    if rt.start_date is not None:
+        result["start_date"] = rt.start_date.isoformat()
     return result
 
 
@@ -471,9 +474,11 @@ def _apply_repeat(task: Task, repeat: dict) -> None:
         # due_date so a "daily next week through Wed" task doesn't fire
         # preview cards on this Saturday. NULL preserves "fire forever
         # from the past" for templates created without a date hint.
+        # #501: an explicit start_date key wins, null included ("right
+        # away" -- the panel sends one only when the user filled it in).
         "start_date": (
-            repeat.get("start_date")
-            or (task.due_date.isoformat() if task.due_date else None)
+            repeat["start_date"] if "start_date" in repeat
+            else (task.due_date.isoformat() if task.due_date else None)
         ),
     }
     rt = create_recurring(rt_data)
@@ -533,7 +538,10 @@ def _update_repeat(task: Task, repeat: dict | None) -> None:
         # push past end_date made the save 422. Only an explicit
         # repeat.start_date changes it. (_apply_repeat still backfills
         # when a repeat is first added — #147.)
-        if repeat.get("start_date"):
+        # #501: the panel now shows the template's start date and sends it
+        # back, so a present key is the user's value -- null clears it.
+        # A client that doesn't send the key (an older tab) keeps it.
+        if "start_date" in repeat:
             update_data["start_date"] = repeat["start_date"]
         update_recurring(task.recurring_task_id, update_data)
     else:

@@ -17,7 +17,7 @@
 
 /**
  * @param {object} v  Raw editor values:
- *   {title, frequency, type, projectId, goalId, url, notes, endDate,
+ *   {title, frequency, type, projectId, goalId, url, notes, endDate, startDate,
  *    dayOfWeek, daysOfWeek, dayOfMonth, weekOfMonth}
  * @returns {object} The PATCH payload. All four frequency-specific
  *   fields are always present (null unless relevant to `frequency`), so
@@ -34,6 +34,7 @@ function buildRecurringEditPayload(v) {
         url: (v.url || "").trim() || null,
         notes: (v.notes || "").trim() || null,
         end_date: v.endDate || null,
+        start_date: v.startDate || null,   // #501: blank = start right away
         // Always send all four as null, then set the one(s) the chosen
         // frequency needs — so a frequency change can't leave a stale
         // day_of_week / days_of_week / day_of_month / week_of_month behind.
@@ -85,6 +86,7 @@ function blankRecurringDraft(today) {
         url: "",
         notes: "",
         endDate: "",
+        startDate: "",   // #501
         dayOfWeek: (d.getDay() + 6) % 7,  // Sun=0 -> Mon=0
         daysOfWeek: [],
         dayOfMonth: d.getDate(),

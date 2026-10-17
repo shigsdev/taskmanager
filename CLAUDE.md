@@ -883,6 +883,14 @@ Report.
      iCloud events: …" above the grid and the tasks still draw; ↻ Refresh
      iCloud POSTs once. Unstubbed, there is no strip and no event (the quiet
      case) (calendar_icloud_events.spec.js).
+     #501: open a task with a weekly repeat — Repeat shows Start on (its
+     template's date); set it two weeks out and Save: reopen shows it, the
+     previews before it are gone, the task itself stays. Clear it and Save:
+     it stays blank. Pick Weekly on a dated task with no repeat — Start on
+     fills with the due date. On /recurring, + New template has a blank
+     Start on; set one, Save, the row reads "(from …)"; a Start on after
+     Stop after says "The start date must be on or before the Stop after
+     date." (recurring_start_date.spec.js).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -1123,6 +1131,7 @@ Report.
   Calendar: iCloud events + details PASS     Calendar: iCloud events + details PASS
   Calendar: iCloud failure says so PASS      Calendar: iCloud failure says so PASS
   Calendar: no iCloud, no strip  PASS        Calendar: no iCloud, no strip  PASS
+  Recurring: Start on set/clear PASS         Recurring: Start on set/clear PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

@@ -3492,14 +3492,29 @@ function taskDetailRepeatChanged() {
     // #101 (PR30): end_date applies to ANY repeat frequency.
     const endField = document.getElementById("repeatEndDateField");
     if (endField) endField.style.display = freq ? "" : "none";
+    // #501: a NEW repeat starts on the task's due date (#147's default) —
+    // fill Start on so what's shown is what's saved.
+    const startInput = document.getElementById("detailRepeatStartDate");
+    if (freq && startInput) {
+        const due = document.getElementById("detailDueDate");
+        startInput.value = repeatStartDatePrefill(
+            startInput.value, _detailRepeatHadTemplate, due ? due.value : "");
+    }
 }
+
+// #501: whether the open task already had a repeating template. Its Start
+// on then shows the template's date, and a blank one means "right away".
+let _detailRepeatHadTemplate = false;
 
 function taskDetailPopulateRepeat(task) {
     taskDetailInitRepeat();
     const repeat = task.repeat;
+    _detailRepeatHadTemplate = !!repeat;
     const sel = document.getElementById("detailRepeat");
     const endInput = document.getElementById("detailRepeatEndDate");
     if (endInput) endInput.value = "";
+    const startInput = document.getElementById("detailRepeatStartDate");
+    if (startInput) startInput.value = (repeat && repeat.start_date) || "";
     // #271: reset the multi-weekday checkboxes every open so a prior
     // template's selection can't bleed into the next one.
     document.querySelectorAll("#detailRepeatDays input[type=checkbox]")
@@ -3556,6 +3571,13 @@ function taskDetailCollectRepeat() {
     const endInput = document.getElementById("detailRepeatEndDate");
     if (endInput) {
         repeat.end_date = endInput.value || null;
+    }
+    // #501: the start date. Left out (undefined) on a new repeat with the
+    // field blank, so the server falls back to the due date.
+    const startInput = document.getElementById("detailRepeatStartDate");
+    if (startInput) {
+        const start = repeatStartDateForSave(startInput.value, _detailRepeatHadTemplate);
+        if (start !== undefined) repeat.start_date = start;
     }
     return repeat;
 }

@@ -154,6 +154,11 @@
             <label for="recurEditUrl">Article / Link URL</label>
             <input type="url" id="recurEditUrl" maxlength="2000" placeholder="https://…">
 
+            {# #501 #}
+            <label for="recurEditStartDate">Start on (optional)</label>
+            <input type="date" id="recurEditStartDate">
+            <small class="form-hint">The first one comes on or after this date. Blank = start right away.</small>
+
             <label for="recurEditEndDate">Stop after (optional)</label>
             <input type="date" id="recurEditEndDate">
             <small class="form-hint">Leave blank to repeat forever.</small>
