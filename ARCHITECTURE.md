@@ -190,6 +190,13 @@ component is added, a data flow changes, or a security boundary shifts.
 - **User → App**: HTTPS request, Google OAuth session cookie (encrypted,
   30-day sliding inactivity expiry).
 - **App → DB**: SQLAlchemy ORM queries. No raw SQL.
+- **/settings → Siri voice token** (#499): the card `POST
+  /api/settings/voice-tokens` `{days}` → `voice_token_service.mint_token`
+  signs a voice-action token and writes the `voice_action_minted:<jti>`
+  AppSetting row → `201 {token, jti, expires}` shown once with Copy. `GET`
+  lists the rows (pruning expired ones and their denylist entries);
+  `POST …/<jti>/revoke` adds the jti to `voice_action_revoked_jtis`, which
+  `auth.voice_action_or_login` reads on every `/api/voice-review/*` call.
 - **App → Brevo API**: once per day at `DIGEST_TIME`, a multipart (HTML +
   plain-text) email with Today / Overdue / Goals summary / This Week count,
   POSTed to Brevo's transactional email API over HTTPS via
@@ -1283,6 +1290,8 @@ the code.
 /api/settings/status
 /api/settings/stats
 /api/settings/imports
+/api/settings/voice-tokens                         # #499 — GET list (ids + dates) / POST mint a Siri voice-action token (OAuth only, 5/hour, ADR-042)
+/api/settings/voice-tokens/<jti>/revoke            # #499 — POST: add the jti to the voice-action denylist
 
 # utilities_api.py (#222 + #223) — OAuth-gated UI wrappers for admin cleanups
 /api/utilities/clear-stale-next-week-due-dates/count   # #222 — preview the count without mutating
@@ -1358,6 +1367,14 @@ the code.
   from logs (Basic auth #497 + its `xxxx-xxxx-xxxx-xxxx` shape), and is
   sent only by `egress.safe_call_dav`: read methods only, https only, an
   iCloud CalDAV host allowlist, no redirects. Events are never persisted.
+- **Voice-action token boundary** (#297 ADR-034, #499 ADR-042): the iOS
+  Shortcut's bearer reaches only `/api/voice-review/*`. It is minted by the
+  CLI or, since #499, by `POST /api/settings/voice-tokens` — real OAuth
+  only (the validator cookie is GET-only and `login_required` never reads a
+  bearer, so neither can mint). `voice_token_service` stores per token only
+  `voice_action_minted:<jti>` → `{minted, expires, revoked}`; the token is
+  returned once (`no-store`) and never stored or logged. Revoke appends to
+  the `voice_action_revoked_jtis` denylist (one writer, never truncated).
 - **Air-gap boundary**: the user's work VDI cannot reach the app directly.
   The daily digest email to work Outlook is the only (one-way) bridge.
 

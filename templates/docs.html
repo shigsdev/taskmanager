@@ -188,8 +188,8 @@
                 task and you say what to do with it ("complete", "tomorrow",
                 "cancel", "skip"). It runs entirely by voice, so it works on
                 CarPlay with your phone in your pocket. This is a one-time
-                setup: mint a token, then build an iOS Shortcut that calls
-                the app's voice-review API.
+                setup: make a token in Settings on your iPhone, then build
+                an iOS Shortcut that calls the app's voice-review API.
             </p>
 
             <h3>What the Shortcut can (and can't) do</h3>
@@ -204,7 +204,36 @@
                 leaks, revoke it (below). It expires after 90 days by default.
             </p>
 
-            <h3>Step 1 — Mint the token</h3>
+            <h3>Step 1 — Make the token (on your iPhone)</h3>
+            <ol>
+                <li>
+                    In the app on your iPhone, open <strong>Settings</strong>
+                    and find <strong>Siri voice review</strong>.
+                </li>
+                <li>
+                    Pick how long it <strong>Lasts</strong> (30, 90, 180 or
+                    365 days; 90 is the default) and tap <strong>Make a new
+                    token</strong>.
+                </li>
+                <li>
+                    Tap <strong>Copy token</strong>. The token is shown this
+                    once and never stored, so copy it now; if you lose it,
+                    make another. If Copy can't reach the clipboard, the
+                    token is selected instead: tap <strong>Copy</strong> in
+                    the menu that pops up.
+                </li>
+                <li>
+                    Tap <strong>Done</strong> once it's in the Shortcut. The
+                    token stays listed under <strong>Your tokens</strong> with
+                    the day it was made, when it expires, and its id.
+                </li>
+            </ol>
+            <p>
+                <strong>Copy header value</strong> copies
+                <code>Bearer </code> and the token in one go, for pasting
+                straight into a header's value in Step 2.
+            </p>
+            <h4>No phone handy? Make it on a computer</h4>
             <p>
                 On a computer that can reach your Railway deploy, run
                 (PowerShell):
@@ -212,11 +241,10 @@
             <pre><code>railway run python -m flask mint-voice-action-token</code></pre>
             <p>
                 The <strong>token</strong> is printed to the screen (stdout);
-                a short <strong>jti</strong> id prints alongside it (stderr) —
-                copy both. The token is the long string you'll paste into the
-                Shortcut; the jti is what you'll use to revoke this one token
-                later. Add <code>--days N</code> to change the lifetime
-                (default 90).
+                a short <strong>jti</strong> id prints alongside it (stderr).
+                Add <code>--days N</code> to change the lifetime (default 90).
+                A token made this way isn't listed under Your tokens, so keep
+                its jti to revoke it later.
             </p>
 
             <h3>Step 2 — Build the Shortcut</h3>
@@ -315,16 +343,23 @@
             <h3>Revoking a token</h3>
             <ul>
                 <li>
-                    Revoke just this one token with
-                    <code>flask revoke-voice-action-token &lt;jti&gt;</code>
-                    (the jti you copied when minting).
+                    In <strong>Settings → Siri voice review</strong>, tap
+                    <strong>Revoke</strong> next to the token under Your
+                    tokens. A Shortcut still using it stops working at once.
+                </li>
+                <li>
+                    For a token made on a computer, paste the id from its
+                    <code>jti=</code> line into <strong>Revoke by id</strong>
+                    and tap Revoke. (<code>flask revoke-voice-action-token
+                    &lt;jti&gt;</code> does the same from a shell that can
+                    reach the database.)
                 </li>
                 <li>
                     Rotating <code>SECRET_KEY</code> on the server is the
                     emergency lever — it instantly invalidates
                     <em>every</em> token at once (this voice token
-                    <em>and</em> the deploy-validator cookie). Re-mint
-                    afterward.
+                    <em>and</em> the deploy-validator cookie). Make a new
+                    one afterward.
                 </li>
             </ul>
         </section>

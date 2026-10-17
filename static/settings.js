@@ -391,4 +391,175 @@
             slotSave.disabled = false;
         });
     }
+
+    // --- #499: Siri voice review token -------------------------------------
+    // Make a token here on the phone, copy it into the Shortcut, revoke an
+    // old one. The token lives only in this page's field until Done (or a
+    // reload) — the server never stores it.
+
+    (function voiceTokenCard() {
+        var section = document.getElementById("settingsVoiceToken");
+        var h = window.voiceTokenHelpers;
+        if (!section || !h) return;
+
+        var daysSel = document.getElementById("voiceTokenDays");
+        var makeBtn = document.getElementById("voiceTokenMake");
+        var makeStatus = document.getElementById("voiceTokenMakeStatus");
+        var newBox = document.getElementById("voiceTokenNew");
+        var valueEl = document.getElementById("voiceTokenValue");
+        var copyBtn = document.getElementById("voiceTokenCopy");
+        var copyHeaderBtn = document.getElementById("voiceTokenCopyHeader");
+        var doneBtn = document.getElementById("voiceTokenDone");
+        var copyStatus = document.getElementById("voiceTokenCopyStatus");
+        var listEl = document.getElementById("voiceTokenList");
+        var emptyEl = document.getElementById("voiceTokenEmpty");
+        var byIdInput = document.getElementById("voiceTokenRevokeId");
+        var byIdBtn = document.getElementById("voiceTokenRevokeById");
+        var revokeStatus = document.getElementById("voiceTokenRevokeStatus");
+
+        // A deploy's auto-reload must not wipe a token not yet copied.
+        if (window.reloadGuard) {
+            window.reloadGuard.add(function () { return !newBox.hidden; });
+        }
+
+        function showStatus(el, text, ok) {
+            el.textContent = text || "";
+            el.classList.toggle("settings-ok", !!text && ok === true);
+            el.classList.toggle("settings-warn", !!text && ok === false);
+        }
+
+        function renderList(tokens) {
+            listEl.innerHTML = "";
+            emptyEl.hidden = tokens.length > 0;
+            tokens.forEach(function (row) {
+                var label = h.tokenRowLabel(row, new Date());
+                var li = document.createElement("li");
+                li.className = "voice-token-row";
+                li.dataset.jti = row.jti;
+
+                var text = document.createElement("div");
+                text.className = "voice-token-row-text";
+                var dates = document.createElement("span");
+                dates.className = "voice-token-row-dates";
+                dates.textContent = label.dates;
+                var meta = document.createElement("span");
+                meta.className = "voice-token-row-meta";
+                var state = document.createElement("strong");
+                state.className = "voice-token-state " +
+                    (label.state === "Active" ? "settings-ok" : "settings-warn");
+                state.textContent = label.state;
+                var idText = document.createElement("code");
+                idText.textContent = row.jti;
+                meta.appendChild(state);
+                meta.appendChild(document.createTextNode(" · id "));
+                meta.appendChild(idText);
+                text.appendChild(dates);
+                text.appendChild(meta);
+                li.appendChild(text);
+
+                if (label.canRevoke) {
+                    var btn = document.createElement("button");
+                    btn.type = "button";
+                    btn.className = "btn btn-sm voice-token-revoke";
+                    btn.textContent = "Revoke";
+                    btn.setAttribute("aria-label", "Revoke the token " + label.dates.toLowerCase());
+                    btn.addEventListener("click", function () {
+                        if (!confirm("Revoke this token? A Shortcut that still uses it stops working.")) return;
+                        window.withInflight(btn, function () { return revoke(row.jti); });
+                    });
+                    li.appendChild(btn);
+                }
+                listEl.appendChild(li);
+            });
+        }
+
+        function loadTokens() {
+            return window.apiFetch("/api/settings/voice-tokens")
+                .then(function (data) {
+                    sectionClearLoadError("settingsVoiceToken");
+                    renderList((data && data.tokens) || []);
+                })
+                .catch(function (err) {
+                    console.error("settings/voice-tokens failed:", err);
+                    sectionLoadError("settingsVoiceToken", "your Siri tokens", err, loadTokens);
+                });
+        }
+
+        function revoke(jti) {
+            showStatus(revokeStatus, "");
+            return window.apiFetch(
+                "/api/settings/voice-tokens/" + encodeURIComponent(jti) + "/revoke",
+                { method: "POST" }
+            ).then(function () {
+                showStatus(revokeStatus, "Revoked " + jti + ".", true);
+                return loadTokens().then(function () { return true; });
+            }).catch(function (err) {
+                showStatus(revokeStatus, "Revoke didn't save: " + (err.message || "network error"), false);
+                return false;
+            });
+        }
+
+        function hideNew() {
+            valueEl.value = "";
+            newBox.hidden = true;
+            showStatus(copyStatus, "");
+        }
+
+        makeBtn.addEventListener("click", function () {
+            window.withInflight(makeBtn, function () {
+                showStatus(makeStatus, "");
+                return window.apiFetch("/api/settings/voice-tokens", {
+                    method: "POST",
+                    body: JSON.stringify({ days: h.clampDays(daysSel.value) }),
+                }).then(function (made) {
+                    valueEl.value = made.token;
+                    newBox.hidden = false;
+                    // Tall enough to show the whole token (5 lines at 375).
+                    valueEl.style.height = "auto";
+                    valueEl.style.height = (valueEl.scrollHeight + 2) + "px";
+                    showStatus(copyStatus, "");
+                    showStatus(makeStatus, "Made a token (id " + made.jti + "). Copy it below.", true);
+                    copyBtn.focus();
+                    return loadTokens();
+                }).catch(function (err) {
+                    showStatus(makeStatus, "Couldn't make a token: " + (err.message || "network error"), false);
+                });
+            });
+        });
+
+        function copy(text) {
+            return h.copyText(text, valueEl, { navigator: navigator, document: document })
+                .then(function (result) {
+                    if (result === "copied") {
+                        showStatus(copyStatus, "Copied. Paste it into the Shortcut.", true);
+                    } else if (result === "selected") {
+                        showStatus(copyStatus, "Selected — tap Copy in the menu.", null);
+                    } else {
+                        showStatus(copyStatus, "Couldn't copy — press and hold the token to select it.", false);
+                    }
+                });
+        }
+
+        copyBtn.addEventListener("click", function () {
+            copy(valueEl.value);
+        });
+        copyHeaderBtn.addEventListener("click", function () {
+            copy(h.headerValue(valueEl.value));
+        });
+        doneBtn.addEventListener("click", hideNew);
+
+        byIdBtn.addEventListener("click", function () {
+            var jti = h.normalizeJti(byIdInput.value);
+            if (!h.isValidJti(jti)) {
+                showStatus(revokeStatus, "That isn't a token id — it is 16 letters and digits (0-9, a-f).", false);
+                return;
+            }
+            if (!confirm("Revoke the token " + jti + "? A Shortcut that still uses it stops working.")) return;
+            window.withInflight(byIdBtn, function () {
+                return revoke(jti).then(function (ok) { if (ok) byIdInput.value = ""; });
+            });
+        });
+
+        loadTokens();
+    })();
 })();

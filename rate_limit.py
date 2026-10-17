@@ -48,3 +48,8 @@ OUTBOUND_FETCH = "30 per minute"
 # a GitHub Actions workflow (each run spends CPU / Actions minutes).
 UTILITY_RUN = "5 per minute"
 UTILITY_RUN_MESSAGE = "Too many runs — wait a minute and try again."
+# #499: minting a Siri voice-action token on /settings. Each one is a
+# mutation credential that outlives the session (ADR-042) — a handful an
+# hour is plenty for "make one, maybe redo it".
+VOICE_MINT_LIMIT = "5 per hour"
+VOICE_MINT_LIMIT_MESSAGE = "Too many new tokens — wait a while and try again."

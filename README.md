@@ -385,14 +385,26 @@ Exit codes:
 - `2` — COOKIE EXPIRED (refresh it — the script prints copy-pasteable instructions)
 - `3` — Usage error (missing cookie file or bad args)
 
-### Voice-review action token (#297 / ADR-034)
+### Voice-review action token (#297 / ADR-034, #499 / ADR-042)
 
-For the hands-free "review my tasks while driving" iOS Shortcut, mint a
-**scoped voice-action token** — a `SECRET_KEY`-signed bearer token that
+For the hands-free "review my tasks while driving" iOS Shortcut you need a
+**scoped voice-action token**: a `SECRET_KEY`-signed bearer token that
 authenticates ONLY `/api/voice-review/*` (read the today/overdue/tomorrow
 queue + complete / move-to-`{today,tomorrow,next_week,backlog}` / cancel
-a task). It cannot touch tasks CRUD, settings, or exports — see
-ADR-034.
+a task). It cannot touch tasks CRUD, settings, or exports (ADR-034).
+
+**Make it on the phone (#499).** Signed in on the iPhone, open
+**Settings → Siri voice review**, pick a lifetime (30 / 90 / 180 / 365
+days, default 90), tap **Make a new token**, then **Copy token**. The token
+is shown once and never stored; the card lists each token's id, made and
+expiry dates with a **Revoke** button, and **Revoke by id** takes the jti of
+a token made with the CLI. Minting needs a real Google sign-in: the
+validator cookie and the voice token itself are refused (ADR-042).
+Routes: `GET/POST /api/settings/voice-tokens`,
+`POST /api/settings/voice-tokens/<jti>/revoke` (mint is limited to 5 an
+hour).
+
+**Or from a computer:**
 
 ```powershell
 # Mint (90-day default). The token prints to stdout; the jti prints to
@@ -403,9 +415,11 @@ railway run python scripts/mint_voice_action_token.py --days 90
 ```
 
 Paste the token into the iOS Shortcut's `Authorization: Bearer <token>`
-header. **Revoke** a single token with `flask revoke-voice-action-token
-<jti>`; rotating `SECRET_KEY` on the server invalidates *every* token
-(voice-action AND validator cookie) at once — the emergency lever.
+header. **Revoke** a single token on the Settings card, or with `flask
+revoke-voice-action-token <jti>` from a shell that can reach the database
+(`railway run` on a laptop can't: `postgres.railway.internal` only resolves
+inside Railway). Rotating `SECRET_KEY` on the server invalidates *every*
+token (voice-action AND validator cookie) at once — the emergency lever.
 
 Validator cookies expire after the `--days` lifetime they were minted with
 (default 90 days, no sliding refresh). Browser session cookies (legacy

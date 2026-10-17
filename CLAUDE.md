@@ -933,6 +933,13 @@ Report.
      active repeating task — the confirm must NAME it; cancel and the
      button reads Undo again. Undo on an import with NO templates must
      show the plain confirm with no "pause" line.
+     #499: Siri voice review → Make a new token: the token shows once in
+     full (no cut-off at 375), Copy token and Copy header value put it /
+     "Bearer <token>" on the clipboard, the list gains an Active row with
+     its id; Revoke (and Revoke by id with a `jti=` line) marks it Revoked;
+     a bad id says why; Done hides it. `__userIsBusy()` is true only while
+     a new token shows. (A revoked token's 401 is pytest's — the dev bypass
+     authenticates every request locally.)
   10. **Import page**: verify buttons render and are clickable.
       #390: in the task preview a row WITH a due date shows its Tier
       locked to the date's section with "Set by due date"; clearing the
@@ -1154,6 +1161,7 @@ Report.
   Settings: stats               PASS          Settings: stats               PASS
   Settings: undo names paused tmpl PASS       Settings: undo names paused tmpl PASS
   Settings: no-tmpl undo quiet  PASS          Settings: no-tmpl undo quiet  PASS
+  Settings: Siri token make/copy/revoke PASS  Settings: Siri token make/copy/revoke PASS
   Import: button click          PASS          Import: button click          PASS
   Import: dated row tier locked PASS          Import: dated row tier locked PASS
   Import: late parse dropped    PASS          Import: late parse dropped    PASS
@@ -1624,6 +1632,12 @@ This app is a **single-user personal tool** with:
   `SECRET_KEY` rotation (all tokens) or `flask revoke-voice-action-token
   <jti>` (one token). The scope-rejection matrix in
   `tests/test_voice_action_token.py` is the load-bearing guard.
+  Since #499 (ADR-042) it can also be MINTED (up to 365 days, 5/hour) and
+  revoked from `/settings` → Siri voice review, by a real OAuth session
+  only — the validator cookie (GET-only) and the voice bearer itself are
+  refused (`tests/test_voice_token_settings.py`). So a stolen OAuth
+  session can now leave behind a token that outlives it; the card lists
+  every token made there (id + dates, never the token) so it shows.
 - An optional Apple **app-specific password** (`ICLOUD_APP_PASSWORD`,
   #371) for the read-only iCloud Calendar reader on `/calendar` — see the
   trade-off below
@@ -1688,6 +1702,8 @@ about these — they're not relevant here):
   escalation), it's revocable (per-token `jti` denylist or `SECRET_KEY`
   rotation), and this is a single-user app. A strictly larger blast
   radius than the read-only validator cookie, bounded by those four.
+  Minting one from `/settings` (ADR-042) needs the OAuth session, which
+  can already do far more; the token adds persistence, not reach.
 - `LOCAL_DEV_BYPASS_AUTH` exists at all (acceptable because of the
   four-gate defense including the triple Railway tripwire)
 

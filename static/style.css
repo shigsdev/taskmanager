@@ -3634,6 +3634,60 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .settings-ok { color: var(--success); }
 .settings-warn { color: var(--danger); }
 
+/* #499: Siri voice review — make / copy / revoke the voice-action token. */
+.voice-token-make,
+.voice-token-by-id { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.voice-token-make select,
+.voice-token-by-id input {
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    background: var(--surface);
+    color: var(--text);
+}
+.voice-token-by-id input { width: 17em; max-width: 100%; }
+.voice-token-by-id label { min-width: 0; max-width: 100%; }
+.voice-token-status:empty { display: none; }
+.voice-token-new {
+    margin-bottom: 12px;
+    padding: 12px;
+    background: var(--surface-sunk);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+}
+.voice-token-new[hidden] { display: none; }
+.voice-token-new-label { display: block; font-weight: 600; margin-bottom: 6px; }
+.voice-token-value {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    padding: 8px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    word-break: break-all;
+    resize: vertical;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+}
+.voice-token-copy-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.voice-token-row code { overflow-wrap: anywhere; }
+.voice-token-list-heading { margin: 12px 0 6px; font-size: 14px; }
+.voice-token-list { list-style: none; padding: 0; margin-top: 0; }
+.voice-token-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+}
+.voice-token-row-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 14px; }
+.voice-token-row-meta { font-size: 13px; color: var(--muted); }
+
 /* #48 — inline test-send button + result chip on the email (SMTP) row.
    Result chip displays "✓ Sent" green or "✗ <real error>" red,
    surfacing the actual upstream cause via the #50 global handler. */
@@ -4034,6 +4088,8 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     .detail-panel textarea,
     .detail-panel select,
     .settings-row input[type="number"] { min-height: 44px; }
+    .voice-token-make select,
+    .voice-token-by-id input { min-height: 44px; }  /* #499 */
     .checklist-item { min-height: 44px; }
     .goals-filters select,
     .projects-filters select { min-height: 44px; }

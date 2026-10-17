@@ -761,38 +761,22 @@ def _register_cli_commands(app: Flask) -> None:
         appends to the AppSetting denylist without a full SECRET_KEY
         rotation. (Rotating SECRET_KEY still kills ALL tokens at once.)
         """
-        import json
-
-        import voice_action_token
-        from models import AppSetting, db
+        import voice_token_service
+        from utils import ValidationError
 
         with app.app_context():
-            row = (
-                AppSetting.query.filter_by(
-                    key=voice_action_token.REVOKED_JTIS_KEY
-                ).one_or_none()
-            )
-            current = []
-            if row is not None and row.value:
-                try:
-                    parsed = json.loads(row.value)
-                    if isinstance(parsed, list):
-                        current = [str(x) for x in parsed]
-                except (ValueError, TypeError):
-                    current = []
-            if jti in current:
+            # #499: the one denylist writer (shared with /settings). It
+            # refuses a list that would overflow the column instead of the
+            # old `[:500]`, whose cut JSON read back as an EMPTY denylist.
+            try:
+                added, _ = voice_token_service.revoke_jti(jti)
+            except ValidationError as e:
+                raise click.ClickException(str(e)) from e
+            if not added:
                 click.echo(f"jti {jti} already revoked.")
                 return
-            current.append(jti)
-            value = json.dumps(current)[:500]
-            if row is None:
-                db.session.add(
-                    AppSetting(key=voice_action_token.REVOKED_JTIS_KEY, value=value)
-                )
-            else:
-                row.value = value
-            db.session.commit()
-            click.echo(f"Revoked jti {jti}. ({len(current)} total revoked.)")
+            total = voice_token_service.revoked_count()
+            click.echo(f"Revoked jti {jti}. ({total} total revoked.)")
 
 
 def _start_digest_scheduler(app: Flask) -> None:

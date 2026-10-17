@@ -83,6 +83,73 @@
         <pre class="settings-digest-preview" id="settingsDigestText" style="display:none"></pre>
     </section>
 
+    <!-- #499: make and revoke the Siri voice-review token right here, on
+         the phone that runs the Shortcut (ADR-034 / ADR-042). The token is
+         shown once and never stored. -->
+    <section class="settings-section" id="settingsVoiceToken">
+        <h3>Siri voice review</h3>
+        <p class="settings-hint">
+            The iOS Shortcut that reviews your tasks by voice needs a token.
+            It can read your overdue / today / tomorrow tasks and complete,
+            move or cancel them, nothing else.
+            <a href="{{ url_for('docs_page') }}#voice-review-shortcut">How to build the Shortcut</a>
+        </p>
+        <div class="settings-row voice-token-make">
+            <label for="voiceTokenDays">
+                Lasts
+                <select id="voiceTokenDays">
+                    <option value="30">30 days</option>
+                    <option value="90" selected>90 days</option>
+                    <option value="180">180 days</option>
+                    <option value="365">365 days</option>
+                </select>
+            </label>
+            <button type="button" class="btn" id="voiceTokenMake">Make a new token</button>
+        </div>
+        <p class="settings-hint voice-token-status" id="voiceTokenMakeStatus" role="status"></p>
+
+        <div class="voice-token-new" id="voiceTokenNew" hidden>
+            <label for="voiceTokenValue" class="voice-token-new-label">
+                Your new token — this is the only time it's shown:
+            </label>
+            <textarea id="voiceTokenValue" class="voice-token-value" rows="3"
+                      readonly spellcheck="false" autocomplete="off"></textarea>
+            <div class="voice-token-copy-row">
+                <button type="button" class="btn" id="voiceTokenCopy">Copy token</button>
+                <button type="button" class="btn btn-sm" id="voiceTokenCopyHeader">Copy header value</button>
+                <button type="button" class="btn btn-sm" id="voiceTokenDone">Done</button>
+            </div>
+            <p class="settings-hint voice-token-status" id="voiceTokenCopyStatus" role="status"></p>
+            <p class="settings-hint voice-token-where">
+                Where it goes: in the Shortcut, open each <strong>Get Contents
+                of URL</strong> action → <strong>Headers</strong> → add a
+                header named <code>Authorization</code>. Its value is
+                <code>Bearer</code>, a space, then the token. <strong>Copy
+                header value</strong> copies all of that at once.
+            </p>
+        </div>
+
+        <h4 class="voice-token-list-heading">Your tokens</h4>
+        <ul class="voice-token-list" id="voiceTokenList"></ul>
+        <p class="settings-empty" id="voiceTokenEmpty" hidden>No tokens made here yet.</p>
+
+        <div class="settings-row voice-token-by-id">
+            <label for="voiceTokenRevokeId">
+                Revoke by id
+                <input type="text" id="voiceTokenRevokeId" inputmode="latin"
+                       autocomplete="off" autocapitalize="off" spellcheck="false"
+                       maxlength="24" placeholder="e.g. 3f9a1c0b7d2e4a6f">
+            </label>
+            <button type="button" class="btn btn-sm" id="voiceTokenRevokeById">Revoke</button>
+        </div>
+        <p class="settings-hint">
+            For a token made on a computer with
+            <code>flask mint-voice-action-token</code>: paste the id from its
+            <code>jti=</code> line.
+        </p>
+        <p class="settings-hint voice-token-status" id="voiceTokenRevokeStatus" role="status"></p>
+    </section>
+
     <!-- Import history -->
     <section class="settings-section" id="settingsImports">
         <h3>
@@ -122,5 +189,7 @@
 {# #369: the Undo confirm names the repeating tasks it pauses #}
 <script src="{{ url_for('static', filename='project_archive_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='recycle_bin_helpers.js') }}"></script>
+{# #499: the Siri voice-review token card #}
+<script src="{{ url_for('static', filename='voice_token_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='settings.js') }}"></script>
 {% endblock %}
