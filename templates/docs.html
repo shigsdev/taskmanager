@@ -2325,6 +2325,7 @@ Skip this line (too short)</pre>
                 <li>14 cells: this Mon–Sun plus next Mon–Sun. Today is highlighted; past days dimmed.</li>
                 <li>Drop any task card on a cell → the task gets that calendar date as its <code>due_date</code> and auto-routes (e.g. drop on Tue this week → section becomes <strong>This Week</strong>).</li>
                 <li>Drop on today's cell → section becomes <strong>Today</strong>.</li>
+                <li>If your iCloud Calendar is set up (see below), a day with events shows its first one under the date, short ("9:30am Dentist"), with "+2" when there are more. On a narrow screen (a phone) it's a dot under the date instead. Tap or click it to open <a href="{{ url_for('calendar_page') }}">/calendar</a>. You can still drop a task on that day as before.</li>
             </ul>
 
             <h3><a href="{{ url_for('calendar_page') }}">/calendar</a> page</h3>
@@ -2345,7 +2346,8 @@ Skip this line (too short)</pre>
                 If iCloud is set up (below), your iCloud Calendar events show
                 on the grid next to your tasks, <strong>read-only</strong>.
                 The app never changes, adds or deletes anything in iCloud,
-                and never saves your events.
+                and never saves your events. They also show on the board's
+                day strip and at the top of the morning email (both above).
             </p>
             <ul>
                 <li>Each event sits at the top of its day, above that day's tasks: its start time, then its title. An all-day event shows just the title, and one that runs several days shows on each of them. A timed event that runs past midnight shows its start time on the first day and "until" its end time on the last (a red-eye reads "10:00 PM" on one day and "until 6:30 AM" on the next). A colored stripe on the left matches the calendar's color in iCloud.</li>
@@ -2941,6 +2943,7 @@ Skip this line (too short)</pre>
 
             <h3>What's in it, in order</h3>
             <ol>
+                <li><strong>Today's calendar</strong> — only if your iCloud Calendar is set up: today's events, all-day ones first, then by time, with their place. An event that started last night shows "until" its end time. If iCloud can't be read that morning, one line says so and the rest of the email still comes.</li>
                 <li>Today's tasks (everything in the Today section). One whose due date has passed is marked overdue.</li>
                 <li><strong>Also due today</strong> — open tasks due today from the other sections.</li>
                 <li>Goals that have open tasks in Today (not archived or done goals).</li>

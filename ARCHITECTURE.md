@@ -213,6 +213,11 @@ component is added, a data flow changes, or a security boundary shifts.
   a read-only details dialog on click. Off → `{enabled: false}`; an iCloud
   failure → 502 `{error, auth?}` (never 401/403) and the page says so while
   the tasks draw as usual. `POST /api/icloud/refresh` clears the cache.
+  #498: the board's day strip asks the same endpoint for its 14 days (at
+  most once a minute, quiet on failure) and shows each day's first event
+  (a dot at <=900px), linking to /calendar; the daily digest calls
+  `icloud_service.fetch_events(today, tomorrow)` directly and leads with a
+  "Today's calendar" block — any failure is one line, never a lost email.
 - **Image scan**: browser uploads image + a `parse_as` discriminator
   (`tasks` or `goals`) → Flask holds the image in memory → Google Vision
   (server-side) → Claude API (server-side) parses into either task or

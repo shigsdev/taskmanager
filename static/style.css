@@ -861,6 +861,53 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     font-weight: 600;
 }
 .day-cell-past { opacity: 0.5; }
+/* #498: the day's iCloud events. Wide screens: its first event, cut short,
+   and "+N". Narrow ones (900px and less: ~21px boxes at 375): a dot, and
+   the link covers the whole box so the tap target is the box's height. */
+.day-cell { position: relative; }
+.day-cell-label { display: block; }
+.day-cell-event {
+    display: flex;
+    gap: 2px;
+    margin-top: 3px;
+    font-size: 0.65rem;
+    color: inherit;
+    text-decoration: none;
+    border-top: 1px solid var(--border);
+    padding-top: 2px;
+}
+.day-cell-event-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.day-cell-event-more { flex: 0 0 auto; opacity: 0.8; }
+.day-cell-event:hover .day-cell-event-text { text-decoration: underline; }
+@media (max-width: 900px) {
+    .day-cell-event {
+        position: absolute;
+        inset: 0;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        border-radius: inherit;
+    }
+    .day-cell-event-text,
+    .day-cell-event-more { display: none; }
+    .day-cell-event::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        bottom: 4px;
+        width: 5px;
+        height: 5px;
+        margin-left: -2.5px;
+        border-radius: 50%;
+        background: currentColor;
+    }
+}
 .day-cell-hover {
     background: var(--success, #16a34a) !important;
     color: var(--on-fill) !important;  /* #496: white on sage was 2.64:1 */

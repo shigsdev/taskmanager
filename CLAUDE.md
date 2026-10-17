@@ -890,6 +890,12 @@ Report.
      iCloud events: …" above the grid and the tasks still draw; ↻ Refresh
      iCloud POSTs once. Unstubbed, there is no strip and no event (the quiet
      case) (calendar_icloud_events.spec.js).
+     #498: on the board with /api/icloud/events stubbed, at 1280 today's
+     day box reads "9:30am <title>" and "+2" and opens /calendar; at 375
+     it is a dot, the whole box (>=44px) is the link and the strip keeps
+     its height; unstubbed there is nothing (the quiet case)
+     (day_strip_icloud.spec.js). /settings Preview Digest with iCloud set
+     up leads with Today's calendar (the failure line is pytest's).
      #501: open a task with a weekly repeat — Repeat shows Start on (its
      template's date); set it two weeks out and Save: reopen shows it, the
      previews before it are gone, the task itself stays. Clear it and Save:
@@ -1138,6 +1144,7 @@ Report.
   Calendar: iCloud events + details PASS     Calendar: iCloud events + details PASS
   Calendar: iCloud failure says so PASS      Calendar: iCloud failure says so PASS
   Calendar: no iCloud, no strip  PASS        Calendar: no iCloud, no strip  PASS
+  Day strip: first event + link PASS        Day strip: dot, box is link PASS
   Recurring: Start on set/clear PASS         Recurring: Start on set/clear PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS

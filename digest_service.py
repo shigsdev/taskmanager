@@ -161,6 +161,62 @@ def _sanitize(text: str) -> str:
     return text.replace("\t", " ").replace("\r", "").strip()
 
 
+CALENDAR_FAILED = (
+    "couldn't read your iCloud Calendar this morning, "
+    "so today's events aren't listed."
+)
+
+
+def _clock_label(iso: str) -> str:
+    """"2026-10-20T14:05-04:00" -> "2:05 PM" (read off the string: the
+    events are already in DIGEST_TZ)."""
+    hh, mm = int(iso[11:13]), iso[14:16]
+    return f"{hh % 12 or 12}:{mm} {'AM' if hh < 12 else 'PM'}"
+
+
+def _calendar_for_day(day: date) -> dict[str, Any]:
+    """#498: today's iCloud events for the top of the digest.
+
+    ``{"enabled": False}`` when iCloud isn't set up (the email is then
+    exactly as before). A failure of ANY kind is one line, never an
+    exception: the digest must still go out (user decision 2026-10-17).
+    An event carried over from last night reads "until 6:30 AM"; one that
+    ended exactly at midnight isn't today's.
+    """
+    import icloud_service
+    if not icloud_service.configured():
+        return {"enabled": False, "events": [], "error": None}
+    try:
+        raw = icloud_service.fetch_events(day, day + timedelta(days=1))
+    except Exception as e:  # noqa: BLE001 -- the email goes out regardless
+        logger.warning("digest: iCloud read failed (%s)", type(e).__name__)
+        return {"enabled": True, "events": [], "error": CALENDAR_FAILED}
+    day_iso = day.isoformat()
+    events = []
+    for ev in raw:
+        start, end = ev.get("start", ""), ev.get("end", "")
+        if ev.get("all_day"):
+            time = "All day"
+        elif start[:10] == day_iso:
+            time = _clock_label(start)
+        elif end[:10] == day_iso and end[11:16] != "00:00":
+            time = "until " + _clock_label(end)
+        elif end[:10] > day_iso:
+            time = "All day"         # runs right through today
+        else:
+            continue                 # ended at or before midnight
+        events.append({
+            "time": time,
+            "title": _sanitize(ev.get("title", "")),
+            "location": _sanitize(ev.get("location", "")),
+            "_sort": (0 if time == "All day" else 1, start),
+        })
+    events.sort(key=lambda e: e["_sort"])   # all-day first, then by start
+    for e in events:
+        e.pop("_sort")
+    return {"enabled": True, "events": events, "error": None}
+
+
 def _build_digest_data(target_date: date | None = None) -> dict[str, Any]:
     """Gather every section the digest needs in one shape.
 
@@ -269,6 +325,7 @@ def _build_digest_data(target_date: date | None = None) -> dict[str, Any]:
     return {
         "today_date": today,
         "day_str": day_str,
+        "calendar": _calendar_for_day(today),   # #498
         "today": [_task_view(t) for t in today_tasks],
         "due_today": [_task_view(t) for t in due_today],
         "overdue": [_task_view(t) for t in overdue],
@@ -295,8 +352,9 @@ def _build_digest_data(target_date: date | None = None) -> dict[str, Any]:
 def build_digest(*, target_date: date | None = None) -> str:
     """Build the plain-text digest body (multipart fallback).
 
-    Order (#212, user-flagged 2026-05-23):
-        Today → Also due today → Goals → Stats → ⚠ Overdue → Footer.
+    Order (#212, user-flagged 2026-05-23; #498 added the calendar):
+        Today's calendar → Today → Also due today → Goals → Stats →
+        ⚠ Overdue → Footer.
 
     Today's tasks lead because that's what the user is about to act on
     when they open the email. Overdue moved to the END (warning-style,
@@ -306,6 +364,22 @@ def build_digest(*, target_date: date | None = None) -> str:
     """
     data = _build_digest_data(target_date)
     lines = [f"TASK DIGEST — {data['day_str']}", ""]
+
+    # #498: today's iCloud events lead (user decision 2026-10-17).
+    cal = data["calendar"]
+    if cal["enabled"]:
+        if cal["error"]:
+            lines.append(f"TODAY'S CALENDAR: {cal['error']}")
+        elif not cal["events"]:
+            lines.append("TODAY'S CALENDAR: nothing scheduled")
+        else:
+            lines.append(f"TODAY'S CALENDAR ({len(cal['events'])})")
+            for ev in cal["events"]:
+                line = f"  {ev['time']} — {ev['title']}"
+                if ev["location"]:
+                    line += f" ({ev['location']})"
+                lines.append(line)
+        lines.append("")
 
     lines.append(f"TODAY'S TASKS ({len(data['today'])})")
     if data["today"]:

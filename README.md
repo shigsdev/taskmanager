@@ -14,7 +14,8 @@ work and personal life, with a regulated (air-gapped) work environment.
   page; drop a task on a day cell to set its `due_date` (tier auto-routes to
   match). Auto-scrolls the page when dragging near the viewport edge.
   Optionally shows your iCloud Calendar events on `/calendar`, read-only, with
-  a details pop-up and a Refresh button (#371; set `ICLOUD_USERNAME` +
+  a details pop-up and a Refresh button, on the board's day strip, and at the
+  top of the daily digest (#371/#498; set `ICLOUD_USERNAME` +
   `ICLOUD_APP_PASSWORD`).
 - **Due-date → tier auto-route** — setting a `due_date` automatically moves the
   task to the matching tier (today → Today, this week → This Week, etc.).

@@ -639,6 +639,32 @@ function _isoDate(d) {
     return `${y}-${m}-${day}`;
 }
 
+// #498: the strip's iCloud events, {isoDate: [events]}; null = none / off.
+// Fetched at most once a minute (the server caches them for 15) and drawn
+// by renderDayStrip. A failure is quiet here: /calendar says why.
+let _dayStripEvents = null;
+let _dayStripEventsAt = 0;
+
+async function dayStripLoadEvents() {
+    if (!document.getElementById("dayStrip") || !window.icloudEventHelpers) return;
+    if (Date.now() - _dayStripEventsAt < 60_000) return;
+    _dayStripEventsAt = Date.now();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const thisMonday = window.tierHelpers.weekBounds(today).thisMonday;
+    const start = _isoDate(thisMonday);
+    const end = _isoDate(window.dateHelpers.addDays(thisMonday, 13));
+    try {
+        const r = await apiFetch(`/api/icloud/events?start=${start}&end=${end}`);
+        _dayStripEvents = r && r.enabled
+            ? window.icloudEventHelpers.bucketEventsByDay(r.events || [], start, end)
+            : null;
+    } catch (err) {
+        return;   // keep what the strip already shows
+    }
+    renderDayStrip();
+}
+
 function renderDayStrip() {
     const strip = document.getElementById("dayStrip");
     if (!strip) return;
@@ -665,7 +691,34 @@ function renderDayStrip() {
         if (iso < todayIso) cell.classList.add("day-cell-past");
         cell.dataset.date = iso;
         cell.title = `Drop a task to set due date to ${d.toLocaleDateString()}`;
-        cell.textContent = _formatDayCellLabel(d);
+        const dayLabel = document.createElement("span");
+        dayLabel.className = "day-cell-label";
+        dayLabel.textContent = _formatDayCellLabel(d);
+        cell.appendChild(dayLabel);
+        // #498: the day's iCloud events — its first one ("9:30am Dentist"
+        // +N) on wide screens, a dot on narrow ones (CSS). Opens /calendar.
+        const evSummary = _dayStripEvents && window.icloudEventHelpers
+            ? window.icloudEventHelpers.dayStripSummary(_dayStripEvents[iso], iso)
+            : null;
+        if (evSummary) {
+            const evLink = document.createElement("a");
+            evLink.className = "day-cell-event";
+            evLink.href = "/calendar";
+            evLink.setAttribute("aria-label", evSummary.label);
+            evLink.title = evSummary.title;
+            const evText = document.createElement("span");
+            evText.className = "day-cell-event-text";
+            evText.textContent = evSummary.text;
+            evLink.appendChild(evText);
+            if (evSummary.more) {
+                const more = document.createElement("span");
+                more.className = "day-cell-event-more";
+                more.textContent = "+" + evSummary.more;
+                evLink.appendChild(more);
+            }
+            cell.classList.add("day-cell-has-events");
+            cell.appendChild(evLink);
+        }
         cell.addEventListener("dragover", (e) => {
             e.preventDefault();
             cell.classList.add("day-cell-hover");
@@ -730,6 +783,7 @@ function renderBoard() {
     // why) rather than drawing every section empty.
     if (!tasksLoaded) return;
     renderDayStrip();
+    dayStripLoadEvents();   // #498: throttled; redraws the strip when it lands
     // PR70 perf #4: was running filteredTasks() once per tier (7 tiers ×
     // search/project/goal/view filters over allTasks every iteration).
     // With 500 tasks that was 3500 string comparisons per render. Compute

@@ -106,6 +106,10 @@ def _isolate_audit_autofile(monkeypatch):
         / "BACKLOG.md",
     )
     monkeypatch.delenv("GITHUB_DISPATCH_TOKEN", raising=False)
+    # #498: real ICLOUD_* in a developer's environment would make every
+    # digest build call Apple. Off by default; tests that want it set it.
+    monkeypatch.delenv("ICLOUD_USERNAME", raising=False)
+    monkeypatch.delenv("ICLOUD_APP_PASSWORD", raising=False)
 
 
 @pytest.fixture(autouse=True)

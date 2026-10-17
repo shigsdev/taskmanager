@@ -146,6 +146,40 @@
         return rows;
     }
 
+    /** #498: "09:30" -> "9:30am", "14:00" -> "2pm" — the board's day box
+     *  is narrow. */
+    function shortClock(hhmm) {
+        var m = /^(\d{2}):(\d{2})$/.exec(String(hhmm || ""));
+        if (!m) return "";
+        var h = +m[1];
+        return (h % 12 === 0 ? 12 : h % 12) + (m[2] === "00" ? "" : ":" + m[2]) +
+            (h < 12 ? "am" : "pm");
+    }
+
+    /** #498: what one board day box shows for its events (already in the
+     *  bucketEventsByDay order): the first event, compact ("9:30am
+     *  Dentist"), how many more, a spoken label and a hover list. Null when
+     *  the day has none. */
+    function dayStripSummary(events, dayIso) {
+        if (!events || !events.length) return null;
+        var first = events[0];
+        var label = eventTimeLabelOn(first, dayIso);   // "", "9:30 AM", "until …", "all day"
+        var compact = label.indexOf("until ") === 0
+            ? "until " + shortClock(_clock(first.end))
+            : (label && label !== "all day" ? shortClock(_clock(first.start)) : "");
+        var spoken = function (ev) {
+            return ((eventTimeLabelOn(ev, dayIso) || "All day") + " " + ev.title).trim();
+        };
+        var more = events.length - 1;
+        return {
+            text: (compact ? compact + " " : "") + first.title,
+            more: more,
+            label: "iCloud: " + spoken(first) + (more ? " and " + more + " more" : "") +
+                " — open the calendar",
+            title: events.map(spoken).join("\n"),
+        };
+    }
+
     /** A calendar color fit for a CSS value: "#RRGGBB" or "". */
     function safeColor(c) {
         return /^#[0-9A-Fa-f]{6}$/.test(String(c || "")) ? c : "";
@@ -161,6 +195,8 @@
         eventWhenText: eventWhenText,
         eventDetailRows: eventDetailRows,
         safeColor: safeColor,
+        shortClock: shortClock,
+        dayStripSummary: dayStripSummary,
     };
     if (typeof module !== "undefined" && module.exports) {
         module.exports = api;

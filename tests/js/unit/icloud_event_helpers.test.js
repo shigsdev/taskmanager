@@ -14,6 +14,8 @@ const {
     eventWhenText,
     eventDetailRows,
     safeColor,
+    shortClock,
+    dayStripSummary,
 } = require("../../../static/icloud_event_helpers");
 
 function ev(over) {
@@ -157,6 +159,45 @@ describe("eventDetailRows", () => {
     });
     test("no location, no Where row", () => {
         expect(eventDetailRows(ev()).map((r) => r.label)).toEqual(["When", "Calendar"]);
+    });
+});
+
+describe("#498 shortClock", () => {
+    test.each([
+        ["09:30", "9:30am"], ["14:00", "2pm"], ["00:00", "12am"],
+        ["12:15", "12:15pm"], ["nope", ""],
+    ])("shortClock(%s) = %s", (hhmm, want) => {
+        expect(shortClock(hhmm)).toBe(want);
+    });
+});
+
+describe("#498 dayStripSummary (the board's day box)", () => {
+    const D = "2026-10-20";
+    test("no events, nothing", () => {
+        expect(dayStripSummary([], D)).toBeNull();
+        expect(dayStripSummary(undefined, D)).toBeNull();
+    });
+    test("first event with a compact time, and how many more", () => {
+        const s = dayStripSummary([
+            ev({ title: "Dentist", start: `${D}T09:30-04:00`, end: `${D}T10:30-04:00` }),
+            ev({ uid: "b", title: "Call", start: `${D}T14:00-04:00`, end: `${D}T15:00-04:00` }),
+            ev({ uid: "c", title: "Gym", start: `${D}T18:00-04:00`, end: `${D}T19:00-04:00` }),
+        ], D);
+        expect(s.text).toBe("9:30am Dentist");
+        expect(s.more).toBe(2);
+        expect(s.label).toBe("iCloud: 9:30 AM Dentist and 2 more — open the calendar");
+        expect(s.title).toBe("9:30 AM Dentist\n2:00 PM Call\n6:00 PM Gym");
+    });
+    test("an all-day first event is just its title", () => {
+        const s = dayStripSummary([ev({ all_day: true, start: D, end: "2026-10-21", title: "Offsite" })], D);
+        expect(s.text).toBe("Offsite");
+        expect(s.more).toBe(0);
+        expect(s.label).toBe("iCloud: All day Offsite — open the calendar");
+    });
+    test("a red-eye's second day reads until its end", () => {
+        const s = dayStripSummary([ev({ title: "Red-eye", start: "2026-10-19T22:00-04:00",
+            end: `${D}T06:30-04:00` })], D);
+        expect(s.text).toBe("until 6:30am Red-eye");
     });
 });
 
