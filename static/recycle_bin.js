@@ -240,8 +240,12 @@
             var counts = document.createElement("div");
             counts.className = "recycle-item-counts";
             // #478: projects too (a projects-only batch read "0 items").
-            counts.textContent = window.recycleBinHelpers.binItemTotal(batch)
-                ? window.recycleBinHelpers.binItemPhrase(batch) : "0 items";
+            counts.textContent = (window.recycleBinHelpers.binItemTotal(batch)
+                ? window.recycleBinHelpers.binItemPhrase(batch) : "0 items")
+                // #494: and the subtasks you added that went with it.
+                + (batch.subtask_count
+                    ? " " + window.recycleBinHelpers.addedSubtasksPhrase(batch.subtask_count, "row")
+                    : "");
 
             header.appendChild(title);
             header.appendChild(dates);
@@ -283,6 +287,9 @@
         var body = "Restore " + window.recycleBinHelpers.binItemPhrase(batch, {
             goal: "restore_goal_count", project: "restore_project_count",
         }) + " from this batch?";
+        // #494: and the subtasks you added that went with it.
+        var subs = window.recycleBinHelpers.addedSubtasksPhrase(batch.subtask_count, "restore");
+        if (subs) body += " " + subs;
         openModal({
             title: "Restore Batch",
             body: body,
@@ -302,6 +309,9 @@
     function onPurge(batch) {
         var body = "Permanently delete " + window.recycleBinHelpers.binItemPhrase(batch) +
             " from this batch? This cannot be undone.";   // #478: names projects
+        // #494: and the subtasks you added that went with it.
+        var subs = window.recycleBinHelpers.addedSubtasksPhrase(batch.subtask_count, "purge");
+        if (subs) body = body.replace(" This cannot be undone.", " " + subs + " This cannot be undone.");
         openModal({
             title: "Purge Batch",
             body: body,

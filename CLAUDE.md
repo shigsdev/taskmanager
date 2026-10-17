@@ -825,6 +825,12 @@ Report.
      case); complete a task in another tab, then + Add in the stale panel —
      "That task is completed — re-open it first." and the text stays
      (subtask_parent_active.spec.js; the API rules are pytest's).
+     #494: import a task, give it a subtask, Settings → Import History →
+     Undo: the confirm says "1 subtask you added goes with it."; in the
+     Recycle Bin the batch reads "1 task +1 subtask you added", Restore asks
+     "… 1 subtask you added comes back with it." and Purge "… is deleted
+     with it."; a batch with none reads exactly as before
+     (bin_added_subtasks.spec.js).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -1045,6 +1051,7 @@ Report.
   Rough titles: stay on screen  PASS          Rough titles: stay on screen  PASS
   Architecture: gate tables (unchanged) PASS  Architecture: gate tables as cards PASS
   Subtasks: only under an open task PASS      Subtasks: only under an open task PASS
+  Undo/bin: added subtasks counted PASS       Undo/bin: added subtasks counted PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

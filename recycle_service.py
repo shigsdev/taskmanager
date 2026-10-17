@@ -134,8 +134,9 @@ def list_bin() -> list[dict]:
 
     Each entry contains enough info to render the recycle bin UI:
     batch_id, source, imported_at, undone_at, task_count, goal_count,
-    project_count, and restore_goal_count / restore_project_count (what
-    Restore brings back).
+    project_count, restore_goal_count / restore_project_count (what
+    Restore brings back), and subtask_count (#494: subtasks you added that
+    the undo took along, still in the bin).
     """
     stmt = (
         select(ImportLog)
@@ -198,6 +199,26 @@ def list_bin() -> list[dict]:
         if snap is None or str(pid) in (snap.get("projects") or []):
             restore_project_counts[pbid] = restore_project_counts.get(pbid, 0) + 1
 
+    # #494: the subtasks an undo took along (#465) that are still in the bin
+    # with their parent — exactly what Restore brings back and Purge removes.
+    taken: dict = {}
+    for log in logs:
+        for raw in (log.undo_snapshot or {}).get("subtasks") or []:
+            try:
+                taken[uuid.UUID(raw)] = log.batch_id
+            except (ValueError, TypeError):
+                continue
+    subtask_counts: dict = {}
+    if taken:
+        for sub_id in db.session.scalars(
+            select(Task.id)
+            .where(Task.id.in_(list(taken)))
+            .where(Task.status == TaskStatus.DELETED)
+            .where(Task.deleted_with_parent.is_(True))
+        ):
+            bid = taken[sub_id]
+            subtask_counts[bid] = subtask_counts.get(bid, 0) + 1
+
     entries = []
     for log in logs:
         entries.append(
@@ -215,6 +236,7 @@ def list_bin() -> list[dict]:
                 "restore_goal_count": restore_goal_counts.get(log.batch_id, 0),
                 "project_count": project_counts.get(log.batch_id, 0),
                 "restore_project_count": restore_project_counts.get(log.batch_id, 0),
+                "subtask_count": subtask_counts.get(log.batch_id, 0),  # #494
             }
         )
     return entries
@@ -415,7 +437,9 @@ def _restore_taken_subtasks(snapshot: dict) -> int:
 
 
 def undo_impact(batch_id: uuid.UUID) -> dict:
-    """The repeating tasks ``undo_batch`` would pause, without undoing (#369).
+    """What ``undo_batch`` would do, without undoing: the repeating tasks it
+    would pause (#369) and how many open subtasks you added it would take
+    along (#494, #465's rule).
 
     Only the batch's ACTIVE projects and goals count: the undo archives
     them through the transition-guarded ``_set_*_active``, which skips
@@ -434,6 +458,7 @@ def undo_impact(batch_id: uuid.UUID) -> dict:
     return {
         "batch_id": str(batch_id),
         "paused_templates": [{"id": str(t.id), "title": t.title} for t in templates],
+        "subtasks": len(_open_added_subtasks(batch_id, _batch_tasks(batch_id))),
     }
 
 

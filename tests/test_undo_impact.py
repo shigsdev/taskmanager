@@ -193,6 +193,7 @@ class TestImpactRoute:
         assert resp.get_json() == {
             "batch_id": str(bid),
             "paused_templates": [{"id": str(rt.id), "title": "Water plants"}],
+            "subtasks": 0,  # #494: none added to this batch's tasks
         }
 
     def test_impact_400_bad_id(self, authed_client):

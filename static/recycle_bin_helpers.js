@@ -129,7 +129,27 @@ function binItemPhrase(counts, keys) {
     return parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1];
 }
 
+/**
+ * addedSubtasksPhrase - #494: the subtasks you added to an import's tasks,
+ * which its Undo takes along (#465) and Restore / Purge act on. "" for none.
+ *   when "undo"    → "2 subtasks you added go with it."
+ *   when "row"     → "+2 subtasks you added"
+ *   when "restore" → "2 subtasks you added come back with it."
+ *   when "purge"   → "2 subtasks you added are deleted with it."
+ */
+function addedSubtasksPhrase(n, when) {
+    n = Number(n) || 0;
+    if (n <= 0) return "";
+    var one = n === 1;
+    var what = n + " subtask" + (one ? "" : "s") + " you added";
+    if (when === "row") return "+" + what;
+    if (when === "restore") return what + (one ? " comes" : " come") + " back with it.";
+    if (when === "purge") return what + (one ? " is" : " are") + " deleted with it.";
+    return what + (one ? " goes" : " go") + " with it.";
+}
+
 var _recycleBinApi = {
+    addedSubtasksPhrase: addedSubtasksPhrase,
     binItemTotal: binItemTotal,
     binItemPhrase: binItemPhrase,
     binDeletedTasks: binDeletedTasks,

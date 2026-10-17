@@ -2732,10 +2732,11 @@ Skip this line (too short)</pre>
                 purges batches that are already there.
             </p>
             <p>
-                Before the undo, the confirm dialog names the repeating
-                tasks it will pause (the running ones on the projects
-                and goals the import created). An import with none gets
-                the plain confirm.
+                Before the undo, the confirm dialog says how many
+                subtasks you added go with it ("1 subtask you added goes
+                with it.") and names the repeating tasks it will pause
+                (the running ones on the projects and goals the import
+                created). An import with neither gets the plain confirm.
             </p>
 
             <h3>Batch states</h3>
@@ -2750,6 +2751,11 @@ Skip this line (too short)</pre>
                 <li><strong>Restore</strong> — put every row back exactly as it was before the undo: completed tasks stay completed, and a project or goal you had already archived stays archived, and the subtasks that went with a task come back with it. Anything you changed while the batch was in the bin stays as you left it.</li>
                 <li><strong>Purge</strong> — permanent delete, including the subtasks that went with its tasks. Requires typing <code>DELETE</code> in the confirmation dialog.</li>
             </ul>
+            <p>
+                When subtasks you added went with a batch, its row says so
+                (<strong>1 task +2 subtasks you added</strong>), and so do
+                the Restore and Purge questions.
+            </p>
             <p>
                 Undoing an import that created projects or goals
                 archives them the same way the Archive buttons do: tasks

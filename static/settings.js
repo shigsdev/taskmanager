@@ -259,7 +259,11 @@
         if (!helpers) return Promise.resolve("");
         return window.apiFetch("/api/recycle-bin/impact/" + batchId)
             .then(function (data) {
-                return helpers.archiveConfirmMessage(data && data.paused_templates, UNDO_PAUSE_TAIL);
+                var msg = helpers.archiveConfirmMessage(data && data.paused_templates, UNDO_PAUSE_TAIL);
+                // #494: the open subtasks you added go with the import.
+                var bin = window.recycleBinHelpers;
+                var subs = bin ? bin.addedSubtasksPhrase(data && data.subtasks, "undo") : "";
+                return [subs, msg].filter(Boolean).join("\n\n");
             })
             .catch(function () { return ""; });
     }
