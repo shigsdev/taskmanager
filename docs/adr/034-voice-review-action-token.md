@@ -4,6 +4,9 @@ Date: 2026-06-22
 
 Status: ACCEPTED (operator-approved 2026-06-22; token lifetime default = 90 days)
 
+Amended by ADR-042 (2026-10-17, #499): the token can also be minted and
+revoked from /settings by a signed-in OAuth session, not only offline.
+
 ## Context
 
 Feature #297 (Voice Task Review, design doc `docs/design/297-voice-task-review.md`

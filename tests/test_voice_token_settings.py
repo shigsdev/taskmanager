@@ -264,3 +264,42 @@ class TestCliRevokeSharesTheWriter:
         assert result.exit_code != 0
         assert "SECRET_KEY" in result.output
         assert _denylist(app) == full
+
+
+class TestDenylistWritesLockTheRow:
+    """A revoke and a prune racing must not lose a revocation: every
+    read-modify-write of the denylist reads it FOR UPDATE (Postgres)."""
+
+    def _spy(self, monkeypatch):
+        calls = []
+        real = voice_token_service._setting
+
+        def spy(key, *, lock=False):
+            if key == voice_action_token.REVOKED_JTIS_KEY:
+                calls.append(lock)
+            return real(key, lock=lock)
+
+        monkeypatch.setattr(voice_token_service, "_setting", spy)
+        return calls
+
+    def test_revoke_reads_the_denylist_locked(self, app, authed_client, monkeypatch):
+        calls = self._spy(monkeypatch)
+        assert authed_client.post(f"{URL}/{'a' * 16}/revoke").status_code == 200
+        assert calls and calls[0] is True
+
+    def test_prune_reads_the_denylist_locked(self, app, authed_client, monkeypatch):
+        old = "c" * 16
+        past = (datetime.now(UTC) - timedelta(days=3)).isoformat()
+        with app.app_context():
+            _db.session.add(AppSetting(
+                key=voice_token_service.ROW_PREFIX + old,
+                value=json.dumps({"minted": past, "expires": past, "revoked": past}),
+            ))
+            _db.session.add(AppSetting(
+                key=voice_action_token.REVOKED_JTIS_KEY, value=json.dumps([old]),
+            ))
+            _db.session.commit()
+        calls = self._spy(monkeypatch)
+        authed_client.get(URL)
+        assert calls and calls[0] is True
+        assert _denylist(app) == []

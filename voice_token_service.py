@@ -63,12 +63,20 @@ def _parse_iso(value: object) -> datetime | None:
     return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
-def _setting(key: str) -> AppSetting | None:
-    return db.session.scalar(select(AppSetting).where(AppSetting.key == key))
+def _setting(key: str, *, lock: bool = False) -> AppSetting | None:
+    stmt = select(AppSetting).where(AppSetting.key == key)
+    if lock:
+        stmt = stmt.with_for_update()
+    return db.session.scalar(stmt)
 
 
-def _read_denylist() -> list[str]:
-    row = _setting(voice_action_token.REVOKED_JTIS_KEY)
+def _read_denylist(*, lock: bool = False) -> list[str]:
+    """``lock=True`` for a read that will be written back: Postgres holds
+    the row (SELECT … FOR UPDATE) until commit, so a revoke and a prune
+    racing can't each write a list missing the other's change — a lost
+    revoke would silently un-revoke a token. (SQLite ignores the hint; it
+    serializes writers anyway.)"""
+    row = _setting(voice_action_token.REVOKED_JTIS_KEY, lock=lock)
     if row is None or not row.value:
         return []
     try:
@@ -99,7 +107,7 @@ def add_revoked_jti(jti: str) -> bool:
     """Append ``jti`` to the denylist. Returns False if it was already on
     it. Raises ``ValidationError`` rather than overflow the column. The
     caller commits."""
-    current = _read_denylist()
+    current = _read_denylist(lock=True)
     if jti in current:
         return False
     _write_denylist([*current, jti])
@@ -144,7 +152,7 @@ def list_tokens() -> list[dict]:
             continue
         keep.append(info)
     if gone:
-        denylist = _read_denylist()
+        denylist = _read_denylist(lock=True)
         trimmed = [j for j in denylist if j not in gone]
         if trimmed != denylist:
             _write_denylist(trimmed)

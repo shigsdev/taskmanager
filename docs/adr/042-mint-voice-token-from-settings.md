@@ -67,6 +67,11 @@ reads as an *empty* denylist, which un-revokes every token. A list that
 would pass the column's 500 characters is now refused, with "rotate
 SECRET_KEY".
 
+Every read-modify-write of the denylist (revoke, and the listing's
+prune) reads the row `SELECT … FOR UPDATE`, so a revoke and a prune racing
+can't each write back a list missing the other's change (a lost revoke
+would silently un-revoke a token).
+
 ## Consequences
 
 **Easy:**

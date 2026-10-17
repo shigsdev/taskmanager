@@ -22,17 +22,19 @@ Mirrors ``validator_cookie.py``:
   cookie or a validator cookie (or vice versa).
 - Carries only the authorized email + a lifetime + a random ``jti``
   (token id) — no OAuth token, no user data.
-- Minted offline via ``flask mint-voice-action-token`` /
-  ``scripts/mint_voice_action_token.py``; 90-day default lifetime
-  (per ADR-034, operator-approved 2026-06-22).
+- Minted on /settings → Siri voice review by a signed-in (OAuth) user
+  (``voice_token_service.mint_token``, #499 / ADR-042), or offline via
+  ``flask mint-voice-action-token`` / ``scripts/mint_voice_action_token.py``;
+  90-day default lifetime (per ADR-034, operator-approved 2026-06-22).
 
 Per-token revocation
 --------------------
 Each token carries a random ``jti``. ``parse`` rejects any token whose
 ``jti`` is in the caller-supplied ``revoked_jtis`` set. The web layer
 sources that set from the ``AppSetting`` denylist (key
-``voice_action_revoked_jtis``); ``flask revoke-voice-action-token <jti>``
-appends to it. This revokes a SINGLE token without a full ``SECRET_KEY``
+``voice_action_revoked_jtis``); ``voice_token_service.add_revoked_jti``
+is its one writer, used by the /settings Revoke and by ``flask
+revoke-voice-action-token <jti>``. This revokes a SINGLE token without a full ``SECRET_KEY``
 rotation. (Keeping ``parse`` pure — the DB read lives in the caller —
 keeps this module trivially unit-testable.)
 """
