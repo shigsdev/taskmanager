@@ -159,6 +159,15 @@
         });
     }
 
+    // #489: each row names its pickers after its task.
+    var ROW_NAMES = {
+        'select[data-field="tier"]': "Section",
+        'select[data-field="project"]': "Project",
+        'select[data-field="goal"]': "Goal",
+        'input[data-field="due_date"]': "Due date",
+        'select[data-field="type"]': "Type",
+    };
+
     function renderRow(s) {
         var tr = document.createElement("tr");
         tr.dataset.taskId = s.task_id;
@@ -223,6 +232,7 @@
                     goalCell.innerHTML = "";
                     goalCell.appendChild(goalSelect(prevGoalVal, newType, _currentOptionFor(tr, "goal")));
                 }
+                if (window.rowLabels) window.rowLabels.name(tr, s.title, 0, ROW_NAMES);  // the new pickers too
             });
         }
         // #208 (2026-05-22): re-derive the due placeholder when the
@@ -285,6 +295,7 @@
         // panel (taskDetailProjectChanged). Wire ONCE on first render;
         // re-wire after the type-change rebuild via _wireProjectCascade.
         _wireProjectCascade(tr);
+        if (window.rowLabels) window.rowLabels.name(tr, s.title, 0, ROW_NAMES);
         return tr;
     }
 

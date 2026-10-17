@@ -641,6 +641,8 @@
             var row = document.createElement("div");
             row.className = "import-candidate" + (c.duplicate ? " import-duplicate" : "");
 
+            // #489: name the row's controls after its title.
+            var rowNames = { ".import-candidate-head input[type=checkbox]": "Include", ".import-candidate-title": "Title", ".import-candidate-type": "Type" };
             var head = document.createElement("div");
             head.className = "import-candidate-head";
 
@@ -660,6 +662,7 @@
             input.className = "import-candidate-title";
             input.addEventListener("input", function () {
                 currentCandidates[i].title = input.value;
+                if (window.rowLabels) window.rowLabels.name(row, input.value, i, rowNames);
             });
             head.appendChild(input);
 
@@ -798,6 +801,7 @@
 
             row.appendChild(expanded);
 
+            if (window.rowLabels) window.rowLabels.name(row, c.title, i, rowNames);
             candidatesEl.appendChild(row);
         });
     }
@@ -808,6 +812,8 @@
             var row = document.createElement("div");
             row.className = "import-candidate" + (c.duplicate ? " import-duplicate" : "");
 
+            // #489: name the row's controls after its title.
+            var rowNames = { ".import-candidate-head input[type=checkbox]": "Include", ".import-candidate-title": "Title", ".import-candidate-type": "Category" };
             var head = document.createElement("div");
             head.className = "import-candidate-head";
 
@@ -827,6 +833,7 @@
             input.className = "import-candidate-title";
             input.addEventListener("input", function () {
                 currentCandidates[i].title = input.value;
+                if (window.rowLabels) window.rowLabels.name(row, input.value, i, rowNames);
             });
             head.appendChild(input);
 
@@ -921,6 +928,7 @@
 
             row.appendChild(expanded);
 
+            if (window.rowLabels) window.rowLabels.name(row, c.title, i, rowNames);
             candidatesEl.appendChild(row);
         });
     }
@@ -936,6 +944,8 @@
             var row = document.createElement("div");
             row.className = "import-candidate" + (c.duplicate ? " import-duplicate" : "");
 
+            // #489: name the row's controls after its title.
+            var rowNames = { ".import-candidate-head input[type=checkbox]": "Include", ".import-candidate-title": "Title", ".import-candidate-type": "Type" };
             var head = document.createElement("div");
             head.className = "import-candidate-head";
 
@@ -954,6 +964,7 @@
             input.className = "import-candidate-title";
             input.addEventListener("input", function () {
                 currentCandidates[i].name = input.value;
+                if (window.rowLabels) window.rowLabels.name(row, input.value, i, rowNames);
             });
             head.appendChild(input);
 
@@ -1037,6 +1048,7 @@
             expanded.appendChild(_labeledField("Notes", notesInput));
 
             row.appendChild(expanded);
+            if (window.rowLabels) window.rowLabels.name(row, c.name, i, rowNames);
             candidatesEl.appendChild(row);
         });
     }

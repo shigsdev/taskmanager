@@ -295,6 +295,16 @@
         return sel;
     }
 
+    // #489: each row names its controls after its title.
+    var ROW_NAMES = {
+        ":scope > input[type=checkbox]": "Include",
+        ".scan-candidate-title": "Title",
+        ".scan-candidate-type": "Type",
+        ".scan-candidate-category": "Category",
+        ".scan-candidate-priority": "Priority",
+        ".scan-candidate-quarter": "Target quarter",
+    };
+
     function renderCandidates() {
         candidatesEl.innerHTML = "";
         currentCandidates.forEach(function (c, i) {
@@ -317,6 +327,7 @@
             titleInput.className = "scan-candidate-title";
             titleInput.addEventListener("input", function () {
                 currentCandidates[i].title = titleInput.value;
+                if (window.rowLabels) window.rowLabels.name(row, titleInput.value, i, ROW_NAMES);
             });
             row.appendChild(titleInput);
 
@@ -391,6 +402,7 @@
                 );
             }
 
+            if (window.rowLabels) window.rowLabels.name(row, c.title, i, ROW_NAMES);
             candidatesEl.appendChild(row);
         });
     }

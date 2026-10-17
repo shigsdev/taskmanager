@@ -407,6 +407,15 @@
         showState("review");
     }
 
+    // #489: each row names its controls after its title.
+    const ROW_NAMES = {
+        ":scope > input[type=checkbox]": "Include",
+        ".voice-candidate-title": "Title",
+        ".voice-candidate-type": "Type",
+        ".voice-candidate-tier": "Section",
+        ".voice-candidate-date": "Due date",
+    };
+
     function renderCandidate(candidate, idx) {
         const row = document.createElement("div");
         row.className = "voice-candidate";
@@ -443,6 +452,7 @@
         titleInput.className = "voice-candidate-title";
         titleInput.addEventListener("input", function () {
             currentCandidates[idx].title = titleInput.value;
+            if (window.rowLabels) window.rowLabels.name(row, titleInput.value, idx, ROW_NAMES);
         });
         row.appendChild(titleInput);
 
@@ -720,6 +730,7 @@
             row.appendChild(recurBtn);
         }
 
+        if (window.rowLabels) window.rowLabels.name(row, candidate.title, idx, ROW_NAMES);
         return row;
     }
 

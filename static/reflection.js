@@ -997,6 +997,9 @@
             body.appendChild(r);
         }
         row.appendChild(body);
+        // #489: the tick box names the proposal it applies.
+        if (window.rowLabels) window.rowLabels.name(row, H.actionLabel(action), idx,
+            { ".reflection-action-check": "Include" });
         return row;
     }
 

@@ -244,6 +244,13 @@
 
         li.querySelector(".plan-accept").addEventListener("click", function () { acceptRow(li, s); });
         li.querySelector(".plan-ignore").addEventListener("click", function () { ignoreRow(li, s); });
+        // #489: name the row's pickers after its task.
+        if (window.rowLabels) window.rowLabels.name(li, s.title, 0, {
+            'select[data-field="tier"]': "Section",
+            'input[data-field="due_date"]': "Due date",
+            'select[data-field="project"]': "Project",
+            'select[data-field="goal"]': "Goal",
+        });
         return li;
     }
 

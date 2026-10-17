@@ -800,6 +800,11 @@ Report.
      #490: on /scan (upload stubbed, Add All real) a goal keeps its
      category, priority, quarter and actions, a project its name, type and
      quarter, a task its type (scan_confirm_roundtrip.spec.js reads each back).
+     #489: bring up each review (stubbed: /import tasks / goals / projects,
+     /scan × 3 kinds, /voice-memo, /plan, 💡 Auto-categorize, /reflection)
+     — every control has a name, and a row's tick box reads "Include
+     “<title>”"; edit a row's title and its names follow
+     (review_rows_named.spec.js). The rows look exactly as before.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -1016,6 +1021,7 @@ Report.
   Copper buttons: dark text     PASS          Copper buttons: dark text     PASS
   Scan: review names its kind   PASS          Scan: review names its kind   PASS
   Scan: fields reach the save   PASS          Scan: fields reach the save   PASS
+  Review rows: every control named PASS       Review rows: every control named PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
