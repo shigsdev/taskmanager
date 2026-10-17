@@ -792,7 +792,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .day-cell-past { opacity: 0.5; }
 .day-cell-hover {
     background: var(--success, #16a34a) !important;
-    color: #fff !important;
+    color: var(--on-fill) !important;  /* #496: white on sage was 2.64:1 */
     border-style: solid;
     transform: scale(1.05);
 }
@@ -4127,8 +4127,9 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     flex-shrink: 0;
 }
 .voice-candidate-route.route-task    { background: var(--accent, #2563eb); color: var(--on-fill); }  /* #485 */
-.voice-candidate-route.route-goal    { background: var(--success, #16a34a); }
-.voice-candidate-route.route-project { background: #ec4899; }
+.voice-candidate-route.route-goal    { background: var(--success, #16a34a); color: var(--on-fill); }  /* #496 */
+/* #496: was the light theme's pink (#ec4899, white 3.53:1). */
+.voice-candidate-route.route-project { background: var(--amber); color: var(--on-fill); }
 .voice-candidate-title { flex: 1; min-width: 120px; padding: 6px 8px; }
 .voice-candidate-type { padding: 6px 4px; flex-shrink: 0; }
 /* Backlog #36: tier + due_date controls from the NLP inference. */
@@ -6319,7 +6320,7 @@ table.quality-gates code {
     color: #fff;
     letter-spacing: 0.03em;
 }
-.reflection-op-badge.op-create { background: var(--success, #16a34a); }
+.reflection-op-badge.op-create { background: var(--success, #16a34a); color: var(--on-fill); }  /* #496 */
 .reflection-op-badge.op-update { background: var(--accent, #2563eb); color: var(--on-fill); }  /* #485 */
 .reflection-op-badge.op-delete { background: var(--danger, #c0392b); }
 .reflection-action-diff {

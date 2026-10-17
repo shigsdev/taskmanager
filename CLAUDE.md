@@ -836,6 +836,10 @@ Report.
      Claude call.", the landed row "✓ applied" and unticked, and Apply sends
      only the rest (no analyze call); a fully applied or proposal-less row
      has no such button (reflection_review_saved.spec.js).
+     #496: on a /voice-memo review the GOAL route chip (sage) and PROJECT
+     (amber, no longer pink) read dark text like TASK; /reflection's CREATE
+     badge and a day-strip cell under a dragged card too; DELETE keeps white
+     (sage_contrast.spec.js measures them and every sage fill on 19 pages).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -1058,6 +1062,7 @@ Report.
   Subtasks: only under an open task PASS      Subtasks: only under an open task PASS
   Undo/bin: added subtasks counted PASS       Undo/bin: added subtasks counted PASS
   Reflection: saved review, no call PASS      Reflection: saved review, no call PASS
+  Sage/route chips: dark text   PASS          Sage/route chips: dark text   PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
