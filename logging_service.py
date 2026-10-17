@@ -106,7 +106,9 @@ _SCRUB_COMBINED_RE: re.Pattern[str] = re.compile(
     # `Authorization: Bearer` prefix. Single-pass alternation can't
     # compose those, so make authz greedy enough to swallow the
     # whole `Authorization: Bearer abc.def` in one match.
-    r"|(?P<authz>authorization['\"]?\s*[:=]\s*['\"]?(?:Bearer\s+[A-Za-z0-9._\-]+|[^'\"\s]+))"
+    # #497: ANY `<scheme> <credential>` after it, not just Bearer -- the
+    # one-word fallback ate "Basic" and left the base64 user:password.
+    r"|(?P<authz>authorization['\"]?\s*[:=]\s*['\"]?(?:[A-Za-z][A-Za-z0-9_-]*\s+[^'\"\s]+|[^'\"\s]+))"
     r"|(?P<session>session=[A-Za-z0-9._\-]+)"
     r"|(?P<qs_key>(?:[?&](?:api_?key|key|token)=))(?P<qs_val>[^&\s]+)"
     r"|(?P<email>[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})",

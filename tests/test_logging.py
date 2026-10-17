@@ -93,6 +93,26 @@ class TestScrubSensitive:
         result = scrub_sensitive("Authorization: Bearer abc123.def456-ghi")
         assert "abc123.def456-ghi" not in result
 
+    # #497: only "Bearer" was a known scheme, so `Authorization: Basic
+    # <base64 user:pass>` lost the word "Basic" and kept the credential.
+    @pytest.mark.parametrize("line, secret", [
+        ("Authorization: Basic dXNlckBleGFtcGxlLmNvbTpzM2NyZXQ=",
+         "dXNlckBleGFtcGxlLmNvbTpzM2NyZXQ="),
+        ("headers={'Authorization': 'Basic Ym9iOmh1bnRlcjI='}", "Ym9iOmh1bnRlcjI="),
+        ("authorization=Token abc123def456", "abc123def456"),
+        ("Proxy-Authorization: Basic cHJveHk6cHc=", "cHJveHk6cHc="),
+        ("Authorization: Digest-ish c2VjcmV0", "c2VjcmV0"),
+    ])
+    def test_strips_any_authorization_scheme_credential(self, line, secret):
+        result = scrub_sensitive(line)
+        assert secret not in result
+        assert "[REDACTED]" in result
+
+    def test_basic_in_prose_untouched(self):
+        # The scheme rule only applies after "authorization"; plain prose
+        # that says "Basic" stays readable (the quiet case).
+        assert scrub_sensitive("Basic setup finished") == "Basic setup finished"
+
     def test_strips_session_cookie(self):
         result = scrub_sensitive("Cookie: session=eyJ1c2VyIjoiYm9iIn0.abc")
         assert "eyJ1c2VyIjoiYm9iIn0.abc" not in result
