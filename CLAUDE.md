@@ -831,6 +831,11 @@ Report.
      "… 1 subtask you added comes back with it." and Purge "… is deleted
      with it."; a batch with none reads exactly as before
      (bin_added_subtasks.spec.js).
+     #495: on /reflection (History stubbed), open a partly applied row —
+     📋 Review proposals shows the review with "Saved proposals — no new
+     Claude call.", the landed row "✓ applied" and unticked, and Apply sends
+     only the rest (no analyze call); a fully applied or proposal-less row
+     has no such button (reflection_review_saved.spec.js).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -1052,6 +1057,7 @@ Report.
   Architecture: gate tables (unchanged) PASS  Architecture: gate tables as cards PASS
   Subtasks: only under an open task PASS      Subtasks: only under an open task PASS
   Undo/bin: added subtasks counted PASS       Undo/bin: added subtasks counted PASS
+  Reflection: saved review, no call PASS      Reflection: saved review, no call PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

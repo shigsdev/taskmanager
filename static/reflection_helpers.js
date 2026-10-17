@@ -803,6 +803,53 @@
      * #437: the history row's apply badge. A reflection whose apply
      * partly failed has landed actions but no applied_at.
      */
+    /**
+     * #495: a stable identity for one proposed action — keys sorted at every
+     * level, so the same action reads the same however its JSON was ordered.
+     * (The server's dedup key, reflection_service._action_key, is canonical
+     * JSON too; the client only compares its own keys with each other.)
+     */
+    function actionKey(a) {
+        var canon = function (v) {
+            if (Array.isArray(v)) return v.map(canon);
+            if (v && typeof v === "object") {
+                var o = {};
+                Object.keys(v).sort().forEach(function (k) { o[k] = canon(v[k]); });
+                return o;
+            }
+            return v;
+        };
+        return JSON.stringify(canon(a));
+    }
+
+    /**
+     * #495: the review rows ("bucket:idx") of a saved reflection whose
+     * action already landed — `applied_actions.actions` is what earlier
+     * applies made (#437). Those rows show "✓ applied" and can't be sent.
+     */
+    function landedRowKeys(proposed, applied) {
+        var landed = {};
+        var acts = applied && Array.isArray(applied.actions) ? applied.actions : [];
+        acts.forEach(function (a) { landed[actionKey(a)] = true; });
+        var out = [];
+        ["explicit", "suggested"].forEach(function (bucket) {
+            ((proposed && proposed[bucket]) || []).forEach(function (a, idx) {
+                if (landed[actionKey(a)]) out.push(bucket + ":" + idx);
+            });
+        });
+        return out;
+    }
+
+    /**
+     * #495: History offers "Review proposals" on a reflection that has
+     * proposals and isn't fully applied (a fully applied one 409s on Apply).
+     */
+    function canReviewSaved(r) {
+        if (!r || r.applied_at) return false;
+        var p = r.proposed_actions || {};
+        return ((p.explicit || []).length + (p.suggested || []).length) > 0;
+    }
+
     function appliedBadge(r) {
         if (!r) return "";
         if (r.applied_at) return " ✓ applied";
@@ -847,6 +894,9 @@
         applyOutcome: applyOutcome,
         partialApplyText: partialApplyText,
         appliedBadge: appliedBadge,
+        actionKey: actionKey,
+        landedRowKeys: landedRowKeys,
+        canReviewSaved: canReviewSaved,
         attachmentLabel: attachmentLabel,
         attachmentSummary: attachmentSummary,
         attachmentPreflight: attachmentPreflight,

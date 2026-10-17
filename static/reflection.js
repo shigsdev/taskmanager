@@ -944,6 +944,10 @@
                 + "of room — it was retried automatically with more. "
                 + (costText ? costText + " (both calls)" : "");
         }
+        // #495: a saved review re-opened from History made no new call.
+        if (refl && refl.reopened) {
+            costText = "Saved proposals — no new Claude call.";
+        }
         costHintEl.textContent = costText;
         transcriptEl.textContent = (refl && refl.transcript) || "(no transcript)";
         updateApplyLabel();
@@ -1573,6 +1577,23 @@
                 loadHistory();
             });
             actions.appendChild(nameBtn);
+
+            // #495: the saved proposals, without paying for a new analysis.
+            // Rows an earlier Apply landed show "✓ applied" (#437), and the
+            // server never applies one twice.
+            if (H.canReviewSaved(r)) {
+                var reviewBtn = document.createElement("button");
+                reviewBtn.type = "button";
+                reviewBtn.className = "btn btn-sm";
+                reviewBtn.textContent = "📋 Review proposals";
+                reviewBtn.addEventListener("click", function () {
+                    current = Object.assign({}, r, { reopened: true });
+                    renderReview(current);
+                    markAppliedRows(H.landedRowKeys(r.proposed_actions, r.applied_actions));
+                    updateApplyLabel();
+                });
+                actions.appendChild(reviewBtn);
+            }
 
             // #338: re-run Claude over a reflection that is already
             // saved. The error state has always promised this ("can be
