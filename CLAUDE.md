@@ -106,6 +106,13 @@ python scripts/stop_dev_bypass.py                 # canonical teardown
   TIME_WAIT` before suspecting a test. If any lane port is already taken
   the gate refuses to start rather than reuse an unknown process —
   including a second gate run you forgot was still going.
+- **Gates check only THIS checkout (#502).** Parallel sessions live in
+  `.claude/worktrees/<name>` inside the main checkout. Jest skips those
+  nested dirs from the main checkout (`jest.config.js` IN_A_WORKTREE) but
+  runs a worktree's own tests when it IS one; `docs_sync_check` skips
+  `.claude` relative to the checkout. A main-checkout Jest run lists ~70
+  test files — ~140 means something is collecting a nested worktree again.
+  (`tests/test_gate_worktree_isolation.py` guards both.)
 - **Worktree/main trap.** If `main` gets checked out in a `.claude/worktrees/*`
   worktree, the primary repo is stuck on a feature branch and `main` looks
   "behind." Fix: `git worktree remove <path>` (or `git worktree prune` if the

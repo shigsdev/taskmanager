@@ -92,7 +92,10 @@ def find_env_vars_in_code() -> set[str]:
     pattern = re.compile(r'os\.environ(?:\.get\(|\[)["\']([A-Z_][A-Z0-9_]*)["\']')
     vars_found: set[str] = set()
     for py_file in REPO.rglob("*.py"):
-        if any(p in SKIP_PARTS for p in py_file.parts):
+        # #502: parts RELATIVE to the checkout. The absolute path of every
+        # file in a worktree has a ".claude" part, so the old check skipped
+        # them all there: 0 env vars found, and the gate passed unread.
+        if any(p in SKIP_PARTS for p in py_file.relative_to(REPO).parts):
             continue
         try:
             text = py_file.read_text(encoding="utf-8")

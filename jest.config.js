@@ -1,3 +1,6 @@
+// #502: is this config inside .claude/worktrees/<name>/ ?
+const IN_A_WORKTREE = /[\\/]\.claude[\\/]worktrees[\\/]/.test(__dirname);
+
 /** @type {import('jest').Config} */
 module.exports = {
   // Unit tests run in Node; DOM tests use jsdom (set per-file via docblock)
@@ -19,6 +22,15 @@ module.exports = {
   testMatch: [
     "**/tests/js/**/*.test.js",
   ],
+
+  // #502: that relative glob also matched every NESTED worktree's tests
+  // (.claude/worktrees/<name>/tests/js/...) when run from the main
+  // checkout — another session's half-done work could fail this gate.
+  // Skip them, unless this checkout is itself a worktree (then every path
+  // has that segment and the skip would drop all of its own tests).
+  testPathIgnorePatterns: IN_A_WORKTREE
+    ? ["/node_modules/"]
+    : ["/node_modules/", "[\\\\/]\\.claude[\\\\/]worktrees[\\\\/]"],
 
   // Coverage configuration (#202). The Jest-tested pure-logic modules:
   // every `*_helpers.js` dual-export plus the standalone ones. Keeps
