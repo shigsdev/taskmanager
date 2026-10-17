@@ -850,6 +850,12 @@ Report.
      (archived)" (dashed, italic), the live project's /projects card reads
      "Goal: <title> (archived)", the /recurring row "proj: … (archived)";
      a live link reads plain (archived_link_labels.spec.js).
+     #419: Tab to Strength Forge's ℹ️ and press Enter — focus is on the
+     how-to's ✕; Escape puts it back on that ℹ️. Same for 💡 Auto-categorize
+     (Enter, Escape → back on the button), the Recycle Bin Empty confirm (its
+     DELETE box keeps focus; Escape → back on Empty Bin) and a voice memo's
+     Make recurring. A tap / click open shows no focus ring (the quiet case)
+     (modal_focus.spec.js; all eight dialogs: modal_focus.test.js).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -1075,6 +1081,7 @@ Report.
   Sage/route chips: dark text   PASS          Sage/route chips: dark text   PASS
   Reflection: archive names pauses PASS      Reflection: archive names pauses PASS
   Archived links: one label    PASS          Archived links: one label    PASS
+  Pop-ups: focus in and back   PASS          Pop-ups: focus in and back   PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

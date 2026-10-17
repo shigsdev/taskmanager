@@ -233,6 +233,135 @@
         });
     }
 
+    /*
+     * #419: focus into the eight pop-up dialogs and back — what #377 / #454
+     * gave the side panels. Rather than wire each dialog's open and every
+     * close path (✕, Cancel, Escape, backdrop, Apply, Save…), one watcher
+     * notices the open state change, however the dialog shows and hides:
+     * display, the hidden attribute, or the node added and removed.
+     *   open  — remember the opener (what had focus just before, never a
+     *           text field: refocusing one pops the phone keyboard), then
+     *           focus the dialog's close control unless its own code already
+     *           put focus inside (the recycle confirm's type-DELETE box).
+     *   close — hand focus back to the opener, unless the dialog's own close
+     *           sent it somewhere live outside.
+     * Side panels (.detail-overlay) keep their own code. A dialog already
+     * open when watching starts is left alone. A script-moved focus shows a
+     * ring only after a keyboard open (:focus-visible), as in #377.
+     */
+    var MODAL_SELECTOR = OVERLAY_SELECTOR.split(", ").filter(function (s) {
+        return s !== ".detail-overlay";
+    }).join(", ");
+    var TEXT_FIELD = "input, textarea, select, [contenteditable]";
+
+    function watchModals(doc, win) {
+        if (!doc || !win || typeof win.MutationObserver !== "function") return null;
+        var recent = [];          // the last few focused elements, newest last
+        var lastBlur = null;      // { el, t }: the last focus lost to nothing
+        var state = new Map();    // open dialog -> { opener }
+
+        function onFocusIn(e) {
+            recent.push(e.target);
+            if (recent.length > 8) recent.shift();
+        }
+
+        function onFocusOut(e) {
+            if (!e.relatedTarget) lastBlur = { el: e.target, t: Date.now() };
+        }
+
+        // A button that opens a dialog and is disabled while its request runs
+        // (#429's withInflight: 💡 Auto-categorize, ✨ Plan) drops focus to the
+        // page when disabled — before or after this watcher looks, depending
+        // on timing. It's still the opener.
+        function justDisabled() {
+            if (!lastBlur || Date.now() - lastBlur.t > 1000) return null;
+            var el = lastBlur.el;
+            var busy = el.disabled === true || el.getAttribute("aria-busy") === "true";
+            return busy ? okOpener(el) : null;
+        }
+
+        function isOpen(el) {
+            if (!el.isConnected) return false;
+            var cs = win.getComputedStyle(el);
+            return cs.display !== "none" && cs.visibility !== "hidden";
+        }
+
+        function okOpener(c) {
+            return c && c !== doc.body && c.isConnected && !c.matches(TEXT_FIELD) ? c : null;
+        }
+
+        function openerFor(el) {
+            var active = doc.activeElement;
+            // Focus is still where the open came from (or on the page body:
+            // Safari doesn't focus a clicked button — then there's nothing to
+            // hand back, rather than an old element the page would scroll to).
+            if (!active || active === doc.body) return justDisabled();
+            if (!el.contains(active)) return okOpener(active);
+            // The dialog's own code already focused inside it: the opener is
+            // what had focus just before. Newest first.
+            for (var i = recent.length - 1; i >= 0; i--) {
+                var c = recent[i];
+                if (!c || !c.isConnected || el.contains(c)) continue;
+                if (c === doc.body || c.matches(TEXT_FIELD)) return null;
+                return c;
+            }
+            return null;
+        }
+
+        function onOpen(el) {
+            state.set(el, { opener: openerFor(el) });
+            if (el.contains(doc.activeElement)) return;
+            var close = el.querySelector(CLOSE_SELECTOR);
+            var target = close && isShown(close, el, win) ? close
+                : focusablesIn(el, win)[0];
+            if (target) target.focus();
+        }
+
+        function onClose(el, memo) {
+            state.delete(el);
+            var active = doc.activeElement;
+            if (active && active !== doc.body && active.isConnected &&
+                    !el.contains(active)) return;
+            if (memo.opener && memo.opener.isConnected) memo.opener.focus();
+            // Nothing to hand back (or it can't take focus): don't leave
+            // focus on a hidden control.
+            if (doc.activeElement && el.contains(doc.activeElement)) doc.activeElement.blur();
+        }
+
+        function sync() {
+            var seen = new Set();
+            Array.prototype.forEach.call(doc.querySelectorAll(MODAL_SELECTOR), function (el) {
+                seen.add(el);
+                var open = isOpen(el);
+                if (open && !state.has(el)) onOpen(el);
+                else if (!open && state.has(el)) onClose(el, state.get(el));
+            });
+            state.forEach(function (memo, el) {   // removed from the page
+                if (!seen.has(el)) onClose(el, memo);
+            });
+        }
+
+        doc.addEventListener("focusin", onFocusIn, true);
+        doc.addEventListener("focusout", onFocusOut, true);
+        // Dialogs open at the start are not "opened" by anyone: no focus move.
+        Array.prototype.forEach.call(doc.querySelectorAll(MODAL_SELECTOR), function (el) {
+            if (isOpen(el)) state.set(el, { opener: null });
+        });
+        var mo = new win.MutationObserver(sync);
+        mo.observe(doc.documentElement, {
+            subtree: true, childList: true, attributes: true,
+            attributeFilter: ["style", "class", "hidden"],
+        });
+        return {
+            sync: sync,
+            disconnect: function () {
+                mo.disconnect();
+                doc.removeEventListener("focusin", onFocusIn, true);
+                doc.removeEventListener("focusout", onFocusOut, true);
+            },
+        };
+    }
+
     function attachPanelKeys(doc, win) {
         if (!doc || !win) return null;
         function onKey(e) { handleKey(e, doc, win); }
@@ -251,6 +380,7 @@
         opened: opened,             // #454
         closed: closed,             // #454
         afterRender: afterRender,   // #454
+        watchModals: watchModals,   // #419
     };
 
     if (typeof module !== "undefined" && module.exports) {
@@ -258,5 +388,6 @@
     } else if (typeof window !== "undefined") {
         window.panelKeys = api;
         attachPanelKeys(document, window);
+        watchModals(document, window);   // #419
     }
 })();
