@@ -815,6 +815,10 @@ Report.
      both widths (board cards cut them to one line with "…"; /print wraps
      them) and no page scrolls sideways (rough_text.spec.js); Work view
      shows the open CoP task under "Community of Practice (archived)".
+     #492: /architecture at 375 — each row of the four gate tables is a card
+     (first cell as its heading, the rest labelled "WHAT IT ASSERTS",
+     "SCHEDULE", …) and no cell runs off the screen
+     (architecture_tables.spec.js); at 1280 they are the same tables as before.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -1033,6 +1037,7 @@ Report.
   Scan: fields reach the save   PASS          Scan: fields reach the save   PASS
   Review rows: every control named PASS       Review rows: every control named PASS
   Rough titles: stay on screen  PASS          Rough titles: stay on screen  PASS
+  Architecture: gate tables (unchanged) PASS  Architecture: gate tables as cards PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

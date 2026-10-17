@@ -5533,6 +5533,44 @@ table.quality-gates code {
     font-size: 0.95em;
     word-break: break-word;
 }
+/* #492: on a phone three of the four tables were wider than the screen —
+   the first column's unbroken test names (nowrap) took ~350px and the
+   description columns sat off to the right, behind a sideways swipe per
+   row. Squeezing the columns made words break every 2-3 letters, so each
+   row stacks into a card instead: its first cell is the heading, every
+   other cell is labelled with its column (data-label, set by the inline
+   script on architecture.html from the table's <th>s). */
+@media (max-width: 767px) {
+    table.quality-gates thead { display: none; }
+    table.quality-gates tbody,
+    table.quality-gates tr,
+    table.quality-gates td { display: block; }
+    table.quality-gates tr {
+        border: 1px solid var(--border, #e1e4e8);
+        border-radius: var(--radius-s, 6px);
+        padding: 6px 0;
+        margin-bottom: 10px;
+    }
+    table.quality-gates td,
+    table.quality-gates td:first-child,
+    table.quality-gates td:first-child:not(:has(code)) {
+        border: none;
+        padding: 3px 12px;
+        width: auto;
+        text-align: left;
+        white-space: normal;
+    }
+    table.quality-gates td:not(:first-child)::before {
+        content: attr(data-label);
+        display: block;
+        font-size: 0.78em;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+    }
+    table.quality-gates code { overflow-wrap: anywhere; }
+}
 
 /* === Weekly Focus panel (Feature 1, 2026-05-09) === */
 

@@ -1157,6 +1157,17 @@ npm run test:e2e:prod</pre>
 <script src="{{ url_for('static', filename='diagram_zoom.js') }}"></script>
 <script>
     window.diagramZoom.attachDiagramZoom(document);
+    // #492: on a phone each gate-table row stacks into a card (style.css);
+    // its cells carry their column's name for the labels there.
+    document.querySelectorAll("table.quality-gates").forEach(function (t) {
+        var heads = Array.prototype.map.call(t.querySelectorAll("thead th"),
+            function (th) { return th.textContent.trim(); });
+        t.querySelectorAll("tbody tr").forEach(function (tr) {
+            Array.prototype.forEach.call(tr.children, function (td, i) {
+                if (heads[i]) td.setAttribute("data-label", heads[i]);
+            });
+        });
+    });
 </script>
 
 {# Mermaid loaded only on this page. Pinned version — CSP allows
