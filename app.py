@@ -9,7 +9,7 @@ import sys
 from datetime import timedelta
 
 from dotenv import load_dotenv
-from flask import Flask, redirect, render_template, session, url_for
+from flask import Flask, make_response, redirect, render_template, request, session, url_for
 from flask import jsonify as _jsonify
 from flask_compress import Compress
 from flask_dance.contrib.google import make_google_blueprint
@@ -147,6 +147,11 @@ def _build_enum_repair_statements() -> list[str]:
         f"ALTER TYPE {enum_name} ADD VALUE IF NOT EXISTS '{value}'"
         for enum_name, value in sorted(pairs)
     ]
+
+
+# #204 option E: the off-Railway status page's origin (GitHub Pages). It
+# is the one origin /healthz answers cross-origin; see status/index.html.
+STATUS_PAGE_ORIGIN = "https://shigsdev.github.io"
 
 
 def create_app(config: dict | None = None) -> Flask:
@@ -627,7 +632,14 @@ def create_app(config: dict | None = None) -> Flask:
         # Railway from promoting the container — otherwise a bug in a
         # new check could brick every deploy.
         status_code = 503 if report["critical_failed"] else 200
-        return report, status_code
+        resp = make_response(report, status_code)
+        # #204 option E: the off-Railway status page (status/, GitHub Pages)
+        # reads this from the browser, so that ONE origin may -- on a 503
+        # too. /healthz was already public; no other origin gets the header.
+        if request.headers.get("Origin") == STATUS_PAGE_ORIGIN:
+            resp.headers["Access-Control-Allow-Origin"] = STATUS_PAGE_ORIGIN
+        resp.headers.add("Vary", "Origin")
+        return resp
 
     # --- Scheduled digest email ---
     # NOTE: The scheduler is started via gunicorn.conf.py post_worker_init

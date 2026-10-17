@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Task Manager status</title>
+<!--
+  #204 option E: an off-Railway status page. Served from GitHub Pages (see
+  .github/workflows/status-page.yml), so it still loads when Railway is
+  down. It polls the app's public /healthz from the browser (the app
+  allows this one origin, app.py healthz) and shows up / degraded / down,
+  when it last answered, and the deployed commit. No task data, ever.
+-->
+<style>
+  :root {
+    --bg: #14110f; --surface: #1d1916; --rule: #3a322b;
+    --cream: #ece4d5; --dim: #b8ad9b; --copper: #b87333;
+    --up: #8fbf7f; --degraded: #d29922; --down: #e5534b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--cream);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 560px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { font-size: 1.1rem; font-weight: 600; color: var(--dim); margin: 0 0 20px; letter-spacing: 0.02em; }
+  .card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 20px; }
+  .state { display: flex; align-items: center; gap: 12px; font-size: 1.35rem; font-weight: 600; }
+  .dot { width: 16px; height: 16px; border-radius: 50%; background: var(--dim); flex: 0 0 auto; }
+  .up .dot { background: var(--up); }
+  .degraded .dot { background: var(--degraded); }
+  .down .dot { background: var(--down); }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 18px 0 0; }
+  dt { color: var(--dim); }
+  dd { margin: 0; overflow-wrap: anywhere; }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: 0.92em; }
+  ul.problems { margin: 14px 0 0; padding-left: 20px; color: var(--degraded); }
+  .down ul.problems { color: var(--down); }
+  .actions { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  button, a.btn {
+    min-height: 44px; padding: 0 16px; border-radius: 8px; font: inherit; cursor: pointer;
+    background: var(--copper); color: #1a1410; border: 0; text-decoration: none;
+    display: inline-flex; align-items: center;
+  }
+  a { color: var(--copper); }
+  button:focus-visible, a:focus-visible { outline: 2px solid var(--cream); outline-offset: 2px; }
+  .note { color: var(--dim); font-size: 0.9rem; margin-top: 18px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Task Manager — status</h1>
+  <div class="card" id="card" aria-live="polite">
+    <div class="state"><span class="dot" aria-hidden="true"></span><span id="headline">Checking…</span></div>
+    <ul class="problems" id="problems" hidden></ul>
+    <dl>
+      <dt>Last healthy</dt><dd id="lastOk">—</dd>
+      <dt>Checked</dt><dd id="checked">—</dd>
+      <dt>Deployed</dt><dd><code id="sha">—</code></dd>
+      <dt>Running since</dt><dd id="started">—</dd>
+    </dl>
+    <div class="actions">
+      <button type="button" id="recheck">Check again</button>
+      <a class="btn" id="openApp" href="https://web-production-3e3ae.up.railway.app/">Open the app</a>
+      <a href="https://status.railway.com/">Railway's own status</a>
+    </div>
+  </div>
+  <p class="note">Checks every minute while this page is open. "Last healthy" is
+    remembered on this device, so after an outage it says how long the app has
+    been unreachable.</p>
+</main>
+<script src="status_helpers.js"></script>
+<script>
+(function () {
+  "use strict";
+  var HEALTHZ = "https://web-production-3e3ae.up.railway.app/healthz";
+  var KEY = "tm-status-last-ok";
+  var H = window.statusHelpers;
+  var el = function (id) { return document.getElementById(id); };
+  var lastOk = NaN;
+  try { lastOk = Number(localStorage.getItem(KEY)); } catch (e) { /* storage blocked */ }
+  if (!lastOk) lastOk = NaN;
+
+  function draw(c, body, checkedAt) {
+    el("card").className = "card " + c.level;
+    el("headline").textContent = c.headline;
+    var list = el("problems");
+    list.textContent = "";
+    c.problems.forEach(function (p) {
+      var li = document.createElement("li");
+      li.textContent = p;
+      list.appendChild(li);
+    });
+    list.hidden = c.problems.length === 0;
+    el("checked").textContent = new Date(checkedAt).toLocaleTimeString();
+    el("lastOk").textContent = Number.isFinite(lastOk)
+      ? H.ago(lastOk, checkedAt) + " (" + new Date(lastOk).toLocaleString() + ")" : "never (on this device)";
+    if (body && body.git_sha) el("sha").textContent = H.shortSha(body.git_sha);
+    if (body && body.started_at) el("started").textContent = new Date(body.started_at).toLocaleString();
+    document.title = (c.level === "up" ? "🟢" : c.level === "degraded" ? "🟡" : "🔴") + " Task Manager status";
+  }
+
+  function check() {
+    var ctl = new AbortController();
+    var timer = setTimeout(function () { ctl.abort(); }, 10000);
+    fetch(HEALTHZ, { mode: "cors", cache: "no-store", signal: ctl.signal })
+      .then(function (resp) {
+        return resp.json().then(
+          function (body) { return { reached: true, httpStatus: resp.status, body: body }; },
+          function () { return { reached: true, httpStatus: resp.status, body: null }; });
+      }, function () { return { reached: false }; })
+      .then(function (r) {
+        clearTimeout(timer);
+        var now = Date.now();
+        var c = H.classify(r);
+        if (c.level !== "down") {
+          lastOk = now;
+          try { localStorage.setItem(KEY, String(now)); } catch (e) { /* storage blocked */ }
+        }
+        draw(c, r.body, now);
+      });
+  }
+
+  el("recheck").addEventListener("click", check);
+  check();
+  setInterval(check, 60000);
+})();
+</script>
+</body>
+</html>

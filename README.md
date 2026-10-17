@@ -225,6 +225,14 @@ returns a clear error — the rest of the app is unaffected.
 Some iOS Safari PWA standalone versions have a known MediaRecorder bug — if
 recording fails in standalone, open in a browser tab instead.
 
+### If the app won't load
+
+Open **https://shigsdev.github.io/taskmanager/** — a status page hosted on
+GitHub Pages, not Railway, so it loads when the app can't. It checks the
+app every minute and says whether it's up, degraded or down, when it was
+last healthy, and which commit is deployed (#204 option E; see
+ARCHITECTURE.md "Off-Railway status page").
+
 ## Architecture
 
 See `ARCHITECTURE.md` for the living architecture diagram, component

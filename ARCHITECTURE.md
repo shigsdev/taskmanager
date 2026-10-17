@@ -891,6 +891,28 @@ linked checkout) shows `build.builder`, `deploy.startCommand` and
 visible in the dashboard. A docs-only push that does NOT change prod's
 `/healthz` `started_at` proves the Watch Paths still work.
 
+### Off-Railway status page (#204 option E)
+
+A static page that still loads when Railway is down:
+**https://shigsdev.github.io/taskmanager/** (GitHub Pages; the repo is
+public). `status/index.html` polls prod `/healthz` from the browser every
+minute and shows up / degraded / down (`status/status_helpers.js`
+`classify`, Jest-tested), when the app was last healthy (remembered in that
+device's localStorage), the deployed commit and `started_at`.
+
+- **Deploy:** `.github/workflows/status-page.yml` publishes `status/` on a
+  push to main that touches it, or by hand. The repo's Pages source is
+  "GitHub Actions" (turned on 2026-10-17).
+- **CORS:** `/healthz` sets `Access-Control-Allow-Origin` for exactly
+  `STATUS_PAGE_ORIGIN` (`https://shigsdev.github.io`, `app.py`), on a 503
+  too, with `Vary: Origin`. No other origin gets it. `/healthz` was already
+  public (Security Boundaries); this lets one more page read it.
+  `tests/test_healthz_cors.py`.
+- **Watch Paths:** `status/**` isn't excluded, so a status-only push also
+  redeploys the app (harmless). Add `!status/**` in the dashboard to stop
+  that.
+- No task data, no secrets, no write path.
+
 ---
 
 ## JavaScript Testing

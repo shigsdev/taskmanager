@@ -72,6 +72,7 @@
             <li><a href="#digest">Email digest</a></li>
             <li><a href="#settings">Settings</a></li>
             <li><a href="#backups">Backups &amp; restore</a></li>
+            <li><a href="#status-page">If the app won't load</a></li>
         </ul>
 
         <p class="docs-toc-hint">
@@ -2932,6 +2933,31 @@ Skip this line (too short)</pre>
 
             <h3>Quick Actions</h3>
             <p>Shortcut buttons to Weekly Review, Scan Image, Import, and Print View.</p>
+        </section>
+
+        <section id="status-page" class="docs-section">
+            <h2>If the app won't load</h2>
+            <p>
+                Open the status page at
+                <a href="https://shigsdev.github.io/taskmanager/">shigsdev.github.io/taskmanager</a>.
+                It's hosted on GitHub, not Railway, so it loads even when the
+                app can't. Bookmark it.
+            </p>
+            <ul>
+                <li>It checks the app every minute while it's open (and
+                    when you press <strong>Check again</strong>) and says
+                    <strong>up</strong>, <strong>up, with a problem</strong>
+                    (it names the failing check) or <strong>down</strong>
+                    &mdash; either unreachable (Railway may be down) or
+                    running but unhealthy.</li>
+                <li><strong>Last healthy</strong> is remembered on that
+                    device, so after an outage it tells you how long the app
+                    has been unreachable.</li>
+                <li>It also shows which version is deployed and when it
+                    started, and links to Railway's own status page.</li>
+                <li>It shows no tasks or other data &mdash; only the same
+                    health report Railway itself checks.</li>
+            </ul>
         </section>
 
         <section id="backups" class="docs-section">

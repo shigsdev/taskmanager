@@ -1,0 +1,44 @@
+# #204 option E: publish the off-Railway status page (status/) to GitHub
+# Pages, so there is a page that still loads when Railway is down. It polls
+# the app's public /healthz from the browser; the app allows exactly this
+# origin (app.py healthz, STATUS_PAGE_ORIGIN). No secrets, no task data.
+#
+# Runs when status/ changes on main, or by hand. The repo's Pages source
+# must be "GitHub Actions" (Settings -> Pages); turned on 2026-10-17.
+name: Status page
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "status/**"
+      - ".github/workflows/status-page.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: status-page
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload the status folder
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: status
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

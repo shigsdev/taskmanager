@@ -870,6 +870,11 @@ Report.
      project on a BAU goal, and still flags one on a work goal (the quiet
      case); a personal task's Goal picker lists BAU goals
      (bau_both_sides.spec.js; voice/scan keep personal + bau: pytest).
+     #204: open https://shigsdev.github.io/taskmanager/ (after the status
+     page deploys) at both widths — it reads "The app is up.", the deployed
+     commit matches /healthz's git_sha, and no page scrolls sideways; served
+     locally (python -m http.server in status/) it reads "Can't reach the
+     app" (prod allows only the Pages origin). Help → If the app won't load.
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -1099,6 +1104,7 @@ Report.
   Cards: title opens by keyboard PASS        Cards: title opens by keyboard PASS
   Calendar: + adds to a section PASS         Calendar: + adds to a section PASS
   Goals: BAU fits both sides   PASS          Goals: BAU fits both sides   PASS
+  Status page: reads prod health PASS        Status page: reads prod health PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
@@ -1649,7 +1655,9 @@ about these — they're not relevant here):
 **Things that are technically risky but acceptable trade-offs:**
 
 - `/healthz` is unauthenticated and returns the deployed git_sha
-  (deliberate — Railway needs it for health probes)
+  (deliberate — Railway needs it for health probes). Since #204 it also
+  answers the off-Railway status page's browser (CORS for exactly
+  `https://shigsdev.github.io`); same body, one more reader
 - Validator cookie can read all your tasks/goals for 90 days if
   leaked (read-only, no mutation, rotatable via `SECRET_KEY`)
 - Voice-action token can complete/move/cancel tasks for up to 90 days
