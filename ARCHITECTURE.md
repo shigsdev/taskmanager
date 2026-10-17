@@ -71,6 +71,7 @@ component is added, a data flow changes, or a security boundary shifts.
                            └───────────────┘    └──────────────────┘
 
         GitHub (shigsdev/taskmanager) ──push to main──► Railway auto-deploy
+        Flask (icloud_service) ──PROPFIND / REPORT, read-only──► iCloud CalDAV (#371)
 ```
 
 ---
@@ -81,6 +82,16 @@ component is added, a data flow changes, or a security boundary shifts.
   browser over HTTPS.
 - **Flask app** — the single web service. Hosts routes, auth, services, and
   scheduler. One process, gunicorn-served.
+- **iCloud Calendar reader** (#371, `icloud_service.py` + `icloud_api.py`) —
+  optional; on when `ICLOUD_USERNAME` + `ICLOUD_APP_PASSWORD` are set. Reads
+  the user's iCloud event calendars over CalDAV through
+  `egress.safe_call_dav` (PROPFIND / REPORT only, https to
+  `caldav.icloud.com` / `pN-caldav.icloud.com` only, no redirects —
+  ADR-041), parses the XML with `defusedxml` and the events with
+  `icalendar`, expands repeats with `recurring-ical-events`, and keeps them
+  in a per-worker in-memory cache (15 min per window, calendars 1 h).
+  Nothing is written to iCloud or the DB. `/healthz` `icloud` reports the
+  last read (warn, never fail).
 - **PostgreSQL** — Railway-managed. Stores tasks (with optional `url`,
   self-referential `parent_id` for one-level subtasks, `deleted_with_parent`
   for #433 — set on an open subtask that went to the Recycle Bin with its
@@ -184,6 +195,17 @@ component is added, a data flow changes, or a security boundary shifts.
   POSTed to Brevo's transactional email API over HTTPS via
   `egress.safe_call_api` (key in the `api-key` header; ADR-023/ADR-035).
   Falls back to authenticated SMTP when `BREVO_API_KEY` is unset.
+- **App → iCloud CalDAV** (#371): `/calendar` asks `GET
+  /api/icloud/events?start=&end=` (end inclusive, ≤70 days) for the grid's
+  window. On a cache miss `icloud_service.fetch_events` discovers the
+  calendars (PROPFIND current-user-principal → calendar-home-set →
+  Depth-1 list, VEVENT calendars only) and REPORTs a calendar-query per
+  calendar, with HTTP Basic auth (the app-specific password). Events come
+  back as `{uid, title, start, end, all_day, location, calendar, color}`
+  in `DIGEST_TZ`; `calendar.js` draws them above each day's tasks and opens
+  a read-only details dialog on click. Off → `{enabled: false}`; an iCloud
+  failure → 502 `{error, auth?}` (never 401/403) and the page says so while
+  the tasks draw as usual. `POST /api/icloud/refresh` clears the cache.
 - **Image scan**: browser uploads image + a `parse_as` discriminator
   (`tasks` or `goals`) → Flask holds the image in memory → Google Vision
   (server-side) → Claude API (server-side) parses into either task or
@@ -1280,6 +1302,10 @@ the code.
 /api/strength-forge/last-resistance               # GET: most-recent resistance per exercise — the "last used" reference on the print sheet + log form
 /api/strength-forge/flare                         # GET: current flare phase/day · POST: start a flare · PATCH: set phase {phase} · DELETE: mark resolved
 
+# icloud_api.py — #371 read-only iCloud Calendar events (CalDAV via egress.safe_call_dav)
+/api/icloud/events                                # GET ?start&end (inclusive, ≤70 days): {enabled, events} · 502 {error, auth?} on an iCloud failure
+/api/icloud/refresh                               # POST: forget the 15-min cache (rate-limited OUTBOUND_FETCH)
+
 # debug_api.py — used by scripts/validate_deploy.py --check-logs
 /api/debug/logs
 /api/debug/client-error
@@ -1304,6 +1330,7 @@ the code.
 - anthropic
 - gunicorn
 - python-dotenv (local dev only)
+- icalendar, recurring-ical-events, defusedxml (#371 iCloud Calendar reader)
 
 ---
 
@@ -1326,6 +1353,11 @@ the code.
   resolves the hostname and validates the resolved IP is not in any
   private or reserved range (127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12,
   192.168.0.0/16, 169.254.0.0/16) before making the outbound request.
+- **iCloud boundary** (#371, ADR-041): the Apple app-specific password
+  also opens iCloud Mail and Contacts. It lives only in env, is scrubbed
+  from logs (Basic auth #497 + its `xxxx-xxxx-xxxx-xxxx` shape), and is
+  sent only by `egress.safe_call_dav`: read methods only, https only, an
+  iCloud CalDAV host allowlist, no redirects. Events are never persisted.
 - **Air-gap boundary**: the user's work VDI cannot reach the app directly.
   The daily digest email to work Outlook is the only (one-way) bridge.
 

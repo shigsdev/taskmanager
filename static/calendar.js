@@ -238,6 +238,20 @@
         } catch (err) {
             console.error("Failed to load recurring previews:", err);
         }
+        // #371: the user's iCloud Calendar events, read-only. Like the
+        // previews, a failure never blocks the tasks: the bar above the
+        // grid says why and the cells draw without events. Off (no
+        // ICLOUD_* env vars) answers {enabled: false} and nothing shows.
+        let icloud = { enabled: false, events: [], error: "" };
+        try {
+            const r = await window.apiFetch(
+                `/api/icloud/events?start=${startIso}&end=${endIso}`
+            );
+            icloud = { enabled: !!(r && r.enabled), events: (r && r.events) || [], error: "" };
+        } catch (err) {
+            console.warn("Couldn't load iCloud events:", err && err.message);
+            icloud = { enabled: true, events: [], error: (err && err.message) || "iCloud didn't answer." };
+        }
         // PR29 (#100): tasks in tier=TODAY/TOMORROW without an explicit
         // due_date used to fall through to "Unscheduled" even though
         // they obviously belong on today/tomorrow's cell. Caused the
@@ -272,6 +286,10 @@
         // draggable (between days). Without this, /calendar had nothing
         // draggable on the page at all.
         _renderUnscheduled(unscheduled, later, endIso);
+        _renderIcloudBar(icloud);
+        const eventsByDate = window.icloudEventHelpers.bucketEventsByDay(
+            icloud.events, startIso, endIso,
+        );
         // #99 (PR34): bucket previews by fire_date for the per-cell render.
         const previewsByDate = {};
         for (const p of previews) {
@@ -325,6 +343,17 @@
                 header.appendChild(addBtn);
                 cell.appendChild(header);
 
+                // #371: iCloud events first -- they're fixed in time; the
+                // tasks under them can move. Not draggable, not tasks.
+                const dayEvents = eventsByDate[iso] || [];
+                if (dayEvents.length > 0) {
+                    const eList = document.createElement("ul");
+                    eList.className = "calendar-cell-events";
+                    eList.setAttribute("aria-label", "iCloud events");
+                    for (const ev of dayEvents) eList.appendChild(_makeEventLi(ev, iso));
+                    cell.appendChild(eList);
+                }
+
                 const list = document.createElement("ul");
                 list.className = "calendar-cell-tasks";
                 const items = byDate[iso] || [];
@@ -350,7 +379,7 @@
                     }
                     cell.appendChild(pList);
                 }
-                if (items.length === 0 && dayPreviews.length === 0) {
+                if (items.length === 0 && dayPreviews.length === 0 && dayEvents.length === 0) {
                     const empty = document.createElement("div");
                     empty.className = "calendar-cell-empty";
                     empty.textContent = "Drop here · click to add";
@@ -697,7 +726,112 @@
         return box;
     }
 
+    // #371: one line per iCloud event in a day cell. Opens a read-only
+    // details dialog (click, Enter or Space); never drags, never edits.
+    function _makeEventLi(ev, dayIso) {
+        const H = window.icloudEventHelpers;
+        const li = document.createElement("li");
+        li.className = "calendar-event-item";
+        if (ev.all_day) li.classList.add("calendar-event-allday");
+        const color = H.safeColor(ev.color);
+        if (color) li.style.borderLeftColor = color;
+        if (!ev.all_day) {
+            const time = document.createElement("span");
+            time.className = "calendar-event-time";
+            time.textContent = H.eventTimeLabelOn(ev, dayIso);
+            li.appendChild(time);
+            li.appendChild(document.createTextNode(" "));
+        }
+        li.appendChild(document.createTextNode(ev.title));
+        li.title = ev.title + " — " + H.eventWhenText(ev) + " (iCloud)";
+        li.addEventListener("click", function (e) {
+            e.stopPropagation();   // the cell's own click would open a new task
+            _openEventDetails(ev);
+        });
+        window.panelKeys.makeOpener(li, "iCloud event: " + (H.eventTimeLabelOn(ev, dayIso) + " " + ev.title).trim(),
+            function () { li.click(); });
+        return li;
+    }
+
+    function _openEventDetails(ev) {
+        const overlay = document.getElementById("calendarEventOverlay");
+        if (!overlay) return;
+        document.getElementById("calendarEventTitle").textContent = ev.title;
+        const dl = document.getElementById("calendarEventDetails");
+        dl.replaceChildren();
+        for (const row of window.icloudEventHelpers.eventDetailRows(ev)) {
+            const dt = document.createElement("dt");
+            dt.textContent = row.label;
+            const dd = document.createElement("dd");
+            dd.textContent = row.value;
+            dl.appendChild(dt);
+            dl.appendChild(dd);
+        }
+        overlay.style.display = "flex";
+    }
+
+    function _closeEventDetails() {
+        const overlay = document.getElementById("calendarEventOverlay");
+        if (overlay) overlay.style.display = "none";
+    }
+
+    // #371: the strip above the grid — present only when iCloud is set up.
+    // Built once and updated in place, so the 60s poll's re-render never
+    // takes focus off ↻ Refresh.
+    function _renderIcloudBar(icloud) {
+        const host = document.getElementById("calendarIcloud");
+        if (!host) return;
+        host.hidden = !icloud.enabled;
+        if (!icloud.enabled) return;
+        if (!host.firstChild) {
+            const label = document.createElement("span");
+            label.className = "calendar-icloud-label";
+            label.textContent = "Showing your iCloud Calendar (read-only)";
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "btn btn-sm calendar-icloud-refresh";
+            btn.id = "calendarIcloudRefresh";
+            btn.textContent = "↻ Refresh iCloud";
+            btn.addEventListener("click", async function () {
+                if (btn.disabled) return;   // a double click asks Apple once
+                btn.disabled = true;
+                btn.textContent = "Refreshing…";
+                try {
+                    await window.apiFetch("/api/icloud/refresh", { method: "POST" });
+                    await renderCalendar();
+                } catch (err) {
+                    _renderIcloudBar({ enabled: true, events: [],
+                        error: (err && err.message) || "iCloud didn't answer." });
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = "↻ Refresh iCloud";
+                }
+            });
+            const msg = document.createElement("p");
+            msg.className = "calendar-icloud-error";
+            msg.id = "calendarIcloudError";
+            msg.setAttribute("role", "status");
+            host.appendChild(label);
+            host.appendChild(btn);
+            host.appendChild(msg);
+        }
+        const msg = document.getElementById("calendarIcloudError");
+        msg.textContent = icloud.error
+            ? "Couldn't show iCloud events: " + icloud.error + " Your tasks are shown as usual."
+            : "";
+        msg.hidden = !icloud.error;
+    }
+
     function init() {
+        // #371: the read-only event details dialog.
+        const evOverlay = document.getElementById("calendarEventOverlay");
+        if (evOverlay) {
+            document.getElementById("calendarEventClose")
+                .addEventListener("click", _closeEventDetails);
+            evOverlay.addEventListener("click", function (e) {
+                if (e.target === evOverlay) _closeEventDetails();
+            });
+        }
         // #270 (2026-05-31): the embedded detail panel funnels every
         // mutation through app.js loadTasks(); register renderCalendar as the
         // host refresh hook so saving/completing/cancelling/deleting a task

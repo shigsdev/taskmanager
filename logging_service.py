@@ -88,6 +88,7 @@ _SCRUB_NAMED_REPLACEMENTS: dict[str, str] = {
     "bearer":     "Bearer [REDACTED]",
     "authz":      "authorization: [REDACTED]",
     "session":    "session=[REDACTED]",
+    "apppw":      "[REDACTED:APP_PASSWORD]",
     "email":      "[REDACTED:EMAIL]",
 }
 
@@ -110,6 +111,9 @@ _SCRUB_COMBINED_RE: re.Pattern[str] = re.compile(
     # one-word fallback ate "Basic" and left the base64 user:password.
     r"|(?P<authz>authorization['\"]?\s*[:=]\s*['\"]?(?:[A-Za-z][A-Za-z0-9_-]*\s+[^'\"\s]+|[^'\"\s]+))"
     r"|(?P<session>session=[A-Za-z0-9._\-]+)"
+    # #371: an Apple app-specific password (ICLOUD_APP_PASSWORD), four
+    # lowercase groups of four. Case-sensitive on purpose, like Apple's.
+    r"|(?P<apppw>(?-i:\b[a-z]{4}-[a-z]{4}-[a-z]{4}-[a-z]{4}\b))"
     r"|(?P<qs_key>(?:[?&](?:api_?key|key|token)=))(?P<qs_val>[^&\s]+)"
     r"|(?P<email>[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})",
     re.IGNORECASE,

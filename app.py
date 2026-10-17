@@ -21,6 +21,7 @@ import auth_api
 import debug_api
 import digest_api
 import goals_api
+import icloud_api
 import import_api
 import inbox_categorize_api
 import planner_api
@@ -247,6 +248,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(settings_api.bp)
     app.register_blueprint(utilities_api.bp)
     app.register_blueprint(strength_forge_api.bp)  # #282
+    app.register_blueprint(icloud_api.bp)  # #371: read-only iCloud Calendar events
     app.register_blueprint(debug_api.bp)
     app.register_blueprint(auth_api.bp)
     app.register_blueprint(voice_api.bp)

@@ -5,7 +5,7 @@
  * Bump CACHE_VERSION when deploying new static files.
  */
 
-var CACHE_VERSION = "v356";
+var CACHE_VERSION = "v357";
 var CACHE_NAME = "taskmanager-" + CACHE_VERSION;
 
 // HTML is intentionally NOT pre-cached (see fetch handler below — Bug #56).
@@ -27,6 +27,7 @@ var APP_SHELL = [
     "/static/projects.js",
     "/static/calendar.js",
     "/static/calendar_bucket_helpers.js",
+    "/static/icloud_event_helpers.js",
     "/static/project_task_drag_helpers.js",
     "/static/goal_project_drag_helpers.js",
     "/static/goal_archive_helpers.js",

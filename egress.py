@@ -20,6 +20,8 @@ This module exposes two functions that bake in safe defaults:
   hostnames are hard-coded in the codebase. Skips SSRF checks (the
   destination is trusted and constant) but enforces timeout +
   consistent error shape.
+- :func:`safe_call_dav` — read-only WebDAV (PROPFIND / REPORT) to a
+  caller-allowlisted https host, no redirects (#371, iCloud Calendar).
 
 See ADR-006 for the SSRF design decisions, ADR-007 for the
 key-in-header rule.
@@ -30,6 +32,7 @@ import ipaddress
 import socket
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
@@ -40,7 +43,15 @@ import requests
 
 class EgressError(RuntimeError):
     """Raised by egress functions on any failure. Message is safe to
-    surface to end users — never includes the API key or full URL."""
+    surface to end users — never includes the API key or full URL.
+
+    ``status`` is the upstream HTTP status when there was one (#371: the
+    iCloud caller tells a revoked password, 401/403, from an outage), else
+    None."""
+
+    def __init__(self, message: str = "", *, status: int | None = None):
+        super().__init__(message)
+        self.status = status
 
 
 # --- User-URL fetch (SSRF-defended) ----------------------------------------
@@ -265,3 +276,59 @@ def safe_call_api(
         return resp.json()
     except ValueError as e:
         raise EgressError(f"{vendor} API returned invalid JSON") from e
+
+
+# --- Read-only WebDAV (iCloud Calendar) --------------------------------------
+
+DAV_READ_METHODS = frozenset({"PROPFIND", "REPORT"})
+
+
+def safe_call_dav(
+    *,
+    method: str,
+    url: str,
+    headers: dict[str, str],
+    body: str,
+    vendor: str,
+    host_allowed: Callable[[str], bool],
+    timeout_sec: float = 10.0,
+) -> str:
+    """Send a read-only WebDAV request; return the response body as text.
+
+    #371 (ADR-041): the iCloud Calendar reader. Its credential (an Apple
+    app-specific password) also opens the user's iCloud Mail and Contacts,
+    so this path is stricter than :func:`safe_call_api`:
+
+      - PROPFIND / REPORT only, so nothing here can write to the account;
+      - https only, and ``host_allowed(hostname)`` must say yes. The caller
+        owns the allowlist because iCloud hands back a per-account
+        partition host (``p42-caldav.icloud.com``) that isn't a constant;
+      - redirects are never followed (a 3xx is an error), so the
+        credential can't be walked to another host;
+      - the error message names the vendor and the status, never the URL
+        (it holds the account number) or a header.
+
+    Raises:
+        EgressError: with ``.status`` set to the HTTP status when the
+            server answered, None for a refusal or a network failure.
+    """
+    if method not in DAV_READ_METHODS:
+        raise EgressError(f"{vendor}: only read requests are allowed")
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not host_allowed(parsed.hostname or ""):
+        raise EgressError(f"{vendor}: refused a request to a host it doesn't trust")
+    try:
+        resp = requests.request(
+            method, url, headers=headers, data=body.encode("utf-8"),
+            timeout=timeout_sec, allow_redirects=False,
+        )
+    except requests.RequestException as e:
+        raise EgressError(f"{vendor} network error: {type(e).__name__}") from e
+    if 300 <= resp.status_code < 400:
+        raise EgressError(
+            f"{vendor} redirected the request (HTTP {resp.status_code}); not followed",
+            status=resp.status_code,
+        )
+    if not resp.ok:
+        raise EgressError(f"{vendor} returned HTTP {resp.status_code}", status=resp.status_code)
+    return resp.text

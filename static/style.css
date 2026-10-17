@@ -758,6 +758,70 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     font-style: italic;
     opacity: 0.75;
 }
+
+/* #371: the user's iCloud Calendar events on /calendar. Read-only, so no
+   grab cursor and no drag; a solid left stripe in the calendar's own color
+   (set inline from a validated #RRGGBB, else this sage) tells them from
+   tasks (filled) and recurring previews (dashed). */
+.calendar-cell-events {
+    list-style: none;
+    margin: 0 0 4px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.calendar-event-item {
+    font-size: 0.75rem;
+    color: var(--cream);
+    background: var(--surface-sunk);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--sage);
+    padding: 2px 6px;
+    border-radius: 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.calendar-event-item:hover { background: var(--slate-300); }
+.calendar-event-time {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--cream-dim);
+}
+.calendar-icloud {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 10px;
+    font-size: 0.85rem;
+    color: var(--cream-dim);
+}
+.calendar-icloud[hidden],
+.calendar-icloud-error[hidden] { display: none; }
+.calendar-icloud-error {
+    flex-basis: 100%;
+    margin: 0;
+    color: var(--cream);
+    border-left: 3px solid var(--rust);
+    padding: 4px 8px;
+    overflow-wrap: anywhere;
+}
+.calendar-event-details {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 6px 12px;
+    margin: 0 0 12px;
+}
+.calendar-event-details dt { color: var(--cream-dim); font-size: 0.85rem; }
+.calendar-event-details dd { margin: 0; overflow-wrap: anywhere; }
+.calendar-event-overlay .modal h3 { overflow-wrap: anywhere; }
+.calendar-event-note {
+    font-size: 0.8rem;
+    color: var(--cream-faint);
+}
 @media (max-width: 700px) {
     /* #217 (2026-05-24): D-B1 — same minmax(0, ...) clamp as the
        desktop selector above. Without this, a 2-col mobile row with
@@ -7383,6 +7447,8 @@ table.quality-gates code {
     /* A task line in a calendar cell: 12px text, so 38px of line box plus
        the 3px top and bottom padding it already has. */
     .calendar-cell-tasks li.calendar-task-link { line-height: 38px; }
+    .calendar-event-item { line-height: 38px; }                 /* #371 */
+    .calendar-icloud-refresh { min-height: 44px; }
 
     .reflection-recently-deleted summary { padding: 12px 0; }
 

@@ -2304,6 +2304,37 @@ Skip this line (too short)</pre>
                 <li><strong>Click an empty part of a day cell</strong>, or the <strong>+</strong> next to its date, to open the full new-task panel pre-dated to that day, so you can set every field before it's created — without leaving the calendar.</li>
             </ul>
 
+            <h3 id="icloud-calendar">Your iCloud Calendar on /calendar</h3>
+            <p>
+                If iCloud is set up (below), your iCloud Calendar events show
+                on the grid next to your tasks, <strong>read-only</strong>.
+                The app never changes, adds or deletes anything in iCloud,
+                and never saves your events.
+            </p>
+            <ul>
+                <li>Each event sits at the top of its day, above that day's tasks: its start time, then its title. An all-day event shows just the title, and one that runs several days shows on each of them. A timed event that runs past midnight shows its start time on the first day and "until" its end time on the last (a red-eye reads "10:00 PM" on one day and "until 6:30 AM" on the next). A colored stripe on the left matches the calendar's color in iCloud.</li>
+                <li>Events come from <strong>every</strong> iCloud calendar that holds events. Reminders lists aren't included.</li>
+                <li>Times are shown in the app's time zone (the same one the digest uses), wherever the event was created.</li>
+                <li><strong>Click an event</strong> (or Tab to it and press Enter) to see its details: when, where, and which calendar. Close it with Close or Escape. To change an event, use the Calendar app.</li>
+                <li>Events can't be dragged and aren't tasks, so they don't count anywhere tasks do.</li>
+                <li>The app keeps what it read from iCloud for 15 minutes before asking again. If you've just added an event, press <strong>↻ Refresh iCloud</strong> above the grid to see it now.</li>
+                <li>If iCloud can't be reached, or Apple refuses the password, a line above the grid says so and your tasks show as usual.</li>
+            </ul>
+            <p>
+                <strong>Setting it up</strong> (on the server, once): make an
+                <em>app-specific password</em> at account.apple.com
+                (Sign-In and Security → App-Specific Passwords; your Apple ID
+                needs two-factor authentication), then set
+                <code>ICLOUD_USERNAME</code> to your Apple ID email and
+                <code>ICLOUD_APP_PASSWORD</code> to that password. Without
+                both, the calendar looks exactly as it did before.
+                That password can also read your iCloud Mail and Contacts. The
+                app only ever uses it to read calendars, but if it might have
+                leaked, revoke it at account.apple.com. Changing your Apple
+                password revokes all of them; then make a new one and update
+                <code>ICLOUD_APP_PASSWORD</code>.
+            </p>
+
             <h3>Auto-scroll while dragging</h3>
             <p>
                 When you drag a card near the top or bottom edge of

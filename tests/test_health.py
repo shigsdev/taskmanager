@@ -347,6 +347,53 @@ class TestDigestLastSendCheck:
         assert "digest_last_send" in report["checks"]
 
 
+class TestIcloudCheck:
+    """#371: the iCloud Calendar reader shows up on /healthz, but a revoked
+    app password or an Apple outage is a warn, never a fail -- it must not
+    turn a deploy RED. It reads the last fetch's outcome; no network call."""
+
+    @pytest.fixture(autouse=True)
+    def _reset(self, monkeypatch):
+        import icloud_service
+        monkeypatch.setenv("ICLOUD_USERNAME", "me@icloud.com")
+        monkeypatch.setenv("ICLOUD_APP_PASSWORD", "abcd-efgh-ijkl-mnop")
+        icloud_service._last.update(ok=None, at=None, error=None)
+        yield icloud_service._last
+        icloud_service._last.update(ok=None, at=None, error=None)
+
+    def test_skipped_when_not_configured(self, monkeypatch):
+        monkeypatch.delenv("ICLOUD_APP_PASSWORD")
+        assert health.check_icloud().startswith("skipped")
+
+    def test_skipped_before_the_first_read(self):
+        result = health.check_icloud()
+        assert result.startswith("skipped")
+        assert "no read yet" in result
+
+    def test_ok_after_a_good_read(self, _reset):
+        _reset.update(ok=True, at="2026-10-17T15:00:00", error=None)
+        assert health.check_icloud() == "ok: last read 2026-10-17T15:00:00"
+
+    def test_warn_on_a_refused_password(self, _reset):
+        _reset.update(ok=False, at="2026-10-17T15:00:00", error="auth")
+        result = health.check_icloud()
+        assert result.startswith("warn:")
+        assert "app-specific password" in result
+        assert "abcd-efgh-ijkl-mnop" not in result
+
+    def test_warn_on_a_failed_read(self, _reset):
+        _reset.update(ok=False, at="2026-10-17T15:00:00", error="fetch")
+        result = health.check_icloud()
+        assert result.startswith("warn:")
+        assert not result.startswith("fail")
+
+    def test_healthz_report_includes_icloud_key(self, app, db):
+        with app.app_context():
+            report = health.run_health_checks(app, db)
+        assert "icloud" in report["checks"]
+        assert not report["checks"]["icloud"].startswith("fail")
+
+
 class TestDigestHeartbeat:
     """Heartbeat fallback path — for non-scheduler Gunicorn workers."""
 

@@ -155,6 +155,7 @@ EXPECTED_STATIC_FILES = (
     "static/projects.js",
     "static/calendar.js",
     "static/calendar_bucket_helpers.js",  # #231 — Jest-importable bucket + subtask filter
+    "static/icloud_event_helpers.js",  # #371 — iCloud events: bucket by day, labels
     "static/project_task_drag_helpers.js",  # #344 — task-drag decision + hit test
     "static/goal_project_drag_helpers.js",  # #343 — project-drag decision + side effects
     "static/goal_archive_helpers.js",  # #349 — archive / unarchive + guarded hard delete
@@ -471,6 +472,31 @@ def check_digest_last_send() -> str:
     return f"warn: last send FAILED at {at}: {rec.get('error', '')}"
 
 
+def check_icloud() -> str:
+    """Report the outcome of this worker's last iCloud Calendar read (#371).
+
+    Reads ``icloud_service.last_status()`` only: no call to Apple, so a
+    /healthz poll stays fast and never spends the user's credentials.
+    ``warn`` (never ``fail``) on purpose, like digest_last_send: a revoked
+    app-specific password or an iCloud outage is an external problem that
+    must not flip a deploy RED. Each Gunicorn worker keeps its own status,
+    so a poll may land on a worker that hasn't read yet ("no read yet").
+    """
+    import icloud_service
+
+    if not icloud_service.configured():
+        return "skipped: ICLOUD_USERNAME / ICLOUD_APP_PASSWORD not set"
+    st = icloud_service.last_status()
+    if st.get("ok") is None:
+        return "skipped: no read yet on this worker"
+    at = st.get("at") or "?"
+    if st["ok"]:
+        return f"ok: last read {at}"
+    if st.get("error") == "auth":
+        return f"warn: iCloud refused the app-specific password at {at}"
+    return f"warn: last iCloud read failed at {at}"
+
+
 def check_static_assets() -> str:
     """Verify critical static files exist on disk in this container."""
     missing = [
@@ -691,6 +717,7 @@ def run_health_checks(app: Any, db: Any) -> dict:
         "digest": _safe_call("digest", check_digest),
         "digest_last_send": _safe_call("digest_last_send", check_digest_last_send),
         "static_assets": _safe_call("static_assets", check_static_assets),
+        "icloud": _safe_call("icloud", check_icloud),  # #371
         "enum_coverage": _safe_call("enum_coverage", check_enum_coverage, db),
         "tls_expiry": _safe_call("tls_expiry", check_tls_expiry),
     }

@@ -40,3 +40,10 @@ pytest-cov==7.0.0
 # Pure Python (no native build) so it can't break the Railway image.
 # Only ever reads bytes already in memory — nothing is written to disk.
 pypdf==6.19.0
+# #371 (2026-10-17): read-only iCloud Calendar events over CalDAV.
+# icalendar parses the VEVENTs, recurring-ical-events expands repeats
+# (RRULE / EXDATE / RECURRENCE-ID) in the window, defusedxml parses the
+# WebDAV XML without entity expansion or external entities. Pure Python.
+icalendar==7.3.0
+recurring-ical-events==3.8.2
+defusedxml==0.7.1

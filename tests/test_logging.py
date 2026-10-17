@@ -113,6 +113,22 @@ class TestScrubSensitive:
         # that says "Basic" stays readable (the quiet case).
         assert scrub_sensitive("Basic setup finished") == "Basic setup finished"
 
+    def test_strips_icloud_app_specific_password(self):
+        # #371: the iCloud Calendar reader's ICLOUD_APP_PASSWORD (Apple's
+        # xxxx-xxxx-xxxx-xxxx shape) also opens iCloud Mail and Contacts.
+        result = scrub_sensitive("config ICLOUD_APP_PASSWORD=abcd-efgh-ijkl-mnop loaded")
+        assert "abcd-efgh-ijkl-mnop" not in result
+        assert "[REDACTED:APP_PASSWORD]" in result
+
+    @pytest.mark.parametrize("text", [
+        "re-run the follow-up check",       # hyphenated prose, not four 4s
+        "abcd-efgh-ijkl",                   # three groups only
+        "abcde-fghi-jklm-nopq",             # a 5-letter group
+        "task 2026-10-17-1234",             # digits
+    ])
+    def test_four_letter_groups_only(self, text):
+        assert scrub_sensitive(text) == text
+
     def test_strips_session_cookie(self):
         result = scrub_sensitive("Cookie: session=eyJ1c2VyIjoiYm9iIn0.abc")
         assert "eyJ1c2VyIjoiYm9iIn0.abc" not in result

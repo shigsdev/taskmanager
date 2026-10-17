@@ -28,6 +28,9 @@
     {# #345: the outlook switch. Populated by calendar.js from
        CALENDAR_WEEK_OPTIONS so the options have one source of truth. #}
     <div class="calendar-range" id="calendarRange"></div>
+    {# #371: iCloud Calendar strip (Refresh + any failure), filled by
+       calendar.js; stays hidden unless ICLOUD_* is set up. #}
+    <div class="calendar-icloud" id="calendarIcloud" hidden></div>
     <div class="calendar-layout">
         <div class="calendar-grid" id="calendarGrid"></div>
         <aside class="calendar-unscheduled" id="calendarUnscheduled"></aside>
@@ -38,6 +41,18 @@
    navigating to the tasks board. app.js detects the absence of a tier
    board and wires up just the panel; calendar.js drives the refresh. #}
 {% include "_task_detail_panel.html" %}
+{# #371: read-only details of an iCloud event. .modal-overlay gives it
+   panel_keys' Escape / Tab trap / focus return (#406, #419). #}
+<div class="modal-overlay calendar-event-overlay" id="calendarEventOverlay" style="display:none">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="calendarEventTitle">
+        <h3 id="calendarEventTitle"></h3>
+        <dl class="calendar-event-details" id="calendarEventDetails"></dl>
+        <p class="calendar-event-note">From your iCloud Calendar. To change it, use the Calendar app.</p>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-sm" id="calendarEventClose" data-panel-close>Close</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -52,5 +67,6 @@
 <script src="{{ url_for('static', filename='parse_capture.js') }}"></script>
 <script src="{{ url_for('static', filename='capture.js') }}"></script>
 <script src="{{ url_for('static', filename='calendar_bucket_helpers.js') }}"></script>
+<script src="{{ url_for('static', filename='icloud_event_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='calendar.js') }}"></script>
 {% endblock %}

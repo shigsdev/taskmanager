@@ -875,6 +875,14 @@ Report.
      commit matches /healthz's git_sha, and no page scrolls sideways; served
      locally (python -m http.server in status/) it reads "Can't reach the
      app" (prod allows only the Pages origin). Help → If the app won't load.
+     #371: on /calendar with /api/icloud/events stubbed (the dev server has
+     no ICLOUD_*): events sit above each day's tasks with their time and the
+     calendar's color stripe, a two-day all-day event shows on both days,
+     click (or Enter) opens the read-only details (When / Where / Calendar)
+     and Escape puts focus back on the line; a 502 says "Couldn't show
+     iCloud events: …" above the grid and the tasks still draw; ↻ Refresh
+     iCloud POSTs once. Unstubbed, there is no strip and no event (the quiet
+     case) (calendar_icloud_events.spec.js).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -1105,6 +1113,9 @@ Report.
   Calendar: + adds to a section PASS         Calendar: + adds to a section PASS
   Goals: BAU fits both sides   PASS          Goals: BAU fits both sides   PASS
   Status page: reads prod health PASS        Status page: reads prod health PASS
+  Calendar: iCloud events + details PASS     Calendar: iCloud events + details PASS
+  Calendar: iCloud failure says so PASS      Calendar: iCloud failure says so PASS
+  Calendar: no iCloud, no strip  PASS        Calendar: no iCloud, no strip  PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
@@ -1613,6 +1624,9 @@ This app is a **single-user personal tool** with:
   `SECRET_KEY` rotation (all tokens) or `flask revoke-voice-action-token
   <jti>` (one token). The scope-rejection matrix in
   `tests/test_voice_action_token.py` is the load-bearing guard.
+- An optional Apple **app-specific password** (`ICLOUD_APP_PASSWORD`,
+  #371) for the read-only iCloud Calendar reader on `/calendar` — see the
+  trade-off below
 - External API keys for Google (Vision, OAuth), OpenAI (Whisper),
   Anthropic (Claude); a `BREVO_API_KEY` (Brevo transactional email API)
   for the daily digest, sent over HTTPS via `egress.safe_call_api`
@@ -1660,6 +1674,14 @@ about these — they're not relevant here):
   `https://shigsdev.github.io`); same body, one more reader
 - Validator cookie can read all your tasks/goals for 90 days if
   leaked (read-only, no mutation, rotatable via `SECRET_KEY`)
+- `ICLOUD_APP_PASSWORD` (#371, ADR-041) is an Apple app-specific password
+  that also opens the user's iCloud Mail and Contacts — the widest
+  credential the app holds. Accepted because it is optional (unset = off),
+  env-only, scrubbed from logs (Basic auth + its `xxxx-xxxx-xxxx-xxxx`
+  shape), and sent only by `egress.safe_call_dav`: PROPFIND / REPORT only,
+  https to iCloud's CalDAV hosts only, no redirects. Kill-switch: revoke it
+  at account.apple.com. The read-only validator cookie can read calendar
+  events via `GET /api/icloud/events`.
 - Voice-action token can complete/move/cancel tasks for up to 90 days
   if leaked (ADR-034) — accepted because the action whitelist is tiny
   (no read of unrelated data, no delete, no settings/exports, no auth

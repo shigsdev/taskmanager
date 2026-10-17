@@ -13,6 +13,9 @@ work and personal life, with a regulated (air-gapped) work environment.
 - **Day-strip + Calendar** — Mon-Sat day strip above Today + dedicated `/calendar`
   page; drop a task on a day cell to set its `due_date` (tier auto-routes to
   match). Auto-scrolls the page when dragging near the viewport edge.
+  Optionally shows your iCloud Calendar events on `/calendar`, read-only, with
+  a details pop-up and a Refresh button (#371; set `ICLOUD_USERNAME` +
+  `ICLOUD_APP_PASSWORD`).
 - **Due-date → tier auto-route** — setting a `due_date` automatically moves the
   task to the matching tier (today → Today, this week → This Week, etc.).
   A task created with a due date never lands in Inbox, and tasks created
@@ -150,6 +153,8 @@ All secrets live in the Railway dashboard — never committed to git.
 | `DIGEST_FROM_EMAIL` | Sender email (defaults to `SMTP_USERNAME`; Gmail requires the authenticated account or a verified alias) |
 | `DIGEST_TIME` | Time of day digest is sent in 24-hour `HH:MM` format (default `07:00`). Malformed values (e.g. `7am`, `07:00:00`, empty) fall back to `07:00` with a WARNING log + `digest_scheduled_at.fell_back: true` on `/healthz` (#179). |
 | `DIGEST_TZ` | IANA timezone for the digest scheduler (default `America/New_York`). Despite the name this is the app's single answer to "what timezone is the user in?" — `utils.local_today_date` / `local_date_from_dt` / `local_datetime_from_dt` all read it, so it also drives recurring-spawn previews, the review stale-cutoff, calendar bucketing, and how a reflection is dated in prompts and synthesis headers (#340). |
+| `ICLOUD_USERNAME` | Optional (#371) — your Apple ID email. With `ICLOUD_APP_PASSWORD`, `/calendar` shows your iCloud Calendar events, read-only (CalDAV PROPFIND/REPORT to `*.icloud.com`; nothing is written to iCloud or stored in the DB; a 15-min in-memory cache). Unset = no iCloud strip and no events; `/healthz` `icloud` is `skipped:`. |
+| `ICLOUD_APP_PASSWORD` | Optional (#371) — an Apple **app-specific** password (`xxxx-xxxx-xxxx-xxxx`, made at account.apple.com → Sign-In and Security → App-Specific Passwords; needs two-factor). It also opens your iCloud Mail and Contacts, so it is env-only, scrubbed from logs, and sent only to iCloud's CalDAV hosts over https (ADR-041). Revoke it at account.apple.com any time; changing your Apple password revokes them all. A refused password shows on `/calendar` and as `/healthz` `icloud: warn:`. |
 | `APP_URL` | Public base URL of the deployed app, embedded as a clickable link in the digest email body. Optional — link is omitted if unset. |
 | `BREVO_API_KEY` | **Optional, GitHub-Actions secret** — used by the recurring audit/backup workflow scripts (`backup_to_github.py`, `check_*.py`, `restore_drill.py`) to email failure/finding alerts via the Brevo transactional HTTP API (`api-key` header, `api.brevo.com/v3/smtp/email`). This is a **GitHub Actions secret**, separate from the app's Railway `BREVO_API_KEY` — add it under Settings → Secrets and variables → Actions. Replaced `SENDGRID_API_KEY` (retired free tier) in #298. NOT used by the app's daily digest (which also sends via Brevo — ADR-035). Unset = those workflows still run, just no alert email. |
 | `GOOGLE_VISION_API_KEY` | Google Cloud Vision API key for OCR |
