@@ -861,6 +861,11 @@ Report.
      back on that title; Space opens it too; Tab from the title reaches the
      card's ✓. Same on /completed. A click / tap still opens the card (the
      quiet case) (card_keyboard_open.spec.js).
+     #293: on /calendar each Unscheduled section (Inbox, This Week · no day,
+     Next Week · no day, Backlog & Freezer) has a + on its header: it opens a
+     new task whose Section is that one (Backlog for Backlog & Freezer) with
+     no date, and Save files it there undated. A day's + still dates the
+     task (the quiet case) (calendar_group_add.spec.js).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -1088,6 +1093,7 @@ Report.
   Archived links: one label    PASS          Archived links: one label    PASS
   Pop-ups: focus in and back   PASS          Pop-ups: focus in and back   PASS
   Cards: title opens by keyboard PASS        Cards: title opens by keyboard PASS
+  Calendar: + adds to a section PASS         Calendar: + adds to a section PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

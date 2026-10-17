@@ -578,6 +578,23 @@
         const label = document.createElement("div");
         label.className = "calendar-unscheduled-group";
         label.textContent = `${group.label} (${group.tasks.length})`;
+        // #293: add a task straight into this section, undated — the day
+        // cells' #454 "+" for the side panel. Backlog & Freezer files to
+        // Backlog (its drop tier).
+        const addBtn = document.createElement("button");
+        addBtn.type = "button";
+        addBtn.className = "calendar-cell-add calendar-group-add";
+        addBtn.textContent = "+";
+        addBtn.title = "Add a task to " + (window.tierLabel
+            ? window.tierLabel(group.dropTier) : group.dropTier);
+        addBtn.setAttribute("aria-label", addBtn.title);
+        addBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            if (typeof taskDetailOpenNew === "function") {
+                taskDetailOpenNew("", "work", "", group.dropTier);
+            }
+        });
+        label.appendChild(addBtn);
         zone.appendChild(label);
 
         const list = document.createElement("ul");

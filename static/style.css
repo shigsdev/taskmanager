@@ -659,6 +659,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     border-bottom: 1px solid var(--rule-soft);
 }
 .calendar-unscheduled-group:first-of-type { margin-top: 2px; }
+/* #293: the group's + Add on the right, like a day cell's (#454). */
+.calendar-unscheduled-zone .calendar-unscheduled-group {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
 /* #309: each Unscheduled tier group is a drop TARGET, not just a label.
    Give it a padded, transparent-bordered box so an empty tier ("Next
    Week · no day (0)") is still a visible, droppable area, and the hover

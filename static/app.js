@@ -2819,13 +2819,14 @@ async function taskDetailRestore() {
 // #270: optional prefillDue (ISO yyyy-mm-dd) — the /calendar empty-cell
 // click seeds the date of the cell that was clicked so the new task lands
 // on that day without leaving the calendar.
-function taskDetailOpenNew(prefillTitle, prefillType, prefillDue) {
+function taskDetailOpenNew(prefillTitle, prefillType, prefillDue, prefillSection) {
     // #386: a pre-filled date (the /calendar empty-cell click) sets no
     // "change" event, so pick the date's section up front — otherwise
     // the dropdown shows Inbox for a task the server will file by date.
-    var prefillTier = "inbox";
+    // #293: /calendar's Unscheduled "+" passes the section itself, undated.
+    var prefillTier = prefillSection || "inbox";
     if (prefillDue && window.tierHelpers) {
-        prefillTier = window.tierHelpers.tierForFiledDate(prefillDue) || "inbox";
+        prefillTier = window.tierHelpers.tierForFiledDate(prefillDue) || prefillTier;
     }
     taskDetailOpen({
         id: "",
