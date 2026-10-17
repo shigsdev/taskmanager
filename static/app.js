@@ -1399,6 +1399,7 @@ function taskCardEl(task) {
     title.className = "task-title";
     title.textContent = task.title;
     title.title = task.title;  // #85: full text on hover when truncated
+    taskCardTitleOpener(title, task);   // #295
     body.appendChild(title);
 
     const meta = document.createElement("div");
@@ -1585,6 +1586,20 @@ function taskCardEl(task) {
     card.addEventListener("click", () => taskDetailOpen(task));
 
     return card;
+}
+
+// #295: a board card opened only on a click — no keyboard way to open a
+// task from the board, /tier/<name> or /completed. Its title becomes the
+// keyboard's button (#454's makeOpener: a Tab stop, Enter / Space opens),
+// not the whole card, which holds its own ✓ / Move / quick buttons and
+// mustn't be a button around buttons. The task id lets #377 find the title
+// again after a save re-renders the list, and hand focus back to it.
+function taskCardTitleOpener(title, task) {
+    title.dataset.taskId = task.id;
+    if (window.panelKeys) {
+        window.panelKeys.makeOpener(title, `Open task: ${task.title}`,
+            () => taskDetailOpen(task));
+    }
 }
 
 async function taskCardAddSubtask(task) {
@@ -2405,6 +2420,7 @@ function renderCompletedList() {
         title.className = "task-title completed-title";
         title.textContent = task.title;
         title.title = task.title;  // #85
+        taskCardTitleOpener(title, task);   // #295
         card.appendChild(title);
 
         const meta = document.createElement("div");
@@ -2548,6 +2564,7 @@ function renderCancelledList() {
         title.className = "task-title";
         title.textContent = task.title;
         title.title = task.title;  // #85
+        taskCardTitleOpener(title, task);   // #295
         card.appendChild(title);
 
         if (task.cancellation_reason) {
@@ -3081,7 +3098,7 @@ function taskDetailClose() {
 
 // --- #377: focus into the panel and back --------------------------------------
 // The panel remembers what had focus when it opened (a #372 row on /goals or
-// /projects; board cards can't take focus, #295) and hands focus back on
+// /projects, or a board card's title since #295) and hands focus back on
 // close. Panel-host pages re-render their lists after a save, replacing that
 // element, so the task id and the nearest container with an id are kept too:
 // the row is found again by [data-task-id] inside that container.
