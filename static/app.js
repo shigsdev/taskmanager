@@ -1410,16 +1410,20 @@ function taskCardEl(task) {
     typeBadge.textContent = task.type;
     meta.appendChild(typeBadge);
 
-    // Project badge (work tasks)
-    if (task.project_id) {
+    // Project badge. #361: a link to an archived project used to vanish
+    // here (allProjects is active-only) while its picker said
+    // "(archived)". Now it shows, marked, by the one rule (linkLabel).
+    // allProjects itself stays active-only (#129's other readers).
+    const projLink = window.archivedOptionHelpers.linkLabel(
+        task.project_id, allProjects.concat(archivedProjects), (p) => p.name);
+    if (projLink) {
         const project = allProjects.find((p) => p.id === task.project_id);
-        if (project) {
-            const projBadge = document.createElement("span");
-            projBadge.className = "badge badge-project";
-            if (project.color) projBadge.style.borderColor = project.color;
-            projBadge.textContent = project.name;
-            meta.appendChild(projBadge);
-        }
+        const projBadge = document.createElement("span");
+        projBadge.className = "badge badge-project"
+            + (projLink.archived ? " badge-archived-link" : "");
+        if (project && project.color) projBadge.style.borderColor = project.color;
+        projBadge.textContent = projLink.text;
+        meta.appendChild(projBadge);
     }
 
     // Due date
@@ -1438,15 +1442,15 @@ function taskCardEl(task) {
         meta.appendChild(dueBadge);
     }
 
-    // Goal badge
-    if (task.goal_id) {
-        const goal = allGoals.find((g) => g.id === task.goal_id);
-        if (goal) {
-            const goalBadge = document.createElement("span");
-            goalBadge.className = "badge badge-goal";
-            goalBadge.textContent = goal.title;
-            meta.appendChild(goalBadge);
-        }
+    // Goal badge — #361: the same rule as the project badge.
+    const goalLink = window.archivedOptionHelpers.linkLabel(
+        task.goal_id, allGoals.concat(archivedGoals), (g) => g.title);
+    if (goalLink) {
+        const goalBadge = document.createElement("span");
+        goalBadge.className = "badge badge-goal"
+            + (goalLink.archived ? " badge-archived-link" : "");
+        goalBadge.textContent = goalLink.text;
+        meta.appendChild(goalBadge);
     }
 
     // Repeat badge

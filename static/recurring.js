@@ -30,19 +30,17 @@
     // the endpoint returned active-only, so the lookup missed and the
     // list claimed the template had no project at all. Now that the
     // archived rows are loaded, say what it actually is.
+    // #361: the "(archived)" rule is archivedOptionHelpers.linkLabel's,
+    // shared with the board badges and /projects, not a private copy.
     function _projectName(id) {
-        if (!id) return "(none)";
-        var p = allProjects.find(function (x) { return x.id === id; });
-        if (p) return p.name;
-        var a = archivedProjects.find(function (x) { return x.id === id; });
-        return a ? a.name + " (archived)" : "(none)";
+        var l = window.archivedOptionHelpers.linkLabel(id,
+            allProjects.concat(archivedProjects), function (p) { return p.name; });
+        return l ? l.text : "(none)";
     }
     function _goalTitle(id) {
-        if (!id) return "(none)";
-        var g = allGoals.find(function (x) { return x.id === id; });
-        if (g) return g.title;
-        var a = archivedGoals.find(function (x) { return x.id === id; });
-        return a ? a.title + " (archived)" : "(none)";
+        var l = window.archivedOptionHelpers.linkLabel(id,
+            allGoals.concat(archivedGoals), function (g) { return g.title; });
+        return l ? l.text : "(none)";
     }
     function _freqSummary(rt) {
         // #460: the shared label — this printed a raw weekday number for

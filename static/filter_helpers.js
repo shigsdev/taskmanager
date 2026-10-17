@@ -264,6 +264,19 @@ function projectsForTypes(projects, types) {
 // failed to load, a stale id), then tasks with no project. Every task is
 // in exactly one group, so the cards always add up to the section count.
 // Returns [{key, label, color, archived, tasks}] with empty groups left out.
+// #361: the archived suffix is archived_option_helpers.js's, so the group
+// header can't drift from the pickers and badges. Loaded before this file on
+// every page that groups; the literal is only a last resort.
+function _archivedSuffix() {
+    if (typeof window !== "undefined" && window.archivedOptionHelpers) {
+        return window.archivedOptionHelpers.ARCHIVED_SUFFIX;
+    }
+    if (typeof module !== "undefined" && module.exports && typeof require === "function") {
+        return require("./archived_option_helpers.js").ARCHIVED_SUFFIX;
+    }
+    return " (archived)";
+}
+
 function groupTasksByProject(tasks, activeProjects, archivedProjects) {
     const byProject = new Map();
     const noProject = [];
@@ -280,7 +293,7 @@ function groupTasksByProject(tasks, activeProjects, archivedProjects) {
             byProject.delete(p.id);
             groups.push({
                 key: p.id,
-                label: archived ? `${p.name} (archived)` : p.name,
+                label: archived ? p.name + _archivedSuffix() : p.name,
                 color: p.color || null,
                 archived,
                 tasks: list,

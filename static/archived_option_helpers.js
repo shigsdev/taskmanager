@@ -107,6 +107,33 @@ function optionLabelForState(state, baseLabel) {
     return base;
 }
 
+/**
+ * #361: how a stored project / goal link reads where it is SHOWN, not
+ * picked — a board card's badge, the /projects card's goal line,
+ * /recurring's row meta. The same rule the selects follow: a stored link is
+ * shown, and an archived target reads "<name> (archived)". Nothing is
+ * hidden and nothing pretends to be live.
+ *
+ * `rows` holds live AND archived rows together (an `is_active=all`
+ * response, or both halves of `splitByActive` concatenated); a row is
+ * archived when `is_active === false`, as in splitByActive.
+ *
+ * @param {string|null|undefined} id  The stored link.
+ * @param {Array<{id: string, is_active?: boolean}>} rows
+ * @param {function(object): string} textOf  The row's own name / title.
+ * @returns {{text: string, archived: boolean}|null}  null for no id, an
+ *     id in no row, or an empty name — the caller decides what that shows.
+ */
+function linkLabel(id, rows, textOf) {
+    if (!id || !Array.isArray(rows) || typeof textOf !== "function") return null;
+    const row = rows.find((r) => r && r.id === id);
+    if (!row) return null;
+    const text = textOf(row);
+    if (!text) return null;
+    const archived = row.is_active === false;
+    return { text: archived ? text + ARCHIVED_SUFFIX : text, archived };
+}
+
 /** True when an option in this state must not be newly selectable. */
 function optionIsDisabled(state) {
     return state === OPTION_STATE_ARCHIVED || state === OPTION_STATE_MISSING;
@@ -199,7 +226,7 @@ function renderValuePreservingOptions(select, rows, labelOf, currentId) {
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         optionRowsPreservingValue, optionLabelForState, optionIsDisabled,
-        renderValuePreservingOptions, splitByActive,
+        renderValuePreservingOptions, splitByActive, linkLabel,
         OPTION_STATE_LIVE, OPTION_STATE_ARCHIVED, OPTION_STATE_MISSING,
         ARCHIVED_SUFFIX, MISSING_LABEL,
     };
@@ -210,6 +237,7 @@ if (typeof module !== "undefined" && module.exports) {
         optionIsDisabled: optionIsDisabled,
         renderValuePreservingOptions: renderValuePreservingOptions,
         splitByActive: splitByActive,
+        linkLabel: linkLabel,   // #361
         OPTION_STATE_LIVE: OPTION_STATE_LIVE,
         OPTION_STATE_ARCHIVED: OPTION_STATE_ARCHIVED,
         OPTION_STATE_MISSING: OPTION_STATE_MISSING,

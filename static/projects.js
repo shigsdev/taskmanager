@@ -573,14 +573,16 @@ function projectCardEl(project) {
     }
 
     // Linked goal (if any).
-    if (project.goal_id) {
-        const goal = projectsGoals.find((g) => g.id === project.goal_id);
-        if (goal) {
-            const goalLine = document.createElement("div");
-            goalLine.className = "goal-actions-preview";
-            goalLine.textContent = "Goal: " + goal.title;
-            card.appendChild(goalLine);
-        }
+    // #361: projectsGoals is is_active=all, so an archived goal reached
+    // this line and read like a live one beside a picker saying
+    // "(archived)". linkLabel is the one rule for both.
+    const goalLink = window.archivedOptionHelpers.linkLabel(
+        project.goal_id, projectsGoals, (g) => g.title);
+    if (goalLink) {
+        const goalLine = document.createElement("div");
+        goalLine.className = "goal-actions-preview";
+        goalLine.textContent = "Goal: " + goalLink.text;
+        card.appendChild(goalLine);
     }
 
     // Task count. #375: real active / done counts come from the server

@@ -845,6 +845,11 @@ Report.
      They resume when you unarchive the project."; a Delete goal row says
      "… the goal."; a delete with nothing to pause has no line (the quiet
      case) (reflection_archive_pause.spec.js; the map itself is pytest's).
+     #361: archive a project and a goal that a Today task, a live project and
+     a repeating task point at: the board card's badges read "<name>
+     (archived)" (dashed, italic), the live project's /projects card reads
+     "Goal: <title> (archived)", the /recurring row "proj: … (archived)";
+     a live link reads plain (archived_link_labels.spec.js).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -1069,6 +1074,7 @@ Report.
   Reflection: saved review, no call PASS      Reflection: saved review, no call PASS
   Sage/route chips: dark text   PASS          Sage/route chips: dark text   PASS
   Reflection: archive names pauses PASS      Reflection: archive names pauses PASS
+  Archived links: one label    PASS          Archived links: one label    PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
