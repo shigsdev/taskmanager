@@ -106,6 +106,7 @@ from reflection_service import (
     DraftAlreadyOpen,
     analyze_reflection,
     apply_selected_actions,
+    archive_pauses,
     attach_analysis,
     combined_transcript,
     continue_reflection,
@@ -199,6 +200,11 @@ def _serialize(reflection, *, retried: bool = False) -> dict:
             "explicit": proposed.get("explicit", []),
             "suggested": proposed.get("suggested", []),
         },
+        # #364: the repeating tasks each archive proposal would pause,
+        # keyed "<entity>:<id>". Response-only and worked out now, so a
+        # review re-opened from History (#495) is current; a sibling of
+        # the actions, never inside them (their JSON is their identity).
+        "archive_pauses": archive_pauses(proposed),
         # #237 (2026-05-26): raw per-segment Whisper transcripts from
         # the #232 pause/resume flow. Empty list for typed reflections
         # and for pre-#237 voice reflections.

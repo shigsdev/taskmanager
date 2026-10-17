@@ -6335,6 +6335,13 @@ table.quality-gates code {
     font-style: italic;
     margin-top: 2px;
 }
+/* #364: the repeating tasks an archive proposal pauses. */
+.reflection-action-pause {
+    font-size: 0.82rem;
+    color: var(--amber);
+    margin-top: 2px;
+    word-break: break-word;
+}
 .reflection-transcript-details { margin-top: 16px; }
 .reflection-transcript-details pre {
     white-space: pre-wrap;

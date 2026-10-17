@@ -840,6 +840,11 @@ Report.
      (amber, no longer pink) read dark text like TASK; /reflection's CREATE
      badge and a day-strip cell under a dragged card too; DELETE keeps white
      (sage_contrast.spec.js measures them and every sage fill on 19 pages).
+     #364: on /reflection (History stubbed) a Delete project row whose project
+     has running repeating tasks reads "This will pause 2 repeating tasks: …
+     They resume when you unarchive the project."; a Delete goal row says
+     "… the goal."; a delete with nothing to pause has no line (the quiet
+     case) (reflection_archive_pause.spec.js; the map itself is pytest's).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -1063,6 +1068,7 @@ Report.
   Undo/bin: added subtasks counted PASS       Undo/bin: added subtasks counted PASS
   Reflection: saved review, no call PASS      Reflection: saved review, no call PASS
   Sage/route chips: dark text   PASS          Sage/route chips: dark text   PASS
+  Reflection: archive names pauses PASS      Reflection: archive names pauses PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

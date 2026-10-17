@@ -1951,6 +1951,41 @@ def apply_selected_actions(
     return summary
 
 
+def archive_pauses(proposed: Any) -> dict[str, list[str]]:
+    """#364: the repeating tasks each archive proposal would pause, by title.
+
+    A reflection archives a project or goal only through a ``delete``
+    (the update field sets have no ``is_active``), and that pauses the
+    running templates on it (#353 / #368). Keyed ``"<entity>:<id>"`` with
+    the action's own id string, and kept OUT of the action dicts: their
+    JSON is their identity (``_action_key``), so a list inside them would
+    change it. Worked out when served, never stored, so a review re-opened
+    later (#495) is current — and empty once the archive has landed.
+    Only non-empty lists get a key, so the quiet case sends ``{}``.
+    """
+    from recurring_service import templates_paused_by_archive
+
+    out: dict[str, list[str]] = {}
+    if not isinstance(proposed, dict):
+        return out
+    for bucket in ("explicit", "suggested"):
+        for a in proposed.get(bucket) or []:
+            if not isinstance(a, dict) or a.get("op") != "delete":
+                continue
+            entity = a.get("entity")
+            if entity not in ("project", "goal"):
+                continue
+            rid = _parse_uuid(a.get("id"))
+            key = f"{entity}:{a.get('id')}"
+            if rid is None or key in out:
+                continue
+            ids = ([rid], []) if entity == "project" else ([], [rid])
+            titles = [rt.title for rt in templates_paused_by_archive(*ids)]
+            if titles:
+                out[key] = titles
+    return out
+
+
 def _action_key(action: Any) -> str:
     """#437: a stable identity for one proposed action (canonical JSON)."""
     try:

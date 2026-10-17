@@ -907,7 +907,7 @@
             section.appendChild(h);
 
             rows.forEach(function (action, idx) {
-                section.appendChild(renderActionRow(action, b.key, idx));
+                section.appendChild(renderActionRow(action, b.key, idx, refl));
             });
             bucketsEl.appendChild(section);
         });
@@ -954,7 +954,7 @@
         showState("review");
     }
 
-    function renderActionRow(action, bucket, idx) {
+    function renderActionRow(action, bucket, idx, refl) {
         var key = bucket + ":" + idx;
         var checked = H.defaultChecked(bucket);
         checkedMap[key] = checked;
@@ -999,6 +999,17 @@
             r.className = "reflection-action-reason";
             r.textContent = action.reason;
             body.appendChild(r);
+        }
+        // #364: an archive pauses the project's / goal's repeating tasks
+        // (#353 / #368) — say which, like /projects does before its archive.
+        var pauseText = H.archivePauseNote(action,
+            refl && refl.archive_pauses,
+            window.projectArchiveHelpers && window.projectArchiveHelpers.archiveConfirmMessage);
+        if (pauseText) {
+            var pn = document.createElement("div");
+            pn.className = "reflection-action-pause";
+            pn.textContent = pauseText;
+            body.appendChild(pn);
         }
         row.appendChild(body);
         // #489: the tick box names the proposal it applies.

@@ -803,6 +803,31 @@
      * #437: the history row's apply badge. A reflection whose apply
      * partly failed has landed actions but no applied_at.
      */
+    // #364: the goal's closing line, the same one /goals shows (#368).
+    var GOAL_PAUSE_TAIL = {
+        one: "It resumes when you unarchive the goal.",
+        many: "They resume when you unarchive the goal.",
+    };
+
+    /**
+     * #364: the line under a "Delete project / goal" row naming the
+     * repeating tasks applying it pauses. `pauses` is the server's
+     * `archive_pauses` map ("<entity>:<id>" → titles, worked out when the
+     * reflection was served); `format` is
+     * projectArchiveHelpers.archiveConfirmMessage, so the sentence is the
+     * one /projects and Settings show. "" for any other row, or when
+     * nothing would pause — the quiet case asks nothing (#351).
+     */
+    function archivePauseNote(action, pauses, format) {
+        if (!action || action.op !== "delete") return "";
+        if (action.entity !== "project" && action.entity !== "goal") return "";
+        if (typeof format !== "function" || !pauses) return "";
+        var titles = pauses[action.entity + ":" + action.id];
+        if (!Array.isArray(titles) || titles.length === 0) return "";
+        var list = titles.map(function (t) { return { title: t }; });
+        return action.entity === "goal" ? format(list, GOAL_PAUSE_TAIL) : format(list);
+    }
+
     /**
      * #495: a stable identity for one proposed action — keys sorted at every
      * level, so the same action reads the same however its JSON was ordered.
@@ -895,6 +920,7 @@
         partialApplyText: partialApplyText,
         appliedBadge: appliedBadge,
         actionKey: actionKey,
+        archivePauseNote: archivePauseNote,
         landedRowKeys: landedRowKeys,
         canReviewSaved: canReviewSaved,
         attachmentLabel: attachmentLabel,
