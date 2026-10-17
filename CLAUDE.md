@@ -866,6 +866,10 @@ Report.
      new task whose Section is that one (Backlog for Backlog & Freezer) with
      no date, and Save files it there undated. A day's + still dates the
      task (the quiet case) (calendar_group_add.spec.js).
+     #285: on /utilities the project→goal card does NOT flag a personal
+     project on a BAU goal, and still flags one on a work goal (the quiet
+     case); a personal task's Goal picker lists BAU goals
+     (bau_both_sides.spec.js; voice/scan keep personal + bau: pytest).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -1094,6 +1098,7 @@ Report.
   Pop-ups: focus in and back   PASS          Pop-ups: focus in and back   PASS
   Cards: title opens by keyboard PASS        Cards: title opens by keyboard PASS
   Calendar: + adds to a section PASS         Calendar: + adds to a section PASS
+  Goals: BAU fits both sides   PASS          Goals: BAU fits both sides   PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

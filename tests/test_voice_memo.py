@@ -805,10 +805,22 @@ class TestVoiceNormaliser:
         work-side category coerces to the personal-side default."""
         from scan_service import _normalise_voice_candidates
         result = _normalise_voice_candidates([
-            {"title": "Call mom", "type": "personal", "category": "bau"},
+            {"title": "Call mom", "type": "personal", "category": "work"},
         ])
         assert result[0]["type"] == "personal"
         assert result[0]["category"] == "personal_growth"
+
+    def test_personal_type_keeps_bau(self):
+        """#285 (user decision 2026-10-17): BAU fits both sides, so a
+        personal item routed to a BAU goal keeps 'bau' (it used to be
+        forced to personal_growth)."""
+        from scan_service import _normalise_voice_candidates
+        result = _normalise_voice_candidates([
+            {"title": "Renew car registration", "type": "personal",
+             "category": "bau"},
+        ])
+        assert result[0]["type"] == "personal"
+        assert result[0]["category"] == "bau"
 
     def test_consistent_category_preserved(self):
         """#262: when Claude already returns a consistent type+category
@@ -883,8 +895,8 @@ class TestVoiceNormaliser:
         item's `type` (#262 added the type↔category guard, so a category
         must be paired with a matching-side type to survive verbatim)."""
         from scan_service import _normalise_voice_candidates
-        # personal-side categories with a personal-type item.
-        for cat in ("health", "personal_growth", "relationships"):
+        # personal-side categories with a personal-type item (#285: bau too).
+        for cat in ("health", "personal_growth", "relationships", "bau"):
             result = _normalise_voice_candidates([
                 {"title": "x", "type": "personal", "tier": "inbox",
                  "category": cat},

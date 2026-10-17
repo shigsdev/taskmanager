@@ -522,7 +522,7 @@ Each item must be a JSON object with these keys:
   Always emit a category for every item. The category MUST be
   consistent with the item's `type`:
   * type "work"     → category must be "work" or "bau"
-  * type "personal" → category must be "health", "personal_growth",
+  * type "personal" → category must be "bau", "health", "personal_growth",
     or "relationships"
   When unclear, default to "work" for work-type items and
   "personal_growth" for personal-type items. Do NOT pair a
@@ -758,6 +758,10 @@ _VOICE_DEFAULT_CATEGORY = "personal_growth"
 # dropdown is already type-scoped, so a mismatched category just
 # surfaces as a confusing pre-selection the user has to fix by hand.
 _VOICE_WORK_CATEGORIES = {"work", "bau"}
+# #285 (user decision 2026-10-17): "bau" fits BOTH sides -- upkeep isn't
+# work-only (the user's "Personal BAU" goal). Mirrors goal_filter_helpers.js
+# `bau: "both"`. A personal item may keep it; a work item already could.
+_VOICE_NEUTRAL_CATEGORIES = {"bau"}
 
 
 # #234 third pass (2026-05-26): Unicode-aware normalization.
@@ -1218,7 +1222,8 @@ def _normalise_voice_candidates(
         # back to the same-side default (work / personal_growth).
         if type_val == "work" and category_val not in _VOICE_WORK_CATEGORIES:
             category_val = "work"
-        elif type_val == "personal" and category_val in _VOICE_WORK_CATEGORIES:
+        elif (type_val == "personal" and category_val in _VOICE_WORK_CATEGORIES
+              and category_val not in _VOICE_NEUTRAL_CATEGORIES):   # #285
             category_val = _VOICE_DEFAULT_CATEGORY
 
         due_date: str | None = None

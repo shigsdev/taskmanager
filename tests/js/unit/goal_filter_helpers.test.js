@@ -7,13 +7,14 @@
 "use strict";
 
 const {
-    typeForCategory, filterGoalsByType, goalsForDropdown, auditProjectGoalLinks,
+    typeForCategory, categoryFitsType, filterGoalsByType, goalsForDropdown,
+    auditProjectGoalLinks,
 } = require("../../../static/goal_filter_helpers");
 
 describe("typeForCategory — strict bipartition (#142)", () => {
     test.each([
         ["work", "work"],
-        ["bau", "work"],
+        ["bau", "both"],   // #285: fits work and personal
         ["health", "personal"],
         ["relationships", "personal"],
         ["personal_growth", "personal"],
@@ -35,6 +36,17 @@ describe("typeForCategory — strict bipartition (#142)", () => {
     });
 });
 
+describe("categoryFitsType (#285)", () => {
+    test.each([
+        ["bau", "work", true], ["bau", "personal", true],
+        ["work", "work", true], ["work", "personal", false],
+        ["health", "personal", true], ["health", "work", false],
+        ["personal_growth", "work", false], ["relationships", "personal", true],
+    ])("%s fits %s → %s", (cat, type, want) => {
+        expect(categoryFitsType(cat, type)).toBe(want);
+    });
+});
+
 describe("filterGoalsByType", () => {
     const goals = [
         { id: "g1", category: "work" },
@@ -49,9 +61,15 @@ describe("filterGoalsByType", () => {
         expect(out.map((g) => g.id).sort()).toEqual(["g1", "g2"]);
     });
 
-    test("filterType=personal returns health + relationships + personal_growth", () => {
+    test("filterType=personal returns bau + health + relationships + personal_growth (#285)", () => {
         const out = filterGoalsByType(goals, "personal");
-        expect(out.map((g) => g.id).sort()).toEqual(["g3", "g4", "g5"]);
+        expect(out.map((g) => g.id).sort()).toEqual(["g2", "g3", "g4", "g5"]);
+    });
+
+    test("#285: a BAU goal is on both sides; a work goal still isn't on personal", () => {
+        expect(filterGoalsByType(goals, "work").map((g) => g.id)).toContain("g2");
+        expect(filterGoalsByType(goals, "personal").map((g) => g.id)).toContain("g2");
+        expect(filterGoalsByType(goals, "personal").map((g) => g.id)).not.toContain("g1");
     });
 
     test("falsy filterType returns a copy of the input list", () => {
@@ -88,14 +106,14 @@ describe("goalsForDropdown — type scope ∪ keep set (#272)", () => {
 
     test("personal scope with NO keep set hides the work-side goal (the bug)", () => {
         const out = goalsForDropdown(goals, "personal", null).map((g) => g.id);
-        expect(out).toEqual(["g_health", "g_rel", "g_growth"]);
+        expect(out).toEqual(["g_bau", "g_health", "g_rel", "g_growth"]);   // #285: bau fits
         expect(out).not.toContain("g_work");
     });
 
     test("personal scope keeps the linked work-side goal when in the keep set (the fix)", () => {
         const out = goalsForDropdown(goals, "personal", ["g_work"]).map((g) => g.id);
         expect(out).toContain("g_work");                // cross-side linked goal surfaced
-        expect(out).toEqual(["g_work", "g_health", "g_rel", "g_growth"]);  // stable order
+        expect(out).toEqual(["g_work", "g_bau", "g_health", "g_rel", "g_growth"]);  // stable order
     });
 
     test("keep set accepts a Set as well as an array", () => {
@@ -106,12 +124,12 @@ describe("goalsForDropdown — type scope ∪ keep set (#272)", () => {
     test("a goal that is BOTH in-scope and a keepId appears exactly once", () => {
         const out = goalsForDropdown(goals, "personal", ["g_health"]).map((g) => g.id);
         expect(out.filter((id) => id === "g_health")).toHaveLength(1);
-        expect(out).toEqual(["g_health", "g_rel", "g_growth"]);
+        expect(out).toEqual(["g_bau", "g_health", "g_rel", "g_growth"]);
     });
 
     test("keepIds for a goal that doesn't exist is ignored (no phantom option)", () => {
         const out = goalsForDropdown(goals, "personal", ["g_nonexistent"]).map((g) => g.id);
-        expect(out).toEqual(["g_health", "g_rel", "g_growth"]);
+        expect(out).toEqual(["g_bau", "g_health", "g_rel", "g_growth"]);
     });
 
     test("falsy filterType returns every goal — keepIds is a no-op", () => {
@@ -200,6 +218,17 @@ describe("auditProjectGoalLinks — project→goal cleanup audit (#273)", () => 
         const out = auditProjectGoalLinks(projects, goals);
         expect(out.crossSide.map((x) => x.project.id)).toEqual(["a", "d"]);
         expect(out.unlinked.map((x) => x.project.id)).toEqual(["b"]);
+    });
+
+    test("#285: a project of either type on a BAU goal is NOT cross-side", () => {
+        const withBau = goals.concat([{ id: "gb", category: "bau", title: "Personal BAU" }]);
+        const projects = [
+            { id: "pb1", name: "Matteo Birthday", type: "personal", goal_id: "gb" },
+            { id: "pb2", name: "Ops upkeep", type: "work", goal_id: "gb" },
+            { id: "pw", name: "AI Training", type: "personal", goal_id: "gw" },   // still cross
+        ];
+        const out = auditProjectGoalLinks(projects, withBau);
+        expect(out.crossSide.map((x) => x.project.id)).toEqual(["pw"]);
     });
 
     test("non-array / empty inputs are safe", () => {

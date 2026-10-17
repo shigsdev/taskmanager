@@ -6,8 +6,13 @@
  * Task.type is 2-valued (work, personal) — so we need a category→type
  * mapping. Backlog spec locked-in 2026-05-09: STRICT bipartition (A).
  *
- *   work + bau                                 → work-side
+ *   work                                       → work-side
  *   health + relationships + personal_growth   → personal-side
+ *   bau                                        → both (#285)
+ *
+ * #285 (user decision 2026-10-17): BAU, "business as usual" upkeep, isn't
+ * work-only (the user's "Personal BAU" goal), so it fits a work AND a
+ * personal item. Ask `categoryFitsType`; never compare sides by hand.
  *
  * Dual-export per CLAUDE.md anti-pattern #3:
  *   Browser: window.goalFilterHelpers
@@ -18,7 +23,7 @@
 // Locked 2026-05-09 per backlog #142 (option A — strict bipartition).
 const _CATEGORY_TO_TYPE = Object.freeze({
     work: "work",
-    bau: "work",
+    bau: "both",   // #285: fits work and personal
     health: "personal",
     relationships: "personal",
     personal_growth: "personal",
@@ -47,6 +52,15 @@ function typeForCategory(category) {
 }
 
 /**
+ * #285: does a goal of `category` fit an item of `type` ("work" /
+ * "personal")? A neutral category ("both": bau) fits either side.
+ */
+function categoryFitsType(category, type) {
+    const side = typeForCategory(category);
+    return side === "both" || side === type;
+}
+
+/**
  * Filter a list of goals by task type. Returns the goals that
  * belong on the side of the requested type per the strict mapping.
  *
@@ -58,7 +72,7 @@ function typeForCategory(category) {
 function filterGoalsByType(goals, filterType) {
     if (!filterType) return Array.isArray(goals) ? goals.slice() : [];
     if (!Array.isArray(goals)) return [];
-    return goals.filter((g) => typeForCategory(g.category) === filterType);
+    return goals.filter((g) => g && categoryFitsType(g.category, filterType));
 }
 
 /**
@@ -140,7 +154,7 @@ function auditProjectGoalLinks(projects, goals) {
         if (!goal) continue;  // goal not in list (archived/unknown) — can't classify
         const goalSide = typeForCategory(goal.category);
         const projectSide = p.type === "work" ? "work" : "personal";
-        if (goalSide !== projectSide) {
+        if (!categoryFitsType(goal.category, projectSide)) {   // #285: bau fits both
             out.crossSide.push({ project: p, goal, projectSide, goalSide });
         }
     }
@@ -149,10 +163,12 @@ function auditProjectGoalLinks(projects, goals) {
 
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
-        typeForCategory, filterGoalsByType, goalsForDropdown, auditProjectGoalLinks,
+        typeForCategory, categoryFitsType, filterGoalsByType, goalsForDropdown,
+        auditProjectGoalLinks,
     };
 } else if (typeof window !== "undefined") {
     window.goalFilterHelpers = {
-        typeForCategory, filterGoalsByType, goalsForDropdown, auditProjectGoalLinks,
+        typeForCategory, categoryFitsType, filterGoalsByType, goalsForDropdown,
+        auditProjectGoalLinks,
     };
 }
