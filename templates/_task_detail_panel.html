@@ -208,11 +208,14 @@
                 <div id="subtaskItems"></div>
                 {# #120 (PR57): voice input on subtask add. Triple-flex
                    row: input + 🎤 + + Add button. #}
-                <div style="display:flex;gap:4px;margin-top:4px">
+                {# #493: hidden on a task that isn't active (app.js) — only an
+                   open task takes a new subtask. #}
+                <div id="subtaskAddRow" style="display:flex;gap:4px;margin-top:4px">
                     <input type="text" id="subtaskInput" aria-label="Add subtask" placeholder="Add subtask…" style="flex:1" spellcheck="true">
                     <button type="button" class="icon-btn voice-btn" data-voice-target="subtaskInput" title="Voice input">🎤</button>
                     <button type="button" class="btn-sm" id="addSubtaskBtn">+ Add</button>
                 </div>
+                <p class="subtask-closed-note" id="subtaskClosedNote" hidden></p>
             </div>
 
             <div class="detail-meta" id="detailMeta"></div>

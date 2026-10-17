@@ -626,6 +626,7 @@ def create_task(data: dict) -> Task:
             raise ValidationError("parent task not found", "parent_id")
         if parent.parent_id is not None:
             raise ValidationError("subtasks cannot have their own subtasks", "parent_id")
+        _refuse_closed_parent(parent)  # #493
 
     # #475: refuse a missing / archived / other-type link. A subtask's
     # links are its parent's, archived or not.
@@ -762,6 +763,23 @@ def _refuse_closing_from_bin(task: Task) -> None:
         raise ValidationError(
             "This task is in the Recycle Bin — restore it there first.", "status",
         )
+
+
+_CLOSED_PARENT_REASONS = {
+    TaskStatus.ARCHIVED: "That task is completed — re-open it first.",
+    TaskStatus.CANCELLED: "That task is cancelled — re-open it first.",
+    TaskStatus.DELETED: "That task is in the Recycle Bin — restore it there first.",
+}
+
+
+def _refuse_closed_parent(parent: Task) -> None:
+    """#493: a subtask goes only under an ACTIVE parent (user decision
+    2026-10-16). A deleted parent put an open subtask in the Inbox with its
+    parent in the bin; a completed / cancelled one hid the subtask's parent
+    and undid #433, which closes the open subtasks with the parent."""
+    reason = _CLOSED_PARENT_REASONS.get(parent.status)
+    if reason:
+        raise ValidationError(reason, "parent_id")
 
 
 def _apply_status_to_subtasks(
@@ -922,6 +940,11 @@ def update_task(task_id: uuid.UUID, data: dict) -> Task | None:
                 raise ValidationError("subtasks cannot have their own subtasks", "parent_id")
             if new_parent_id == task.id:
                 raise ValidationError("task cannot be its own parent", "parent_id")
+            # #493: only a NEW parent must be open. The panel re-sends the
+            # parent on every Save, and a repeating task's subtasks stay
+            # open when it closes — those must keep saving.
+            if new_parent_id != task.parent_id:
+                _refuse_closed_parent(parent)
         task.parent_id = new_parent_id
 
     if "project_id" in data:

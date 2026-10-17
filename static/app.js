@@ -1521,8 +1521,9 @@ function taskCardEl(task) {
         }));
     // #78 followup (2026-04-26): + Subtask on parent-eligible cards.
     // Subtasks can't have subtasks (1-level-deep model rule), so hide on
-    // tasks that already have a parent.
-    if (!task.parent_id) {
+    // tasks that already have a parent. #493: and on a closed one (a
+    // /completed card) — only an open task takes a new subtask.
+    if (!task.parent_id && (!task.status || task.status === "active")) {
         quickActions.push({
             label: "+ Subtask",
             title: "Add a subtask under this task",
@@ -2932,6 +2933,18 @@ function taskDetailOpen(task) {
     } else if (task.id) {
         subtaskSection.style.display = "";
         if (parentLinkSection) parentLinkSection.style.display = "none";
+        // #493: only an open task takes a new subtask (the server refuses a
+        // completed / cancelled / deleted parent); its list still shows.
+        const closed = !!task.status && task.status !== "active";
+        const subtaskAddRow = document.getElementById("subtaskAddRow");
+        if (subtaskAddRow) subtaskAddRow.hidden = closed;
+        const closedNote = document.getElementById("subtaskClosedNote");
+        if (closedNote) {
+            closedNote.hidden = !closed;
+            closedNote.textContent = task.status === "deleted"
+                ? "Restore this task to add a subtask."
+                : "Re-open this task to add a subtask.";
+        }
         taskDetailLoadSubtasks(task.id);
     } else {
         // #269 create mode: no task yet, so nothing to attach subtasks to

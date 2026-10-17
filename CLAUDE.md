@@ -819,6 +819,12 @@ Report.
      (first cell as its heading, the rest labelled "WHAT IT ASSERTS",
      "SCHEDULE", …) and no cell runs off the screen
      (architecture_tables.spec.js); at 1280 they are the same tables as before.
+     #493: open a completed task (/completed, click its title) — Subtasks
+     reads "Re-open this task to add a subtask." with no + Add, and the card
+     offers no + Subtask; an open task's panel still adds one (the quiet
+     case); complete a task in another tab, then + Add in the stale panel —
+     "That task is completed — re-open it first." and the text stays
+     (subtask_parent_active.spec.js; the API rules are pytest's).
      #363: on /recurring, Pause a template — it STAYS on the list with a
      dashed border and PAUSED; open it and Resume brings it back. Delete
      one — it leaves the list (it must not come back as PAUSED). Archive
@@ -1038,6 +1044,7 @@ Report.
   Review rows: every control named PASS       Review rows: every control named PASS
   Rough titles: stay on screen  PASS          Rough titles: stay on screen  PASS
   Architecture: gate tables (unchanged) PASS  Architecture: gate tables as cards PASS
+  Subtasks: only under an open task PASS      Subtasks: only under an open task PASS
   Reflection: combine bar below nav PASS      Reflection: combine bar below nav PASS
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS

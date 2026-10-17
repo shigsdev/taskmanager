@@ -1774,6 +1774,7 @@ Skip this line (too short)</pre>
             <h3>Rules</h3>
             <ul>
                 <li><strong>One level only</strong> — a subtask cannot have its own subtasks. Attempting to parent a child to another child is rejected.</li>
+                <li><strong>Only under an open task</strong> — a completed or cancelled task needs re-opening before it takes a new subtask, and one in the Recycle Bin needs restoring; its panel says so where <strong>+ Add</strong> would be. Subtasks it already has stay as they are.</li>
                 <li><strong>Goal + project inheritance</strong> — when a subtask is created without explicit <code>goal_id</code> / <code>project_id</code>, it inherits both from its parent. You can override either on the subtask itself. When the parent's project or goal changes later &mdash; including a goal that changed because its project did &mdash; its open subtasks that still had the parent's old project or goal follow it; one you overrode stays.</li>
                 <li><strong>Parent-card badge</strong> — parent cards show a badge like <code>2/5 subtasks</code>. It turns green when the count hits total.</li>
             </ul>

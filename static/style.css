@@ -1468,6 +1468,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 /* Subtask section in detail panel */
 .subtask-section { margin-top: 12px; }
 .subtask-section label { font-weight: 600; margin-bottom: 4px; display: block; }
+.subtask-closed-note { margin: 4px 0 0; font-size: 0.85em; color: var(--text-muted); }  /* #493 */
 .subtask-row {
     display: flex;
     align-items: center;
