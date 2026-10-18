@@ -972,6 +972,9 @@ Report.
      clipboard; at 375 the address boxes fit and the buttons are 44px. Help
      → Apple Health (not built yet) is in the contents and reads at both
      widths.
+     #505: "Or have Claude build them on a Mac" shows the brief in a
+     full-width box at both widths (16px at 375, no sideways scroll); its
+     Copy button copies the whole brief.
   10. **Import page**: verify buttons render and are clickable.
       #390: in the task preview a row WITH a due date shows its Tier
       locked to the date's section with "Set by due date"; clearing the

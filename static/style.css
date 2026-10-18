@@ -5077,6 +5077,26 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     border-radius: var(--radius-s);
     padding: 8px 10px;
 }
+/* #505: a longer text to copy (the Mac brief): full width, Copy below */
+.docs-copy-block {
+    display: grid;
+    gap: 8px;
+    justify-items: start;
+    margin: 6px 0 12px;
+}
+.docs-copy-block textarea {
+    width: 100%;
+    min-width: 0;
+    resize: vertical;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    line-height: 1.45;
+    background: var(--surface-sunk);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    padding: 8px 10px;
+}
 .docs-note {
     border-left: 3px solid var(--copper-dim);
     padding: 6px 10px;
@@ -5084,8 +5104,10 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     color: var(--text-muted);
 }
 @media (max-width: 767px) {  /* #382: the one tap-target breakpoint */
-    .docs-copy input { font-size: 16px; } /* #450: no iOS zoom on tap */
-    .docs-copy .btn { min-height: 44px; }
+    .docs-copy input,
+    .docs-copy-block textarea { font-size: 16px; } /* #450: no iOS zoom on tap */
+    .docs-copy .btn,
+    .docs-copy-block .btn { min-height: 44px; }
 }
 
 .import-docs-link {

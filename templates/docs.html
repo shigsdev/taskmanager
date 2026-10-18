@@ -318,6 +318,36 @@
                 from the iPhone.
             </p>
 
+            <h3>Or have Claude build them on a Mac</h3>
+            <p>
+                A Claude session on your Mac can build both Shortcuts for you
+                while you watch: it works the Shortcuts app on screen, runs
+                each test, and tells you what went wrong. You'll need:
+            </p>
+            <ul>
+                <li>The <strong>Claude desktop app</strong> on the Mac, with
+                    <strong>computer use</strong> turned on and the Shortcuts
+                    app allowed when it asks.</li>
+                <li>Your token copied (step 0, done in the Mac's browser).
+                    Claude won't type a token itself: when it reaches step 2 it
+                    stops, and you paste it.</li>
+            </ul>
+            <p>
+                Start a new session and paste this as your first message. A
+                new session doesn't know anything about this setup, so the
+                brief has all of it:
+            </p>
+            <div class="docs-copy-block">
+                <textarea id="docsSiriClaudeBrief" readonly rows="14" aria-label="Brief for a Claude session on a Mac">Please build two Apple Shortcuts on this Mac for my Task Manager app, using computer use in the Shortcuts app. The full steps (numbered 0 to 21) are in the app's Help: https://web-production-3e3ae.up.railway.app/docs#voice-review-shortcut
+
+1. "Review my tasks": Text (my token: stop and let me paste it; never type the token yourself) → Set Variable "Token" → Get Contents of URL, GET https://web-production-3e3ae.up.railway.app/api/voice-review/queue, header Authorization = Token → Get Dictionary Value, key "items" → Repeat with Each. Inside the Repeat: Get Dictionary Value "title" of Repeat Item → Speak Text → Get Dictionary Value "id" of Repeat Item → Set Variable "TaskId" → Dictate Text → Get Contents of URL, POST https://web-production-3e3ae.up.railway.app/api/voice-review/[TaskId]/answer (TaskId as a variable), header Authorization = Token, JSON body field "text" = Dictated Text → Get Dictionary Value "say" → Speak Text.
+
+2. "Add a task": Text (my token, I paste it) → Set Variable "Token" → Speak Text "What's the task?" → Dictate Text → Get Contents of URL, POST https://web-production-3e3ae.up.railway.app/api/voice-review/tasks, header Authorization = Token, JSON body field "text" = Dictated Text → Get Dictionary Value "say" → Speak Text.
+
+Test each with the run button. "Review my tasks" should read my overdue, today and tomorrow tasks; I'll answer "skip", except on a task called "Siri test", where I'll say "tomorrow" and Siri should reply "Moved to Tomorrow." Every reply from the app has a "say" field; a 401 means the Authorization header is wrong. Check that iCloud Sync is on in Shortcuts' settings, so both show up on my iPhone. Don't change anything in Task Manager itself, and tell me the step number if anything doesn't match.</textarea>
+                <button type="button" class="btn btn-sm" data-copy-for="docsSiriClaudeBrief">Copy</button>
+            </div>
+
             <h3>Part 1 — Siri reads your tasks</h3>
             <div class="docs-step">
                 <h4><span class="docs-step-num">1</span> Make a new Shortcut</h4>

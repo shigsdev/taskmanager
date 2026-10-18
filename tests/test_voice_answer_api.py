@@ -246,18 +246,6 @@ class TestScopeStillHolds:
         assert r.status_code in (401, 403)
 
 
-class TestHelp:
-    """#503 (folded into #500): the Help builds the Shortcut with the answer
-    action, and the two steps Shortcuts can't do are gone."""
-
-    def test_help_uses_answer_and_add(self, authed_client):
-        html = authed_client.get("/docs").get_data(as_text=True)
-        assert "/api/voice-review/tasks" in html
-        assert "<code>/answer</code>" in html
-        assert "Otherwise If" not in html
-        assert "output variable" not in html
-
-
 class TestTooLong:
     """Security review 2026-10-18: both routes refuse text over 1,000
     characters before parsing it."""
@@ -276,6 +264,19 @@ class TestTooLong:
         with app.app_context():
             assert Task.query.count() == 0
 
+
+class TestHelp:
+    """#503 (folded into #500): the Help builds the Shortcut with the answer
+    action, and the two steps Shortcuts can't do are gone."""
+
+    def test_help_uses_answer_and_add(self, authed_client):
+        html = authed_client.get("/docs").get_data(as_text=True)
+        assert "/api/voice-review/tasks" in html
+        assert "<code>/answer</code>" in html
+        assert "Otherwise If" not in html
+        assert "output variable" not in html
+
+
     def test_help_has_numbered_steps_and_copy_fields(self, authed_client):
         # #504: the setup guide's numbered steps, with copy fields for the
         # three addresses, and the Apple Health phone test.
@@ -291,3 +292,15 @@ class TestTooLong:
         assert '<span class="docs-step-num">21</span>' in html
         assert "docs_copy.js" in html and "voice_token_helpers.js" in html
         assert 'id="apple-health"' in html and 'href="#apple-health"' in html
+
+    def test_help_has_the_mac_brief(self, authed_client):
+        # #505: a copyable brief for a Claude session on a Mac, carrying the
+        # three addresses and the never-type-the-token rule.
+        html = authed_client.get("/docs").get_data(as_text=True)
+        start = html.index('id="docsSiriClaudeBrief"')
+        brief = html[start:html.index("</textarea>", start)]
+        assert 'data-copy-for="docsSiriClaudeBrief"' in html
+        for url in ("/api/voice-review/queue", "/api/voice-review/[TaskId]/answer",
+                    "/api/voice-review/tasks", "/docs#voice-review-shortcut"):
+            assert url in brief
+        assert "never type the token yourself" in brief
