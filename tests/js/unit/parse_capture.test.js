@@ -377,3 +377,29 @@ describe("parseCapture — @project hint", () => {
         expect(r.title).toBe("Sync , then ship");
     });
 });
+
+// ---------------------------------------------------------------------------
+// #506: the payload pytest round-trips. tests/test_capture_parse.py posts
+// FULL_CAPTURE to /api/tasks as the capture bar would; this pins
+// parseCapture's real output to the same shape, so a change on either
+// side fails one of the two.
+// ---------------------------------------------------------------------------
+
+describe("parseCapture — the payload pytest round-trips (#506)", () => {
+    test("full capture matches tests/test_capture_parse.py FULL_CAPTURE", () => {
+        const r = parseCapture("Read https://example.com #weekly #work #today @Audit");
+        expect(r).toEqual({
+            title: "Read",
+            url: "https://example.com",
+            _titleProvided: true,
+            project_hint: "Audit",
+            repeat: { frequency: "weekly", day_of_week: expect.any(Number) },
+            type: "work",
+            tier: "today",
+        });
+    });
+
+    test("a plain capture sends no tier (pytest: lands in Inbox)", () => {
+        expect(parseCapture("Buy milk")).toEqual({ title: "Buy milk" });
+    });
+});

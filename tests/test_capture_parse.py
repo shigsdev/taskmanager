@@ -1,387 +1,109 @@
-"""Tests for the capture bar's parseCapture() logic.
+"""The capture bar's payloads, round-tripped through ``POST /api/tasks``.
 
-The canonical implementation lives in static/parse_capture.js (extracted
-from capture.js so Jest can import it directly).  This file maintains a
-Python mirror of those parsing rules so we can test every shortcut
-combination in pytest — including the prefix-collision cases that caused
-bugs (#weekly vs #week, #weekdays vs #week, #work vs #personal).
+#506 (refreshed 2026-10-18 after the tech-debt audit flagged this file
+stale): it used to hold a hand-written Python copy of ``parseCapture`` and
+28 tests of that copy. The copy had drifted — it still defaulted to Inbox
+(gone since #443) and had no #tomorrow / #next_week / longest-first rule /
+@project hint — so those tests checked behaviour the app no longer has.
+The parsing rules are tested on the real code in
+``tests/js/unit/parse_capture.test.js``.
 
-If parse_capture.js changes, update ``_parse_capture()`` here to match
-and ensure the new tests still pass.  The Jest suite in
-tests/js/unit/parse_capture.test.js tests the real JS implementation;
-this file is the cross-check.  The API round-trip tests (at the bottom)
-hit ``POST /api/tasks`` with the exact payloads that parseCapture would
-produce, verifying the server honours them.
+What stays here is the server half: each test posts exactly what
+``static/capture.js`` ``submitCapture`` sends — ``parseCapture``'s result
+as-is, so no ``tier`` key unless a hashtag or the section page set one,
+plus ``_titleProvided`` / ``project_hint`` when present — and checks the
+server files it as the capture bar intends. ``FULL_CAPTURE`` is pinned on
+the Jest side too ("the payload pytest round-trips"), so if parseCapture's
+output changes shape, one side fails.
 """
 from __future__ import annotations
 
-import re
-from datetime import date
+from datetime import timedelta
 
-# ---------------------------------------------------------------------------
-# Python mirror of capture.js parseCapture()
-# ---------------------------------------------------------------------------
+import pytest
 
-def _parse_capture(text: str) -> dict:
-    """Pure-Python reimplementation of capture.js parseCapture().
+from models import Project, ProjectType, db
+from utils import local_today_date
 
-    Must be kept in sync with static/capture.js.  The test suite below
-    exercises every branch so drift is caught immediately.
-    """
-    result = {"title": text, "tier": "inbox"}
-
-    # 1. URL detection
-    url_match = re.search(r"https?://\S+", text, re.IGNORECASE)
-    if url_match:
-        result["url"] = url_match.group(0)
-        remaining = text.replace(url_match.group(0), "").strip()
-        result["title"] = remaining or url_match.group(0)
-        result["_titleProvided"] = len(remaining) > 0
-
-    # 2. Repeat shortcuts (BEFORE tier — longer tags first)
-    today = date.today()
-    weekday_iso = today.isoweekday()  # Mon=1 … Sun=7
-    # JS: getDay() returns Sun=0…Sat=6; code does: day===0 ? 6 : day-1
-    # That maps to Mon=0…Sun=6 (0-indexed Mon-based)
-    js_day_of_week = 6 if weekday_iso == 7 else weekday_iso - 1
-
-    repeat_map = {
-        "#daily": {"frequency": "daily"},
-        "#weekdays": {"frequency": "weekdays"},
-        "#weekly": {"frequency": "weekly", "day_of_week": js_day_of_week},
-        "#monthly": {"frequency": "monthly_date", "day_of_month": today.day},
-    }
-    for tag, repeat in repeat_map.items():
-        if tag in result["title"].lower():
-            result["repeat"] = repeat
-            result["title"] = re.sub(re.escape(tag), "", result["title"],
-                                     flags=re.IGNORECASE).strip()
-            break
-
-    # 3. Type shortcuts (#personal before #work — avoid prefix collision)
-    if "#personal" in result["title"].lower():
-        result["type"] = "personal"
-        result["title"] = re.sub(r"#personal", "", result["title"],
-                                  flags=re.IGNORECASE).strip()
-    elif "#work" in result["title"].lower():
-        result["type"] = "work"
-        result["title"] = re.sub(r"#work", "", result["title"],
-                                  flags=re.IGNORECASE).strip()
-
-    # 4. Tier shortcuts
-    tier_map = {
-        "#today": "today",
-        "#week": "this_week",
-        "#backlog": "backlog",
-        "#freezer": "freezer",
-    }
-    for tag, tier in tier_map.items():
-        if tag in result["title"].lower():
-            result["tier"] = tier
-            result["title"] = re.sub(re.escape(tag), "", result["title"],
-                                      flags=re.IGNORECASE).strip()
-
-    # 5. Empty title fallback
-    if not result["title"] and result.get("url"):
-        result["title"] = result["url"]
-
-    return result
+# parseCapture("Read https://example.com #weekly #work #today @Audit"),
+# with the weekday fixed (the real one uses today's).
+FULL_CAPTURE = {
+    "title": "Read",
+    "url": "https://example.com",
+    "_titleProvided": True,
+    "project_hint": "Audit",
+    "repeat": {"frequency": "weekly", "day_of_week": 2},
+    "type": "work",
+    "tier": "today",
+}
 
 
-# ---------------------------------------------------------------------------
-# Shortcut parsing tests
-# ---------------------------------------------------------------------------
-
-class TestParseCaptureTier:
-    """Tier shortcuts: #today, #week, #backlog, #freezer."""
-
-    def test_default_tier_is_inbox(self):
-        r = _parse_capture("Buy groceries")
-        assert r["tier"] == "inbox"
-        assert r["title"] == "Buy groceries"
-
-    def test_today(self):
-        r = _parse_capture("Fix bug #today")
-        assert r["tier"] == "today"
-        assert r["title"] == "Fix bug"
-
-    def test_week(self):
-        r = _parse_capture("Write docs #week")
-        assert r["tier"] == "this_week"
-        assert r["title"] == "Write docs"
-
-    def test_backlog(self):
-        r = _parse_capture("Learn Rust #backlog")
-        assert r["tier"] == "backlog"
-        assert r["title"] == "Learn Rust"
-
-    def test_freezer(self):
-        r = _parse_capture("Someday project #freezer")
-        assert r["tier"] == "freezer"
-        assert r["title"] == "Someday project"
-
-    def test_tier_case_insensitive(self):
-        r = _parse_capture("Task #TODAY")
-        assert r["tier"] == "today"
-
-    def test_tier_mid_string(self):
-        r = _parse_capture("Do #today the thing")
-        assert r["tier"] == "today"
-        assert r["title"] == "Do  the thing"  # double space is expected
+def _post(client, payload):
+    resp = client.post("/api/tasks", json=payload)
+    return resp.status_code, resp.get_json()
 
 
-class TestParseCaptureType:
-    """Type shortcuts: #work, #personal."""
+class TestCaptureRoundTrip:
+    def test_plain_capture_lands_in_inbox(self, authed_client):
+        # No hashtag: parseCapture sets no tier (#443) and capture.js adds
+        # the type from its Work / Personal select.
+        status, data = _post(authed_client, {"title": "Buy milk", "type": "personal"})
+        assert status == 201
+        assert (data["title"], data["tier"], data["type"]) == ("Buy milk", "inbox", "personal")
 
-    def test_work(self):
-        r = _parse_capture("Deploy app #work")
-        assert r["type"] == "work"
-        assert r["title"] == "Deploy app"
+    def test_section_hashtag_sets_the_section(self, authed_client):
+        status, data = _post(authed_client, {"title": "Fix bug", "type": "work",
+                                             "tier": "this_week"})
+        assert status == 201
+        assert data["tier"] == "this_week"
 
-    def test_personal(self):
-        r = _parse_capture("Call dentist #personal")
-        assert r["type"] == "personal"
-        assert r["title"] == "Call dentist"
+    def test_section_page_default_files_there(self, authed_client):
+        # #443: on /tier/tomorrow capture.js fills tier from the bar's
+        # data-default-tier; Tomorrow then gets tomorrow's date (#28).
+        status, data = _post(authed_client, {"title": "Call Sam", "type": "work",
+                                             "tier": "tomorrow"})
+        assert status == 201
+        assert data["tier"] == "tomorrow"
+        assert data["due_date"] == (local_today_date() + timedelta(days=1)).isoformat()
 
-    def test_type_case_insensitive(self):
-        r = _parse_capture("Task #WORK")
-        assert r["type"] == "work"
-
-    def test_no_type_default(self):
-        r = _parse_capture("Plain task")
-        assert "type" not in r
-
-
-class TestParseCaptureRepeat:
-    """Repeat shortcuts: #daily, #weekdays, #weekly, #monthly."""
-
-    def test_daily(self):
-        r = _parse_capture("Standup #daily")
-        assert r["repeat"]["frequency"] == "daily"
-        assert r["title"] == "Standup"
-
-    def test_weekdays(self):
-        r = _parse_capture("Check email #weekdays")
-        assert r["repeat"]["frequency"] == "weekdays"
-        assert r["title"] == "Check email"
-
-    def test_weekly(self):
-        r = _parse_capture("Team sync #weekly")
-        assert r["repeat"]["frequency"] == "weekly"
-        assert "day_of_week" in r["repeat"]
-        assert r["title"] == "Team sync"
-
-    def test_monthly(self):
-        r = _parse_capture("Budget review #monthly")
-        assert r["repeat"]["frequency"] == "monthly_date"
-        assert r["repeat"]["day_of_month"] == date.today().day
-        assert r["title"] == "Budget review"
-
-    def test_repeat_case_insensitive(self):
-        r = _parse_capture("Task #DAILY")
-        assert r["repeat"]["frequency"] == "daily"
-
-
-class TestParseCaptureURL:
-    """URL detection and title extraction."""
-
-    def test_url_only(self):
-        r = _parse_capture("https://example.com/article")
-        assert r["url"] == "https://example.com/article"
-        assert r["title"] == "https://example.com/article"
-
-    def test_url_with_title(self):
-        r = _parse_capture("Read this https://example.com/article")
-        assert r["url"] == "https://example.com/article"
-        assert r["title"] == "Read this"
-        assert r["_titleProvided"] is True
-
-    def test_url_with_title_after(self):
-        r = _parse_capture("https://example.com good article")
-        assert r["url"] == "https://example.com"
-        assert r["title"] == "good article"
-
-    def test_http_url(self):
-        r = _parse_capture("http://legacy.example.com")
-        assert r["url"] == "http://legacy.example.com"
-
-
-class TestParseCaptureCollisions:
-    """PREFIX COLLISION tests — these catch the bugs we found.
-
-    The critical ordering rule in parseCapture:
-    1. Repeat shortcuts FIRST (#daily, #weekdays, #weekly, #monthly)
-    2. Type shortcuts SECOND (#personal, #work)
-    3. Tier shortcuts LAST (#today, #week, #backlog, #freezer)
-
-    This prevents:
-    - #week consuming the first 5 chars of #weekly → leaving "ly"
-    - #week consuming the first 5 chars of #weekdays → leaving "days"
-    - #work matching inside #personal (it doesn't, but order matters)
-    """
-
-    def test_weekly_not_eaten_by_week(self):
-        """BUG FIX: #weekly must not be partially consumed by #week."""
-        r = _parse_capture("Team sync #weekly")
-        assert r["repeat"]["frequency"] == "weekly"
-        assert r["title"] == "Team sync"
-        # #week should NOT have matched — tier stays inbox
-        assert r["tier"] == "inbox"
-        # No leftover "ly" in the title
-        assert "ly" not in r["title"]
-
-    def test_weekdays_not_eaten_by_week(self):
-        """#weekdays must not be partially consumed by #week."""
-        r = _parse_capture("Standup #weekdays")
-        assert r["repeat"]["frequency"] == "weekdays"
-        assert r["title"] == "Standup"
-        assert r["tier"] == "inbox"
-        assert "days" not in r["title"]
-
-    def test_weekly_with_tier(self):
-        """#weekly + #today should both work independently."""
-        r = _parse_capture("Sync #weekly #today")
-        assert r["repeat"]["frequency"] == "weekly"
-        assert r["tier"] == "today"
-        assert r["title"] == "Sync"
-
-    def test_weekdays_with_tier(self):
-        """#weekdays + #backlog should both work."""
-        r = _parse_capture("Email check #weekdays #backlog")
-        assert r["repeat"]["frequency"] == "weekdays"
-        assert r["tier"] == "backlog"
-        assert r["title"] == "Email check"
-
-    def test_work_not_eaten_by_week(self):
-        """#work comes after repeat parsing, so #week won't eat it."""
-        r = _parse_capture("Deploy #work #today")
-        assert r["type"] == "work"
-        assert r["tier"] == "today"
-        assert r["title"] == "Deploy"
-
-    def test_personal_before_work(self):
-        """#personal is checked before #work (no prefix collision)."""
-        r = _parse_capture("Gym #personal")
-        assert r["type"] == "personal"
-        assert r["title"] == "Gym"
-
-    def test_all_shortcuts_combined(self):
-        """All shortcut types at once."""
-        r = _parse_capture("Big task #daily #work #today")
-        assert r["repeat"]["frequency"] == "daily"
-        assert r["type"] == "work"
-        assert r["tier"] == "today"
-        assert r["title"] == "Big task"
-
-    def test_url_with_shortcuts(self):
-        """URL + tier + type all parsed correctly."""
-        r = _parse_capture("Read https://example.com #work #week")
-        assert r["url"] == "https://example.com"
-        assert r["type"] == "work"
-        assert r["tier"] == "this_week"
-        assert r["title"] == "Read"
-
-
-# ---------------------------------------------------------------------------
-# API round-trip tests — verify server accepts parseCapture payloads
-# ---------------------------------------------------------------------------
-
-class TestCaptureAPIRoundTrip:
-    """POST /api/tasks with payloads that mirror parseCapture output."""
-
-    def test_plain_task(self, authed_client):
-        resp = authed_client.post("/api/tasks", json={
-            "title": "Buy milk",
-            "tier": "inbox",
-            "type": "personal",
+    def test_url_with_title_keeps_both(self, authed_client):
+        # _titleProvided rides along in the payload; the server ignores it.
+        status, data = _post(authed_client, {
+            "title": "Read this", "type": "work",
+            "url": "https://example.com/article", "_titleProvided": True,
         })
-        assert resp.status_code == 201
-        data = resp.get_json()
-        assert data["title"] == "Buy milk"
-        assert data["tier"] == "inbox"
+        assert status == 201
+        assert (data["title"], data["url"]) == ("Read this", "https://example.com/article")
 
-    def test_task_with_tier(self, authed_client):
-        resp = authed_client.post("/api/tasks", json={
-            "title": "Fix bug",
-            "tier": "today",
-            "type": "work",
-        })
-        assert resp.status_code == 201
-        data = resp.get_json()
-        assert data["tier"] == "today"
-        assert data["type"] == "work"
-
-    def test_task_with_url(self, authed_client):
-        resp = authed_client.post("/api/tasks", json={
-            "title": "Read article",
-            "tier": "inbox",
-            "type": "work",
-            "url": "https://example.com/article",
-        })
-        assert resp.status_code == 201
-        data = resp.get_json()
-        assert data["url"] == "https://example.com/article"
-
-    def test_task_with_repeat_daily(self, authed_client):
-        resp = authed_client.post("/api/tasks", json={
-            "title": "Morning standup",
-            "tier": "inbox",
-            "type": "work",
-            "repeat": {"frequency": "daily"},
-        })
-        assert resp.status_code == 201
-        data = resp.get_json()
+    @pytest.mark.parametrize("repeat", [
+        {"frequency": "daily"},
+        {"frequency": "weekdays"},
+        {"frequency": "weekly", "day_of_week": 2},
+        {"frequency": "monthly_date", "day_of_month": 15},
+    ])
+    def test_repeat_shortcuts_make_a_template(self, authed_client, repeat):
+        status, data = _post(authed_client, {"title": "Standup", "type": "work",
+                                             "repeat": repeat})
+        assert status == 201
         assert data["repeat"] is not None
-        assert data["repeat"]["frequency"] == "daily"
+        for key, value in repeat.items():
+            assert data["repeat"][key] == value
 
-    def test_task_with_repeat_weekly(self, authed_client):
-        resp = authed_client.post("/api/tasks", json={
-            "title": "Team sync",
-            "tier": "inbox",
-            "type": "work",
-            "repeat": {"frequency": "weekly", "day_of_week": 2},
-        })
-        assert resp.status_code == 201
-        data = resp.get_json()
+    def test_full_capture_payload(self, authed_client, app):
+        with app.app_context():
+            p = Project(name="Audit", type=ProjectType.WORK)
+            db.session.add(p)
+            db.session.commit()
+            project_id = str(p.id)
+        status, data = _post(authed_client, dict(FULL_CAPTURE))
+        assert status == 201
+        assert (data["title"], data["tier"], data["type"], data["url"]) == (
+            "Read", "today", "work", "https://example.com")
         assert data["repeat"]["frequency"] == "weekly"
-        assert data["repeat"]["day_of_week"] == 2
+        assert data["project_id"] == project_id
 
-    def test_task_with_repeat_weekdays(self, authed_client):
-        resp = authed_client.post("/api/tasks", json={
-            "title": "Check email",
-            "tier": "inbox",
-            "type": "work",
-            "repeat": {"frequency": "weekdays"},
-        })
-        assert resp.status_code == 201
-        data = resp.get_json()
-        assert data["repeat"]["frequency"] == "weekdays"
-
-    def test_task_with_repeat_monthly(self, authed_client):
-        resp = authed_client.post("/api/tasks", json={
-            "title": "Budget review",
-            "tier": "inbox",
-            "type": "personal",
-            "repeat": {"frequency": "monthly_date", "day_of_month": 15},
-        })
-        assert resp.status_code == 201
-        data = resp.get_json()
-        assert data["repeat"]["frequency"] == "monthly_date"
-        assert data["repeat"]["day_of_month"] == 15
-
-    def test_full_capture_payload(self, authed_client):
-        """Simulates parseCapture("Read https://ex.com #weekly #work #today")."""
-        resp = authed_client.post("/api/tasks", json={
-            "title": "Read",
-            "tier": "today",
-            "type": "work",
-            "url": "https://example.com",
-            "repeat": {"frequency": "weekly", "day_of_week": 0},
-        })
-        assert resp.status_code == 201
-        data = resp.get_json()
-        assert data["title"] == "Read"
-        assert data["tier"] == "today"
-        assert data["type"] == "work"
-        assert data["url"] == "https://example.com"
-        assert data["repeat"]["frequency"] == "weekly"
+    def test_overlong_capture_is_refused_with_the_reason(self, authed_client):
+        # #447: the capture bar shows this message and keeps the text.
+        status, data = _post(authed_client, {"title": "x" * 501, "type": "work"})
+        assert status == 422
+        assert data["error"] == "Title is too long: 501 characters, the limit is 500."
