@@ -148,3 +148,23 @@ class TestParseNewTask:
 def test_spoken_date():
     assert spoken_date(date(2026, 10, 23)) == "Friday, October 23"
     assert spoken_date(date(2027, 1, 5)) == "Tuesday, January 5"
+
+
+class TestLongInput:
+    """Security review 2026-10-18: a long text full of "due" made
+    parse_new_task try a date at every one (quadratic). Only a short tail can
+    be a date, so only short tails are tried."""
+
+    def test_many_dues_parse_fast(self):
+        import time
+        start = time.perf_counter()
+        parse_new_task("x " + "due " * 20000, TODAY)
+        assert time.perf_counter() - start < 0.5
+
+    def test_long_phrase_is_not_a_date(self):
+        assert parse_spoken_date("friday " + "x" * 100, TODAY) is None
+
+    def test_short_tail_still_reads(self):
+        assert parse_new_task("plan the due diligence trip due next friday", TODAY) == {
+            "type": "personal", "title": "Plan the due diligence trip",
+            "due_date": date(2026, 10, 30)}

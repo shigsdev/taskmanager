@@ -256,3 +256,22 @@ class TestHelp:
         assert "<code>/answer</code>" in html
         assert "Otherwise If" not in html
         assert "output variable" not in html
+
+
+class TestTooLong:
+    """Security review 2026-10-18: both routes refuse text over 1,000
+    characters before parsing it."""
+
+    def test_answer_refuses_long_text(self, app, client):
+        tid = _make_task(app)
+        r = _answer(client, tid, "rename to " + "x" * 1000)
+        assert r.status_code == 400
+        assert r.get_json()["say"] == "That was too long, so I left it as it is."
+        assert _task(app, tid).title == "Drive-review task"
+
+    def test_add_refuses_long_text(self, app, client):
+        r = _add(client, "due " * 300)
+        assert r.status_code == 400
+        assert r.get_json()["say"] == "That was too long, so nothing was added."
+        with app.app_context():
+            assert Task.query.count() == 0

@@ -49,6 +49,10 @@ _CLEAR_DUE = {
 }
 # Words a rename can't be: "rename to" alone is not a rename to "To".
 _NOT_A_TITLE = {"to", "it", "it to"}
+# The longest a spoken date runs ("the day after tomorrow", "December 25
+# 2027"). Longer text is never tried as one, which keeps parse_new_task
+# linear however many "due"s it holds (security review 2026-10-18).
+_MAX_DATE_PHRASE = 40
 
 
 def _norm(text: str) -> str:
@@ -93,7 +97,7 @@ def parse_spoken_date(text: str | None, today: date) -> date | None:
     year (without one, the next time that date comes round); "in N days /
     weeks".
     """
-    if not isinstance(text, str):
+    if not isinstance(text, str) or len(text) > _MAX_DATE_PHRASE:
         return None
     s = re.sub(r"^(?:on|by|for) ", "", _norm(text))
     if not s:
@@ -206,6 +210,8 @@ def parse_new_task(text: str | None, today: date) -> dict | None:
 
     due = None
     for found in reversed(list(re.finditer(r"(?:^|\s)due\s+", raw, re.IGNORECASE))):
+        if len(raw) - found.end() > _MAX_DATE_PHRASE:
+            break  # every earlier "due" has a longer tail still
         when = parse_spoken_date(raw[found.end():], today)
         if when is not None:
             due, raw = when, raw[:found.start()]

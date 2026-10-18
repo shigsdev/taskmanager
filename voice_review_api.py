@@ -192,6 +192,12 @@ _SAY_NO_ANSWER = "I didn't hear an answer, so I left it as it is."
 _SAY_NOT_OPEN = "That task isn't open any more, so I skipped it."
 _SAY_GONE = "That task isn't there any more, so I skipped it."
 _SAY_NO_TASK = "I didn't hear a task, so nothing was added."
+_SAY_TOO_LONG_ANSWER = "That was too long, so I left it as it is."
+_SAY_TOO_LONG_TASK = "That was too long, so nothing was added."
+# Far past anything dictated (a title is at most 500); refused before any
+# parsing, so a long text can't make the parser work hard (security
+# review 2026-10-18).
+_MAX_TEXT = 1000
 
 
 def _said(ok: bool, action: str, task_id: uuid.UUID, say: str, status: int = 200):
@@ -214,6 +220,8 @@ def answer(email: str, task_id: uuid.UUID):  # noqa: ARG001
     text = g.json_body.get("text")
     if not isinstance(text, str):
         return jsonify({"ok": False, "say": _SAY_NO_ANSWER}), 400
+    if len(text) > _MAX_TEXT:
+        return jsonify({"ok": False, "say": _SAY_TOO_LONG_ANSWER}), 400
     task = get_task(task_id)
     if task is None:
         return jsonify({"ok": False, "say": _SAY_GONE}), 404
@@ -266,6 +274,8 @@ def add_task(email: str):  # noqa: ARG001
     text = g.json_body.get("text")
     if not isinstance(text, str):
         return jsonify({"ok": False, "say": _SAY_NO_TASK}), 400
+    if len(text) > _MAX_TEXT:
+        return jsonify({"ok": False, "say": _SAY_TOO_LONG_TASK}), 400
     parsed = parse_new_task(text, local_today_date())
     if parsed is None:
         return jsonify({"ok": False, "say": _SAY_NO_TASK})
