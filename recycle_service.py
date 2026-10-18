@@ -44,7 +44,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import null, select, update
+from sqlalchemy import and_, null, or_, select, update
 
 # #356 / #368: private names on purpose, the one writer of each parent's
 # is_active. Renaming them public would rewrite #353's ADR, spec and
@@ -124,6 +124,54 @@ def _batch_projects(batch_id: uuid.UUID) -> list[Project]:
     return list(
         db.session.scalars(select(Project).where(Project.batch_id == batch_id))
     )
+
+
+def _paused_by_archive_of(project_ids, goal_ids) -> list[RecurringTask]:
+    """The paused, undeleted templates carrying a marker for any of these
+    parents, by title. Candidates for ``_left_paused``."""
+    if not project_ids and not goal_ids:
+        return []
+    return list(db.session.scalars(
+        select(RecurringTask)
+        .where(
+            RecurringTask.is_active.is_(False),
+            RecurringTask.deleted_at.is_(None),
+            or_(
+                and_(RecurringTask.paused_by_project_archive.is_(True),
+                     RecurringTask.project_id.in_(list(project_ids))),
+                and_(RecurringTask.paused_by_goal_archive.is_(True),
+                     RecurringTask.goal_id.in_(list(goal_ids))),
+            ),
+        )
+        .order_by(RecurringTask.title)
+    ))
+
+
+def _left_paused(templates, project_ids, goal_ids) -> list[dict]:
+    """#373: of ``templates``, the ones purging these projects and goals
+    leaves paused for good, as ``{id, title}``.
+
+    Mirrors ``purge_batch``: it clears each purged parent's marker and
+    leaves ``is_active`` alone, so a template stays paused unless it still
+    waits on a parent that isn't being purged (that one resumes it later).
+    """
+    out = []
+    for rt in templates:
+        hit = ((rt.paused_by_project_archive and rt.project_id in project_ids)
+               or (rt.paused_by_goal_archive and rt.goal_id in goal_ids))
+        waits = ((rt.paused_by_project_archive and rt.project_id not in project_ids)
+                 or (rt.paused_by_goal_archive and rt.goal_id not in goal_ids))
+        if hit and not waits:
+            out.append({"id": str(rt.id), "title": rt.title})
+    return out
+
+
+def templates_left_paused_by_purge(project_ids, goal_ids) -> list[dict]:
+    """#373: the repeating tasks purging these projects and goals leaves
+    paused, by title — what the Purge / Empty Bin dialogs name. Read-only."""
+    project_ids, goal_ids = set(project_ids), set(goal_ids)
+    return _left_paused(_paused_by_archive_of(project_ids, goal_ids),
+                        project_ids, goal_ids)
 
 
 # --- Listing -----------------------------------------------------------------
@@ -219,6 +267,21 @@ def list_bin() -> list[dict]:
             bid = taken[sub_id]
             subtask_counts[bid] = subtask_counts.get(bid, 0) + 1
 
+    # #373: the repeating tasks each batch's Purge leaves paused. One query
+    # per table for the whole bin (PR69's rule), then sorted out per batch.
+    batch_projects: dict = {}
+    for pbid, pid in db.session.execute(
+        select(Project.batch_id, Project.id).where(Project.batch_id.in_(batch_ids))
+    ).all():
+        batch_projects.setdefault(pbid, set()).add(pid)
+    batch_goals: dict = {}
+    for gbid, gid in db.session.execute(
+        select(Goal.batch_id, Goal.id).where(Goal.batch_id.in_(batch_ids))
+    ).all():
+        batch_goals.setdefault(gbid, set()).add(gid)
+    candidates = _paused_by_archive_of(
+        set().union(*batch_projects.values()), set().union(*batch_goals.values()))
+
     entries = []
     for log in logs:
         entries.append(
@@ -237,6 +300,11 @@ def list_bin() -> list[dict]:
                 "project_count": project_counts.get(log.batch_id, 0),
                 "restore_project_count": restore_project_counts.get(log.batch_id, 0),
                 "subtask_count": subtask_counts.get(log.batch_id, 0),  # #494
+                "stays_paused": _left_paused(  # #373
+                    candidates,
+                    batch_projects.get(log.batch_id, set()),
+                    batch_goals.get(log.batch_id, set()),
+                ),
             }
         )
     return entries
@@ -324,12 +392,24 @@ def bin_summary() -> dict:
         )
         or 0
     )
+    # #373: the repeating tasks Empty Bin leaves paused, judged over every
+    # batch at once (one waiting on two batches' parents is named here but
+    # on neither Purge alone).
+    in_bin = (
+        select(ImportLog.batch_id)
+        .where(ImportLog.undone_at.is_not(None), ImportLog.batch_id.is_not(None))
+    )
+    stays_paused = templates_left_paused_by_purge(
+        db.session.scalars(select(Project.id).where(Project.batch_id.in_(in_bin))),
+        db.session.scalars(select(Goal.id).where(Goal.batch_id.in_(in_bin))),
+    )
     return {
         "batch_count": batch_count,
         "task_count": task_count,
         "goal_count": goal_count,
         "project_count": project_count,
         "deleted_task_count": deleted_task_count,
+        "stays_paused": stays_paused,
     }
 
 

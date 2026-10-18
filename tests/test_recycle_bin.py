@@ -707,6 +707,7 @@ class TestListing:
             "goal_count": 0,
             "project_count": 0,  # PR66 #131
             "deleted_task_count": 0,  # #428
+            "stays_paused": [],  # #373
         }
 
     def test_bin_summary_counts_deleted_tasks(self, app, authed_client):

@@ -312,6 +312,9 @@
         // #494: and the subtasks you added that went with it.
         var subs = window.recycleBinHelpers.addedSubtasksPhrase(batch.subtask_count, "purge");
         if (subs) body = body.replace(" This cannot be undone.", " " + subs + " This cannot be undone.");
+        // #373: and the repeating tasks it leaves paused for good.
+        var paused = window.recycleBinHelpers.staysPausedPhrase(batch.stays_paused, "purge");
+        if (paused) body = body.replace(" This cannot be undone.", " " + paused + " This cannot be undone.");
         openModal({
             title: "Purge Batch",
             body: body,
@@ -336,6 +339,9 @@
                     window.recycleBinHelpers.binItemPhrase(data) + " across " +
                     data.batch_count + " batch" + (data.batch_count === 1 ? "" : "es") + ". " +
                     "This cannot be undone.";
+                // #373: and the repeating tasks it leaves paused for good.
+                var paused = window.recycleBinHelpers.staysPausedPhrase(data.stays_paused, "empty");
+                if (paused) body = body.replace("This cannot be undone.", paused + " This cannot be undone.");
                 openModal({
                     title: "Empty Recycle Bin",
                     body: body,

@@ -148,8 +148,33 @@ function addedSubtasksPhrase(n, when) {
     return what + (one ? " goes" : " go") + " with it.";
 }
 
+/**
+ * #373: the repeating tasks a Purge (scope "purge") or Empty Bin ("empty")
+ * leaves paused for good — the server's `stays_paused` list. Names up to 5,
+ * like #369's undo confirm. "" when there are none (the quiet case).
+ *   '1 repeating task on it stays paused: "Water plants". Resume it on
+ *    Recurring if you still want it.'
+ */
+var STAYS_PAUSED_NAMED = 5;
+
+function staysPausedPhrase(list, scope) {
+    if (!Array.isArray(list) || list.length === 0) return "";
+    var n = list.length;
+    var one = n === 1;
+    var names = list.slice(0, STAYS_PAUSED_NAMED).map(function (t) {
+        return "\"" + t.title + "\"";
+    }).join(", ");
+    var more = n > STAYS_PAUSED_NAMED ? " and " + (n - STAYS_PAUSED_NAMED) + " more" : "";
+    return n + " repeating task" + (one ? "" : "s") +
+        " on " + (scope === "empty" ? "them" : "it") +
+        (one ? " stays" : " stay") + " paused: " + names + more + ". " +
+        "Resume " + (one ? "it" : "them") + " on Recurring if you still want " +
+        (one ? "it" : "them") + ".";
+}
+
 var _recycleBinApi = {
     addedSubtasksPhrase: addedSubtasksPhrase,
+    staysPausedPhrase: staysPausedPhrase,
     binItemTotal: binItemTotal,
     binItemPhrase: binItemPhrase,
     binDeletedTasks: binDeletedTasks,

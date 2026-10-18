@@ -706,7 +706,10 @@ component is added, a data flow changes, or a security boundary shifts.
   (`static/project_archive_helpers.js`, fed by `GET /api/recurring`).
   The recycle bin's undo / restore reach it too (#356), and `purge_batch`
   clears the flag on templates of the projects it hard-deletes (they
-  stay paused; the DB SET NULLs their `project_id`). A data migration
+  stay paused; the DB SET NULLs their `project_id`). #373: `list_bin`
+  (per batch) and `bin_summary` (whole bin) carry `stays_paused` —
+  `recycle_service.templates_left_paused_by_purge`, the same rule — so the
+  Purge and Empty Bin confirms name them. A data migration
   (`r7f8a9b0c1d2`) paused templates already sitting on archived projects.
 - **Archiving a goal pauses its repeating tasks** (#368, 2026-10-02,
   ADR-038): `goal_service._set_goal_active` is the one writer of

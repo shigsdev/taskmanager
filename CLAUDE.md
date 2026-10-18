@@ -978,6 +978,11 @@ Report.
       under Deleted tasks, with its section; Restore turns the row into
       "Restored to <section>." and the task is back in that section. The
       Settings "Recycle Bin (N)" count includes deleted tasks.
+      #373: import a project, give it a repeating task, Undo it in Settings
+      → Import History: on /recycle-bin, Purge and Empty Bin each say "1
+      repeating task on it (them) stays paused: "<title>". Resume it on
+      Recurring …"; after the Purge it is PAUSED on /recurring. A batch
+      with none reads exactly as before (bin_stays_paused.spec.js).
   13. **Print view**: verify tasks are listed with correct tier grouping.
   14. **Architecture page** (#405): at mobile every diagram draws full size
       (labels ~16px, not 2–8px) and swipes sideways inside its own box —
@@ -1195,6 +1200,7 @@ Report.
   Recycle bin: batch entries    PASS          Recycle bin: batch entries    PASS
   Recycle bin: Empty Bin btn    PASS          Recycle bin: Empty Bin btn    PASS
   Recycle bin: restore deleted  PASS          Recycle bin: restore deleted  PASS
+  Recycle bin: purge names paused PASS        Recycle bin: purge names paused PASS
   Print: tier grouping          PASS          Print: tier grouping          PASS
   Architecture: diagrams readable PASS        Architecture: diagrams readable PASS
   Architecture: no zoom buttons PASS          Architecture: full-screen view PASS
