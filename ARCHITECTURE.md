@@ -1246,6 +1246,8 @@ the code.
 /api/voice-review/<uuid:task_id>/complete          # POST — complete (auto-completes subtasks)
 /api/voice-review/<uuid:task_id>/move              # POST — retier to {today,tomorrow,next_week,backlog} only
 /api/voice-review/<uuid:task_id>/cancel            # POST — cancel (auto-cancels subtasks)
+/api/voice-review/<uuid:task_id>/answer            # POST — #500: {text} → one action (complete/cancel/move/rename/due/skip) + `say`
+/api/voice-review/tasks                            # POST — #500: {text} → add a task (title, work/personal, due date) + `say`
 
 # reflection_api.py — Weekly Reflection (2026-05-16)
 /api/reflection                                  # POST submit (typed/audio), GET list
@@ -1383,6 +1385,11 @@ the code.
   `voice_action_minted:<jti>` → `{minted, expires, revoked}`; the token is
   returned once (`no-store`) and never stored or logged. Revoke appends to
   the `voice_action_revoked_jtis` denylist (one writer, never truncated).
+  Since #500 (ADR-043) the token can also add a task and rename / re-date an
+  open one: `POST …/<id>/answer` and `POST …/tasks` take only `text`, which
+  `voice_answer.py` (fixed rules, no AI) turns into one action whose own
+  keys alone reach `update_task` / `create_task`; every answer carries a
+  `say` sentence the Shortcut speaks.
 - **Air-gap boundary**: the user's work VDI cannot reach the app directly.
   The daily digest email to work Outlook is the only (one-way) bridge.
 

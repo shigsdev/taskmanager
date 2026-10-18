@@ -961,6 +961,11 @@ Report.
      a bad id says why; Done hides it. `__userIsBusy()` is true only while
      a new token shows. (A revoked token's 401 is pytest's — the dev bypass
      authenticates every request locally.)
+     #500: the Siri voice review card's hint says the token can also
+     rename / re-date and add a task; Help → Hands-free voice review reads
+     "What you can say", Steps 1–5 with Part 2's `/answer` action and the
+     "Add a task" Shortcut, at both widths with no sideways scroll. (What
+     each spoken answer does is pytest's: test_voice_answer*.py.)
   10. **Import page**: verify buttons render and are clickable.
       #390: in the task preview a row WITH a due date shows its Tier
       locked to the date's section with "Set by due date"; clearing the
@@ -1190,6 +1195,7 @@ Report.
   Settings: undo names paused tmpl PASS       Settings: undo names paused tmpl PASS
   Settings: no-tmpl undo quiet  PASS          Settings: no-tmpl undo quiet  PASS
   Settings: Siri token make/copy/revoke PASS  Settings: Siri token make/copy/revoke PASS
+  Help: Siri setup, answer + add PASS         Help: Siri setup, answer + add PASS
   Import: button click          PASS          Import: button click          PASS
   Import: dated row tier locked PASS          Import: dated row tier locked PASS
   Import: late parse dropped    PASS          Import: late parse dropped    PASS
@@ -1667,6 +1673,12 @@ This app is a **single-user personal tool** with:
   refused (`tests/test_voice_token_settings.py`). So a stolen OAuth
   session can now leave behind a token that outlives it; the card lists
   every token made there (id + dates, never the token) so it shows.
+  Since #500 (ADR-043) it can also ADD a task (title, Work / Personal, due
+  date; Inbox or the date's section) and RENAME / RE-DATE an open task, via
+  `POST /api/voice-review/tasks` and `…/<id>/answer`: both read only `text`,
+  which `voice_answer.py` (fixed rules, no AI) turns into one action whose
+  own keys alone reach `create_task` / `update_task`
+  (`tests/test_voice_answer_api.py` holds the scope checks).
 - An optional Apple **app-specific password** (`ICLOUD_APP_PASSWORD`,
   #371) for the read-only iCloud Calendar reader on `/calendar` — see the
   trade-off below
@@ -1733,6 +1745,9 @@ about these — they're not relevant here):
   radius than the read-only validator cookie, bounded by those four.
   Minting one from `/settings` (ADR-042) needs the OAuth session, which
   can already do far more; the token adds persistence, not reach.
+  Since ADR-043 (#500) a leaked token can also add up to 30 tasks a minute
+  and rename or re-date open tasks — still no delete, no other field, no
+  read beyond the queue, and every change is visible and reversible.
 - `LOCAL_DEV_BYPASS_AUTH` exists at all (acceptable because of the
   four-gate defense including the triple Railway tripwire)
 

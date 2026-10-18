@@ -184,27 +184,60 @@
         <section id="voice-review-shortcut" class="docs-section">
             <h2>Hands-free voice review (Siri Shortcut)</h2>
             <p>
-                Review today's tasks out loud while driving — Siri reads each
-                task and you say what to do with it ("complete", "tomorrow",
-                "cancel", "skip"). It runs entirely by voice, so it works on
-                CarPlay with your phone in your pocket. This is a one-time
-                setup: make a token in Settings on your iPhone, then build
-                an iOS Shortcut that calls the app's voice-review API.
+                Review your overdue, today and tomorrow tasks out loud. Siri
+                reads each task and you say what to do with it ("complete",
+                "tomorrow", "rename to …", "due Friday", "skip"). You can also
+                add a task by voice. It all runs by voice, so it works on
+                CarPlay with your phone in your pocket. Setting it up is a
+                one-time job of about 20 minutes: make a token in Settings on
+                your iPhone, then build two Shortcuts in Apple's
+                <strong>Shortcuts</strong> app. No experience with Shortcuts
+                needed.
             </p>
 
-            <h3>What the Shortcut can (and can't) do</h3>
+            <h3>What the Shortcuts can (and can't) do</h3>
             <p>
-                The Shortcut authenticates with a <strong>scoped
-                voice-action token</strong> — a bearer token that can reach
-                <strong>only</strong> the four voice-review endpoints. It can
-                read your today / overdue / tomorrow queue and
-                complete / move / cancel those tasks. It <strong>cannot</strong>
-                create or delete tasks, edit anything else, read settings, or
-                run exports. Treat the token like a password; if it ever
-                leaks, revoke it (below). It expires after 90 days by default.
+                They sign in with a <strong>voice token</strong> that only
+                works for voice review. It can read your overdue / today /
+                tomorrow tasks; complete, move, cancel or rename one, or
+                change its due date; and add a task. It
+                <strong>cannot</strong> delete anything, change any other
+                part of a task (notes, project, goal…), read settings, or run
+                exports. Treat it like a password; if it ever leaks, revoke
+                it (below). It lasts 90 days unless you pick otherwise.
             </p>
 
-            <h3>Step 1 — Make the token (on your iPhone)</h3>
+            <h3>What you can say</h3>
+            <p>After Siri reads a task, say one of these, and only that:</p>
+            <ul>
+                <li><strong>complete</strong> (or "done") — marks it done.</li>
+                <li><strong>today</strong>, <strong>tomorrow</strong>,
+                    <strong>next week</strong> or <strong>backlog</strong>
+                    (or "move it to …") — moves it there.</li>
+                <li><strong>cancel</strong> — cancels it.</li>
+                <li><strong>rename to</strong> <em>new name</em> — renames it.</li>
+                <li><strong>due</strong> <em>date</em> — sets the due date, and
+                    the task moves to that date's section. "No due date"
+                    removes it.</li>
+                <li><strong>skip</strong> (or "next") — leaves it.</li>
+            </ul>
+            <p>
+                Dates can be <em>today</em>, <em>tomorrow</em>, a weekday
+                ("Friday" is the next Friday, never today), "next Friday"
+                (Friday of next week), a date ("October 25", "the 25th",
+                "10/25"), or "in 3 days" / "in a week". Siri says back what it
+                did. If it didn't understand, it says so and changes nothing,
+                so "complete it tomorrow" does nothing; say one thing at a
+                time.
+            </p>
+            <p>
+                To add a task, say <em>work</em> or <em>personal</em>, then
+                the task, and optionally a due date: "personal buy milk due
+                Friday". With no type word it's Personal. It goes to your
+                Inbox, or to its date's section when it has a due date.
+            </p>
+
+            <h3>Step 1 — Copy your token (on your iPhone)</h3>
             <ol>
                 <li>
                     In the app on your iPhone, open <strong>Settings</strong>
@@ -216,23 +249,21 @@
                     token</strong>.
                 </li>
                 <li>
-                    Tap <strong>Copy token</strong>. The token is shown this
-                    once and never stored, so copy it now; if you lose it,
-                    make another. If Copy can't reach the clipboard, the
-                    token is selected instead: tap <strong>Copy</strong> in
-                    the menu that pops up.
+                    Tap <strong>Copy header value</strong>. It copies
+                    <code>Bearer </code> and the token together, which is
+                    exactly what the Shortcut needs. The token is shown this
+                    once and never stored; if you lose it, make another. If
+                    Copy can't reach the clipboard, the text is selected
+                    instead: tap <strong>Copy</strong> in the menu that pops
+                    up.
                 </li>
                 <li>
-                    Tap <strong>Done</strong> once it's in the Shortcut. The
-                    token stays listed under <strong>Your tokens</strong> with
-                    the day it was made, when it expires, and its id.
+                    Tap <strong>Done</strong> once it's pasted into the
+                    Shortcut (Step 3). The token stays listed under
+                    <strong>Your tokens</strong> with the day it was made,
+                    when it expires, and its id.
                 </li>
             </ol>
-            <p>
-                <strong>Copy header value</strong> copies
-                <code>Bearer </code> and the token in one go, for pasting
-                straight into a header's value in Step 2.
-            </p>
             <h4>No phone handy? Make it on a computer</h4>
             <p>
                 On a computer that can reach your Railway deploy, run
@@ -243,100 +274,149 @@
                 The <strong>token</strong> is printed to the screen (stdout);
                 a short <strong>jti</strong> id prints alongside it (stderr).
                 Add <code>--days N</code> to change the lifetime (default 90).
-                A token made this way isn't listed under Your tokens, so keep
-                its jti to revoke it later.
+                Type <code>Bearer </code> (with the space) in front of it when
+                you paste it in Step 3. A token made this way isn't listed
+                under Your tokens, so keep its jti to revoke it later.
             </p>
 
-            <h3>Step 2 — Build the Shortcut</h3>
+            <h3>Step 2 — How the Shortcuts app works</h3>
+            <ul>
+                <li>A Shortcut is a list of <strong>actions</strong> that run
+                    top to bottom. To add one, tap the <strong>search bar at
+                    the bottom</strong>, type the action's name, and tap
+                    it.</li>
+                <li>Faint grey words inside an action (like <em>URL</em> or
+                    <em>Key</em>) are blanks. Tap one to fill it in.</li>
+                <li>A blue bubble is a <strong>variable</strong>: a value from
+                    an earlier action. While you type in a blank, a row of
+                    bubbles shows just above the keyboard; tap one to put it
+                    in. Not there? Tap <strong>Select Variable</strong> in
+                    that row, then tap the action it comes from.</li>
+                <li>Tap the small <strong>›</strong> on <strong>Get Contents
+                    of URL</strong> to show its <em>Method</em>,
+                    <em>Headers</em> and <em>Request Body</em>.</li>
+                <li>To move an action, press and hold it, drag, and let go.
+                    Actions inside a <strong>Repeat</strong> sit a little to
+                    the right.</li>
+                <li>Labels can differ slightly between iOS versions.</li>
+            </ul>
+
+            <h3>Step 3 — Build "Review my tasks"</h3>
             <p>
-                Open the <strong>Shortcuts</strong> app on your iPhone →
-                <strong>+</strong> → name it something you can say to Siri,
-                e.g. <em>"Review my tasks"</em>. Add these actions in order:
+                In <strong>Shortcuts</strong>, tap <strong>+</strong>, tap the
+                name at the top → <strong>Rename</strong>, and call it
+                <em>Review my tasks</em>. Add these actions in order.
+            </p>
+            <h4>Part 1 — Siri reads your tasks</h4>
+            <ol>
+                <li><strong>Text</strong> — tap inside it and paste what you
+                    copied in Step 1.</li>
+                <li><strong>Set Variable</strong> — Variable Name
+                    <code>Token</code>. (Its other bubble says Text: that's
+                    your token.)</li>
+                <li><strong>Get Contents of URL</strong> — URL
+                    <code>https://web-production-3e3ae.up.railway.app/api/voice-review/queue</code>.
+                    Tap <strong>›</strong>, leave Method on GET, then Headers
+                    → <strong>Add new header</strong>: Key
+                    <code>Authorization</code>, Text = the
+                    <strong>Token</strong> bubble.</li>
+                <li><strong>Get Dictionary Value</strong> — Key
+                    <code>items</code>. This is the list of tasks, overdue
+                    first, then today, then tomorrow.</li>
+                <li><strong>Repeat with Each</strong> — it adds a
+                    <strong>Repeat</strong> line and an <strong>End
+                    Repeat</strong> line. Everything below goes between
+                    them.</li>
+                <li><strong>Get Dictionary Value</strong> — Key
+                    <code>title</code>; tap its last bubble and choose
+                    <strong>Repeat Item</strong>.</li>
+                <li><strong>Speak Text</strong> — it says the Dictionary
+                    Value (the task's name).</li>
+            </ol>
+            <p>
+                Test it: tap <strong>▶</strong>. The first time, allow it to
+                connect to the app (<strong>Always Allow</strong>). Siri should
+                read your tasks one after another. Get this working before
+                Part 2.
+            </p>
+            <h4>Part 2 — Answer each task</h4>
+            <p>Still inside the Repeat, under Speak Text:</p>
+            <ol>
+                <li><strong>Get Dictionary Value</strong> — Key
+                    <code>id</code>; last bubble <strong>Repeat Item</strong>.</li>
+                <li><strong>Set Variable</strong> — Variable Name
+                    <code>TaskId</code>.</li>
+                <li><strong>Dictate Text</strong> — listens for your
+                    answer.</li>
+                <li><strong>Get Contents of URL</strong> — URL: type
+                    <code>https://web-production-3e3ae.up.railway.app/api/voice-review/</code>,
+                    tap the <strong>TaskId</strong> bubble, then type
+                    <code>/answer</code>. Tap <strong>›</strong>: Method
+                    <strong>POST</strong>; the same Authorization header
+                    as Part 1; Request Body <strong>JSON</strong> →
+                    <strong>Add new field</strong> → Text: Key
+                    <code>text</code>, value = the <strong>Dictated
+                    Text</strong> bubble.</li>
+                <li><strong>Get Dictionary Value</strong> — Key
+                    <code>say</code>.</li>
+                <li><strong>Speak Text</strong> — Siri says what it did.</li>
+            </ol>
+            <p>
+                Test it on a practice task first: add "Siri test" to Today,
+                run the Shortcut, and say "tomorrow" when Siri reads it. It
+                should say "Moved to Tomorrow." and the task should be in
+                Tomorrow.
+            </p>
+            <p>
+                Built it earlier with a separate <strong>If</strong> for each
+                word? That still works. The steps above just replace those
+                If blocks with one action.
+            </p>
+
+            <h3>Step 4 — Build "Add a task"</h3>
+            <p>
+                A second Shortcut, named <em>Add a task</em>:
             </p>
             <ol>
-                <li>
-                    <strong>Text</strong> — paste your token. (Keeping it in a
-                    Text action at the top makes it easy to swap when you
-                    re-mint.) Rename the action's output variable to
-                    <code>Token</code>.
-                </li>
-                <li>
-                    <strong>Get Contents of URL</strong> — this fetches the
-                    queue.
-                    <ul>
-                        <li>URL:
-                            <code>https://web-production-3e3ae.up.railway.app/api/voice-review/queue</code></li>
-                        <li>Method: <strong>GET</strong></li>
-                        <li>Headers: add <code>Authorization</code> =
-                            <code>Bearer </code> followed by your
-                            <code>Token</code> variable (note the space after
-                            "Bearer").</li>
-                    </ul>
-                </li>
-                <li>
-                    <strong>Get Dictionary Value</strong> → get
-                    <code>items</code> from the previous result. This is the
-                    list of tasks, already ordered <strong>overdue → today →
-                    tomorrow</strong>.
-                </li>
-                <li>
-                    <strong>Repeat with Each</strong> item in
-                    <code>items</code>. Inside the loop:
-                    <ul>
-                        <li><strong>Get Dictionary Value</strong>
-                            <code>title</code> from the Repeat Item →
-                            <strong>Speak Text</strong> it (optionally also
-                            speak the <code>bucket</code> so you hear "overdue"
-                            / "today" / "tomorrow").</li>
-                        <li><strong>Get Dictionary Value</strong>
-                            <code>id</code> from the Repeat Item → rename it
-                            <code>TaskId</code>.</li>
-                        <li><strong>Dictate Text</strong> — captures your
-                            spoken reply.</li>
-                        <li><strong>If</strong> the dictated text
-                            <em>contains</em> "complete" → <strong>Get
-                            Contents of URL</strong>, Method <strong>POST</strong>,
-                            URL
-                            <code>.../api/voice-review/</code><code>TaskId</code><code>/complete</code>,
-                            with the same <code>Authorization: Bearer</code>
-                            header.</li>
-                        <li><strong>Otherwise If</strong> it contains
-                            "tomorrow" / "today" / "next week" / "backlog" →
-                            POST to
-                            <code>.../api/voice-review/</code><code>TaskId</code><code>/move</code>
-                            with the header <em>and</em> a
-                            <strong>JSON request body</strong>
-                            <code>{"tier": "tomorrow"}</code> (use the tier the
-                            driver said — only
-                            <code>today</code>, <code>tomorrow</code>,
-                            <code>next_week</code>, <code>backlog</code> are
-                            accepted).</li>
-                        <li><strong>Otherwise If</strong> it contains "cancel"
-                            → POST to
-                            <code>.../api/voice-review/</code><code>TaskId</code><code>/cancel</code>
-                            with the header.</li>
-                        <li><strong>Otherwise</strong> (e.g. you said "skip")
-                            → do nothing; the loop moves to the next task.</li>
-                    </ul>
-                </li>
+                <li><strong>Text</strong> (paste your token) and
+                    <strong>Set Variable</strong> <code>Token</code>, as in
+                    Part 1.</li>
+                <li><strong>Speak Text</strong> — type <em>What's the
+                    task?</em></li>
+                <li><strong>Dictate Text</strong>.</li>
+                <li><strong>Get Contents of URL</strong> — URL
+                    <code>https://web-production-3e3ae.up.railway.app/api/voice-review/tasks</code>;
+                    Method <strong>POST</strong>; the Authorization header;
+                    Request Body JSON, field <code>text</code> = the
+                    <strong>Dictated Text</strong> bubble.</li>
+                <li><strong>Get Dictionary Value</strong> — Key
+                    <code>say</code>, then <strong>Speak Text</strong>.</li>
             </ol>
+            <p>
+                Say <em>"Hey Siri, add a task"</em>, then e.g. "work call Sam
+                due Friday". Siri answers 'Added "Call Sam", due Friday, …'.
+            </p>
 
-            <h3>Step 3 — Make it hands-free</h3>
+            <h3>Step 5 — Make it hands-free</h3>
             <ul>
                 <li>
-                    In the Shortcut's settings, turn <strong>off</strong> any
+                    In each Shortcut's settings, turn <strong>off</strong> any
                     "Ask Before Running" / confirmation prompts so it runs
                     start-to-finish by voice.
                 </li>
                 <li>
-                    Trigger it with <em>"Hey Siri, Review my tasks"</em>
+                    Start it with <em>"Hey Siri, Review my tasks"</em>
                     (matching the name you gave it). On CarPlay this works
                     with the phone locked and in your pocket.
                 </li>
                 <li>
-                    Test it parked first — confirm Siri reads a task, hears
-                    your reply, and the task actually moves/completes in the
-                    app before you rely on it while driving.
+                    Test it parked first, and confirm in the app that the
+                    tasks really moved before you rely on it while driving.
+                </li>
+                <li>
+                    When the token expires, make a new one (Step 1) and paste
+                    it into each Shortcut's first <strong>Text</strong>
+                    action.
                 </li>
             </ul>
 

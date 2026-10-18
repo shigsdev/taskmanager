@@ -386,13 +386,18 @@ Exit codes:
 - `2` — COOKIE EXPIRED (refresh it — the script prints copy-pasteable instructions)
 - `3` — Usage error (missing cookie file or bad args)
 
-### Voice-review action token (#297 / ADR-034, #499 / ADR-042)
+### Voice-review action token (#297 / ADR-034, #499 / ADR-042, #500 / ADR-043)
 
 For the hands-free "review my tasks while driving" iOS Shortcut you need a
 **scoped voice-action token**: a `SECRET_KEY`-signed bearer token that
 authenticates ONLY `/api/voice-review/*` (read the today/overdue/tomorrow
 queue + complete / move-to-`{today,tomorrow,next_week,backlog}` / cancel
-a task). It cannot touch tasks CRUD, settings, or exports (ADR-034).
+a task; since #500 also rename an open task, set or clear its due date, and
+add a task — title, Work / Personal, due date). It cannot delete, touch any
+other field, tasks CRUD, settings, or exports (ADR-034, ADR-043). The
+Shortcut sends what you said to `POST /api/voice-review/<id>/answer` (or
+`/tasks` to add one) and speaks the `say` sentence that comes back; the
+step-by-step setup is in Help → Hands-free voice review.
 
 **Make it on the phone (#499).** Signed in on the iPhone, open
 **Settings → Siri voice review**, pick a lifetime (30 / 90 / 180 / 365
