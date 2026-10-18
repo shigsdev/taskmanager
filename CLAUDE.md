@@ -966,6 +966,12 @@ Report.
      "What you can say", Steps 1–5 with Part 2's `/answer` action and the
      "Add a task" Shortcut, at both widths with no sideways scroll. (What
      each spoken answer does is pytest's: test_voice_answer*.py.)
+     #504: Help → Hands-free voice review shows numbered step cards 0–21
+     with "When it's right" drawings; each of the three Copy buttons says
+     "Copied" (or "Selected — tap Copy") and puts its address on the
+     clipboard; at 375 the address boxes fit and the buttons are 44px. Help
+     → Apple Health (not built yet) is in the contents and reads at both
+     widths.
   10. **Import page**: verify buttons render and are clickable.
       #390: in the task preview a row WITH a due date shows its Tier
       locked to the date's section with "Set by due date"; clearing the
@@ -1196,6 +1202,7 @@ Report.
   Settings: no-tmpl undo quiet  PASS          Settings: no-tmpl undo quiet  PASS
   Settings: Siri token make/copy/revoke PASS  Settings: Siri token make/copy/revoke PASS
   Help: Siri setup, answer + add PASS         Help: Siri setup, answer + add PASS
+  Help: Siri step cards + Copy  PASS          Help: Siri step cards + Copy  PASS
   Import: button click          PASS          Import: button click          PASS
   Import: dated row tier locked PASS          Import: dated row tier locked PASS
   Import: late parse dropped    PASS          Import: late parse dropped    PASS

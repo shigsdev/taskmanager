@@ -275,3 +275,19 @@ class TestTooLong:
         assert r.get_json()["say"] == "That was too long, so nothing was added."
         with app.app_context():
             assert Task.query.count() == 0
+
+    def test_help_has_numbered_steps_and_copy_fields(self, authed_client):
+        # #504: the setup guide's numbered steps, with copy fields for the
+        # three addresses, and the Apple Health phone test.
+        html = authed_client.get("/docs").get_data(as_text=True)
+        for field, url in (
+            ("docsSiriQueueUrl", "/api/voice-review/queue"),
+            ("docsSiriBaseUrl", "/api/voice-review/"),
+            ("docsSiriTasksUrl", "/api/voice-review/tasks"),
+        ):
+            assert f'id="{field}"' in html
+            assert f'data-copy-for="{field}"' in html
+            assert f'value="https://web-production-3e3ae.up.railway.app{url}"' in html
+        assert '<span class="docs-step-num">21</span>' in html
+        assert "docs_copy.js" in html and "voice_token_helpers.js" in html
+        assert 'id="apple-health"' in html and 'href="#apple-health"' in html

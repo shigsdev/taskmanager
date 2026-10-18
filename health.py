@@ -187,6 +187,7 @@ EXPECTED_STATIC_FILES = (
     "static/row_label_helpers.js",
     "static/settings.js",
     "static/voice_token_helpers.js",  # #499 — Siri token card: copy, ids, row words
+    "static/docs_copy.js",  # #504 — Help: Copy buttons on the Siri setup steps
     "static/recycle_bin.js",
     "static/recycle_bin_helpers.js",
     "static/import_helpers.js",  # #432 — import confirm endpoint per mode

@@ -5001,6 +5001,93 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .docs-content li { margin: 2px 0; }
 .docs-section { margin-bottom: 48px; }
 
+/* #504: the Siri Shortcut setup, one numbered card per step (same numbers
+   as the setup guide), with a drawing of how each Shortcuts action looks
+   once it's right. */
+.docs-step {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    background: var(--surface);
+    padding: 12px 14px;
+    margin: 12px 0;
+    min-width: 0;
+}
+.docs-step h4 {
+    margin: 0 0 6px;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+}
+.docs-step-num {
+    flex: 0 0 auto;
+    min-width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: inline-grid;
+    place-items: center;
+    background: var(--surface-raised);
+    color: var(--copper-bright);
+    font-variant-numeric: tabular-nums;
+}
+.docs-step ol { margin: 0; }
+.docs-step-label {
+    margin: 10px 0 4px;
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+/* How the action looks in the Shortcuts editor */
+.docs-action {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    background: var(--surface-sunk);
+    padding: 8px 10px;
+    line-height: 2;
+    overflow-wrap: anywhere;
+}
+.docs-action span.row { display: block; }
+.docs-action.inside { margin-left: 18px; border-left: 3px solid var(--copper-dim); }
+/* A Shortcuts variable: iOS draws these as blue pills */
+.docs-tok {
+    display: inline-block;
+    background: #3b6fd8;
+    color: #ffffff;
+    border-radius: 6px;
+    padding: 0 7px;
+    line-height: 1.6;
+    font-weight: 600;
+    font-size: 0.9em;
+}
+.docs-copy {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    margin: 6px 0;
+}
+.docs-copy input {
+    min-width: 0;
+    width: 100%;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    background: var(--surface-sunk);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    padding: 8px 10px;
+}
+.docs-note {
+    border-left: 3px solid var(--copper-dim);
+    padding: 6px 10px;
+    margin: 8px 0;
+    color: var(--text-muted);
+}
+@media (max-width: 767px) {  /* #382: the one tap-target breakpoint */
+    .docs-copy input { font-size: 16px; } /* #450: no iOS zoom on tap */
+    .docs-copy .btn { min-height: 44px; }
+}
+
 .import-docs-link {
     margin-left: 8px;
     font-size: 0.85rem;

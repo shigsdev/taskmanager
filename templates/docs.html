@@ -27,6 +27,7 @@
         <ul>
             <li><a href="#install-iphone">Install on iPhone (Safari)</a></li>
             <li><a href="#voice-review-shortcut">Hands-free voice review (Siri Shortcut)</a></li>
+            <li><a href="#apple-health">Apple Health (not built yet)</a></li>
         </ul>
 
         <h3 class="docs-toc-group">Capturing</h3>
@@ -237,33 +238,38 @@
                 Inbox, or to its date's section when it has a due date.
             </p>
 
-            <h3>Step 1 — Copy your token (on your iPhone)</h3>
-            <ol>
-                <li>
-                    In the app on your iPhone, open <strong>Settings</strong>
-                    and find <strong>Siri voice review</strong>.
-                </li>
-                <li>
-                    Pick how long it <strong>Lasts</strong> (30, 90, 180 or
-                    365 days; 90 is the default) and tap <strong>Make a new
-                    token</strong>.
-                </li>
-                <li>
-                    Tap <strong>Copy header value</strong>. It copies
-                    <code>Bearer </code> and the token together, which is
-                    exactly what the Shortcut needs. The token is shown this
-                    once and never stored; if you lose it, make another. If
-                    Copy can't reach the clipboard, the text is selected
-                    instead: tap <strong>Copy</strong> in the menu that pops
-                    up.
-                </li>
-                <li>
-                    Tap <strong>Done</strong> once it's pasted into the
-                    Shortcut (Step 3). The token stays listed under
+            <p>
+                The steps below are numbered 0 to 21. If one doesn't match
+                your phone, note its number. Each step shows what it should
+                look like once it's right. Blue pills are
+                <span class="docs-tok">variables</span>, as the Shortcuts
+                app draws them.
+            </p>
+
+            <h3>Before you start — copy your token</h3>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">0</span> Copy your token (on your iPhone)</h4>
+                <ol>
+                    <li>In the app on your iPhone, open
+                        <strong>Settings</strong> and find <strong>Siri voice
+                        review</strong>.</li>
+                    <li>Pick how long it <strong>Lasts</strong> (30, 90, 180
+                        or 365 days; 90 is the default) and tap
+                        <strong>Make a new token</strong>.</li>
+                    <li>Tap <strong>Copy header value</strong>. It copies
+                        <code>Bearer </code> and the token together, which is
+                        exactly what the Shortcut needs.</li>
+                </ol>
+                <p class="docs-note">
+                    The token is shown this once and never stored; if you
+                    lose it, make another. If Copy can't reach the clipboard,
+                    the text is selected instead: tap <strong>Copy</strong> in
+                    the menu that pops up. Tap <strong>Done</strong> once it's
+                    pasted into step 2. The token stays listed under
                     <strong>Your tokens</strong> with the day it was made,
                     when it expires, and its id.
-                </li>
-            </ol>
+                </p>
+            </div>
             <h4>No phone handy? Make it on a computer</h4>
             <p>
                 On a computer that can reach your Railway deploy, run
@@ -275,11 +281,11 @@
                 a short <strong>jti</strong> id prints alongside it (stderr).
                 Add <code>--days N</code> to change the lifetime (default 90).
                 Type <code>Bearer </code> (with the space) in front of it when
-                you paste it in Step 3. A token made this way isn't listed
+                you paste it in step 2. A token made this way isn't listed
                 under Your tokens, so keep its jti to revoke it later.
             </p>
 
-            <h3>Step 2 — How the Shortcuts app works</h3>
+            <h3>How the Shortcuts app works</h3>
             <ul>
                 <li>A Shortcut is a list of <strong>actions</strong> that run
                     top to bottom. To add one, tap the <strong>search bar at
@@ -287,11 +293,12 @@
                     it.</li>
                 <li>Faint grey words inside an action (like <em>URL</em> or
                     <em>Key</em>) are blanks. Tap one to fill it in.</li>
-                <li>A blue bubble is a <strong>variable</strong>: a value from
-                    an earlier action. While you type in a blank, a row of
-                    bubbles shows just above the keyboard; tap one to put it
-                    in. Not there? Tap <strong>Select Variable</strong> in
-                    that row, then tap the action it comes from.</li>
+                <li>A <span class="docs-tok">blue pill</span> is a
+                    <strong>variable</strong>: a value from an earlier action.
+                    While you type in a blank, a row of them shows just above
+                    the keyboard; tap one to put it in. Not there? Tap
+                    <strong>Select Variable</strong> in that row, then tap the
+                    action it comes from.</li>
                 <li>Tap the small <strong>›</strong> on <strong>Get Contents
                     of URL</strong> to show its <em>Method</em>,
                     <em>Headers</em> and <em>Request Body</em>.</li>
@@ -300,104 +307,296 @@
                     the right.</li>
                 <li>Labels can differ slightly between iOS versions.</li>
             </ul>
-
-            <h3>Step 3 — Build "Review my tasks"</h3>
-            <p>
-                In <strong>Shortcuts</strong>, tap <strong>+</strong>, tap the
-                name at the top → <strong>Rename</strong>, and call it
-                <em>Review my tasks</em>. Add these actions in order.
-            </p>
-            <h4>Part 1 — Siri reads your tasks</h4>
-            <ol>
-                <li><strong>Text</strong> — tap inside it and paste what you
-                    copied in Step 1.</li>
-                <li><strong>Set Variable</strong> — Variable Name
-                    <code>Token</code>. (Its other bubble says Text: that's
-                    your token.)</li>
-                <li><strong>Get Contents of URL</strong> — URL
-                    <code>https://web-production-3e3ae.up.railway.app/api/voice-review/queue</code>.
-                    Tap <strong>›</strong>, leave Method on GET, then Headers
-                    → <strong>Add new header</strong>: Key
-                    <code>Authorization</code>, Text = the
-                    <strong>Token</strong> bubble.</li>
-                <li><strong>Get Dictionary Value</strong> — Key
-                    <code>items</code>. This is the list of tasks, overdue
-                    first, then today, then tomorrow.</li>
-                <li><strong>Repeat with Each</strong> — it adds a
-                    <strong>Repeat</strong> line and an <strong>End
-                    Repeat</strong> line. Everything below goes between
-                    them.</li>
-                <li><strong>Get Dictionary Value</strong> — Key
-                    <code>title</code>; tap its last bubble and choose
-                    <strong>Repeat Item</strong>.</li>
-                <li><strong>Speak Text</strong> — it says the Dictionary
-                    Value (the task's name).</li>
-            </ol>
-            <p>
-                Test it: tap <strong>▶</strong>. The first time, allow it to
-                connect to the app (<strong>Always Allow</strong>). Siri should
-                read your tasks one after another. Get this working before
-                Part 2.
-            </p>
-            <h4>Part 2 — Answer each task</h4>
-            <p>Still inside the Repeat, under Speak Text:</p>
-            <ol>
-                <li><strong>Get Dictionary Value</strong> — Key
-                    <code>id</code>; last bubble <strong>Repeat Item</strong>.</li>
-                <li><strong>Set Variable</strong> — Variable Name
-                    <code>TaskId</code>.</li>
-                <li><strong>Dictate Text</strong> — listens for your
-                    answer.</li>
-                <li><strong>Get Contents of URL</strong> — URL: type
-                    <code>https://web-production-3e3ae.up.railway.app/api/voice-review/</code>,
-                    tap the <strong>TaskId</strong> bubble, then type
-                    <code>/answer</code>. Tap <strong>›</strong>: Method
-                    <strong>POST</strong>; the same Authorization header
-                    as Part 1; Request Body <strong>JSON</strong> →
-                    <strong>Add new field</strong> → Text: Key
-                    <code>text</code>, value = the <strong>Dictated
-                    Text</strong> bubble.</li>
-                <li><strong>Get Dictionary Value</strong> — Key
-                    <code>say</code>.</li>
-                <li><strong>Speak Text</strong> — Siri says what it did.</li>
-            </ol>
-            <p>
-                Test it on a practice task first: add "Siri test" to Today,
-                run the Shortcut, and say "tomorrow" when Siri reads it. It
-                should say "Moved to Tomorrow." and the task should be in
-                Tomorrow.
-            </p>
-            <p>
-                Built it earlier with a separate <strong>If</strong> for each
-                word? That still works. The steps above just replace those
-                If blocks with one action.
+            <p class="docs-note">
+                <strong>Easier on a Mac.</strong> The Shortcuts app on a Mac
+                has the same actions, and a keyboard makes the pasting easier.
+                Sign in to the same Apple ID on both and turn on
+                <strong>iCloud Sync</strong> (in Settings → Shortcuts on the
+                iPhone, and in the Shortcuts app's settings on the Mac): what
+                you build on the Mac shows up on your iPhone. Make the token
+                (step 0) in the Mac's browser. Siri and CarPlay then run it
+                from the iPhone.
             </p>
 
-            <h3>Step 4 — Build "Add a task"</h3>
-            <p>
-                A second Shortcut, named <em>Add a task</em>:
-            </p>
-            <ol>
-                <li><strong>Text</strong> (paste your token) and
-                    <strong>Set Variable</strong> <code>Token</code>, as in
-                    Part 1.</li>
-                <li><strong>Speak Text</strong> — type <em>What's the
-                    task?</em></li>
-                <li><strong>Dictate Text</strong>.</li>
-                <li><strong>Get Contents of URL</strong> — URL
-                    <code>https://web-production-3e3ae.up.railway.app/api/voice-review/tasks</code>;
-                    Method <strong>POST</strong>; the Authorization header;
-                    Request Body JSON, field <code>text</code> = the
-                    <strong>Dictated Text</strong> bubble.</li>
-                <li><strong>Get Dictionary Value</strong> — Key
-                    <code>say</code>, then <strong>Speak Text</strong>.</li>
-            </ol>
-            <p>
-                Say <em>"Hey Siri, add a task"</em>, then e.g. "work call Sam
-                due Friday". Siri answers 'Added "Call Sam", due Friday, …'.
-            </p>
+            <h3>Part 1 — Siri reads your tasks</h3>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">1</span> Make a new Shortcut</h4>
+                <ol>
+                    <li>Open Apple's <strong>Shortcuts</strong> app and tap
+                        <strong>+</strong> at the top right.</li>
+                    <li>Tap the name <strong>New Shortcut</strong> at the top,
+                        then <strong>Rename</strong>.</li>
+                    <li>Type <code>Review my tasks</code> and tap
+                        <strong>Done</strong>. This is what you'll say to
+                        Siri.</li>
+                </ol>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">2</span> Paste your token</h4>
+                <ol>
+                    <li>Search <code>text</code> and tap the action called
+                        just <strong>Text</strong>.</li>
+                    <li>Tap inside its box, then tap
+                        <strong>Paste</strong>.</li>
+                </ol>
+                <p class="docs-step-label">When it's right</p>
+                <div class="docs-action"><span class="row"><strong>Text</strong></span><span class="row"><code>Bearer eyJhbGciOi…</code></span></div>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">3</span> Name it "Token"</h4>
+                <ol>
+                    <li>Search <code>set variable</code> and tap
+                        <strong>Set Variable</strong>.</li>
+                    <li>Tap the faint words <em>Variable Name</em>, type
+                        <code>Token</code>, and tap <strong>Done</strong>.
+                        Leave the <span class="docs-tok">Text</span> pill as
+                        it is: that's your token.</li>
+                </ol>
+                <p class="docs-step-label">When it's right</p>
+                <div class="docs-action">Set variable <span class="docs-tok">Token</span> to <span class="docs-tok">Text</span></div>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">4</span> Ask Task Manager for your tasks</h4>
+                <ol>
+                    <li>Search <code>get contents</code> and tap <strong>Get
+                        Contents of URL</strong>.</li>
+                    <li>Copy this address, then tap the faint word
+                        <em>URL</em> in the action and paste it:</li>
+                </ol>
+                <div class="docs-copy">
+                    <input type="text" id="docsSiriQueueUrl" readonly aria-label="Task list address" value="https://web-production-3e3ae.up.railway.app/api/voice-review/queue">
+                    <button type="button" class="btn btn-sm" data-copy-for="docsSiriQueueUrl">Copy</button>
+                </div>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">5</span> Add your token to that request</h4>
+                <ol>
+                    <li>On the same action, tap the small <strong>›</strong>
+                        at its right edge. Leave Method on
+                        <strong>GET</strong>.</li>
+                    <li>Tap <strong>Headers</strong>, then <strong>Add new
+                        header</strong>. Key: <code>Authorization</code>.</li>
+                    <li>Tap <em>Text</em> and tap the
+                        <span class="docs-tok">Token</span> pill above the
+                        keyboard.</li>
+                </ol>
+                <p class="docs-step-label">When it's right</p>
+                <div class="docs-action"><span class="row">Get contents of <code>…/api/voice-review/queue</code></span><span class="row">Method: GET</span><span class="row">Headers: <code>Authorization</code> = <span class="docs-tok">Token</span></span></div>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">6</span> Pick out the list of tasks</h4>
+                <ol>
+                    <li>Search <code>dictionary value</code> and tap
+                        <strong>Get Dictionary Value</strong>.</li>
+                    <li>Tap <em>Key</em> and type <code>items</code>. That's
+                        your tasks: overdue first, then today, then
+                        tomorrow.</li>
+                </ol>
+                <p class="docs-step-label">When it's right</p>
+                <div class="docs-action">Get <span class="docs-tok">Value</span> for <code>items</code> in <span class="docs-tok">Contents of URL</span></div>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">7</span> Go through the tasks one by one</h4>
+                <ol>
+                    <li>Search <code>repeat with each</code> and tap
+                        <strong>Repeat with Each</strong>.</li>
+                    <li>You get two lines with a gap between them:
+                        <strong>Repeat with each</strong> and <strong>End
+                        Repeat</strong>. Steps 8 to 16 go <strong>in that
+                        gap</strong>.</li>
+                </ol>
+                <p class="docs-step-label">When it's right</p>
+                <div class="docs-action"><span class="row">Repeat with each item in <span class="docs-tok">Dictionary Value</span></span><span class="row">  (gap)</span><span class="row">End Repeat</span></div>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">8</span> Get each task's name</h4>
+                <ol>
+                    <li>Search <code>dictionary value</code> again. Press and
+                        hold <strong>Get Dictionary Value</strong> and drag it
+                        into the gap. (If you tapped it and it landed below
+                        End Repeat, drag it up into the gap.)</li>
+                    <li>Key: <code>title</code>. Check the last pill says
+                        <span class="docs-tok">Repeat Item</span>; if not, tap
+                        it and choose Repeat Item.</li>
+                </ol>
+                <p class="docs-step-label">When it's right</p>
+                <div class="docs-action inside">Get <span class="docs-tok">Value</span> for <code>title</code> in <span class="docs-tok">Repeat Item</span></div>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">9</span> Say it out loud</h4>
+                <ol>
+                    <li>Search <code>speak</code> and drag <strong>Speak
+                        Text</strong> into the gap, under step 8's
+                        action.</li>
+                </ol>
+                <p class="docs-step-label">When it's right</p>
+                <div class="docs-action inside">Speak <span class="docs-tok">Dictionary Value</span></div>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">10</span> Test Part 1</h4>
+                <ol>
+                    <li>Tap <strong>▶</strong>. The first time, it asks to
+                        connect to the app: tap <strong>Always
+                        Allow</strong>.</li>
+                    <li>Siri should read your overdue, today and tomorrow
+                        tasks, one after another. Get this working before
+                        Part 2.</li>
+                </ol>
+            </div>
 
-            <h3>Step 5 — Make it hands-free</h3>
+            <h3>Part 2 — answer each task</h3>
+            <p>
+                First add a task called <strong>Siri test</strong> to Today, to
+                practise on. Every action in Part 2 goes in the gap, under
+                Speak Text.
+            </p>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">11</span> Get the task's id</h4>
+                <ol>
+                    <li>Drag another <strong>Get Dictionary Value</strong>
+                        into the gap. Key: <code>id</code>. Last pill:
+                        <span class="docs-tok">Repeat Item</span>.</li>
+                </ol>
+                <p class="docs-step-label">When it's right</p>
+                <div class="docs-action inside">Get <span class="docs-tok">Value</span> for <code>id</code> in <span class="docs-tok">Repeat Item</span></div>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">12</span> Name it "TaskId"</h4>
+                <ol>
+                    <li>Drag <strong>Set Variable</strong> into the gap.
+                        Variable Name: <code>TaskId</code>.</li>
+                </ol>
+                <p class="docs-step-label">When it's right</p>
+                <div class="docs-action inside">Set variable <span class="docs-tok">TaskId</span> to <span class="docs-tok">Dictionary Value</span></div>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">13</span> Listen for your answer</h4>
+                <ol>
+                    <li>Search <code>dictate</code> and drag <strong>Dictate
+                        Text</strong> into the gap.</li>
+                </ol>
+                <p class="docs-step-label">When it's right</p>
+                <div class="docs-action inside">Dictate text</div>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">14</span> Send your answer to Task Manager</h4>
+                <ol>
+                    <li>Drag <strong>Get Contents of URL</strong> into the
+                        gap. Copy this start of the address, tap
+                        <em>URL</em>, and paste it:</li>
+                </ol>
+                <div class="docs-copy">
+                    <input type="text" id="docsSiriBaseUrl" readonly aria-label="Answer address, start" value="https://web-production-3e3ae.up.railway.app/api/voice-review/">
+                    <button type="button" class="btn btn-sm" data-copy-for="docsSiriBaseUrl">Copy</button>
+                </div>
+                <ol start="2">
+                    <li>Still in the box, tap the
+                        <span class="docs-tok">TaskId</span> pill, then type
+                        <code>/answer</code> after it.</li>
+                    <li>Tap <strong>›</strong>. Method:
+                        <strong>POST</strong>. Headers → <strong>Add new
+                        header</strong>: <code>Authorization</code> =
+                        <span class="docs-tok">Token</span>, as in step
+                        5.</li>
+                    <li>Tap <strong>Request Body</strong> →
+                        <strong>JSON</strong> → <strong>Add new field</strong>
+                        → <strong>Text</strong>. Key: <code>text</code>. For
+                        its value, tap the <span class="docs-tok">Dictated
+                        Text</span> pill.</li>
+                </ol>
+                <p class="docs-step-label">When it's right</p>
+                <div class="docs-action inside"><span class="row">Get contents of <code>…/voice-review/</code><span class="docs-tok">TaskId</span><code>/answer</code></span><span class="row">Method: POST</span><span class="row">Headers: <code>Authorization</code> = <span class="docs-tok">Token</span></span><span class="row">Request Body: JSON · <code>text</code> = <span class="docs-tok">Dictated Text</span></span></div>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">15</span> Pick out what Siri should say back</h4>
+                <ol>
+                    <li>Drag <strong>Get Dictionary Value</strong> into the
+                        gap. Key: <code>say</code>. Its last pill should be
+                        <span class="docs-tok">Contents of URL</span>.</li>
+                </ol>
+                <p class="docs-step-label">When it's right</p>
+                <div class="docs-action inside">Get <span class="docs-tok">Value</span> for <code>say</code> in <span class="docs-tok">Contents of URL</span></div>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">16</span> Say it</h4>
+                <ol>
+                    <li>Drag <strong>Speak Text</strong> into the gap. That's
+                        the last action in the loop.</li>
+                </ol>
+                <p class="docs-step-label">When it's right</p>
+                <div class="docs-action inside">Speak <span class="docs-tok">Dictionary Value</span></div>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">17</span> Test Part 2</h4>
+                <ol>
+                    <li>Tap <strong>▶</strong>. When Siri reads <strong>Siri
+                        test</strong>, say "tomorrow". Siri should say "Moved
+                        to Tomorrow.", and Siri test is now in Tomorrow.</li>
+                    <li>For the other tasks, say "skip".</li>
+                </ol>
+                <p class="docs-note">
+                    Built it earlier with a separate <strong>If</strong> for
+                    each word? That still works. Steps 13 to 16 just replace
+                    those If blocks with one action.
+                </p>
+            </div>
+
+            <h3>Part 3 — a second Shortcut to add tasks</h3>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">18</span> Make "Add a task" with your token</h4>
+                <ol>
+                    <li>In Shortcuts, tap <strong>+</strong> and rename it
+                        <code>Add a task</code>.</li>
+                    <li>Add a <strong>Text</strong> action. To get your token:
+                        open <em>Review my tasks</em>, press and hold the text
+                        in its first Text action, <strong>Select All</strong>,
+                        <strong>Copy</strong>, then come back and paste.</li>
+                    <li>Add <strong>Set Variable</strong>, Variable Name
+                        <code>Token</code>, as in step 3.</li>
+                </ol>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">19</span> Ask, then listen</h4>
+                <ol>
+                    <li>Add <strong>Speak Text</strong> and type
+                        <code>What's the task?</code> in it.</li>
+                    <li>Add <strong>Dictate Text</strong>.</li>
+                </ol>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">20</span> Send it to Task Manager</h4>
+                <ol>
+                    <li>Add <strong>Get Contents of URL</strong>. Copy this
+                        address and paste it into <em>URL</em>:</li>
+                </ol>
+                <div class="docs-copy">
+                    <input type="text" id="docsSiriTasksUrl" readonly aria-label="Add-a-task address" value="https://web-production-3e3ae.up.railway.app/api/voice-review/tasks">
+                    <button type="button" class="btn btn-sm" data-copy-for="docsSiriTasksUrl">Copy</button>
+                </div>
+                <ol start="2">
+                    <li>Tap <strong>›</strong>: Method <strong>POST</strong>;
+                        header <code>Authorization</code> =
+                        <span class="docs-tok">Token</span>; Request Body
+                        <strong>JSON</strong> → field <code>text</code> =
+                        <span class="docs-tok">Dictated Text</span>. All as in
+                        step 14.</li>
+                    <li>Add <strong>Get Dictionary Value</strong> with Key
+                        <code>say</code>, then <strong>Speak Text</strong>.</li>
+                </ol>
+                <p class="docs-step-label">When it's right</p>
+                <div class="docs-action"><span class="row">Text · Set variable <span class="docs-tok">Token</span></span><span class="row">Speak <code>What's the task?</code></span><span class="row">Dictate text</span><span class="row">Get contents of <code>…/voice-review/tasks</code> (POST, header, JSON <code>text</code>)</span><span class="row">Get <span class="docs-tok">Value</span> for <code>say</code> · Speak</span></div>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">21</span> Test Part 3</h4>
+                <ol>
+                    <li>Tap <strong>▶</strong>. When Siri asks, say "personal
+                        buy milk due Friday".</li>
+                    <li>Siri should say something like 'Added "Buy milk", due
+                        Friday, …'. Check that it's in Task Manager.</li>
+                </ol>
+            </div>
+
+            <h3>Make it hands-free</h3>
             <ul>
                 <li>
                     In each Shortcut's settings, turn <strong>off</strong> any
@@ -414,7 +613,7 @@
                     tasks really moved before you rely on it while driving.
                 </li>
                 <li>
-                    When the token expires, make a new one (Step 1) and paste
+                    When the token expires, make a new one (step 0) and paste
                     it into each Shortcut's first <strong>Text</strong>
                     action.
                 </li>
@@ -443,6 +642,67 @@
                 </li>
             </ul>
         </section>
+
+        <section id="apple-health" class="docs-section">
+            <h2>Apple Health (not built yet)</h2>
+            <p>
+                <strong>Planned:</strong> send each Strength Forge workout to
+                Apple Health. Apple only lets apps running on the iPhone write
+                to Health, so this will work through a Shortcut you run after a
+                workout, the same way as the Siri voice review above. Strength
+                Forge's log form will get a <strong>Minutes</strong> box,
+                because Health needs to know how long a workout took. Each
+                workout will be sent once, however often you run the
+                Shortcut.
+            </p>
+            <p>
+                None of that exists yet. First, a five-minute test on your
+                iPhone shows whether Apple's <strong>Log Workout</strong>
+                Shortcut action can save what's needed. The test doesn't touch
+                Task Manager: it saves one practice workout to Health, which
+                you delete afterwards. Do it on the iPhone, not a Mac: a Mac
+                has no Health app.
+            </p>
+
+            <h3>Try Apple's "Log Workout" action</h3>
+            <ol>
+                <li>Open <strong>Shortcuts</strong>, tap <strong>+</strong>,
+                    and name it <code>Health test</code>.</li>
+                <li>Tap the search bar at the bottom and type
+                    <code>log workout</code>. If there's no such action, stop
+                    there: that's the answer.</li>
+                <li>Add it, tap its workout type, and look through the list
+                    for strength training (for example "Traditional Strength
+                    Training" or "Functional Strength Training"). Note which
+                    ones you see, and pick one.</li>
+                <li>Set the start to about an hour ago and the length to 30
+                    minutes. Note whether it asks for a length or for an end
+                    time, and whether it insists on calories.</li>
+                <li>Tap <strong>▶</strong>. If it asks to write to Health,
+                    allow it.</li>
+                <li>Open the <strong>Health</strong> app and find your
+                    workouts (Browse → Activity → Workouts, or search Health
+                    for "Workouts"). Check the practice workout is there with
+                    the type, start time and 30 minutes you set.</li>
+                <li>Delete the practice workout from that list, and delete the
+                    Health test Shortcut.</li>
+            </ol>
+
+            <h3>What to report</h3>
+            <ul>
+                <li>Was there a <strong>Log Workout</strong> action?</li>
+                <li>Which strength-training types were listed?</li>
+                <li>Did it ask for a length, or an end time? Did calories have
+                    to be filled in?</li>
+                <li>Did the workout show up in Health with the right type,
+                    time and length?</li>
+            </ul>
+            <p>
+                Tell Claude the answers (this is backlog #387). The answers
+                decide how the Apple Health Shortcut gets built.
+            </p>
+        </section>
+
 
         {# =============================================================
            CAPTURING
@@ -3396,4 +3656,7 @@ print('wrote', out)
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 <script src="{{ url_for('static', filename='parse_capture.js') }}"></script>
 <script src="{{ url_for('static', filename='capture.js') }}"></script>
+{# #504: Copy buttons on the Siri setup steps #}
+<script src="{{ url_for('static', filename='voice_token_helpers.js') }}"></script>
+<script src="{{ url_for('static', filename='docs_copy.js') }}"></script>
 {% endblock %}
