@@ -909,6 +909,11 @@ Report.
      one — it leaves the list (it must not come back as PAUSED). Archive
      a project with a repeating task: its row reads "PAUSED — project
      archived".
+     #507: in the preview, open /login/google (it heads to Google — go back,
+     don't sign in), then /login/google/authorized?code=x&state=other — you
+     land on /login with "That sign-in didn't finish. Please sign in again."
+     in a rust box, 16px off each edge at 375; reload and it's gone. A plain
+     /login has no box (the quiet case) (test_oauth_state_mismatch_handler.py).
   7. **Goals page**: verify goal cards show progress bars with correct task
      counts. Filter by category/priority/status, verify results change.
      Expand a card's `Projects (N)` toggle, drag a project chip onto
@@ -1169,6 +1174,7 @@ Report.
   Recurring: paused row + Resume PASS         Recurring: paused row + Resume PASS
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS
+  Sign in: interrupted says so  PASS          Sign in: interrupted says so  PASS
   Goals: progress bars          PASS          Goals: progress bars          PASS
   Goals: filter category        PASS          Goals: filter category        PASS
   Goals: filter priority        PASS          Goals: filter priority        PASS

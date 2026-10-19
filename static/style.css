@@ -1955,8 +1955,12 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .login, .unauthorized {
     max-width: 420px;
     margin: 64px auto;
+    /* #507: a side gutter so the sign-in message box doesn't touch the
+       screen edges at 375. */
+    padding: 0 16px;
     text-align: center;
 }
+.login .load-error { justify-content: center; text-align: center; }
 
 /* === Bulk triage dropdown === */
 .triage-dropdown {

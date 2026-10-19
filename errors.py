@@ -84,13 +84,13 @@ def register_error_handlers(app: Flask) -> None:
                 "OAuth state mismatch on %s — redirecting to /login for retry",
                 request.path,
             )
+            # login.html shows it (#507 — nothing rendered it before).
             with contextlib.suppress(Exception):
-                flash(
-                    "Sign-in attempt expired (CSRF state mismatch). Please try again.",
-                    "warning",
-                )
+                flash("That sign-in didn't finish. Please sign in again.", "warning")
             try:
-                return redirect(url_for("login"))
+                # #507: the page's endpoint is ``login_page``; ``"login"``
+                # never resolved, so every redirect took the fallback.
+                return redirect(url_for("login_page"))
             except Exception:  # noqa: BLE001
                 # If url_for fails for any reason, fall back to /login literal.
                 return redirect("/login")

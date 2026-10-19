@@ -3,6 +3,9 @@
 {% block content %}
     <section class="login">
         <h1>Sign in</h1>
+        {% for message in get_flashed_messages() %}
+        <div class="load-error" role="alert"><p class="load-error-text">{{ message }}</p></div>
+        {% endfor %}
         <p>This app is restricted to a single authorized Google account.</p>
         <a href="{{ url_for('google.login') }}" class="btn">Sign in with Google</a>
     </section>

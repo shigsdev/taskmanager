@@ -1,9 +1,11 @@
-"""Unit tests for scripts/validate_deploy.py helpers.
+"""Unit tests for scripts/validate_deploy.py.
 
-The CLI entry point is exercised by operators in real deploys, but the
-pure helpers (minute math, log-check classification) benefit from unit
-tests so regressions like "silently ignore errors" get caught here,
-not in production.
+Every ship's "done" rests on this script's exit code, so the decision
+itself is tested here, not only by real deploys: the helpers (minute
+math, the log-scan classifier, the cookie file, the auth preflight) and
+main()'s green / red call — SHA match, a ``fail:`` check, ``warn:``
+allowed, the poll timeout, and the exit codes 2 / 3 the SOP acts on.
+/healthz and the cookie endpoints are stubbed; no network.
 """
 from __future__ import annotations
 
@@ -12,6 +14,8 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 # scripts/ is not a package — import the module by path.
 _SCRIPT = Path(__file__).parent.parent / "scripts" / "validate_deploy.py"
@@ -339,3 +343,185 @@ class TestDoLogCheck:
         assert "since_minutes" in captured
         assert captured["since_minutes"] >= 1
         assert captured["level"] == "ERROR"
+
+
+# --- read_cookie_file ---------------------------------------------------------
+
+
+class TestReadCookieFile:
+
+    def test_strips_a_trailing_windows_newline(self, tmp_path):
+        p = tmp_path / "cookie"
+        p.write_bytes(b"abc.def.ghi\r\n")
+        assert vd.read_cookie_file(p) == "abc.def.ghi"
+
+    def test_missing_or_blank_file_is_none(self, tmp_path):
+        assert vd.read_cookie_file(tmp_path / "nope") is None
+        blank = tmp_path / "blank"
+        blank.write_text("  \n")
+        assert vd.read_cookie_file(blank) is None
+
+
+# --- do_auth_preflight --------------------------------------------------------
+
+
+class TestDoAuthPreflight:
+    """Exit codes the operator acts on: 2 = re-mint the cookie,
+    3 = set it up, 1 = the auth endpoint itself is broken."""
+
+    def _run(self, tmp_path, answer, content="tok"):
+        p = tmp_path / "cookie"
+        if content is not None:
+            p.write_text(content)
+        with patch.object(vd, "fetch_auth_status", return_value=answer) as f:
+            code = vd.do_auth_preflight("https://app.example", p)
+        return code, f
+
+    def test_authenticated_200_is_green_and_sends_the_stripped_cookie(self, tmp_path):
+        code, f = self._run(
+            tmp_path, (200, {"authenticated": True, "email": "me@x"}),
+            content="tok\n",
+        )
+        assert code == vd.EXIT_GREEN
+        f.assert_called_once_with("https://app.example/api/auth/status", "tok")
+
+    def test_200_that_is_not_authenticated_is_red(self, tmp_path):
+        code, _ = self._run(tmp_path, (200, {"authenticated": False}))
+        assert code == vd.EXIT_RED
+
+    def test_401_means_refresh_the_cookie(self, tmp_path, capsys):
+        code, _ = self._run(tmp_path, (401, None))
+        assert code == vd.EXIT_COOKIE_EXPIRED
+        assert "VALIDATOR COOKIE REJECTED" in capsys.readouterr().out
+
+    @pytest.mark.parametrize("status", [0, 500, 503])
+    def test_network_error_or_5xx_is_red_not_a_cookie_problem(self, tmp_path, status):
+        code, _ = self._run(tmp_path, (status, None))
+        assert code == vd.EXIT_RED
+
+    @pytest.mark.parametrize("content", [None, "   "])
+    def test_missing_or_empty_cookie_file_is_a_usage_error(self, tmp_path, content):
+        code, f = self._run(tmp_path, (200, {"authenticated": True}), content=content)
+        assert code == vd.EXIT_USAGE
+        f.assert_not_called()
+
+
+# --- main(): the green / red decision ----------------------------------------
+
+
+SHA = "a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0"
+OK_CHECKS = {
+    "database": "ok", "env_vars": "ok", "migrations": "ok", "tables": "ok",
+    "writable_db": "ok", "encryption": "ok", "digest": "ok",
+    "static_assets": "ok",
+}
+
+
+def _healthz(sha=SHA, status="ok", **checks):
+    return {
+        "git_sha": sha, "status": status,
+        "started_at": datetime.now(UTC).isoformat(),
+        "checks": {**OK_CHECKS, **checks},
+    }
+
+
+class TestMainDecision:
+    """main() turns /healthz (+ the optional cookie checks) into the exit
+    code the SOP trusts. No cookie file here unless a test makes one, so
+    the auth + log checks stay off by default, as on a fresh machine."""
+
+    def _main(self, tmp_path, answers, *extra, cookie=False):
+        cookie_path = tmp_path / "cookie"
+        if cookie:
+            cookie_path.write_text("tok")
+        argv = ["validate_deploy.py", "--sha", SHA,
+                "--cookie-file", str(cookie_path), *extra]
+        polls = iter(answers)
+        with patch.object(vd.sys, "argv", argv), \
+                patch.object(vd, "fetch_healthz", lambda url: next(polls)), \
+                patch.object(vd.time, "sleep"):
+            return vd.main()
+
+    def test_matching_sha_and_ok_checks_is_green(self, tmp_path, capsys):
+        assert self._main(tmp_path, [_healthz()]) == vd.EXIT_GREEN
+        out = capsys.readouterr().out
+        assert "Status: DEPLOY GREEN" in out
+        # PR41: a green run prints the SOP template.
+        assert "SOP Compliance Report" in out
+
+    def test_waits_through_the_old_sha_and_an_unreachable_poll(self, tmp_path):
+        answers = [_healthz(sha="0" * 40), None, _healthz()]
+        assert self._main(tmp_path, answers) == vd.EXIT_GREEN
+
+    def test_a_fail_check_is_red_even_when_status_says_ok(self, tmp_path, capsys):
+        answers = [_healthz(migrations="fail: at abc expected def")]
+        assert self._main(tmp_path, answers) == vd.EXIT_RED
+        assert "Status: DEPLOY RED" in capsys.readouterr().out
+
+    def test_warn_and_skipped_checks_stay_green(self, tmp_path):
+        answers = [_healthz(digest="warn: last run 26h ago",
+                            encryption="skipped: no key in test")]
+        assert self._main(tmp_path, answers) == vd.EXIT_GREEN
+
+    def test_overall_status_not_ok_is_red(self, tmp_path):
+        assert self._main(tmp_path, [_healthz(status="fail")]) == vd.EXIT_RED
+
+    def test_never_seeing_the_sha_times_out_red(self, tmp_path, capsys):
+        answers = [_healthz(sha="0" * 40)] * vd.MAX_POLLS
+        assert self._main(tmp_path, answers) == vd.EXIT_RED
+        assert "Timed out" in capsys.readouterr().out
+
+    def test_url_with_healthz_suffix_is_accepted(self, tmp_path):
+        seen = []
+        argv = ["validate_deploy.py", "--sha", SHA, "--cookie-file",
+                str(tmp_path / "none"), "--url", "https://app.example/healthz"]
+
+        def fetch(url):
+            seen.append(url)
+            return _healthz()
+
+        with patch.object(vd.sys, "argv", argv), \
+                patch.object(vd, "fetch_healthz", fetch), \
+                patch.object(vd.time, "sleep"):
+            assert vd.main() == vd.EXIT_GREEN
+        assert seen == ["https://app.example/healthz"]
+
+    def test_cookie_present_turns_on_auth_and_log_checks(self, tmp_path):
+        with patch.object(vd, "do_auth_preflight", return_value=vd.EXIT_GREEN) as a, \
+                patch.object(vd, "do_log_check", return_value=("PASS", [])) as lg:
+            assert self._main(tmp_path, [_healthz()], cookie=True) == vd.EXIT_GREEN
+        a.assert_called_once()
+        lg.assert_called_once()
+
+    def test_an_error_row_since_the_deploy_is_red(self, tmp_path):
+        row = {"route": "/api/tasks", "message": "boom", "source": "server"}
+        with patch.object(vd, "do_auth_preflight", return_value=vd.EXIT_GREEN), \
+                patch.object(vd, "do_log_check", return_value=("FAIL", [row])):
+            assert self._main(tmp_path, [_healthz()], cookie=True) == vd.EXIT_RED
+
+    def test_no_check_logs_skips_the_scan(self, tmp_path):
+        with patch.object(vd, "do_auth_preflight", return_value=vd.EXIT_GREEN), \
+                patch.object(vd, "do_log_check") as lg:
+            code = self._main(tmp_path, [_healthz()], "--no-check-logs", cookie=True)
+        assert code == vd.EXIT_GREEN
+        lg.assert_not_called()
+
+    @pytest.mark.parametrize("auth", [vd.EXIT_COOKIE_EXPIRED, vd.EXIT_USAGE])
+    def test_cookie_problems_pass_their_exit_code_through(self, tmp_path, auth):
+        with patch.object(vd, "do_auth_preflight", return_value=auth):
+            assert self._main(tmp_path, [_healthz()], cookie=True) == auth
+
+    def test_a_broken_auth_endpoint_is_red(self, tmp_path):
+        with patch.object(vd, "do_auth_preflight", return_value=vd.EXIT_RED), \
+                patch.object(vd, "do_log_check", return_value=("PASS", [])):
+            assert self._main(tmp_path, [_healthz()], cookie=True) == vd.EXIT_RED
+
+    def test_monitor_red_when_new_errors_land_after_green(self, tmp_path, capsys):
+        row = {"timestamp": "t", "route": "/x", "message": "late boom"}
+        scans = iter([("PASS", []), ("FAIL", [row])])
+        with patch.object(vd, "do_auth_preflight", return_value=vd.EXIT_GREEN), \
+                patch.object(vd, "do_log_check", lambda *a: next(scans)):
+            code = self._main(tmp_path, [_healthz()], "--monitor-minutes", "5",
+                              cookie=True)
+        assert code == vd.EXIT_RED
+        assert "DEPLOY MONITOR RED" in capsys.readouterr().out

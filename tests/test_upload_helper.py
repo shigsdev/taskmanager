@@ -1,19 +1,19 @@
 """Direct unit tests for utils.validate_upload — the shared multipart
-upload validator used by voice_api.py and scan_api.py.
+upload validator (ADR-025).
 
-Behavior is exercised transitively by the route-level tests in
-test_voice_memo.py and test_scan_api.py. This file covers the helper
-in isolation so a future caller (file-import, image attach, etc.)
-can rely on the documented contract without depending on the
-specifics of the route that drives the test.
-
-Cross-reference ADR-025 for the boundary design.
+Callers: voice_api.py and reflection_api.py (audio) and scan_api.py
+(image) use MIME mode; import_api.py (Excel / .docx / transcript) and
+reflection_api.py's context documents use extension mode (#194),
+because browsers send unreliable Content-Types for documents. The
+route tests exercise each caller; this file pins the helper's own
+contract for both modes.
 """
 from __future__ import annotations
 
 import io
 from types import SimpleNamespace
 
+import pytest
 from werkzeug.datastructures import FileStorage
 
 from utils import _normalize_mime, validate_upload
@@ -244,3 +244,66 @@ class TestValidateUploadSuccessShape:
         )
         response, _ = err
         assert "image" in response["error"].lower()
+
+
+# --- validate_upload: extension mode (#194) ---------------------------------
+
+
+class TestValidateUploadExtensionMode:
+    """Document imports match the filename, not the browser's
+    Content-Type — a .docx often arrives as application/octet-stream."""
+
+    DOCS = frozenset({".xlsx", ".docx"})
+
+    def _check(self, filename, content_type="application/octet-stream",
+               content=b"PK\x03\x04 zip bytes"):
+        req = _make_request(_file(content, filename, content_type), field="file")
+        return validate_upload(
+            req, field_name="file", allowed_extensions=self.DOCS, max_bytes=1024,
+        )
+
+    def test_matching_extension_passes_whatever_the_content_type(self):
+        body, ctype, err = self._check("plan.xlsx", "application/octet-stream")
+        assert err is None
+        assert body == b"PK\x03\x04 zip bytes"
+        # The raw type still comes back for the caller.
+        assert ctype == "application/octet-stream"
+
+    def test_missing_content_type_is_fine_in_extension_mode(self):
+        _, _, err = self._check("notes.docx", content_type=None)  # type: ignore[arg-type]
+        assert err is None
+
+    def test_extension_match_ignores_case(self):
+        _, _, err = self._check("PLAN.XLSX")
+        assert err is None
+
+    @pytest.mark.parametrize("filename", [
+        "plan.csv", "plan.xlsx.exe", "xlsx", "plan.xls",
+    ])
+    def test_other_extensions_return_422_with_sorted_allowed_list(self, filename):
+        body, _, err = self._check(filename)
+        assert body is None
+        response, status = err
+        assert status == 422
+        # The filename, not the Content-Type, is what the user is told.
+        assert response["error"] == f"Unsupported file type: {filename}"
+        assert response["allowed"] == [".docx", ".xlsx"]
+
+    def test_size_and_empty_guards_still_apply(self):
+        req = _make_request(_file(b"X" * 2048, "big.xlsx", ""), field="file")
+        _, _, err = validate_upload(
+            req, field_name="file", allowed_extensions=self.DOCS, max_bytes=1024,
+        )
+        assert err[1] == 413
+        _, _, err = self._check("empty.docx", content=b"")
+        assert err == ({"error": "Empty file"}, 400)
+
+
+class TestValidateUploadNeedsAMode:
+
+    def test_neither_mode_is_a_programming_error(self):
+        """A caller that names no type rule must fail loudly at once,
+        never accept every file."""
+        req = _make_request(_file(b"x", "a.bin", "application/octet-stream"))
+        with pytest.raises(ValueError, match="allowed_mime or allowed_extensions"):
+            validate_upload(req, field_name="audio", max_bytes=1024)
