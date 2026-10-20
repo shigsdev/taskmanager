@@ -928,6 +928,13 @@ linked checkout) shows `build.builder`, `deploy.startCommand` and
 visible in the dashboard. A docs-only push that does NOT change prod's
 `/healthz` `started_at` proves the Watch Paths still work.
 
+`scripts/validate_deploy.py` keeps a copy of the Watch Paths excludes
+(`WATCH_EXCLUDES`, #508) so it can tell a push Railway will skip from a
+stalled build: when every file changed since the live SHA is excluded,
+it reports DEPLOY SKIPPED on the live container's checks after a
+2-minute grace instead of timing out RED. `tests/test_validate_deploy.py`
+fails if that copy and the table above disagree — change both together.
+
 ### Off-Railway status page (#204 option E)
 
 A static page that still loads when Railway is down:

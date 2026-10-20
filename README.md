@@ -330,6 +330,12 @@ fine.
 python scripts/validate_deploy.py
 ```
 
+A push that only changes files Railway's Watch Paths exclude (tests,
+`docs/`, `BACKLOG.md`, the top-level `.md` docs, `.github/`) is never
+built, so the SHA can't match. The script spots that from `git diff`,
+waits 2 minutes instead of 10, and reports **DEPLOY SKIPPED**, exiting 0
+when the live container's own checks are healthy (#508).
+
 **Extended: `--auth-check`** also verifies that a saved credential is
 still accepted by the live server. This catches the "I could log in yesterday
 but something broke OAuth" class of bug.

@@ -170,6 +170,13 @@ gets tested there, and only merges to `main` when all quality gates pass.
      input, admin-endpoint guards, etc.). PR37 grew this from 6 to 22.
    - For doc-only or trivial changes, --monitor-minutes 0 (the default)
      is fine.
+   - #508: a push Railway doesn't build (only tests / docs / BACKLOG.md
+     changed — its Watch Paths) reports `DEPLOY SKIPPED — nothing to
+     deploy; live <sha> is healthy` after ~2 min, exit 0. Phase 8 is
+     `[⏭️] N/A — Railway skipped`. Before #508 that printed "unreachable
+     … DEPLOY RED" after 10 min; it was never an outage. Change Watch
+     Paths in the dashboard → update `WATCH_EXCLUDES` in the script AND
+     ARCHITECTURE.md's table (a test holds the two equal).
    - PR41: validate_deploy.py auto-emits the SOP Compliance Report
      template at the end of every GREEN run with Phase 8 pre-filled.
      Phase 1-7 are `[__]` placeholders the operator MUST fill in

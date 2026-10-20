@@ -23,9 +23,18 @@ With --check-logs:
     routes that Playwright smoke doesn't cover — the gap that let
     yesterday's enum outage slip past validate_deploy into "green".
 
+A push Railway skips (#508):
+    The ``web`` service rebuilds only when a changed file is outside its
+    Watch Paths excludes (``WATCH_EXCLUDES``). When every file changed
+    since the live SHA is excluded (tests, docs, BACKLOG.md, …), Railway
+    never builds, so the SHA can never match. The script then waits a
+    short grace window instead of 10 minutes and reports DEPLOY SKIPPED,
+    judged on the live container's own checks.
+
 Exit codes:
     0  DEPLOY GREEN       — SHA matches, all checks pass, auth ok (if checked),
-                            no new ERROR-level server logs (if checked)
+                            no new ERROR-level server logs (if checked);
+                            or DEPLOY SKIPPED with the live container healthy
     1  DEPLOY RED         — SHA mismatch, failed checks, timeout, OR new
                             ERROR logs since deploy start
     2  COOKIE EXPIRED     — auth preflight returned 401; refresh and re-run
@@ -34,6 +43,7 @@ Exit codes:
 
 import argparse
 import contextlib
+import fnmatch
 import json
 import subprocess
 import sys
@@ -51,6 +61,54 @@ EXIT_GREEN = 0
 EXIT_RED = 1
 EXIT_COOKIE_EXPIRED = 2
 EXIT_USAGE = 3
+
+# #508: the `web` service's Watch Paths excludes, in dashboard order. The
+# dashboard is the source of truth; ARCHITECTURE.md → "Deploy
+# configuration" records it, and tests/test_validate_deploy.py holds this
+# copy equal to that table.
+WATCH_EXCLUDES = (
+    "BACKLOG.md", "docs/**", "tests/**", ".github/**", ".gitignore",
+    ".gitattributes", ".pre-commit-config.yaml", "README.md", "CLAUDE.md",
+    "ARCHITECTURE.md",
+)
+# How long to wait for a build Railway shouldn't start (in case the
+# dashboard's Watch Paths changed and it builds after all).
+SKIP_GRACE_POLLS = 8  # 8 x 15s = 2 minutes
+
+
+def _excluded(path: str) -> bool:
+    """gitignore-style: a pattern with no ``/`` matches the file's name at
+    any depth; one with a ``/`` is anchored at the repo root, where
+    ``**`` spans folders."""
+    for pat in WATCH_EXCLUDES:
+        if "/" in pat:
+            if fnmatch.fnmatchcase(path, pat):
+                return True
+        elif fnmatch.fnmatchcase(path.rsplit("/", 1)[-1], pat):
+            return True
+    return False
+
+
+def deploy_would_skip(files: list[str]) -> bool:
+    """True when Railway won't rebuild for a push changing ``files``."""
+    return bool(files) and all(_excluded(f) for f in files)
+
+
+def changed_files(base: str, head: str) -> list[str] | None:
+    """Files changed between two commits, or None when git can't tell
+    (a SHA this checkout doesn't have, no git)."""
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", base, head],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (OSError, FileNotFoundError):
+        return None
+    if result.returncode != 0:
+        return None
+    return [ln for ln in result.stdout.splitlines() if ln.strip()]
 
 
 def get_local_head() -> str:
@@ -286,8 +344,12 @@ def print_report(
     auth_status: str | None = None,
     log_status: str | None = None,
     log_error_rows: list[dict] | None = None,
+    skipped_files: list[str] | None = None,
 ) -> None:
-    """Print the Deploy Validation Report in the SOP format."""
+    """Print the Deploy Validation Report in the SOP format.
+
+    ``skipped_files`` (#508): Railway skipped the push, so ``data`` is the
+    live container's healthz and ``green`` judges that container."""
     if data is None:
         deployed = "???"
         status = "unreachable"
@@ -307,7 +369,13 @@ def print_report(
     print("-" * 25)
     print(f"Expected SHA:   {expected_sha[:8]}")
     print(f"Deployed SHA:   {deployed[:8]}")
+    if skipped_files:
+        sha_match = "SKIPPED — Railway didn't rebuild: only Watch Paths excludes changed"
     print(f"SHA match:      {sha_match}")
+    if skipped_files:
+        shown = ", ".join(skipped_files[:6])
+        more = f" (+{len(skipped_files) - 6} more)" if len(skipped_files) > 6 else ""
+        print(f"Changed files:  {shown}{more}")
     print(f"HTTP status:    {http_status}")
     print(f"Overall status: {status}")
     print(f"Started at:     {started}")
@@ -322,8 +390,9 @@ def print_report(
         print(f"Error log scan: {log_status}{suffix}")
     print()
     print("Checks:")
+    width = max([16, *(len(n) + 2 for n in checks)])
     for name, value in sorted(checks.items()):
-        print(f"  {name:<16}{value}")
+        print(f"  {name:<{width}}{value}")
     print()
     # If the log check tripped, show the first few errors inline so the
     # operator can see what's wrong without a second curl.
@@ -337,7 +406,10 @@ def print_report(
         if len(log_error_rows) > 5:
             print(f"  ... and {len(log_error_rows) - 5} more")
         print()
-    label = "DEPLOY GREEN" if green else "DEPLOY RED"
+    if skipped_files and green:
+        label = f"DEPLOY SKIPPED — nothing to deploy; live {deployed[:8]} is healthy"
+    else:
+        label = "DEPLOY GREEN" if green else "DEPLOY RED"
     print(f"Status: {label}")
     print()
 
@@ -564,10 +636,17 @@ def main() -> int:
     print()
 
     last_data = None
+    last_seen = None  # #508: the last healthz that answered, any SHA
     matched = False
-    for i in range(1, MAX_POLLS + 1):
+    max_polls = MAX_POLLS
+    skip_checked = False
+    skipped_files: list[str] | None = None
+    i = 0
+    while i < max_polls:
+        i += 1
         data = fetch_healthz(healthz_url)
         if data:
+            last_seen = data
             deployed = data.get("git_sha", "")
             print(f"  [{i}] deployed={deployed[:8]}", end="")
             if deployed[:8] == expected[:8]:
@@ -576,16 +655,36 @@ def main() -> int:
                 matched = True
                 break
             print()
+            if not skip_checked and deployed:
+                skip_checked = True
+                files = changed_files(deployed, expected)
+                if files is not None and deploy_would_skip(files):
+                    skipped_files = files
+                    max_polls = min(MAX_POLLS, i + SKIP_GRACE_POLLS - 1)
+                    print(f"  Railway should skip this push — only Watch Paths "
+                          f"excludes changed ({len(files)} file(s)); waiting "
+                          f"{SKIP_GRACE_POLLS * POLL_INTERVAL}s in case it builds anyway")
         else:
             print(f"  [{i}] unreachable")
 
-        if i < MAX_POLLS:
+        if i < max_polls:
             time.sleep(POLL_INTERVAL)
 
+    if not matched and skipped_files and last_seen:
+        # #508: nothing was built, so judge the container that's live.
+        checks = last_seen.get("checks", {})
+        live_ok = last_seen.get("status") == "ok" and not any(
+            str(v).startswith("fail") for v in checks.values())
+        print_report(expected, last_seen, green=live_ok, skipped_files=skipped_files)
+        if live_ok:
+            print("Phase 8: N/A — Railway skipped the push; nothing was deployed.")
+            return EXIT_GREEN
+        return EXIT_RED
+
     if not matched:
-        # Timed out
-        print(f"\nTimed out after {MAX_POLLS * POLL_INTERVAL}s.")
-        print_report(expected, last_data, green=False)
+        # Timed out. Report what answered (a stale SHA), not "unreachable".
+        print(f"\nTimed out after {max_polls * POLL_INTERVAL}s.")
+        print_report(expected, last_seen, green=False)
         return EXIT_RED
 
     # SHA matched — now check all checks

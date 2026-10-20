@@ -525,3 +525,135 @@ class TestMainDecision:
                               cookie=True)
         assert code == vd.EXIT_RED
         assert "DEPLOY MONITOR RED" in capsys.readouterr().out
+
+
+# --- #508: a push Railway skips is not an outage ------------------------------
+
+
+class TestDeployWouldSkip:
+    """Mirrors the `web` service's Watch Paths (ARCHITECTURE.md → Deploy
+    configuration): a push whose every changed file is excluded never
+    builds, so /healthz keeps the previous SHA."""
+
+    @pytest.mark.parametrize("files", [
+        ["BACKLOG.md"],
+        ["tests/test_egress.py", "tests/js/unit/a.test.js", "docs/design/x.md"],
+        [".github/workflows/weekly.yml", ".gitignore", ".gitattributes"],
+        ["README.md", "CLAUDE.md", "ARCHITECTURE.md", ".pre-commit-config.yaml"],
+    ])
+    def test_only_excluded_files_skip(self, files):
+        assert vd.deploy_would_skip(files) is True
+
+    @pytest.mark.parametrize("files", [
+        ["app.py"],
+        ["BACKLOG.md", "static/app.js"],
+        ["templates/docs.html"],        # not docs/**
+        ["status/index.html"],
+        ["scripts/validate_deploy.py"],
+        [],                             # nothing changed is not a skip
+    ])
+    def test_any_deployed_file_builds(self, files):
+        assert vd.deploy_would_skip(files) is False
+
+    def test_a_slashless_pattern_matches_at_any_depth_like_gitignore(self):
+        assert vd.deploy_would_skip(["tests/e2e/README.md"]) is True
+        assert vd.deploy_would_skip(["docs/README.md", "README.md"]) is True
+
+    def test_mirror_matches_the_documented_watch_paths(self):
+        """The script's copy and ARCHITECTURE.md's table must agree — the
+        dashboard is the source, the table is its written record."""
+        arch = (Path(__file__).parent.parent / "ARCHITECTURE.md").read_text(
+            encoding="utf-8")
+        row = next(ln for ln in arch.splitlines() if ln.startswith("| Watch Paths |"))
+        documented = [p.strip().strip("`") for p in row.split("|")[2].split(",")]
+        assert documented[0] == "**"
+        assert [p.lstrip("!") for p in documented[1:]] == list(vd.WATCH_EXCLUDES)
+
+
+class TestChangedFiles:
+
+    def test_lists_names_from_git_diff(self):
+        from unittest.mock import MagicMock
+        res = MagicMock(returncode=0, stdout="BACKLOG.md\ntests/test_x.py\n")
+        with patch.object(vd.subprocess, "run", return_value=res) as run:
+            assert vd.changed_files("aaa", "bbb") == ["BACKLOG.md", "tests/test_x.py"]
+        assert run.call_args[0][0][-2:] == ["aaa", "bbb"]
+
+    def test_unknown_sha_or_no_git_is_none(self):
+        from unittest.mock import MagicMock
+        bad = MagicMock(returncode=128, stdout="")
+        with patch.object(vd.subprocess, "run", return_value=bad):
+            assert vd.changed_files("zzz", "bbb") is None
+        with patch.object(vd.subprocess, "run", side_effect=FileNotFoundError):
+            assert vd.changed_files("aaa", "bbb") is None
+
+
+class TestMainSkippedDeploy:
+
+    OLD = "f" * 40
+
+    def _main(self, tmp_path, answers, files):
+        argv = ["validate_deploy.py", "--sha", SHA,
+                "--cookie-file", str(tmp_path / "none")]
+        polls = iter(answers)
+        with patch.object(vd.sys, "argv", argv), \
+                patch.object(vd, "fetch_healthz", lambda url: next(polls)), \
+                patch.object(vd, "changed_files", return_value=files) as cf, \
+                patch.object(vd.time, "sleep"):
+            return vd.main(), cf
+
+    def test_docs_only_push_reports_skipped_after_a_short_grace(self, tmp_path, capsys):
+        answers = [_healthz(sha=self.OLD)] * vd.MAX_POLLS
+        code, cf = self._main(tmp_path, answers, ["BACKLOG.md", "tests/test_x.py"])
+        assert code == vd.EXIT_GREEN
+        cf.assert_called_once_with(self.OLD, SHA)
+        out = capsys.readouterr().out
+        assert "DEPLOY SKIPPED" in out
+        assert "unreachable" not in out
+        assert "BACKLOG.md" in out
+        # Gave up after the grace window, not the full 10 minutes.
+        assert out.count("deployed=ffffffff") == vd.SKIP_GRACE_POLLS
+        # Nothing shipped, so no SOP template is printed for it.
+        assert "SOP Compliance Report" not in out
+
+    def test_skipped_but_the_live_app_failing_is_red(self, tmp_path, capsys):
+        answers = [_healthz(sha=self.OLD, database="fail: down")] * vd.MAX_POLLS
+        code, _ = self._main(tmp_path, answers, ["BACKLOG.md"])
+        assert code == vd.EXIT_RED
+        assert "DEPLOY RED" in capsys.readouterr().out
+
+    def test_a_build_that_lands_inside_the_grace_window_is_validated(self, tmp_path):
+        answers = [_healthz(sha=self.OLD), _healthz(sha=self.OLD), _healthz()]
+        code, _ = self._main(tmp_path, answers, ["BACKLOG.md"])
+        assert code == vd.EXIT_GREEN
+
+    def test_app_change_that_never_lands_is_red_and_says_stale_not_unreachable(
+            self, tmp_path, capsys):
+        answers = [_healthz(sha=self.OLD)] * vd.MAX_POLLS
+        code, _ = self._main(tmp_path, answers, ["app.py"])
+        assert code == vd.EXIT_RED
+        out = capsys.readouterr().out
+        assert out.count("deployed=ffffffff") == vd.MAX_POLLS
+        assert "Deployed SHA:   ffffffff" in out
+        assert "Overall status: unreachable" not in out
+        assert "DEPLOY SKIPPED" not in out
+
+    def test_git_cannot_tell_falls_back_to_the_full_wait(self, tmp_path, capsys):
+        answers = [_healthz(sha=self.OLD)] * vd.MAX_POLLS
+        code, _ = self._main(tmp_path, answers, None)
+        assert code == vd.EXIT_RED
+        assert capsys.readouterr().out.count("deployed=ffffffff") == vd.MAX_POLLS
+
+    def test_never_answering_is_still_unreachable(self, tmp_path, capsys):
+        code, cf = self._main(tmp_path, [None] * vd.MAX_POLLS, ["BACKLOG.md"])
+        assert code == vd.EXIT_RED
+        assert "Overall status: unreachable" in capsys.readouterr().out
+        cf.assert_not_called()
+
+
+def test_a_long_check_name_keeps_a_gap_before_its_value(capsys):
+    """digest_last_send (16 chars) used to run into its value."""
+    vd.print_report(SHA, _healthz(digest_last_send="ok: last sent x"), green=True)
+    out = capsys.readouterr().out
+    assert "digest_last_send  ok: last sent x" in out
+    assert "  database          ok" in out
