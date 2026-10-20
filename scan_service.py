@@ -3,7 +3,8 @@
 Pipeline:
 1. Image bytes → Google Vision API → raw OCR text
 2. Raw OCR text → Claude API (claude-sonnet) → JSON array of task candidates
-3. User reviews candidates → confirmed tasks created in Inbox
+3. User reviews candidates → confirmed tasks created in Inbox (or the
+   section their date points to, #386); goals / projects too
 
 Security (per CLAUDE.md):
 - Images processed in memory only — never written to disk or DB
@@ -37,6 +38,7 @@ from task_service import tier_for_candidate
 from utils import fit_length, max_length
 
 _TASK_TITLE_MAX = max_length(Task.__table__.c.title)
+_GOAL_TITLE_MAX = max_length(Goal.__table__.c.title)
 
 logger = logging.getLogger(__name__)
 
@@ -102,12 +104,17 @@ def _call_vision_api(api_key: str, image_bytes: bytes) -> str:
     except EgressError as e:
         raise RuntimeError(str(e)) from e
 
-    # Per-request error (Vision wraps errors inside responses[0].error)
-    responses = data.get("responses") or [{}]
-    first = responses[0] if responses else {}
-    if "error" in first and first["error"]:
-        msg = first["error"].get("message") or first["error"].get("status") or "unknown"
-        raise RuntimeError(f"Vision API request error: {msg}")
+    # Per-request error (Vision wraps errors inside responses[0].error).
+    # #511: any shape — a bare-string error or a non-dict response used
+    # to be an AttributeError (500 with no message).
+    responses = data.get("responses") if isinstance(data, dict) else None
+    first = responses[0] if isinstance(responses, list) and responses else {}
+    if not isinstance(first, dict):
+        first = {}
+    err = first.get("error")
+    if err:
+        msg = (err.get("message") or err.get("status")) if isinstance(err, dict) else err
+        raise RuntimeError(f"Vision API request error: {msg or 'unknown'}")
 
     annotations = first.get("textAnnotations", [])
     if not annotations:
@@ -143,7 +150,7 @@ OCR text:
 def parse_tasks_from_text(ocr_text: str) -> list[str]:
     """Send OCR text to Claude API to parse into task candidates.
 
-    Uses Claude claude-sonnet-4-6 to intelligently parse raw OCR output into
+    Uses Claude (``claude_client.SONNET``) to parse raw OCR output into
     clean, discrete task items. The AI handles messy formatting,
     handwriting artifacts, and mixed content types.
 
@@ -1524,7 +1531,7 @@ def create_goals_from_candidates(
             actions = str(actions).strip() or None
 
         goal = Goal(
-            title=title[:500],
+            title=fit_length(title, _GOAL_TITLE_MAX),  # #511: "…" like an import
             category=category,
             priority=priority,
             target_quarter=target_quarter,

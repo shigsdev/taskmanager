@@ -1,20 +1,23 @@
 """Tests for scripts/backup_to_github.py and scripts/restore_drill.py.
 
-The pg_dump / pg_restore / git invocations are intentionally NOT
-unit-tested here — they're external tools, and mocking them would just
-verify our mocks. The integration story is the workflow itself
-(.github/workflows/*.yml) which exercises the real binaries on every
-scheduled run.
+pg_dump / pg_restore themselves run only in the workflow
+(.github/workflows/*.yml); here pg_dump is faked to check its argv.
+git DOES run here, against a local bare repo standing in for the
+backup repo — #511 found the 7-day prune had never removed a file,
+which a test that copied the prune loop (instead of running
+push_to_backup_repo) could not see. Every backup is now kept.
 
 What IS tested:
-  - Fernet round-trip (encrypt then decrypt restores the original bytes)
-  - Retention pruning logic (files older than 7 days are removed; new
-    files survive)
-  - _within_tolerance comparison helper for the restore drill
+  - Fernet round-trip; an invalid key exits 2, before the dump
+  - push_to_backup_repo keeps every backup; clone / push failures exit 3
+  - the password rides in PGPASSWORD, never argv (#164); a failed dump exits 1
+  - main(): 0 when verified, 4 when pushed but not verified, alerts on a
+    missing secret
+  - the status email (success / not verified / unset / failed send)
+  - restore drill: the newest dump by name; _within_tolerance
 """
 from __future__ import annotations
 
-import datetime
 import importlib.util
 import os
 import pathlib
@@ -83,54 +86,6 @@ class TestFernetRoundTrip:
             with pytest.raises(SystemExit) as excinfo:
                 restore_module.decrypt(enc, bad, tdp / "out.dump")
             assert excinfo.value.code == 3
-
-
-# --- Retention pruning ------------------------------------------------------
-
-
-class TestRetentionPruning:
-    """The backup script copies the new dump in, then prunes any
-    *.dump.fernet older than RETENTION_DAYS (=7) by file mtime. Test
-    the mtime-based prune logic by reading the source — we don't run
-    the full push function (it shells out to git)."""
-
-    def test_retention_constant_is_7(self, backup_module):
-        # Locked spec per #154.2 — last 7 daily.
-        assert backup_module.RETENTION_DAYS == 7
-
-    def test_prune_logic_drops_old_keeps_new(self, backup_module, monkeypatch):
-        # Simulate a directory with a mix of old + new fernet files
-        # and verify the file-walk in push_to_backup_repo's prune
-        # block matches the spec. We can't run the whole function
-        # (it clones git), but we can replicate the loop here against
-        # the same RETENTION_DAYS constant.
-        with tempfile.TemporaryDirectory() as td:
-            tdp = pathlib.Path(td)
-            old_file = tdp / "old.dump.fernet"
-            old_file.write_bytes(b"old")
-            # Set mtime to 30 days ago.
-            ancient = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=30)
-            os.utime(old_file, (ancient.timestamp(), ancient.timestamp()))
-
-            new_file = tdp / "new.dump.fernet"
-            new_file.write_bytes(b"new")
-            # Default mtime = now — should be kept.
-
-            # Mirror the prune block from push_to_backup_repo.
-            cutoff = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
-                days=backup_module.RETENTION_DAYS
-            )
-            pruned = []
-            for p in tdp.glob("*.dump.fernet"):
-                mtime = datetime.datetime.fromtimestamp(p.stat().st_mtime, datetime.UTC)
-                if mtime < cutoff:
-                    p.unlink()
-                    pruned.append(p.name)
-
-            assert "old.dump.fernet" in pruned
-            assert "new.dump.fernet" not in pruned
-            assert old_file.exists() is False
-            assert new_file.exists() is True
 
 
 # --- #164: keep the DB password out of pg_dump's argv -----------------------
@@ -203,3 +158,272 @@ class TestWithinTolerance:
         # If live is empty but scratch isn't, the dump is somehow
         # bigger than reality — fail.
         assert restore_module._within_tolerance(1, 0) is False
+# --- #511: every backup is kept -- run against a real local git remote -------
+
+
+def _git(*args, cwd=None):
+    import subprocess
+
+    return subprocess.run(  # noqa: S603
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],  # noqa: S607
+        cwd=cwd, check=True, capture_output=True, text=True,
+    )
+
+
+@pytest.fixture
+def origin(tmp_path):
+    """A bare repo holding a README and ten old daily dumps — what the real
+    backup repo looks like, minus 300 files."""
+    bare = tmp_path / "origin.git"
+    _git("init", "--bare", "--initial-branch=main", str(bare))
+    seed = tmp_path / "seed"
+    _git("clone", str(bare), str(seed))
+    (seed / "README.md").write_text("backups\n")
+    for day in range(1, 11):
+        (seed / f"taskmanager-202605{day:02d}T090000Z.dump.fernet").write_bytes(b"x")
+    _git("add", "-A", cwd=seed)
+    _git("commit", "-m", "seed", cwd=seed)
+    _git("push", "origin", "HEAD:main", cwd=seed)
+    return bare
+
+
+def _dumps_in(bare, tmp_path, name="check"):
+    out = tmp_path / name
+    _git("clone", str(bare), str(out))
+    return sorted(p.name for p in out.glob("*.dump.fernet"))
+
+
+class TestEveryBackupIsKept:
+
+    def test_push_keeps_every_earlier_backup(self, backup_module, origin, tmp_path):
+        new = tmp_path / "taskmanager-20261019T073000Z.dump.fernet"
+        new.write_bytes(b"new")
+        sha = backup_module.push_to_backup_repo(new, str(origin))
+        assert len(sha) == 40
+        names = _dumps_in(origin, tmp_path)
+        assert len(names) == 11
+        assert names[-1] == new.name
+
+    def test_no_retention_setting_is_left_to_mislead(self, backup_module):
+        assert not hasattr(backup_module, "RETENTION_DAYS")
+
+    def test_same_file_twice_is_not_a_new_commit(self, backup_module, origin, tmp_path):
+        new = tmp_path / "taskmanager-20261019T073000Z.dump.fernet"
+        new.write_bytes(b"new")
+        backup_module.push_to_backup_repo(new, str(origin))
+        assert backup_module.push_to_backup_repo(new, str(origin)) == ""
+
+    def test_a_clone_that_fails_exits_3(self, backup_module, tmp_path):
+        new = tmp_path / "x.dump.fernet"
+        new.write_bytes(b"x")
+        with pytest.raises(SystemExit) as exc:
+            backup_module.push_to_backup_repo(new, str(tmp_path / "no-such-repo"))
+        assert exc.value.code == 3
+
+    def test_a_refused_push_exits_3(self, backup_module, tmp_path):
+        """A non-bare origin refuses a push to its checked-out branch."""
+        work = tmp_path / "work"
+        _git("init", "--initial-branch=main", str(work))
+        (work / "README.md").write_text("x")
+        _git("add", "-A", cwd=work)
+        _git("commit", "-m", "seed", cwd=work)
+        new = tmp_path / "taskmanager-20261019T073000Z.dump.fernet"
+        new.write_bytes(b"new")
+        with pytest.raises(SystemExit) as exc:
+            backup_module.push_to_backup_repo(new, str(work))
+        assert exc.value.code == 3
+
+
+class TestRestoreDrillPicksTheNewest:
+
+    def test_newest_by_name_whatever_the_mtimes(self, restore_module, tmp_path):
+        names = [f"taskmanager-202605{d:02d}T090000Z.dump.fernet" for d in (3, 10, 7)]
+        for i, n in enumerate(names):
+            (tmp_path / n).write_bytes(b"x")
+            # mtime order: the 10th is OLDEST -- the old sort picked the 7th.
+            t = 2_000_000_000 + (0 if "10T" in n else 100 + i)
+            os.utime(tmp_path / n, (t, t))
+        assert restore_module.newest_backup(tmp_path).name == names[1]
+
+    def test_fetch_uses_the_newest_from_the_repo(self, restore_module, origin, tmp_path):
+        latest = restore_module.fetch_latest_backup(str(origin), tmp_path / "drill")
+        assert latest.name == "taskmanager-20260510T090000Z.dump.fernet"
+
+
+class TestPgDump:
+
+    def _fake_run(self, calls, returncode=0):
+        def run(cmd, **kw):
+            calls.append((cmd, kw))
+            out = pathlib.Path(cmd[cmd.index("--file") + 1])
+            out.write_bytes(b"PGDMP")
+
+            class P:
+                pass
+            p = P()
+            p.returncode, p.stderr, p.stdout = returncode, "boom", ""
+            return p
+        return run
+
+    def test_password_rides_in_the_env_not_argv(self, backup_module, monkeypatch, tmp_path):
+        calls = []
+        monkeypatch.setattr(backup_module.subprocess, "run", self._fake_run(calls))
+        meta = backup_module.run_pg_dump(
+            "postgresql://u:s3cr3t@db.example:5432/railway", tmp_path / "a.dump")
+        (cmd, kw), = calls
+        assert not any("s3cr3t" in part for part in cmd)
+        assert kw["env"]["PGPASSWORD"] == "s3cr3t"
+        assert "--format=custom" in cmd
+        assert meta["size_bytes"] == 5
+
+    def test_a_failed_dump_exits_1(self, backup_module, monkeypatch, tmp_path):
+        monkeypatch.setattr(backup_module.subprocess, "run",
+                            self._fake_run([], returncode=1))
+        with pytest.raises(SystemExit) as exc:
+            backup_module.run_pg_dump("postgresql://u:p@h/db", tmp_path / "a.dump")
+        assert exc.value.code == 1
+
+    def test_an_invalid_key_exits_2(self, backup_module, tmp_path):
+        p = tmp_path / "a.dump"
+        p.write_bytes(b"x")
+        with pytest.raises(SystemExit) as exc:
+            backup_module.encrypt_in_place(p, "not-a-fernet-key")
+        assert exc.value.code == 2
+
+
+# --- main(): the job's own verdict ---------------------------------------------
+
+
+class TestMain:
+
+    @pytest.fixture
+    def env(self, monkeypatch):
+        from cryptography.fernet import Fernet
+
+        monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@h/db")
+        monkeypatch.setenv("BACKUP_FERNET_KEY", Fernet.generate_key().decode())
+        monkeypatch.setenv("BACKUP_REPO_URL", "git@example:backups.git")
+
+    @pytest.fixture
+    def stubs(self, backup_module, monkeypatch):
+        calls = {"emails": [], "dumped": False}
+
+        def dump(url, path):
+            calls["dumped"] = True
+            path.write_bytes(b"PGDMP")
+            return {"size_bytes": 5, "elapsed_sec": 1.0}
+
+        monkeypatch.setattr(backup_module, "run_pg_dump", dump)
+        monkeypatch.setattr(backup_module, "push_to_backup_repo", lambda p, u: "a" * 40)
+        monkeypatch.setattr(backup_module, "send_status_email",
+                            lambda **kw: calls["emails"].append(kw))
+        return calls
+
+    def test_a_good_run_is_0_with_a_success_email(self, backup_module, env, stubs,
+                                                  monkeypatch):
+        monkeypatch.setattr(backup_module, "_query_row_counts",
+                            lambda url: {"active_tasks": 41, "goals": 9, "projects": 7})
+        assert backup_module.main() == 0
+        assert stubs["emails"][-1]["success"] is True
+
+    @pytest.mark.parametrize("counts", [
+        {},                                               # count query failed
+        {"active_tasks": 0, "goals": 0, "projects": 0},   # an empty database
+    ])
+    def test_unverified_backup_is_4_with_a_warning(self, backup_module, env, stubs,
+                                                   monkeypatch, counts):
+        monkeypatch.setattr(backup_module, "_query_row_counts", lambda url: counts)
+        assert backup_module.main() == 4
+        email = stubs["emails"][-1]
+        assert email["success"] is False
+        assert email["sha"] == "a" * 40    # it WAS pushed
+        assert email["error"]
+
+    def test_a_bad_key_fails_before_the_dump(self, backup_module, env, stubs, monkeypatch):
+        monkeypatch.setenv("BACKUP_FERNET_KEY", "nope")
+        with pytest.raises(SystemExit) as exc:
+            backup_module.main()
+        assert exc.value.code == 2
+        assert stubs["dumped"] is False
+        assert stubs["emails"][-1]["success"] is False
+
+    def test_a_missing_secret_still_sends_the_alert(self, backup_module, env, stubs,
+                                                    monkeypatch):
+        monkeypatch.delenv("DATABASE_URL")
+        with pytest.raises(SystemExit) as exc:
+            backup_module.main()
+        assert exc.value.code == 1
+        assert stubs["emails"] and stubs["emails"][-1]["success"] is False
+
+
+class TestStatusEmail:
+
+    def test_unset_brevo_sends_nothing(self, backup_module, monkeypatch, capsys):
+        monkeypatch.delenv("BREVO_API_KEY", raising=False)
+        sent = []
+        monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: sent.append(a))
+        backup_module.send_status_email(success=True, dump_meta={}, counts={}, sha="x")
+        assert sent == []
+        assert "skipping email" in capsys.readouterr().err
+
+    def _capture(self, monkeypatch):
+        import json as _json
+
+        monkeypatch.setenv("BREVO_API_KEY", "k")
+        monkeypatch.setenv("DIGEST_FROM_EMAIL", "from@example.com")
+        monkeypatch.setenv("DIGEST_TO_EMAIL", "to@example.com")
+        sent = []
+
+        class Resp:
+            status = 201
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def urlopen(req, timeout=None):
+            sent.append(_json.loads(req.data))
+            return Resp()
+
+        monkeypatch.setattr("urllib.request.urlopen", urlopen)
+        return sent
+
+    def test_success_email_says_every_backup_is_kept(self, backup_module, monkeypatch):
+        sent = self._capture(monkeypatch)
+        backup_module.send_status_email(
+            success=True, dump_meta={"size_bytes": 1}, counts={"active_tasks": 1},
+            sha="abc")
+        body = sent[0]["textContent"]
+        assert "Every daily backup is kept" in body
+        assert "pruned" not in body.lower()
+
+    def test_unverified_email_names_the_problem(self, backup_module, monkeypatch):
+        sent = self._capture(monkeypatch)
+        backup_module.send_status_email(
+            success=False, dump_meta={}, counts={}, sha="abc123", error="Empty DB?")
+        assert "NOT VERIFIED" in sent[0]["subject"]
+        assert "Empty DB?" in sent[0]["textContent"]
+        assert "abc123" in sent[0]["textContent"]
+
+    def test_a_failed_send_never_raises(self, backup_module, monkeypatch):
+        import urllib.error
+
+        monkeypatch.setenv("BREVO_API_KEY", "k")
+        monkeypatch.setenv("DIGEST_FROM_EMAIL", "a@b.c")
+        monkeypatch.setenv("DIGEST_TO_EMAIL", "a@b.c")
+
+        def boom(*a, **k):
+            raise urllib.error.URLError("down")
+
+        monkeypatch.setattr("urllib.request.urlopen", boom)
+        backup_module.send_status_email(success=True, dump_meta={}, counts={}, sha="x")
+
+
+def test_unverified_reason(backup_module):
+    assert backup_module.unverified_reason({}) is not None
+    assert backup_module.unverified_reason(
+        {"active_tasks": 0, "goals": 0, "projects": 0}) is not None
+    assert backup_module.unverified_reason(
+        {"active_tasks": 0, "goals": 3, "projects": 0}) is None

@@ -13,13 +13,26 @@ per branch — keeps the suite tight):
     NEXT_WEEK    > 21 days no movement  → move to BACKLOG
     BACKLOG      > 90 days  → delete
     FREEZER      > 60 days  → delete
+
+#511 refresh: dates use local_today_date() like the code (date.today()
+broke under DIGEST_TZ=Europe/London and on the UTC CI runner 8pm-midnight
+ET). The Tomorrow / Next Week branches are effectively unreachable in the
+running app — the 00:01 roll moves Tomorrow to Today and the weekly
+re-sort empties undated Next Week — so their tests write rows directly.
+Behaviour gaps the refresh found (a far-future Backlog task offered for
+delete, reorders and nightly jobs resetting "staleness", subtasks ignored)
+are #514.
 """
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 
+import pytest
+
+import auth
 from models import Task, TaskStatus, TaskType, Tier, db
 from triage_service import compute_triage_suggestions
+from utils import local_today_date
 
 
 def _make_task(*, title: str, tier: Tier, days_old: int = 0, due_date: date | None = None,
@@ -81,7 +94,7 @@ class TestPastDueHeuristic:
             _make_task(
                 title="Overdue today",
                 tier=Tier.TODAY,
-                due_date=date.today() - timedelta(days=4),
+                due_date=local_today_date() - timedelta(days=4),
             )
             out = compute_triage_suggestions()
         assert len(out) == 1
@@ -94,7 +107,7 @@ class TestPastDueHeuristic:
             _make_task(
                 title="Overdue tomorrow",
                 tier=Tier.TOMORROW,
-                due_date=date.today() - timedelta(days=5),
+                due_date=local_today_date() - timedelta(days=5),
             )
             out = compute_triage_suggestions()
         assert len(out) == 1
@@ -105,7 +118,7 @@ class TestPastDueHeuristic:
             _make_task(
                 title="Just past due",
                 tier=Tier.TODAY,
-                due_date=date.today() - timedelta(days=3),
+                due_date=local_today_date() - timedelta(days=3),
             )
             out = compute_triage_suggestions()
         assert out == []
@@ -205,11 +218,9 @@ class TestApiContract:
             "suggested_action", "suggested_tier", "reason", "days_stale",
         }
 
-    def test_endpoint_requires_auth(self, client):
-        resp = client.get("/api/triage/suggestions")
-        # login_required redirects unauthenticated requests; assert it's
-        # NOT a 200 (could be 302, 401, or 403 depending on path).
-        assert resp.status_code != 200
+    def test_endpoint_requires_auth(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
+        assert client.get("/api/triage/suggestions").status_code == 401
 
 
 class TestTZDriftFix178:
@@ -281,3 +292,46 @@ class TestTZDriftFix178:
             out = compute_triage_suggestions()
 
         assert all(s["title"] != "Borderline late" for s in out)
+
+
+# --- #511: gaps the refresh found ---------------------------------------------
+
+
+class TestOnlyOpenDatedWork:
+
+    @pytest.mark.parametrize("status", [
+        TaskStatus.ARCHIVED, TaskStatus.CANCELLED, TaskStatus.DELETED,
+    ])
+    def test_finished_or_binned_tasks_are_never_suggested(self, app, status):
+        with app.app_context():
+            _make_task(title="old", tier=Tier.INBOX, days_old=30, status=status)
+            assert compute_triage_suggestions() == []
+
+    def test_an_undated_today_task_is_not_past_due(self, app):
+        with app.app_context():
+            _make_task(title="no date", tier=Tier.TODAY, days_old=100)
+            assert compute_triage_suggestions() == []
+
+
+class TestApplyingASuggestion:
+    """What the /review triage panel does with a "move to Backlog" row."""
+
+    def test_moving_an_overdue_task_to_backlog_sticks(self, app, authed_client):
+        from task_service import realign_tiers_with_due_dates
+
+        with app.app_context():
+            t = _make_task(title="overdue", tier=Tier.TODAY,
+                           due_date=local_today_date() - timedelta(days=5))
+            t_id = str(t.id)
+        (row,) = authed_client.get("/api/triage/suggestions").get_json()
+        assert (row["task_id"], row["suggested_tier"]) == (t_id, "backlog")
+
+        resp = authed_client.patch(f"/api/tasks/{t_id}", json={"tier": "backlog"})
+        assert resp.status_code == 200
+        # #466: a date that doesn't fit Backlog is dropped, so the nightly
+        # re-sort can't pull it straight back out.
+        assert resp.get_json()["due_date"] is None
+        with app.app_context():
+            realign_tiers_with_due_dates()
+            assert db.session.get(Task, t.id).tier == Tier.BACKLOG
+        assert authed_client.get("/api/triage/suggestions").get_json() == []

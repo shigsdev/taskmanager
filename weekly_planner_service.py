@@ -471,7 +471,7 @@ def compute_weekly_plan(start_date: date | None = None) -> dict:
             "goal_hints": [...],
             "velocity_warning": str | None,
             "stale_freezer_review": [...],
-            "model": "claude-haiku-...",
+            "model": claude_client.HAIKU,
         }``
 
     Raises:

@@ -81,6 +81,19 @@ def _within_tolerance(scratch: int, live: int, tol: float = TOLERANCE) -> bool:
     return abs(scratch - live) / live <= tol
 
 
+def newest_backup(dest_dir: Path) -> Path:
+    """The newest *.dump.fernet in ``dest_dir``, or exit 2.
+
+    #511: by NAME — the taskmanager-YYYYMMDDTHHMMSSZ stamp sorts in time
+    order. mtimes are useless after a fresh clone (all "now"), so the old
+    mtime sort tested an arbitrary dump."""
+    candidates = sorted(dest_dir.glob("*.dump.fernet"), key=lambda p: p.name)
+    if not candidates:
+        sys.stderr.write("FATAL: no *.dump.fernet found in backup repo\n")
+        sys.exit(2)
+    return candidates[-1]
+
+
 def fetch_latest_backup(backup_repo: str, dest_dir: Path) -> Path:
     """Clone backup repo, find newest *.dump.fernet, return its path."""
     sys.stdout.write(f"[drill] cloning {backup_repo}\n")
@@ -88,11 +101,7 @@ def fetch_latest_backup(backup_repo: str, dest_dir: Path) -> Path:
         ["git", "clone", "--depth", "1", backup_repo, str(dest_dir)],
         check=True, capture_output=True, text=True,
     )
-    candidates = sorted(dest_dir.glob("*.dump.fernet"), key=lambda p: p.stat().st_mtime)
-    if not candidates:
-        sys.stderr.write("FATAL: no *.dump.fernet found in backup repo\n")
-        sys.exit(2)
-    latest = candidates[-1]
+    latest = newest_backup(dest_dir)
     sys.stdout.write(f"[drill] using {latest.name}\n")
     return latest
 

@@ -1,7 +1,8 @@
-"""Unit tests for the ``validate_json_body`` decorator (#196, PR15).
+"""Unit tests for the JSON-body decorators: ``validate_json_body`` (#196,
+PR15) and its optional twin ``optional_json_body`` (#476, at the end).
 
-The decorator centralizes the strict JSON-object-body check that 27
-API route handlers previously open-coded:
+``validate_json_body`` centralizes the strict JSON-object-body check
+that the API routes (31 of them as of #511) previously open-coded:
 
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
@@ -190,3 +191,47 @@ def test_passes_through_args_and_kwargs(decorated_app):
         "kw_arg": "keyword",
         "body": {"b": 1},
     }
+
+
+# --- optional_json_body (#476) — what the twin does with odd bodies ----------
+
+
+@pytest.fixture
+def optional_app():
+    from utils import optional_json_body
+
+    app = Flask(__name__)
+
+    @app.post("/opt")
+    @optional_json_body
+    def opt():
+        """docstring survives"""
+        return jsonify({"received": g.json_body}), 200
+
+    return app
+
+
+@pytest.mark.parametrize("data,content_type", [
+    (None, None),                          # no body at all
+    ("null", "application/json"),          # JSON null
+    ("{not json", "application/json"),     # malformed
+    ("hello", "text/plain"),               # not JSON
+])
+def test_optional_body_reads_as_empty(optional_app, data, content_type):
+    kwargs = {} if data is None else {"data": data, "content_type": content_type}
+    resp = optional_app.test_client().post("/opt", **kwargs)
+    assert resp.status_code == 200
+    assert resp.get_json() == {"received": {}}
+
+
+@pytest.mark.parametrize("body", ["false", '""', "0", "[1]"])
+def test_optional_body_refuses_json_that_is_not_an_object(optional_app, body):
+    resp = optional_app.test_client().post(
+        "/opt", data=body, content_type="application/json")
+    assert resp.status_code == 400
+    assert resp.get_json() == {"error": "JSON body must be an object"}
+
+
+def test_both_decorators_keep_the_view_name(optional_app, decorated_app):
+    assert optional_app.view_functions["opt"].__doc__ == "docstring survives"
+    assert "echo" in decorated_app.view_functions

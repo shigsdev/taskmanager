@@ -3438,7 +3438,7 @@ Skip this line (too short)</pre>
 
             <h3>How the pieces fit together</h3>
             <ul>
-                <li><strong>Daily backup workflow</strong> — every day at 03:30 ET (07:30 UTC). Runs OUTSIDE Railway in GitHub Actions, so a Railway-side incident can't take both the data and the backup runner. Pulls a <code>pg_dump --format=custom</code> of the live Postgres, encrypts with Fernet, pushes ciphertext to a private GitHub repo (e.g. <code>shigsdev/taskmanager-backups</code>). Last 7 days kept; older auto-pruned.</li>
+                <li><strong>Daily backup workflow</strong> — every day at 03:30 ET (07:30 UTC). Runs OUTSIDE Railway in GitHub Actions, so a Railway-side incident can't take both the data and the backup runner. Pulls a <code>pg_dump --format=custom</code> of the live Postgres, encrypts with Fernet, pushes ciphertext to a private GitHub repo (e.g. <code>shigsdev/taskmanager-backups</code>). Every daily backup is kept (about 260 KB each).</li>
                 <li><strong>Monthly restore drill</strong> — first of every month at 04:00 ET. Pulls the latest dump, decrypts, restores into a scratch Postgres inside the GitHub Actions runner, validates row counts match the live DB within ±5%. Catches dump corruption, key drift, and pg_restore version skew BEFORE the day you actually need to restore.</li>
                 <li><strong>Status emails</strong> — every backup AND every drill sends a result email to your <code>DIGEST_TO_EMAIL</code> (same address as the daily digest). Subject starts with <strong>OK</strong> for success, <strong>FAIL</strong> for failure.</li>
             </ul>
@@ -3672,7 +3672,7 @@ print('wrote', out)
 
             <h3>Operational details (knobs you can change)</h3>
             <ul>
-                <li><strong>Retention window</strong> — edit <code>RETENTION_DAYS = 7</code> in <code>scripts/backup_to_github.py</code>. Older dumps auto-prune on every run.</li>
+                <li><strong>Retention</strong> — every daily backup is kept; nothing is pruned. Deleting an old dump from the backup repo wouldn't free space (git keeps it in history).</li>
                 <li><strong>Schedule</strong> — edit the <code>cron:</code> lines in <code>.github/workflows/daily-backup.yml</code> and <code>monthly-restore-drill.yml</code>. GitHub crons are in UTC.</li>
                 <li><strong>Restore drill tolerance</strong> — edit <code>TOLERANCE = 0.05</code> in <code>scripts/restore_drill.py</code> (5% row-count drift allowed before FAIL).</li>
                 <li><strong>Disable temporarily</strong> — in the Actions tab, click the workflow → "..." menu → Disable workflow. Re-enable later.</li>

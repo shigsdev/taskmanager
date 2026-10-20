@@ -301,6 +301,14 @@ class TestValidateUploadExtensionMode:
 
 class TestValidateUploadNeedsAMode:
 
+    def test_both_modes_is_a_programming_error(self):
+        """#511: the docstring says pass exactly one; extension mode used to
+        win silently and the MIME list was ignored."""
+        req = _make_request(_file(b"x", "a.xlsx", "application/octet-stream"))
+        with pytest.raises(ValueError, match="not both"):
+            validate_upload(req, field_name="audio", max_bytes=1024,
+                            allowed_mime={"audio/webm"}, allowed_extensions={".xlsx"})
+
     def test_neither_mode_is_a_programming_error(self):
         """A caller that names no type rule must fail loudly at once,
         never accept every file."""

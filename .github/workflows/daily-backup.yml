@@ -12,9 +12,12 @@
 # 5. Generate a Fernet key once: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
 # 6. Save that key in 1Password (you'll need it for restores) AND as a secret
 #    in this repo: BACKUP_FERNET_KEY
-# 7. Add other secrets: DATABASE_URL (Railway Postgres URL), BREVO_API_KEY,
+# 7. Add other secrets: DATABASE_URL (Railway Postgres URL), BREVO_API_KEY
+# 8. Set repo VARIABLES (not secrets — the job reads vars.*):
+#    BACKUP_REPO_URL = git@github.com:<user>/taskmanager-backups.git,
 #    DIGEST_FROM_EMAIL, DIGEST_TO_EMAIL
-# 8. Set repo variable BACKUP_REPO_URL = git@github.com:<user>/taskmanager-backups.git
+#
+# Every daily backup is kept; nothing is pruned (#511).
 #
 # To run on demand, use the "workflow_dispatch" trigger from the Actions tab.
 name: Daily backup

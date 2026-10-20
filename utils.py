@@ -45,9 +45,8 @@ def local_today_date() -> date:
 
     Originally lived as a private ``_local_today_date`` in task_service;
     extracted here so the recurring / review / digest services can
-    share it without an inter-service circular import. task_service
-    still re-exports the old name as a thin alias for callers that
-    imported it directly.
+    share it without an inter-service circular import. Every caller
+    now imports it from here.
     """
     try:
         from zoneinfo import ZoneInfo
@@ -72,9 +71,8 @@ def local_date_from_dt(dt: datetime | None) -> date | None:
     breaks any "what local date did this happen on" calculation
     (triage staleness, calendar bucketing, etc.).
 
-    Mirrors the inline ZoneInfo conversion already used in
-    ``recurring_service.spawn_today_tasks`` (~line 443-459) — extracted
-    here so both call sites share one helper.
+    Built on :func:`local_datetime_from_dt` below — the one place a
+    stored timestamp becomes the user's local time.
 
     Returns ``None`` when ``dt`` is ``None``.
     """
@@ -108,7 +106,8 @@ def local_datetime_from_dt(dt: datetime | None) -> datetime | None:
             dt = dt.replace(tzinfo=UTC)
         return dt.astimezone(ZoneInfo(tz_name))
     except Exception:  # noqa: BLE001
-        # ZoneInfo / tzdata unavailable → fall back to the value as stored.
+        # ZoneInfo / tzdata unavailable, or DIGEST_TZ unknown → fall back
+        # to the instant in UTC (a naive value was stamped UTC above).
         _warn_tz_fallback()  # #439
         return dt
 
@@ -166,7 +165,7 @@ def validate_json_body(fn):
     Wraps a route so it can assume the request carried a JSON object.
     On a missing / non-object body it short-circuits with
     ``{"error": "JSON body required"}, 400`` — the standard shape the
-    28 strict routes previously open-coded. The route reads the parsed
+    strict routes (31 as of #511) previously open-coded. The route reads the parsed
     body via ``flask.g.json_body``.
 
     #196. Use ONLY on routes that genuinely require a body. Routes that
@@ -253,6 +252,8 @@ def fit_length(value: str | None, limit: int) -> str | None:
     """
     if value is None or len(value) <= limit:
         return value
+    if limit < 1:
+        return ""  # #511: value[:-1] + "…" would be LONGER than the limit
     return value[: limit - 1].rstrip() + "…"
 
 
@@ -270,6 +271,7 @@ def parse_uuid(value: Any, field: str) -> uuid.UUID | None:
 
 # Postgres `integer` — every Integer column in models.py.
 INT_MAX = 2**31 - 1
+INT_MIN = -(2**31)  # #511: the bottom of the range is one further than -INT_MAX
 
 
 def strict_int(value: Any) -> int:
@@ -304,8 +306,10 @@ def parse_int(value: Any, field: str, *, allow_none: bool = False) -> int | None
         n = strict_int(value)
     except (TypeError, ValueError) as e:
         raise ValidationError(f"invalid {field}: must be an integer", field) from e
-    if abs(n) > INT_MAX:
+    if n > INT_MAX:
         raise ValidationError(f"{field} is too large", field)
+    if n < INT_MIN:
+        raise ValidationError(f"{field} is too small", field)
     return n
 
 
@@ -387,6 +391,11 @@ def validate_upload(
     if allowed_mime is None and allowed_extensions is None:
         raise ValueError(
             "validate_upload: pass allowed_mime or allowed_extensions"
+        )
+    if allowed_mime is not None and allowed_extensions is not None:
+        # #511: extension mode used to win silently, ignoring the MIME list.
+        raise ValueError(
+            "validate_upload: pass allowed_mime or allowed_extensions, not both"
         )
 
     if field_name not in request.files:

@@ -7,17 +7,21 @@ Pipeline:
                 ↓
         write timestamped file in BACKUP_REPO  →   git add + commit + push
                 ↓
-        prune any *.dump.fernet older than 7d  →   commit (retention = 7 daily)
-                ↓
         compute row counts (tasks/goals/projects) →   email report
 
+Every daily backup is kept (#511, user decision 2026-10-19). The
+7-day prune never worked — it compared file mtimes after a fresh
+``git clone``, where every file is "now" — and a pruned file stays in
+git history anyway, so pruning wouldn't save space. ~260 KB a day.
+
 Run via GitHub Actions on cron (.github/workflows/daily-backup.yml).
-Required env vars (set as GitHub Actions secrets):
+Required env vars — GitHub Actions SECRETS:
     DATABASE_URL          Railway Postgres URL
     BACKUP_FERNET_KEY     base64 Fernet key (44 chars, ends with '=')
     BACKUP_REPO_DEPLOY_KEY  SSH deploy key with write access to backup repo
+    BREVO_API_KEY         reuse the app's existing key
+and repository VARIABLES (``vars.*`` in the workflow, not secrets):
     BACKUP_REPO_URL       git@github.com:<user>/taskmanager-backups.git
-    BREVO_API_KEY      reuse the app's existing key
     DIGEST_FROM_EMAIL     reuse
     DIGEST_TO_EMAIL       reuse — backup status email goes here
 
@@ -28,11 +32,14 @@ masked in logs) and a copy in 1Password for restore-time use.
 
 Exit codes:
     0 — backup succeeded; success email sent
-    1 — pg_dump failed
-    2 — encryption failed
-    3 — git push failed
-    4 — email send failed (backup itself was OK)
+    1 — pg_dump failed, a required env var is missing, or anything unexpected
+    2 — encryption failed (incl. an invalid key, checked BEFORE the dump)
+    3 — git clone / commit / push failed
+    4 — backup pushed but NOT verified: the row-count query failed or the
+        database has no tasks, goals or projects at all (wrong or empty
+        DATABASE_URL?) — #511
     Any non-zero exit also tries to send a failure email before exiting.
+    A failed status email never changes the exit code.
 """
 from __future__ import annotations
 
@@ -50,7 +57,6 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 
-RETENTION_DAYS = 7  # locked-in #154.2: last 7 daily only
 DUMP_FORMAT = "custom"  # locked-in #154.4: pg_dump custom format
 
 # User-reported 2026-05-13: GitHub-hosted Ubuntu runners ship pg_dump
@@ -137,16 +143,22 @@ def run_pg_dump(database_url: str, out_path: Path) -> dict:
     return {"size_bytes": size, "elapsed_sec": elapsed}
 
 
-def encrypt_in_place(path: Path, key: str) -> Path:
-    """Encrypt the file at `path` with Fernet. Returns the new
-    .fernet path; deletes the plaintext."""
+def _fernet(key: str):
+    """A Fernet for ``key``, or exit 2. main() calls this BEFORE the dump
+    (#511) so a bad key fails in a second, not after a full pg_dump."""
     from cryptography.fernet import Fernet
 
     try:
-        f = Fernet(key.encode("ascii") if isinstance(key, str) else key)
+        return Fernet(key.encode("ascii") if isinstance(key, str) else key)
     except Exception as e:
         sys.stderr.write(f"FATAL: invalid Fernet key: {e}\n")
         sys.exit(2)
+
+
+def encrypt_in_place(path: Path, key: str) -> Path:
+    """Encrypt the file at `path` with Fernet. Returns the new
+    .fernet path; deletes the plaintext."""
+    f = _fernet(key)
     plaintext = path.read_bytes()
     ciphertext = f.encrypt(plaintext)
     enc_path = path.with_suffix(path.suffix + ".fernet")
@@ -182,15 +194,18 @@ def _query_row_counts(database_url: str) -> dict:
 
 def push_to_backup_repo(enc_path: Path, repo_url: str) -> str:
     """Clone the backup repo into a temp dir, copy the .fernet file in,
-    prune old files older than RETENTION_DAYS, commit + push. Returns
-    the commit SHA."""
+    commit + push. Every earlier backup stays (#511). Returns the commit
+    SHA, or "" when the file was already there."""
     with tempfile.TemporaryDirectory() as td:
         repo_dir = Path(td) / "backups"
         sys.stdout.write(f"[backup] cloning {repo_url}\n")
-        subprocess.run(
+        clone = subprocess.run(
             ["git", "clone", "--depth", "1", repo_url, str(repo_dir)],
-            check=True, capture_output=True, text=True,
+            check=False, capture_output=True, text=True,
         )
+        if clone.returncode != 0:
+            sys.stderr.write(f"FATAL: git clone failed:\n{clone.stderr}\n")
+            sys.exit(3)
         # Configure committer so the push doesn't fail.
         subprocess.run(
             ["git", "-C", str(repo_dir), "config", "user.email",
@@ -202,27 +217,11 @@ def push_to_backup_repo(enc_path: Path, repo_url: str) -> str:
              "Taskmanager Backup Bot"],
             check=True,
         )
-        # Copy the new dump in.
+        # Copy the new dump in. Nothing is pruned (#511).
         shutil.copy2(enc_path, repo_dir / enc_path.name)
-        # Prune old files (retention).
-        cutoff = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
-            days=RETENTION_DAYS
-        )
-        pruned: list[str] = []
-        for p in repo_dir.glob("*.dump.fernet"):
-            mtime = datetime.datetime.fromtimestamp(p.stat().st_mtime, datetime.UTC)
-            if mtime < cutoff:
-                p.unlink()
-                pruned.append(p.name)
-        # Commit + push.
         subprocess.run(["git", "-C", str(repo_dir), "add", "-A"], check=True)
-        msg_lines = [f"backup: {enc_path.name}"]
-        if pruned:
-            msg_lines.append(f"pruned {len(pruned)} (>{RETENTION_DAYS}d): "
-                             + ", ".join(pruned[:5])
-                             + ("…" if len(pruned) > 5 else ""))
         proc = subprocess.run(
-            ["git", "-C", str(repo_dir), "commit", "-m", "\n\n".join(msg_lines)],
+            ["git", "-C", str(repo_dir), "commit", "-m", f"backup: {enc_path.name}"],
             capture_output=True, text=True, check=False,
         )
         if proc.returncode != 0 and "nothing to commit" in (proc.stdout + proc.stderr):
@@ -278,7 +277,17 @@ def send_status_email(
             f"Projects:     {counts.get('projects', '(unknown)')}",
             f"Commit:       {sha}",
             "",
-            "Retention policy: last 7 daily backups kept; older pruned automatically.",
+            "Every daily backup is kept in the backup repo.",
+        ]
+    elif sha and error:
+        subject = f"[Taskmanager backup] ⚠ Daily backup NOT VERIFIED — {today}"
+        body_lines = [
+            f"The daily backup on {today} was pushed (commit {sha}), but it",
+            "could not be verified:",
+            "",
+            error,
+            "",
+            "Check DATABASE_URL in the backup workflow and the GitHub Actions run.",
         ]
     else:
         subject = f"[Taskmanager backup] ✗ Daily backup FAILED — {today}"
@@ -320,21 +329,45 @@ def send_status_email(
         sys.stderr.write(f"[backup] email send failed: {e}\n")
 
 
-def main() -> int:
-    database_url = _require_env("DATABASE_URL")
-    fernet_key = _require_env("BACKUP_FERNET_KEY")
-    backup_repo = _require_env("BACKUP_REPO_URL")
+def unverified_reason(counts: dict) -> str | None:
+    """Why a pushed backup can't be trusted, or None (#511).
 
+    The dump itself can't be read here (it's encrypted at once), so the
+    row counts stand in: no counts means the query failed; all zero
+    means DATABASE_URL points at an empty database. Either way the job
+    must not report a plain success."""
+    if not counts:
+        return "The row-count query failed, so the dump's contents are unknown."
+    if not any(counts.get(k) for k in ("active_tasks", "goals", "projects")):
+        return ("The database has no active tasks, goals or projects — "
+                "is DATABASE_URL the live database?")
+    return None
+
+
+def main() -> int:
     stamp = _now_iso()
     sys.stdout.write(f"[backup] starting {stamp}\n")
 
     try:
+        # Inside the try (#511) so a missing secret still sends the alert.
+        database_url = _require_env("DATABASE_URL")
+        fernet_key = _require_env("BACKUP_FERNET_KEY")
+        backup_repo = _require_env("BACKUP_REPO_URL")
+        _fernet(fernet_key)  # fail fast on a bad key, before the dump
         with tempfile.TemporaryDirectory() as td:
             dump_path = Path(td) / f"taskmanager-{stamp}.dump"
             dump_meta = run_pg_dump(database_url, dump_path)
             counts = _query_row_counts(database_url)
             enc_path = encrypt_in_place(dump_path, fernet_key)
             sha = push_to_backup_repo(enc_path, backup_repo)
+        problem = unverified_reason(counts)
+        if problem:
+            sys.stderr.write(f"FATAL: backup pushed but not verified: {problem}\n")
+            send_status_email(
+                success=False, dump_meta=dump_meta, counts=counts, sha=sha or "?",
+                error=problem,
+            )
+            return 4
         send_status_email(
             success=True, dump_meta=dump_meta, counts=counts, sha=sha,
         )

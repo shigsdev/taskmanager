@@ -1421,7 +1421,7 @@ pg_dump --format=custom $DATABASE_URL → bytes
         ↓
 Fernet.encrypt(bytes, $BACKUP_FERNET_KEY) → ciphertext
         ↓
-git clone + drop *.dump.fernet + prune >7d + git push
+git clone + drop *.dump.fernet + git push (every backup kept, #511)
         ↓
 private GitHub repo: $BACKUP_REPO_URL (e.g. user/taskmanager-backups)
         ↓
@@ -1456,7 +1456,7 @@ skew before the day you actually need to restore.
 - `scripts/restore_drill.py` — monthly restore validation.
 - `.github/workflows/daily-backup.yml` — daily cron + manual dispatch.
 - `.github/workflows/monthly-restore-drill.yml` — monthly cron + manual.
-- `tests/test_backup_to_github.py` — Fernet round-trip + retention prune logic.
+- `tests/test_backup_to_github.py` — Fernet round-trip, nothing pruned (a real local git remote), pg_dump argv, exit codes, the not-verified rule, status email; the restore drill picks the newest dump by name.
 
 ### Required secrets / variables (configured in main repo's GitHub settings)
 

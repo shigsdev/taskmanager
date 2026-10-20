@@ -41,7 +41,7 @@ _limiter.enabled = False
 # over-long value through fails HERE.
 #
 # #476: same for Integer — SQLite stores anything up to 2**63, Postgres
-# `integer` refuses past ±2**31-1 ("integer out of range").
+# `integer` refuses outside -2**31 .. 2**31-1 ("integer out of range").
 def _check_string_widths(session, _flush_context, _instances):
     from sqlalchemy import BigInteger, Integer, SmallInteger, String, inspect
     from sqlalchemy.exc import DataError
@@ -55,7 +55,7 @@ def _check_string_widths(session, _flush_context, _instances):
                 attr = mapper.get_property_by_column(col).key
                 value = getattr(obj, attr, None)
                 if (isinstance(value, int) and not isinstance(value, bool)
-                        and abs(value) > 2**31 - 1):
+                        and not -(2**31) <= value <= 2**31 - 1):  # #511: Postgres integer range
                     raise DataError(
                         f"{col.table.name}.{col.name}", {},
                         ValueError(f"integer out of range: {col.table.name}.{col.name}"),

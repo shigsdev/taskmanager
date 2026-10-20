@@ -2,7 +2,8 @@
 
 Endpoints:
     POST /api/scan/upload   — upload image, get OCR text + task candidates
-    POST /api/scan/confirm  — confirm candidates, create tasks in inbox
+    POST /api/scan/confirm  — confirm candidates: tasks (Inbox, or their
+                              date's section, #386), goals or projects
 """
 from __future__ import annotations
 
@@ -116,33 +117,33 @@ def upload(email: str):  # noqa: ARG001
     # full candidate dict shape the review UI will render.
     try:
         if kind == "goals":
-            goal_dicts = parse_goals_from_text(ocr_text)
+            goal_dicts = [g for g in parse_goals_from_text(ocr_text) if isinstance(g, dict)]
             candidates_out = [
                 {
-                    "title": (g.get("title") or "").strip(),
-                    "category": g.get("category") or "personal_growth",
-                    "priority": g.get("priority") or "need_more_info",
-                    "target_quarter": g.get("target_quarter") or "",
-                    "actions": g.get("actions") or "",
+                    "title": _text(g.get("title")),
+                    "category": _text(g.get("category")) or "personal_growth",
+                    "priority": _text(g.get("priority")) or "need_more_info",
+                    "target_quarter": _text(g.get("target_quarter")),
+                    "actions": _text(g.get("actions")),
                     "included": True,
                 }
                 for g in goal_dicts
-                if (g.get("title") or "").strip()
+                if _text(g.get("title"))
             ]
         elif kind == "projects":
             # #86 (2026-04-26): scan → projects. UI uses `title` for the
             # input even though projects are stored as `name`; we expose
             # both so the same renderer + confirm path works.
-            proj_dicts = parse_projects_from_text(ocr_text)
+            proj_dicts = [p for p in parse_projects_from_text(ocr_text) if isinstance(p, dict)]
             candidates_out = [
                 {
-                    "title": (p.get("name") or "").strip(),
-                    "type": p.get("type") or "work",
-                    "target_quarter": p.get("target_quarter") or "",
+                    "title": _text(p.get("name")),
+                    "type": _text(p.get("type")) or "work",
+                    "target_quarter": _text(p.get("target_quarter")),
                     "included": True,
                 }
                 for p in proj_dicts
-                if (p.get("name") or "").strip()
+                if _text(p.get("name"))
             ]
         else:
             task_titles = parse_tasks_from_text(ocr_text)
@@ -164,6 +165,17 @@ def upload(email: str):  # noqa: ARG001
         "kind": kind,
         "candidates": candidates_out,
     })
+
+
+def _text(value) -> str:
+    """A field from Claude as trimmed text: a number becomes its digits;
+    anything else that isn't text (a list, an object, null) is "" (#511 —
+    ``.strip()`` on a number crashed the whole scan)."""
+    if isinstance(value, bool) or value is None:
+        return ""
+    if isinstance(value, (int, float)):
+        return str(value)
+    return value.strip() if isinstance(value, str) else ""
 
 
 @bp.post("/confirm")

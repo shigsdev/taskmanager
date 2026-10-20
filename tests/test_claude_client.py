@@ -1,8 +1,10 @@
 """Tests for claude_client — the single Anthropic Messages-API client (#195).
 
 Before #195, four services each carried a near-identical
-`_post_to_claude`. They now delegate to `claude_client.call_claude`;
-these tests pin that one shared client's behaviour.
+`_post_to_claude`. They now delegate to `claude_client.call_claude`
+(reflection calls it directly — six callers as of #511); these tests
+pin that one shared client's behaviour. How each caller reads the reply
+(empty / refused / cut off) is #513's.
 """
 from __future__ import annotations
 
@@ -49,7 +51,7 @@ def test_call_claude_builds_the_messages_request():
 
 
 def test_call_claude_honours_a_custom_timeout():
-    # The weekly planner passes 180s for its large-output calls.
+    # The weekly planner and reflection pass 180s for large outputs.
     captured = {}
 
     def fake_safe_call_api(**kwargs):
@@ -75,3 +77,47 @@ def test_call_claude_wraps_egress_error_as_runtime_error():
             api_key="k", prompt="p", max_tokens=10,
             model=claude_client.SONNET,
         )
+
+
+def test_the_egress_error_is_kept_as_the_cause():
+    original = EgressError("Claude API returned HTTP 529: overloaded")
+    with (
+        patch("egress.safe_call_api", side_effect=original),
+        pytest.raises(RuntimeError) as exc,
+    ):
+        claude_client.call_claude(
+            api_key="k", prompt="p", max_tokens=10, model=claude_client.HAIKU)
+    assert exc.value.__cause__ is original
+
+
+def test_the_key_never_reaches_the_error_message():
+    """The real egress layer builds the message (vendor + status +
+    upstream detail); the key must not be in what callers show."""
+    from unittest.mock import MagicMock
+
+    resp = MagicMock(ok=False, status_code=401)
+    resp.json.return_value = {"error": {"message": "invalid x-api-key"}}
+    with (
+        patch("egress.requests.post", return_value=resp) as post,
+        pytest.raises(RuntimeError) as exc,
+    ):
+        claude_client.call_claude(
+            api_key="sk-ant-SECRET-123", prompt="p", max_tokens=10,
+            model=claude_client.HAIKU)
+    assert "sk-ant-SECRET-123" not in str(exc.value)
+    assert "401" in str(exc.value)
+    # ...and it travelled in the header, never the URL (ADR-007).
+    args, kwargs = post.call_args
+    assert "sk-ant-SECRET-123" not in args[0]
+    assert kwargs["headers"]["x-api-key"] == "sk-ant-SECRET-123"
+
+
+def test_the_planner_asks_haiku_with_its_long_timeout():
+    import weekly_planner_service
+
+    with patch("claude_client.call_claude", return_value={}) as call:
+        weekly_planner_service._post_to_claude("k", "prompt", max_tokens=12000)
+    kwargs = call.call_args.kwargs
+    assert kwargs["model"] == claude_client.HAIKU
+    assert kwargs["timeout_sec"] == 180
+    assert kwargs["max_tokens"] == 12000

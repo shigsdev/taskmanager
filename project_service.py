@@ -21,6 +21,7 @@ from models import (
 from recurring_service import cascade_parent_archive
 from utils import (
     INT_MAX,
+    INT_MIN,
     ValidationError,  # noqa: F401 — re-exported for API layer
     check_length,
     max_length,
@@ -391,7 +392,7 @@ def update_project(project_id: uuid.UUID, data: dict) -> Project | None:
             order = strict_int(raw)  # #476
         except (TypeError, ValueError) as e:
             raise ValidationError("priority_order must be integer", "priority_order") from e
-        if abs(order) > INT_MAX:
+        if not INT_MIN <= order <= INT_MAX:  # #511: was abs(), one short at the bottom
             raise ValidationError("priority_order must be integer", "priority_order")
         project.priority_order = order
 

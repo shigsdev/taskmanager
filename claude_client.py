@@ -7,6 +7,9 @@ Before this module, four services (`scan_service`,
 ``/v1/messages`` — and a fifth (`import_service`) inlined the same
 call. The model id was a bare hardcoded string in five places.
 
+Six callers use it today: those five plus ``reflection_service``
+(#511 recount), which calls :func:`call_claude` directly.
+
 This centralises the HTTP mechanics and the model ids so a model
 bump, an `anthropic-version` change, or an egress-policy tweak is a
 single edit. The call still routes through `egress.safe_call_api`
@@ -32,8 +35,9 @@ HAIKU = "claude-haiku-4-5-20251001"
 _ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 _ANTHROPIC_VERSION = "2023-06-01"
 
-# Default per-request timeout. The weekly planner overrides this (180s)
-# because large max_tokens outputs genuinely take 60-150s end to end.
+# Default per-request timeout. The weekly planner (180s) and reflection
+# (180s, 300s on retry) override it: large max_tokens outputs genuinely
+# take 60-150s end to end.
 _DEFAULT_TIMEOUT_SEC = 60
 
 

@@ -4,7 +4,12 @@ The scan feature converts photos/screenshots into inbox tasks via:
 1. Google Vision API (OCR — extracting text from images)
 2. Claude API (AI parsing — turning raw text into task candidates)
 3. Review screen (user edits/confirms candidates)
-4. Task creation (confirmed items land in Inbox)
+4. Creation — tasks land in Inbox, or the section their date points to
+   (#386); goals and projects (#86) are created too
+
+#511 refreshed this file: the real Vision call (key in a header),
+upload error paths, projects mode, per-kind confirm fields, and the
+in-memory-only rule are now tested (see the end of the file).
 
 These tests mock both external APIs so we never make real HTTP calls.
 The image is processed in memory only — never written to disk or DB.
@@ -13,7 +18,7 @@ Key testing concepts:
 - **Mocking external APIs** — replacing Google Vision and Claude API
   calls with fake responses so tests run without API keys or network
 - **File upload testing** — simulating multipart form uploads in Flask
-- **In-memory processing** — verifying images never touch disk
+- **In-memory processing** — verifying images never touch disk or the DB
 """
 from __future__ import annotations
 
@@ -927,3 +932,209 @@ class TestKindRouter:
         assert body["created"] == 1
         assert body["projects"][0]["name"] == "Scanned Proj"
         assert body["projects"][0]["type"] == "personal"
+
+
+# --- #511: what the 2026-10-19 refresh found untested ---------------------------
+
+
+def _upload(client, kind="tasks"):
+    return client.post(
+        "/api/scan/upload",
+        data={"image": (io.BytesIO(b"fake jpeg"), "x.jpg", "image/jpeg"),
+              "parse_as": kind},
+        content_type="multipart/form-data",
+    )
+
+
+@pytest.fixture
+def keys(monkeypatch):
+    monkeypatch.setenv("GOOGLE_VISION_API_KEY", "vision-SECRET")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+
+
+class TestVisionCall:
+    """The real _call_vision_api, with only the HTTP layer faked."""
+
+    def test_key_in_header_never_the_url(self, app):
+        from scan_service import _call_vision_api
+
+        with patch("egress.safe_call_api", return_value={
+            "responses": [{"textAnnotations": [{"description": " Buy milk \n"}]}],
+        }) as call:
+            assert _call_vision_api("vision-SECRET", b"img") == "Buy milk"
+        kw = call.call_args.kwargs
+        assert kw["headers"]["X-Goog-Api-Key"] == "vision-SECRET"
+        assert "SECRET" not in kw["url"] and "key=" not in kw["url"]
+        assert kw["vendor"] == "Vision"
+        assert kw["json"]["requests"][0]["features"] == [{"type": "TEXT_DETECTION"}]
+
+    @pytest.mark.parametrize("error,expected", [
+        ({"message": "Bad image data"}, "Bad image data"),
+        ({"status": "INVALID_ARGUMENT"}, "INVALID_ARGUMENT"),
+        ("quota exceeded", "quota exceeded"),     # #511: a bare string crashed
+    ])
+    def test_a_per_request_error_is_a_runtime_error(self, app, error, expected):
+        from scan_service import _call_vision_api
+
+        with (
+            patch("egress.safe_call_api", return_value={"responses": [{"error": error}]}),
+            pytest.raises(RuntimeError, match=expected),
+        ):
+            _call_vision_api("k", b"img")
+
+    @pytest.mark.parametrize("data", [{}, {"responses": []}, {"responses": ["x"]}])
+    def test_odd_replies_mean_no_text(self, app, data):
+        from scan_service import _call_vision_api
+
+        with patch("egress.safe_call_api", return_value=data):
+            assert _call_vision_api("k", b"img") == ""
+
+    def test_egress_error_becomes_runtime_error(self, app):
+        from egress import EgressError
+        from scan_service import _call_vision_api
+
+        with (
+            patch("egress.safe_call_api",
+                  side_effect=EgressError("Vision API returned HTTP 403")),
+            pytest.raises(RuntimeError, match="403"),
+        ):
+            _call_vision_api("k", b"img")
+
+
+class TestUploadErrors:
+
+    def test_parser_runtime_error_is_422(self, authed_client, keys):
+        with patch("scan_service._call_vision_api", return_value="text"), \
+                patch("scan_service._call_claude_api_goals",
+                      side_effect=RuntimeError("Claude API returned HTTP 529")):
+            resp = _upload(authed_client, "goals")
+        assert resp.status_code == 422
+        assert resp.get_json()["error"].startswith("Goals parsing failed: ")
+
+    def test_unexpected_parser_error_is_500_without_detail(self, authed_client, keys):
+        with patch("scan_service._call_vision_api", return_value="text"), \
+                patch("scan_service._call_claude_api", side_effect=ValueError("boom")):
+            resp = _upload(authed_client)
+        assert resp.status_code == 500
+        assert "boom" not in resp.get_json()["error"]
+
+    def test_unexpected_ocr_error_is_500(self, authed_client, keys):
+        with patch("scan_service._call_vision_api", side_effect=KeyError("x")):
+            resp = _upload(authed_client)
+        assert resp.status_code == 500
+        assert resp.get_json()["error"] == "OCR processing failed (unexpected)"
+
+    @pytest.mark.parametrize("path", ["/api/scan/upload", "/api/scan/confirm"])
+    def test_both_routes_need_a_sign_in(self, client, monkeypatch, path):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
+        assert client.post(path, json={}).status_code == 401
+
+
+class TestUploadShapes:
+
+    def test_projects_mode(self, authed_client, keys):
+        with patch("scan_service._call_vision_api", return_value="text"), \
+                patch("scan_service._post_to_claude", return_value={"content": [{
+                    "text": '[{"name": " Kitchen reno ", "type": null},'
+                            ' {"name": ""}, {"name": "Q4 deck", "type": "personal",'
+                            ' "target_quarter": "Q4"}]'}]}):
+            resp = _upload(authed_client, "projects")
+        assert resp.status_code == 200
+        cands = resp.get_json()["candidates"]
+        assert [(c["title"], c["type"], c["target_quarter"]) for c in cands] == [
+            ("Kitchen reno", "work", ""), ("Q4 deck", "personal", "Q4")]
+
+    def test_goals_mode_drops_untitled_and_fills_defaults(self, authed_client, keys):
+        with patch("scan_service._call_vision_api", return_value="text"), \
+                patch("scan_service._call_claude_api_goals", return_value=[
+                    {"title": "Read 12 books", "category": None},
+                    {"title": "   "},
+                ]):
+            resp = _upload(authed_client, "goals")
+        (only,) = resp.get_json()["candidates"]
+        assert (only["category"], only["priority"], only["target_quarter"]) == (
+            "personal_growth", "need_more_info", "")
+
+    def test_a_number_or_odd_row_from_claude_does_not_crash(self, authed_client, keys):
+        """#511: .strip() on a number was a 500 for the whole scan."""
+        with patch("scan_service._call_vision_api", return_value="text"), \
+                patch("scan_service._call_claude_api_goals", return_value=[
+                    {"title": 2026, "category": "health"},
+                    "not a dict",
+                    {"title": ["x"]},
+                ]):
+            resp = _upload(authed_client, "goals")
+        assert resp.status_code == 200
+        assert [c["title"] for c in resp.get_json()["candidates"]] == ["2026"]
+
+
+class TestConfirmFields:
+
+    def test_goal_quarter_and_actions_are_saved(self, authed_client):
+        resp = authed_client.post("/api/scan/confirm", json={"kind": "goals", "candidates": [
+            {"title": "Run a 10k", "category": "health", "priority": "must",
+             "target_quarter": "Q2", "actions": "Run 3x a week", "included": True},
+        ]})
+        assert resp.status_code == 201
+        goal = next(g for g in authed_client.get("/api/goals").get_json()
+                    if g["title"] == "Run a 10k")
+        assert (goal["target_quarter"], goal["actions"]) == ("Q2", "Run 3x a week")
+
+    def test_a_long_scanned_goal_title_ends_in_an_ellipsis(self, app):
+        """#447 for scan: cut to fit like an import, not silently."""
+        from scan_service import create_goals_from_candidates
+
+        (goal,) = create_goals_from_candidates([{"title": "x" * 600, "included": True}])
+        assert len(goal.title) == 500
+        assert goal.title.endswith("…")
+
+    def test_projects_confirm_quarter_type_fallback_and_skip(self, app, authed_client):
+        resp = authed_client.post("/api/scan/confirm", json={"kind": "projects", "candidates": [
+            {"name": "Garage", "type": "nonsense", "target_quarter": "Q3", "included": True},
+            {"name": "Skipped", "type": "work", "included": False},
+        ]})
+        assert resp.status_code == 201
+        assert [p["name"] for p in resp.get_json()["projects"]] == ["Garage"]
+        project = next(p for p in authed_client.get("/api/projects").get_json()
+                       if p["name"] == "Garage")
+        assert (project["type"], project["target_quarter"]) == ("work", "Q3")
+        assert ImportLog.query.filter_by(source="scan_projects").count() == 1
+
+    @pytest.mark.parametrize("kind,row", [
+        ("goals", {"title": "G", "category": "health", "priority": "must", "included": True}),
+        ("projects", {"name": "P", "type": "work", "included": True}),
+    ])
+    def test_a_row_that_is_not_an_object_is_skipped_and_said(self, authed_client, kind, row):
+        resp = authed_client.post("/api/scan/confirm",
+                                  json={"kind": kind, "candidates": [None, row]})
+        assert resp.status_code == 201
+        body = resp.get_json()
+        assert body["created"] == 1
+        assert body["warning"]
+
+
+def test_upload_writes_nothing_to_disk_or_the_db(authed_client, keys, app, monkeypatch):
+    """CLAUDE.md: images are processed in memory only."""
+    import builtins
+    import tempfile
+
+    from models import Goal, Task
+
+    opened = []
+    real_open = builtins.open
+
+    def spy_open(file, mode="r", *a, **k):
+        if any(ch in str(mode) for ch in "wax+"):
+            opened.append(file)
+        return real_open(file, mode, *a, **k)
+
+    monkeypatch.setattr(builtins, "open", spy_open)
+    monkeypatch.setattr(tempfile, "NamedTemporaryFile",
+                        lambda *a, **k: pytest.fail("temp file written"))
+    before = (Task.query.count(), Goal.query.count(), ImportLog.query.count())
+    with patch("scan_service._call_vision_api", return_value="Buy milk"), \
+            patch("scan_service._call_claude_api", return_value=["Buy milk"]):
+        resp = _upload(authed_client)
+    assert resp.status_code == 200
+    assert opened == []
+    assert (Task.query.count(), Goal.query.count(), ImportLog.query.count()) == before
