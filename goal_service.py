@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, update
 
 from models import (
     Goal,
@@ -96,7 +96,16 @@ def list_goals(
         stmt = stmt.where(Goal.priority == priority)
     if status is not None:
         stmt = stmt.where(Goal.status == status)
-    stmt = stmt.order_by(Goal.category.asc(), Goal.priority_rank.asc(), Goal.title.asc())
+    # #509: spelled out so SQLite (tests) and Postgres (prod) agree —
+    # Postgres sorts the enum in declared order and NULLs last; SQLite
+    # sorted the stored names A-Z and NULLs first. Prod's order is kept.
+    category_order = case(
+        *((Goal.category == c, i) for i, c in enumerate(GoalCategory)),
+        else_=len(GoalCategory),
+    )
+    stmt = stmt.order_by(
+        category_order, Goal.priority_rank.asc().nulls_last(), Goal.title.asc(),
+    )
     return list(db.session.scalars(stmt))
 
 
@@ -118,41 +127,53 @@ def update_goal(goal_id: uuid.UUID, data: dict) -> Goal | None:
     if goal is None:
         return None
 
+    # #509: check the whole request before changing anything. This used
+    # to set fields — and archive, pausing repeating tasks — and THEN
+    # refuse an unknown field or a bad value, leaving a caller that
+    # commits after catching the error with half a change.
+    unknown = set(data) - _UPDATABLE_FIELDS
+    if unknown:
+        raise ValidationError(f"unknown fields: {sorted(unknown)}", next(iter(unknown)))
+
+    changes: dict[str, Any] = {}
     if "title" in data:
         title = parse_text(data["title"], "title").strip()
         if not title:
             raise ValidationError("title cannot be empty", "title")
-        goal.title = check_length(title, _TITLE_MAX, "title", "Title")
+        changes["title"] = check_length(title, _TITLE_MAX, "title", "Title")
 
     if "category" in data:
-        goal.category = _parse_enum(GoalCategory, data["category"], "category") or goal.category
+        changes["category"] = (
+            _parse_enum(GoalCategory, data["category"], "category") or goal.category
+        )
 
     if "priority" in data:
-        goal.priority = _parse_enum(GoalPriority, data["priority"], "priority") or goal.priority
+        changes["priority"] = (
+            _parse_enum(GoalPriority, data["priority"], "priority") or goal.priority
+        )
 
     if "priority_rank" in data:
-        goal.priority_rank = _parse_int(data["priority_rank"], "priority_rank")
+        changes["priority_rank"] = _parse_int(data["priority_rank"], "priority_rank")
 
     if "actions" in data:
-        goal.actions = parse_text(data["actions"], "actions") or None
+        changes["actions"] = parse_text(data["actions"], "actions") or None
 
     if "target_quarter" in data:
-        goal.target_quarter = _quarter(data["target_quarter"])
+        changes["target_quarter"] = _quarter(data["target_quarter"])
 
     if "status" in data:
-        goal.status = _parse_enum(GoalStatus, data["status"], "status") or goal.status
+        changes["status"] = _parse_enum(GoalStatus, data["status"], "status") or goal.status
 
     if "notes" in data:
-        goal.notes = parse_text(data["notes"], "notes") or None
+        changes["notes"] = parse_text(data["notes"], "notes") or None
 
+    if "is_active" in data and not isinstance(data["is_active"], bool):
+        raise ValidationError("is_active must be a boolean", "is_active")
+
+    for field, value in changes.items():
+        setattr(goal, field, value)
     if "is_active" in data:
-        if not isinstance(data["is_active"], bool):
-            raise ValidationError("is_active must be a boolean", "is_active")
         _set_goal_active(goal, data["is_active"])
-
-    unknown = set(data) - _UPDATABLE_FIELDS
-    if unknown:
-        raise ValidationError(f"unknown fields: {sorted(unknown)}", next(iter(unknown)))
 
     db.session.commit()
     return goal

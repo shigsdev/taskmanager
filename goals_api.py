@@ -19,8 +19,8 @@ from goal_service import (
     update_goal,
 )
 from models import Goal, GoalCategory, GoalPriority, GoalStatus
+from utils import active_filter_or_400, validate_json_body
 from utils import enum_or_400 as _enum_or_400
-from utils import validate_json_body
 
 bp = Blueprint("goals_api", __name__, url_prefix="/api/goals")
 
@@ -71,13 +71,9 @@ def index(email: str):  # noqa: ARG001
     if err:
         return err
 
-    active_arg = request.args.get("is_active")
-    if active_arg == "all":
-        is_active = None
-    elif active_arg is not None:
-        is_active = active_arg.lower() in ("true", "1", "yes")
-    else:
-        is_active = True
+    is_active, err = active_filter_or_400(request.args.get("is_active"))
+    if err:
+        return err
 
     goals = list_goals(category=category, priority=priority, status=status, is_active=is_active)
     # PR69 perf #1: one batch query for progress instead of 3 COUNTs per goal.

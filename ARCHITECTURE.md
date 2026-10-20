@@ -1023,7 +1023,7 @@ The fix is a **dedicated, signed, opt-in credential** minted offline via
 a Flask CLI command:
 
 ```
-flask mint-validator-cookie [--days 90] [--email me@example.com]
+flask mint-validator-cookie [--days 1-90, default 90] [--email me@example.com]
 ```
 
 Properties:

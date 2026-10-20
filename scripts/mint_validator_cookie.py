@@ -44,7 +44,7 @@ def main() -> int:
         "--days",
         type=int,
         default=90,
-        help="Lifetime of the minted cookie in days (default: 90).",
+        help="Lifetime of the minted cookie in days (default and most: 90).",
     )
     parser.add_argument(
         "--email",
@@ -78,8 +78,11 @@ def main() -> int:
         )
         return 2
 
-    if args.days <= 0:
-        print(f"ERROR: --days must be positive (got {args.days})", file=sys.stderr)
+    if not 0 < args.days <= validator_cookie.MAX_DAYS:
+        print(
+            f"ERROR: --days must be 1 to {validator_cookie.MAX_DAYS} (got {args.days})",
+            file=sys.stderr,
+        )
         return 2
 
     token = validator_cookie.mint(

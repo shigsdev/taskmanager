@@ -10,7 +10,9 @@ real API. Tests focus on the validation pass that defends against:
 
   - Claude hallucinating task_ids / project_ids / goal_ids
   - Claude returning a due_date outside the target Mon–Sun window
-  - Claude omitting tasks (backfilled with action="keep")
+    (clamped for every tier today — #510 decides the far-off ones)
+  - Claude omitting tasks (backfilled with action="keep") or naming one twice
+  - an unreadable / cut-off reply (502, not 500 — #509)
   - Stale freezer items leaking into the main plan
   - planner_ignore=True tasks being included anyway
   - update_task() failing to reset planner_ignore on field change
@@ -18,8 +20,11 @@ real API. Tests focus on the validation pass that defends against:
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
+
+import pytest
 
 from models import (
     Task,
@@ -431,8 +436,9 @@ class TestPlannerWeeklyAPI:
         assert resp.status_code == 502
 
     def test_endpoint_requires_auth(self, client):
-        resp = client.post("/api/planner/weekly", json={})
-        assert resp.status_code != 200
+        for path in ("/api/planner/weekly", f"/api/planner/ignore/{uuid.uuid4()}"):
+            resp = client.post(path, json={"ignore": True})
+            assert resp.status_code == 401, path
 
 
 # --- Ignore endpoint -------------------------------------------------------
@@ -483,3 +489,286 @@ class TestPlannerIgnoreEndpoint:
             json={"ignore": True},
         )
         assert resp.status_code == 404
+
+
+# --- #509: what the 2026-10-19 refresh found untested --------------------------
+
+
+START = date(2026, 5, 4)  # a Monday
+
+
+def _keep(task_id: str, **over) -> dict:
+    row = {
+        "task_id": task_id, "action": "keep", "suggested_tier": None,
+        "suggested_due_date": None, "suggested_project_id": None,
+        "suggested_goal_id": None, "reason": "x",
+    }
+    row.update(over)
+    return row
+
+
+def _plan(rows=(), **extra) -> dict:
+    plan = {
+        "per_task_suggestions": list(rows), "goal_hints": [],
+        "velocity_warning": None, "stale_freezer_review": [],
+    }
+    plan.update(extra)
+    return plan
+
+
+def _run(response: dict, start: date | None = START) -> dict:
+    """compute_weekly_plan with Claude answering ``response`` (the raw
+    HTTP body). Call inside an app context with the key set."""
+    from weekly_planner_service import compute_weekly_plan
+
+    with patch("weekly_planner_service._post_to_claude", return_value=response):
+        return compute_weekly_plan(start_date=start)
+
+
+class TestClaudeAnswersBadly:
+    """A reply cut off at max_tokens (likely with 100 tasks) or not JSON
+    at all must be a 502 the /plan page can show, never a 500."""
+
+    @pytest.mark.parametrize("response", [
+        {"content": [{"type": "text", "text": "oops, not json"}]},
+        {"content": [{"type": "text", "text": '{"per_task_suggestions": [{"task'}]},
+        {"content": []},
+        {"content": None},
+        {},
+        {"content": ["not a dict"]},
+    ])
+    def test_unreadable_reply_is_a_502(self, authed_client, app, monkeypatch, response):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
+        with app.app_context():
+            _make_task(title="x", tier=Tier.INBOX)
+            with patch("weekly_planner_service._post_to_claude", return_value=response):
+                resp = authed_client.post(
+                    "/api/planner/weekly", json={"start_date": "2026-05-04"})
+        assert resp.status_code == 502
+        assert "try again" in resp.get_json()["error"].lower()
+
+    def test_no_api_key_is_a_502(self, authed_client, app, monkeypatch):
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        with app.app_context():
+            _make_task(title="x", tier=Tier.INBOX)
+            resp = authed_client.post("/api/planner/weekly", json={})
+        assert resp.status_code == 502
+        assert "not configured" in resp.get_json()["error"]
+
+    def test_json_inside_a_code_fence_is_read(self, app, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
+        with app.app_context():
+            t_id = str(_make_task(title="x", tier=Tier.INBOX).id)
+            fenced = "Here you go:\n```json\n" + json.dumps(
+                _plan([_keep(t_id, reason="fenced")])) + "\n```"
+            result = _run({"content": [{"type": "text", "text": fenced}]})
+        assert result["per_task_suggestions"][0]["reason"] == "fenced"
+
+    def test_model_reported_is_the_one_called(self, app, monkeypatch):
+        from claude_client import HAIKU
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
+        with app.app_context():
+            t_id = str(_make_task(title="x", tier=Tier.INBOX).id)
+            result = _run(_claude_response(_plan([_keep(t_id)])))
+        assert result["model"] == HAIKU
+
+
+class TestRowValidation:
+
+    def test_unknown_or_archived_project_and_unknown_goal_are_dropped(
+            self, app, monkeypatch):
+        from models import Project, ProjectType
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
+        with app.app_context():
+            t_id = str(_make_task(title="x", tier=Tier.INBOX).id)
+            archived = Project(name="Old", type=ProjectType.WORK, is_active=False)
+            db.session.add(archived)
+            db.session.commit()
+            rows = [_keep(t_id, suggested_project_id=str(archived.id),
+                          suggested_goal_id="00000000-0000-0000-0000-000000000000")]
+            result = _run(_claude_response(_plan(rows)))
+        row = result["per_task_suggestions"][0]
+        assert row["suggested_project_id"] is None
+        assert row["suggested_goal_id"] is None
+
+    def test_a_task_returned_twice_keeps_the_first_row(self, app, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
+        with app.app_context():
+            t_id = str(_make_task(title="x", tier=Tier.INBOX).id)
+            rows = [_keep(t_id, action="move", suggested_tier="this_week"),
+                    _keep(t_id, action="delete")]
+            result = _run(_claude_response(_plan(rows)))
+        assert [r["action"] for r in result["per_task_suggestions"]] == ["move"]
+
+    @pytest.mark.parametrize("due,expected", [
+        ("2026-02-30", None),          # not a real day
+        ("5/6/2026", None),            # not ISO
+        (123, None),                   # not a string
+        ("2026-04-01", "2026-05-04"),  # before the week → its Monday
+        ("2026-05-07", "2026-05-07"),  # inside the week → as given
+    ])
+    def test_due_date_shapes(self, app, monkeypatch, due, expected):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
+        with app.app_context():
+            t_id = str(_make_task(title="x", tier=Tier.INBOX).id)
+            rows = [_keep(t_id, action="move", suggested_tier="this_week",
+                          suggested_due_date=due)]
+            result = _run(_claude_response(_plan(rows)))
+        assert result["per_task_suggestions"][0]["suggested_due_date"] == expected
+
+    def test_day_by_day_comes_from_move_dates_not_from_claude(self, app, monkeypatch):
+        """Claude's own day_by_day_plan is ignored; the server rebuilds it
+        from each move's date, and a keep row with a date isn't placed."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
+        with app.app_context():
+            mover = str(_make_task(title="m", tier=Tier.INBOX).id)
+            keeper = str(_make_task(title="k", tier=Tier.INBOX).id)
+            rows = [
+                _keep(mover, action="move", suggested_tier="this_week",
+                      suggested_due_date="2026-05-08"),
+                _keep(keeper, suggested_due_date="2026-05-05"),
+            ]
+            result = _run(_claude_response(_plan(
+                rows, day_by_day_plan={"Monday": [keeper, mover]})))
+        plan = result["day_by_day_plan"]
+        assert plan["Friday"] == [mover]
+        assert all(keeper not in ids for ids in plan.values())
+        assert plan["Monday"] == []
+
+    def test_rows_carry_title_and_task_type(self, app, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
+        with app.app_context():
+            t_id = str(_make_task(title="Call the bank", tier=Tier.INBOX,
+                                  task_type=TaskType.PERSONAL).id)
+            result = _run(_claude_response(_plan([_keep(t_id)])))
+        row = result["per_task_suggestions"][0]
+        assert (row["title"], row["task_type"]) == ("Call the bank", "personal")
+
+
+class TestWhatIsSentToClaude:
+
+    def test_subtasks_are_not_planned_or_backfilled(self, app, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
+        with app.app_context():
+            parent = _make_task(title="parent", tier=Tier.INBOX)
+            child = _make_task(title="child", tier=Tier.INBOX, parent_id=parent.id)
+            with patch("weekly_planner_service._post_to_claude",
+                       return_value=_claude_response(_plan())) as post:
+                from weekly_planner_service import compute_weekly_plan
+                result = compute_weekly_plan(start_date=START)
+            prompt = post.call_args[0][1]
+            parent_id, child_id = str(parent.id), str(child.id)
+        assert child_id not in prompt
+        assert {r["task_id"] for r in result["per_task_suggestions"]} == {parent_id}
+
+    def test_only_the_oldest_hundred_are_sent(self, app, monkeypatch):
+        import weekly_planner_service as wps
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
+        monkeypatch.setattr(wps, "MAX_TASKS_PER_CALL", 3)
+        with app.app_context():
+            ids = [str(_make_task(title=f"t{n}", tier=Tier.INBOX, days_old=10 - n).id)
+                   for n in range(4)]
+            result = _run(_claude_response(_plan()))
+        assert result["active_count"] == 3
+        sent = {r["task_id"] for r in result["per_task_suggestions"]}
+        assert sent == set(ids[:3])  # the newest one waits for next time
+
+    def test_a_freezer_only_week_still_asks_about_stale_items(self, app, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
+        with app.app_context():
+            frozen = _make_task(title="old idea", tier=Tier.FREEZER, days_old=90)
+            _make_task(title="ignored idea", tier=Tier.FREEZER, days_old=90,
+                       planner_ignore=True)
+            review = [{"task_id": str(frozen.id), "recommendation": "delete",
+                       "reason": "stale"}]
+            with patch("weekly_planner_service._post_to_claude",
+                       return_value=_claude_response(
+                           _plan(stale_freezer_review=review))) as post:
+                from weekly_planner_service import compute_weekly_plan
+                result = compute_weekly_plan(start_date=START)
+        assert post.call_count == 1
+        assert result["stale_freezer_count"] == 1
+        assert [r["title"] for r in result["stale_freezer_review"]] == ["old idea"]
+
+
+class TestGoalHintsAndVelocity:
+
+    def test_goal_hints_are_cleaned_and_filled_in(self, app, monkeypatch):
+        from models import Goal, GoalCategory, GoalPriority
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
+        with app.app_context():
+            t_id = str(_make_task(title="x", tier=Tier.INBOX).id)
+            hinted = Goal(title="Run 5k", category=GoalCategory.HEALTH,
+                          priority=GoalPriority.MUST)
+            skipped = Goal(title="Read more", category=GoalCategory.PERSONAL_GROWTH,
+                           priority=GoalPriority.COULD)
+            db.session.add_all([hinted, skipped])
+            db.session.commit()
+            hints = [
+                {"goal_id": str(hinted.id), "status": "sideways", "recommendation": "go"},
+                {"goal_id": "not-a-goal", "status": "on_track", "recommendation": "x"},
+            ]
+            result = _run(_claude_response(_plan([_keep(t_id)], goal_hints=hints)))
+            hinted_id, skipped_id = str(hinted.id), str(skipped.id)
+        by_id = {h["goal_id"]: h for h in result["goal_hints"]}
+        assert set(by_id) == {hinted_id, skipped_id}
+        assert by_id[hinted_id]["status"] == "no_progress"   # bad status
+        assert by_id[hinted_id]["goal_title"] == "Run 5k"
+        assert "no hint returned" in by_id[skipped_id]["recommendation"]
+
+    @pytest.mark.parametrize("raw,expected", [
+        ("   ", None), (5, None), (None, None),
+        ("  Too much this week.  ", "Too much this week."),
+        ("x" * 300, "x" * 240),
+    ])
+    def test_velocity_warning_is_trimmed(self, app, monkeypatch, raw, expected):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
+        with app.app_context():
+            t_id = str(_make_task(title="x", tier=Tier.INBOX).id)
+            result = _run(_claude_response(
+                _plan([_keep(t_id)], velocity_warning=raw)))
+        assert result["velocity_warning"] == expected
+
+
+class TestStartDate:
+
+    @pytest.mark.parametrize("bad", [5, ["2026-05-04"], True])
+    def test_non_string_start_date_is_422(self, authed_client, bad):
+        resp = authed_client.post("/api/planner/weekly", json={"start_date": bad})
+        assert resp.status_code == 422
+
+    @pytest.mark.parametrize("empty", ["", None, 0])
+    def test_empty_start_date_means_next_monday(self, authed_client, app, monkeypatch,
+                                                empty):
+        """Pinned: an empty value plans the coming week, as if it were
+        left out (the /plan page always sends its picker's Monday)."""
+        from utils import local_today_date
+        from weekly_planner_service import next_monday_from
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
+        resp = authed_client.post("/api/planner/weekly", json={"start_date": empty})
+        assert resp.status_code == 200
+        assert resp.get_json()["start_date"] == next_monday_from(
+            local_today_date()).isoformat()
+
+
+class TestIgnoreResetCoversEveryField:
+
+    @pytest.mark.parametrize("field,value", [
+        ("title", "renamed"), ("type", "personal"), ("tier", "today"),
+        ("status", "archived"), ("project_id", None), ("goal_id", None),
+        ("due_date", None), ("url", None), ("notes", "n"), ("checklist", []),
+        ("cancellation_reason", None), ("parent_id", None),
+    ])
+    def test_touching_any_meaningful_field_clears_ignore(self, app, field, value):
+        from task_service import update_task
+
+        with app.app_context():
+            t = _make_task(title="x", tier=Tier.INBOX, planner_ignore=True)
+            update_task(t.id, {field: value})
+            db.session.expire_all()
+            assert db.session.get(Task, t.id).planner_ignore is False

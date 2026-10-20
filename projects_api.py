@@ -20,7 +20,7 @@ from project_service import (
     seed_default_projects,
     update_project,
 )
-from utils import validate_json_body
+from utils import active_filter_or_400, validate_json_body
 
 bp = Blueprint("projects_api", __name__, url_prefix="/api/projects")
 
@@ -51,13 +51,9 @@ def _serialize(project: Project, task_counts: dict | None = None) -> dict:
 @bp.get("")
 @login_required
 def index(email: str):  # noqa: ARG001
-    active_arg = request.args.get("is_active")
-    if active_arg == "all":
-        is_active = None
-    elif active_arg is not None:
-        is_active = active_arg.lower() in ("true", "1", "yes")
-    else:
-        is_active = True
+    is_active, err = active_filter_or_400(request.args.get("is_active"))
+    if err:
+        return err
 
     type_arg = request.args.get("type")
     project_type = None

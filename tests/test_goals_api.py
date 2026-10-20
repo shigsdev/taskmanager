@@ -1,7 +1,16 @@
-"""Tests for the goals JSON API."""
+"""Tests for the goals JSON API (goals_api.py + goal_service.py).
+
+Archive / unarchive / permanent delete live in test_goal_archive.py, the
+repeating-template pause in test_goal_archive_templates.py, length limits
+in test_text_lengths.py, value types in test_value_coercion.py. This file
+covers the CRUD contract: 200 / 400 / 404 / 422 on every route, list
+filters and order, the serialized shape, and progress.
+"""
 from __future__ import annotations
 
 import uuid
+
+import pytest
 
 import auth
 from models import Goal, GoalCategory, GoalPriority, GoalStatus, Task, TaskStatus, TaskType, db
@@ -209,13 +218,49 @@ def test_list_goals_filter_by_status(authed_client, app):
 
 
 def test_list_goals_sorted_by_category_then_rank(authed_client, app):
+    """#509: the order is spelled out, so SQLite (tests) and Postgres
+    (prod) agree. Categories run in GoalCategory's declared order (BAU
+    last — Postgres sorts an enum that way; SQLite sorted the names A-Z,
+    BAU first), then rank with unranked goals last, then title."""
     with app.app_context():
+        _make_goal(title="B1", category=GoalCategory.BAU, priority_rank=1)
+        _make_goal(title="W-none", category=GoalCategory.WORK, priority_rank=None)
         _make_goal(title="W2", category=GoalCategory.WORK, priority_rank=2)
         _make_goal(title="W1", category=GoalCategory.WORK, priority_rank=1)
+        _make_goal(title="R1", category=GoalCategory.RELATIONSHIPS, priority_rank=1)
         _make_goal(title="H1", category=GoalCategory.HEALTH, priority_rank=1)
+        _make_goal(title="P1", category=GoalCategory.PERSONAL_GROWTH, priority_rank=1)
     resp = authed_client.get("/api/goals")
     titles = [g["title"] for g in resp.get_json()]
-    assert titles == ["H1", "W1", "W2"]
+    assert titles == ["H1", "P1", "R1", "W1", "W2", "W-none", "B1"]
+
+
+def test_list_goals_is_active_false_lists_only_archived(authed_client, app):
+    with app.app_context():
+        _make_goal(title="Live")
+        _make_goal(title="Archived", is_active=False)
+    resp = authed_client.get("/api/goals?is_active=false")
+    assert resp.status_code == 200
+    assert [g["title"] for g in resp.get_json()] == ["Archived"]
+
+
+def test_list_goals_400_invalid_is_active(authed_client):
+    """#509: a typo used to read as "archived only" — the other filters
+    already said 400."""
+    resp = authed_client.get("/api/goals?is_active=bogus")
+    assert resp.status_code == 400
+    assert "bogus" in resp.get_json()["error"]
+
+
+def test_serialized_goal_has_exactly_these_keys(authed_client, app):
+    with app.app_context():
+        goal_id = _make_goal(title="Shape").id
+    body = authed_client.get(f"/api/goals/{goal_id}").get_json()
+    assert set(body) == {
+        "id", "title", "category", "priority", "priority_rank", "actions",
+        "target_quarter", "status", "notes", "is_active", "created_at",
+        "updated_at", "progress",
+    }
 
 
 def test_list_goals_400_invalid_category(authed_client):
@@ -313,7 +358,7 @@ def test_patch_clear_optional_fields(authed_client, app):
     assert body["priority_rank"] is None
 
 
-def test_patch_soft_hide_via_is_active(authed_client, app):
+def test_patch_is_active_false_archives(authed_client, app):
     with app.app_context():
         goal = _make_goal(title="x")
         goal_id = goal.id
@@ -364,7 +409,7 @@ def test_patch_400_no_json(authed_client, app):
 # --- DELETE ------------------------------------------------------------------
 
 
-def test_delete_soft_hides(authed_client, app):
+def test_delete_archives_not_removes(authed_client, app):
     with app.app_context():
         goal = _make_goal(title="bye")
         goal_id = goal.id
@@ -469,3 +514,78 @@ def test_progress_included_in_serialized_goal(authed_client, app):
     resp = authed_client.get(f"/api/goals/{goal_id}")
     assert resp.status_code == 200
     assert resp.get_json()["progress"]["completed"] == 1
+
+
+# --- #509: gaps the 2026-10-19 refresh found ----------------------------------
+
+
+@pytest.mark.parametrize("field", ["category", "priority", "status"])
+def test_patch_422_invalid_enum(authed_client, app, field):
+    with app.app_context():
+        goal_id = _make_goal(title="x").id
+    resp = authed_client.patch(f"/api/goals/{goal_id}", json={field: "nope"})
+    assert resp.status_code == 422
+    assert resp.get_json()["field"] == field
+
+
+def test_patch_null_category_keeps_the_category(authed_client, app):
+    with app.app_context():
+        goal_id = _make_goal(title="x", category=GoalCategory.HEALTH).id
+    resp = authed_client.patch(f"/api/goals/{goal_id}", json={"category": None})
+    assert resp.status_code == 200
+    assert resp.get_json()["category"] == "health"
+
+
+@pytest.mark.parametrize("method", ["post", "patch"])
+def test_400_when_body_is_not_an_object(authed_client, app, method):
+    with app.app_context():
+        goal_id = _make_goal(title="x").id
+    url = "/api/goals" if method == "post" else f"/api/goals/{goal_id}"
+    resp = getattr(authed_client, method)(url, json=[1])
+    assert resp.status_code == 400
+
+
+def test_references_404(authed_client):
+    resp = authed_client.get(f"/api/goals/{uuid.uuid4()}/references")
+    assert resp.status_code == 404
+
+
+@pytest.mark.parametrize("bad", [
+    {"title": "Changed", "is_active": False, "nope": 1},  # unknown field last
+    {"title": "Changed", "is_active": False, "status": "bad"},  # bad value last
+])
+def test_a_refused_patch_changes_nothing(app, bad):
+    """#509: update_goal used to set fields (and archive, pausing the
+    goal's repeating tasks) before refusing an unknown field or a bad
+    value. A caller that commits after catching the error — the
+    reflection apply loop catches every exception — must find the goal
+    exactly as it was."""
+    from goal_service import update_goal
+    from utils import ValidationError
+
+    goal_id = _make_goal(title="Original").id
+    with pytest.raises(ValidationError):
+        update_goal(goal_id, bad)
+    db.session.commit()
+    db.session.expire_all()
+    goal = db.session.get(Goal, goal_id)
+    assert goal.title == "Original"
+    assert goal.is_active is True
+
+
+@pytest.mark.parametrize("method,path", [
+    ("post", "/api/goals"),
+    ("patch", "/api/goals/{id}"),
+    ("delete", "/api/goals/{id}"),
+    ("delete", "/api/goals/{id}/permanent"),
+    ("get", "/api/goals/{id}/references"),
+    ("get", "/api/goals/{id}/progress"),
+])
+def test_every_route_needs_a_sign_in(client, app, monkeypatch, method, path):
+    with app.app_context():
+        goal_id = _make_goal(title="x").id
+    monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
+    url = path.format(id=goal_id)
+    kwargs = {"json": {"title": "y"}} if method in ("post", "patch") else {}
+    resp = getattr(client, method)(url, **kwargs)
+    assert resp.status_code == 401

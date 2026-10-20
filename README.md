@@ -362,7 +362,7 @@ railway run python scripts/mint_validator_cookie.py | Set-Content -NoNewline -Pa
 #     first, including the postgres driver).
 railway run python -m flask mint-validator-cookie | Set-Content -NoNewline -Path "$HOME\.taskmanager-session-cookie"
 
-# Both default to 90 days. Override with --days if needed:
+# Both default to 90 days, which is also the most (#509). Shorten with --days:
 railway run python scripts/mint_validator_cookie.py --days 30 | Set-Content -NoNewline -Path "$HOME\.taskmanager-session-cookie"
 
 # Then any time after:

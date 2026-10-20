@@ -671,8 +671,8 @@ def _register_cli_commands(app: Flask) -> None:
         "--days",
         default=90,
         show_default=True,
-        type=click.IntRange(min=1, max=3650),
-        help="Lifetime of the minted cookie in days.",
+        type=click.IntRange(min=1, max=validator_cookie.MAX_DAYS),
+        help="Lifetime of the minted cookie in days (at most 90, #509).",
     )
     @click.option(
         "--email",
@@ -692,8 +692,9 @@ def _register_cli_commands(app: Flask) -> None:
 
         Then ``python scripts/validate_deploy.py --auth-check`` reads
         the file and sends the token to ``/api/auth/status``. The cookie
-        authenticates ONLY that one endpoint — it cannot access tasks,
-        goals, or any user data.
+        READS every login_required route (GET / HEAD) — tasks, goals and
+        pages included, which is how prod smoke runs — but never writes:
+        POST / PATCH / PUT / DELETE still need the Google sign-in (ADR-004).
         """
         secret = app.config.get("SECRET_KEY")
         if not secret:

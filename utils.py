@@ -138,6 +138,28 @@ def enum_or_400(enum_cls, value):
         return None, (jsonify({"error": f"invalid filter value: {value}"}), 400)
 
 
+def active_filter_or_400(value):
+    """Parse a list route's ``?is_active=`` the way the pages send it.
+
+    Absent → True (live only); ``all`` → None (both); true/false (also
+    1/0, yes/no) → that. Anything else is a 400 like :func:`enum_or_400`
+    (#509 — a typo used to read as "archived only").
+
+    Returns:
+        (value, None) on success, or (None, response_tuple) on failure.
+    """
+    if value is None:
+        return True, None
+    lowered = value.lower()
+    if lowered == "all":
+        return None, None
+    if lowered in ("true", "1", "yes"):
+        return True, None
+    if lowered in ("false", "0", "no"):
+        return False, None
+    return None, (jsonify({"error": f"invalid filter value: {value}"}), 400)
+
+
 def validate_json_body(fn):
     """Decorator: require a JSON *object* request body, stash it on g.
 

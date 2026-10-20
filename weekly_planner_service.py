@@ -528,8 +528,18 @@ def compute_weekly_plan(start_date: date | None = None) -> dict:
     )
 
     response = _post_to_claude(api_key, prompt, max_tokens=12000)
-    raw_text = response.get("content", [{}])[0].get("text", "")
-    raw = _parse_claude_response(raw_text)
+    # #509: a reply that's empty, cut off at max_tokens or not JSON is
+    # Claude's failure, not ours — RuntimeError, so the route says 502
+    # with a message /plan can show (it was a ValueError → 500).
+    content = response.get("content") if isinstance(response, dict) else None
+    first = content[0] if isinstance(content, list) and content else None
+    raw_text = first.get("text", "") if isinstance(first, dict) else ""
+    try:
+        raw = _parse_claude_response(raw_text)
+    except ValueError as e:
+        raise RuntimeError(
+            "Claude's plan came back unreadable (it may have been cut off) — try again.",
+        ) from e
 
     valid_task_ids = set(title_lookup.keys())
     valid_stale_ids = set(stale_lookup.keys())
@@ -635,5 +645,12 @@ def compute_weekly_plan(start_date: date | None = None) -> dict:
         "goal_hints": cleaned_hints,
         "velocity_warning": velocity,
         "stale_freezer_review": cleaned_freezer,
-        "model": "claude-haiku-4-5-20251001",
+        "model": _model_name(),
     }
+
+
+def _model_name() -> str:
+    """The model _post_to_claude calls (#509: was a hard-coded copy)."""
+    from claude_client import HAIKU
+
+    return HAIKU

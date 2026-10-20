@@ -386,6 +386,17 @@ class TestRateLimiterConfig:
             )
         assert rate_limit.LLM_HEAVY == "5 per minute"
 
+    def test_weekly_planner_has_per_route_limit(self):
+        """#509: /api/planner/weekly sends up to 100 tasks to Claude with
+        12k output tokens — the costliest call the app makes."""
+        import inspect
+
+        import planner_api
+        import rate_limit
+
+        assert "limiter.limit(LLM_HEAVY)" in inspect.getsource(planner_api.weekly)
+        assert rate_limit.LLM_HEAVY == "5 per minute"
+
     def test_url_preview_has_per_route_limit(self):
         """#184: /api/tasks/url-preview holds a Gunicorn worker for up
         to 5s per outbound fetch — generous 30/min cap (human-paced

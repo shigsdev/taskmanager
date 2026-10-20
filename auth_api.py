@@ -9,10 +9,10 @@ tests as a preflight check.
 Why this endpoint exists
 ------------------------
 Every other protected route either:
-- redirects unauthenticated callers to ``/login/google`` (302), which
-  Playwright auto-follows into Google's real OAuth pages — producing
-  confusing "element not found" test failures instead of a clear signal,
-  or
+- answers an unauthenticated caller with a 401 JSON (``/api/*`` paths,
+  since PR102) or a 302 to ``/login/google`` (pages — which Playwright
+  would follow into Google's real OAuth screens), neither of which says
+  WHY, or
 - renders ``unauthorized.html`` (403) which is an HTML page, not JSON.
 
 ``/api/auth/status`` is intentionally:

@@ -21,7 +21,8 @@ that:
   user data
 - Is minted offline via ``flask mint-validator-cookie`` (or
   ``scripts/mint_validator_cookie.py`` standalone) and lives for 90
-  days by default (configurable per-mint via ``--days``)
+  days by default — and at most (``MAX_DAYS``, #509; ``--days`` can
+  only shorten it)
 
 Scope of what this cookie can do
 --------------------------------
@@ -56,6 +57,11 @@ COOKIE_NAME = "validator_token"
 # (and vice versa). itsdangerous uses the salt as a namespace separator.
 _SALT = "taskmanager-validator-v1"
 
+# #509: the CLAUDE.md threat model promises a 90-day cookie. Minting
+# refuses more and parsing refuses a token that claims more, so a cookie
+# minted before the cap (the CLI allowed 3650) stops working too.
+MAX_DAYS = 90
+
 
 def _serializer(secret_key: str) -> URLSafeTimedSerializer:
     """Construct the signer with the app's secret key and our salt."""
@@ -81,6 +87,8 @@ def mint(secret_key: str, email: str, days: int) -> str:
     """
     if days <= 0:
         raise ValueError(f"days must be positive; got {days}")
+    if days > MAX_DAYS:
+        raise ValueError(f"days must be at most {MAX_DAYS}; got {days}")
     payload = {"email": email, "days": days}
     return _serializer(secret_key).dumps(payload)
 
@@ -103,10 +111,9 @@ def parse(
     if not token or not authorized_email:
         return None
     serializer = _serializer(secret_key)
-    # Peek at the unverified payload to read the mint-time-declared max
-    # age. itsdangerous checks max_age against the signed timestamp, so
-    # even if the caller tampered with ``days`` it can only SHORTEN the
-    # lifetime (larger values past the real age still fail signature).
+    # Read the signed payload (signature checked, age not yet) to get the
+    # mint-time lifetime. ``days`` is inside the signature, so it can't
+    # be edited without failing verification.
     try:
         payload: dict[str, Any] = serializer.loads(token, max_age=None)
     except BadSignature:
@@ -115,7 +122,7 @@ def parse(
         return None
 
     declared_days = payload.get("days")
-    if not isinstance(declared_days, int) or declared_days <= 0:
+    if not isinstance(declared_days, int) or not 0 < declared_days <= MAX_DAYS:
         return None
 
     # Now re-validate with the explicit max_age from the payload so

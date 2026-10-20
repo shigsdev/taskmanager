@@ -251,6 +251,21 @@ def test_list_projects_all(authed_client, app):
     assert len(resp.get_json()) == 2
 
 
+def test_list_projects_is_active_false_lists_only_archived(authed_client, app):
+    with app.app_context():
+        _make_project(name="Live")
+        _make_project(name="Archived", is_active=False)
+    resp = authed_client.get("/api/projects?is_active=false")
+    assert resp.status_code == 200
+    assert [p["name"] for p in resp.get_json()] == ["Archived"]
+
+
+def test_list_projects_400_invalid_is_active(authed_client):
+    """#509: a typo used to read as "archived only"."""
+    resp = authed_client.get("/api/projects?is_active=archived")
+    assert resp.status_code == 400
+
+
 def test_list_projects_sorted_by_order(authed_client, app):
     with app.app_context():
         _make_project(name="B", priority_order=2)

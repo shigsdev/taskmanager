@@ -263,11 +263,12 @@ def login_required(view):
                     # a trace so a leaked cookie's usage is observable in
                     # /api/debug/logs. INFO level keeps it out of the
                     # default WARNING+ feed but available on demand.
+                    # #509: no email in the line (CLAUDE.md: never log one;
+                    # it is always AUTHORIZED_EMAIL anyway).
                     logger.info(
-                        "validator_cookie served %s %s as %s",
+                        "validator_cookie served %s %s",
                         request.method,
                         request.path,
-                        validator_email,
                     )
                     return view(*args, email=validator_email, **kwargs)
 
