@@ -17,8 +17,9 @@ from datetime import timedelta
 from sqlalchemy import or_, select
 
 from models import Task, TaskStatus, Tier, db
+from task_service import _CLOSED_PARENT_REASONS as _NOT_OPEN_REASONS
 from task_service import _soft_delete
-from utils import local_today_date
+from utils import ValidationError, local_today_date
 
 
 def stale_tasks(*, stale_days: int = 7) -> list[Task]:
@@ -62,6 +63,13 @@ def review_task(task: Task, action: str) -> str:
     Raises:
         ValueError: If action is not recognized.
     """
+    # #512: a stale /review tab must not move a task that was deleted or
+    # finished elsewhere — Freeze on a binned task set Freezer, so a later
+    # Restore landed it there. Same rule as #474 on the task routes.
+    if task.status != TaskStatus.ACTIVE:
+        reason = _NOT_OPEN_REASONS.get(task.status, "That task isn't open.")
+        raise ValidationError(f"{reason} Reload this page to skip it.", "status")
+
     today = local_today_date()
 
     if action == "keep":

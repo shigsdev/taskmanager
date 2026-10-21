@@ -31,7 +31,19 @@ def runner():
 
 
 @pytest.fixture
-def fake_helpers(monkeypatch, runner):
+def recorded(monkeypatch):
+    """#512: capture what the script writes to the cron audit table, so
+    no test writes to a real database."""
+    import cron_audit_service
+
+    rows: list[dict] = []
+    monkeypatch.setattr(cron_audit_service, "record",
+                        lambda job_id, **kw: rows.append({"job_id": job_id, **kw}))
+    return rows
+
+
+@pytest.fixture
+def fake_helpers(monkeypatch, runner, recorded):
     """Replace the four helper functions with stubs that record their calls."""
     calls: list[tuple[str, dict]] = []
 
@@ -63,13 +75,20 @@ class TestJobOrder:
         assert "recurring_spawn" in out
 
     def test_summary_reports_rowcounts(self, runner, fake_helpers, capsys):
+        """#512: read each job's own row — "3"/"2"/"1"/"4" were always
+        somewhere in the output (00:01, 00:02, "4 succeeded")."""
         runner.main([])
         out = capsys.readouterr().out
+        rows = {}
+        for line in out.splitlines():
+            parts = line.split()
+            if parts and parts[0] in runner.VALID_JOB_IDS:
+                rows[parts[0]] = (parts[2], int(parts[3]))
         # roll=3, promote=2, realign=1, spawn=len(list)==4
-        assert "3" in out
-        assert "2" in out
-        assert "1" in out
-        assert "4" in out
+        assert rows == {
+            "tomorrow_roll": ("OK", 3), "promote_due_today": ("OK", 2),
+            "realign_tiers_with_due_dates": ("OK", 1), "recurring_spawn": ("OK", 4),
+        }
         assert "4 succeeded, 0 failed" in out
 
 
@@ -348,3 +367,47 @@ class TestShebangPinned:
             f"git index has scripts/run_missed_crons.py at mode {mode}, "
             f"expected 100755 (executable). See BACKLOG #169."
         )
+
+
+# --- #512: a manual run is recorded like a scheduler fire ---------------------
+
+
+class TestAuditRecord:
+    """The boot-time replay (cron_audit_service.replay_missed) reads the
+    audit table. A manual run that didn't write it was replayed again on
+    the next restart that day — and roll_tomorrow_to_today moves EVERY
+    Tomorrow task, including ones filed since."""
+
+    def test_each_successful_job_is_recorded(self, runner, fake_helpers, recorded):
+        assert runner.main([]) == 0
+        assert [(r["job_id"], r["status"], r["rowcount"]) for r in recorded] == [
+            ("tomorrow_roll", "OK", 3), ("promote_due_today", "OK", 2),
+            ("realign_tiers_with_due_dates", "OK", 1), ("recurring_spawn", "OK", 4),
+        ]
+        assert all(r["elapsed_ms"] >= 0 for r in recorded)
+
+    def test_a_dry_run_records_nothing(self, runner, fake_helpers, recorded):
+        runner.main(["--dry-run"])
+        assert recorded == []
+
+    def test_a_failed_job_is_not_recorded_so_the_replay_retries_it(
+            self, runner, fake_helpers, recorded, monkeypatch):
+        import task_service
+
+        def boom(**kw):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(task_service, "promote_due_today_tasks", boom)
+        assert runner.main([]) == 1
+        assert "promote_due_today" not in [r["job_id"] for r in recorded]
+        assert len(recorded) == 3
+
+    def test_a_job_that_returns_none_is_ok_with_no_rows(
+            self, runner, fake_helpers, recorded, monkeypatch, capsys):
+        import task_service
+
+        monkeypatch.setattr(task_service, "realign_tiers_with_due_dates",
+                            lambda **kw: None)
+        assert runner.main(["--only", "realign_tiers_with_due_dates"]) == 0
+        assert recorded[-1]["rowcount"] == 0
+        assert "1 succeeded, 0 failed" in capsys.readouterr().out

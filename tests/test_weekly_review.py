@@ -5,8 +5,13 @@ touched in 7+ days ("stale" tasks). For each task they choose an action:
 
 - **keep**   — leave in current tier, stamp last_reviewed = today
 - **freeze** — move to Freezer tier, stamp last_reviewed = today
-- **delete** — soft-delete the task (mark status = deleted)
-- **snooze** — stamp last_reviewed = today (pushes review out 7 more days)
+- **delete** — soft-delete the task, taking its open subtasks to the
+  Recycle Bin with it (#433)
+- **snooze** — stamp last_reviewed = today; the same effect as keep
+  today (Help says so too)
+
+Every action refuses a task that isn't open — deleted, completed or
+cancelled elsewhere — with a 422 that says to reload (#512).
 
 These tests verify:
 1. The API correctly identifies stale tasks (not reviewed in 7+ days)
@@ -17,6 +22,8 @@ These tests verify:
 from __future__ import annotations
 
 from datetime import timedelta
+
+import pytest
 
 import auth
 from models import Task, TaskStatus, TaskType, Tier, db
@@ -395,3 +402,104 @@ class TestReviewNavLink:
         monkeypatch.setattr(auth, "get_current_user_email", lambda: "me@example.com")
         html = client.get("/goals").data.decode()
         assert "/review" in html
+
+
+# --- #512: what the 2026-10-19 refresh found ----------------------------------
+
+
+class TestReviewRefusesTasksThatAreNotOpen:
+    """A stale /review tab must not move a task that was deleted or
+    finished elsewhere (#474's rule, which the review route skipped):
+    Freeze on a binned task used to set Freezer, so a later Restore
+    landed it there."""
+
+    @pytest.mark.parametrize("status,word", [
+        (TaskStatus.DELETED, "Recycle Bin"),
+        (TaskStatus.ARCHIVED, "completed"),
+        (TaskStatus.CANCELLED, "cancelled"),
+    ])
+    @pytest.mark.parametrize("action", ["keep", "freeze", "snooze", "delete"])
+    def test_every_action_is_refused_and_changes_nothing(
+            self, authed_client, app, status, word, action):
+        with app.app_context():
+            t = _make_task(tier=Tier.BACKLOG, status=status)
+            t_id = t.id
+        resp = authed_client.post(f"/api/review/{t_id}", json={"action": action})
+        assert resp.status_code == 422
+        msg = resp.get_json()["error"]
+        assert word in msg and "reload" in msg.lower()
+        with app.app_context():
+            after = db.session.get(Task, t_id)
+            assert (after.status, after.tier, after.last_reviewed) == (
+                status, Tier.BACKLOG, None)
+
+
+class TestReviewDeleteTakesSubtasks:
+
+    def test_open_subtasks_go_with_the_parent_and_come_back(self, authed_client, app):
+        with app.app_context():
+            parent = _make_task(title="parent", tier=Tier.BACKLOG)
+            open_sub = _make_task(title="open", tier=Tier.BACKLOG, parent_id=parent.id)
+            done_sub = _make_task(title="done", tier=Tier.BACKLOG, parent_id=parent.id,
+                                  status=TaskStatus.ARCHIVED)
+            ids = parent.id, open_sub.id, done_sub.id
+        assert authed_client.post(f"/api/review/{ids[0]}",
+                                  json={"action": "delete"}).status_code == 200
+        with app.app_context():
+            p, o, d = (db.session.get(Task, i) for i in ids)
+            assert (p.status, o.status, d.status) == (
+                TaskStatus.DELETED, TaskStatus.DELETED, TaskStatus.ARCHIVED)
+            assert o.deleted_with_parent is True
+
+    def test_deleting_a_binned_subtask_again_keeps_it_with_its_parent(self, app):
+        """#512: _soft_delete re-ran on an already-deleted subtask and
+        cleared deleted_with_parent, so restoring the parent left it in
+        the bin. A second delete (DELETE /api/tasks, a stale tab) is now
+        a no-op."""
+        from task_service import delete_task, update_task
+
+        parent = _make_task(title="parent", tier=Tier.BACKLOG)
+        sub = _make_task(title="sub", tier=Tier.BACKLOG, parent_id=parent.id)
+        delete_task(parent.id)
+        assert sub.deleted_with_parent is True
+        delete_task(sub.id)                       # the stale second delete
+        assert sub.deleted_with_parent is True
+        update_task(parent.id, {"status": "active"})
+        db.session.expire_all()
+        assert db.session.get(Task, sub.id).status == TaskStatus.ACTIVE
+
+
+class TestReviewQueueGaps:
+
+    def test_cancelled_task_is_not_stale(self, authed_client, app):
+        with app.app_context():
+            _make_task(status=TaskStatus.CANCELLED)
+        assert authed_client.get("/api/review").get_json() == []
+
+    def test_oldest_untouched_comes_first(self, authed_client, app):
+        from datetime import UTC, datetime
+
+        with app.app_context():
+            newer = _make_task(title="newer")
+            older = _make_task(title="older")
+            newer.updated_at = datetime(2026, 5, 2, 12, tzinfo=UTC)
+            older.updated_at = datetime(2026, 5, 1, 12, tzinfo=UTC)
+            db.session.commit()
+        titles = [t["title"] for t in authed_client.get("/api/review").get_json()]
+        assert titles == ["older", "newer"]
+
+    def test_bad_id_is_404_and_a_list_body_is_400(self, authed_client, app):
+        assert authed_client.post("/api/review/not-a-uuid",
+                                  json={"action": "keep"}).status_code == 404
+        with app.app_context():
+            t_id = _make_task().id
+        assert authed_client.post(f"/api/review/{t_id}", json=[1]).status_code == 400
+
+    @pytest.mark.parametrize("who,code", [(None, 401), ("intruder@example.com", 403)])
+    def test_the_api_needs_the_owner(self, client, app, monkeypatch, who, code):
+        with app.app_context():
+            t_id = _make_task().id
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: who)
+        assert client.get("/api/review").status_code == code
+        assert client.post(f"/api/review/{t_id}",
+                           json={"action": "keep"}).status_code == code

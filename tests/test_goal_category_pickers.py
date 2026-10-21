@@ -25,9 +25,10 @@ from models import GoalCategory
 STATIC = pathlib.Path(__file__).resolve().parents[1] / "static"
 
 # Every file here renders a user-facing GOAL category picker / grouping.
-# (NOT goal_filter_helpers.js or inbox_categorize.js — those map
-# categories to the work/personal task-type bipartition, a deliberate
-# transform, not a "list all categories" surface.)
+# (NOT goal_filter_helpers.js or inbox_categorize.js — those map each
+# category to the task type it fits — work, personal, or both for BAU
+# since #285 — a deliberate transform, not a "list all categories"
+# surface.)
 GOAL_CATEGORY_PICKER_FILES = [
     "goals.js",        # GOALS_CATEGORIES — drives the /goals section grouping (#277 bug site)
     "scan.js",         # GOAL_CATEGORIES — scan-review category dropdown
@@ -67,3 +68,47 @@ def test_guard_covers_a_known_picker_file():
     assert GOAL_CATEGORY_PICKER_FILES
     for fname in GOAL_CATEGORY_PICKER_FILES:
         assert (STATIC / fname).is_file(), f"missing picker file {fname}"
+
+
+
+# --- #512: the server-rendered pickers and the server-side lists --------------
+
+
+def _select_values(html: str, select_id: str) -> set[str]:
+    import re
+
+    block = re.search(rf'<select id="{select_id}"[^>]*>(.*?)</select>', html, re.S)
+    assert block, f"no <select id={select_id!r}>"
+    return set(re.findall(r'<option value="([^"]*)"', block.group(1))) - {""}
+
+
+def test_the_goals_page_selects_list_exactly_the_enum():
+    """templates/goals.html is server HTML, not one of the JS lists above:
+    the filter and the panel's Category select each offer every value
+    and nothing else."""
+    html = (STATIC.parent / "templates" / "goals.html").read_text(encoding="utf-8")
+    for select_id in ("filterCategory", "goalCategory"):
+        assert _select_values(html, select_id) == _enum_values(), select_id
+
+
+def test_voice_and_scan_accept_exactly_the_enum():
+    import scan_service
+
+    assert set(scan_service._VOICE_VALID_CATEGORIES) == _enum_values()
+    # Every category is on one side or both — none falls through (#285).
+    assert _enum_values() >= scan_service._VOICE_WORK_CATEGORIES
+    assert scan_service._VOICE_NEUTRAL_CATEGORIES <= scan_service._VOICE_WORK_CATEGORIES
+
+
+def test_every_claude_prompt_that_names_categories_names_them_all():
+    """A prompt that lists the categories but misses one makes Claude
+    put those goals somewhere else."""
+    import reflection_service
+
+    # (scan's goal prompt has its own test in test_scan.py; import's
+    # transcript prompt makes tasks only and names no category.)
+    for name, prompt in (
+        ("reflection _REFLECT_PROMPT", reflection_service._REFLECT_PROMPT),
+    ):
+        missing = sorted(v for v in _enum_values() if v not in prompt)
+        assert not missing, f"{name} is missing {missing}"

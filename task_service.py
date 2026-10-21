@@ -1187,7 +1187,13 @@ def _soft_delete(task: Task) -> int:
     those (``_restore_subtasks_deleted_with``); done / cancelled subtasks
     are left as they are. ``batch_id`` is cleared on all of them — see
     ``delete_task``. Returns how many subtasks went along.
+
+    #512: a task already in the bin is left exactly as it is. Re-running
+    on a subtask that went with its parent cleared ``deleted_with_parent``,
+    so restoring the parent left it behind (a stale tab's second Delete).
     """
+    if task.status == TaskStatus.DELETED:
+        return 0
     task.status = TaskStatus.DELETED
     task.batch_id = None
     task.deleted_with_parent = False

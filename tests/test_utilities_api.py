@@ -1,9 +1,15 @@
 """Tests for the /api/utilities/* endpoints (#222, 2026-05-24).
 
-OAuth-gated UI wrappers over the same backfill logic exposed via
-admin-token-gated /api/debug/backfill/clear-stale-next-week-due-dates.
-This test file covers the route registration, auth, and the
-count/run pair against a known DB state.
+OAuth-gated UI wrappers: the stale-Next-Week backfill (count/run pair),
+the backup / restore-drill workflow dispatches, the inline bug-pattern
+and security scans, and the coverage audit's background job. The
+tech-debt background job, its status route and the 429s on all seven
+POSTs are in test_utilities_jobs_477.py.
+
+#512 added: a signed-in GET on every POST route is 405 (the older
+signed-out "rejects GET" tests couldn't tell), a sweep that every POST
+route is rate-limited, the dispatch token in no log or answer, and a
+stopped background run that no longer jams its slot.
 """
 from __future__ import annotations
 
@@ -11,6 +17,7 @@ from datetime import timedelta
 
 import pytest
 
+import auth
 from models import Task, TaskStatus, TaskType, Tier, db
 
 
@@ -160,6 +167,14 @@ class TestUtilitiesPageRenders:
 
 
 # --- #223 (2026-05-24): backup + restore-drill workflow dispatch ----------
+
+
+# #512: a "running" record older than 15 minutes now reads as a stopped
+# run, so tests of a LIVE run use a start time from a minute ago.
+_RECENT = (
+    __import__("datetime").datetime.now(__import__("datetime").UTC)
+    - timedelta(minutes=1)
+).isoformat()
 
 
 class _MockResponse:
@@ -719,7 +734,7 @@ class TestCoverageAuditAsync:
 
         utilities_api._write_coverage_job_state({
             "status": "running",
-            "started_at": "2026-05-28T20:00:00+00:00",
+            "started_at": _RECENT,
             "finished_at": None,
             "duration_seconds": None,
             "result": None,
@@ -738,7 +753,7 @@ class TestCoverageAuditAsync:
         # bug).
         on_disk = _json.loads(path.read_text(encoding="utf-8"))
         assert on_disk["status"] == "running"
-        assert on_disk["started_at"] == "2026-05-28T20:00:00+00:00"
+        assert on_disk["started_at"] == _RECENT
 
         # And the read helper returns the same shape.
         snapshot = utilities_api._read_coverage_job_state()
@@ -762,7 +777,7 @@ class TestCoverageAuditAsync:
         path = utilities_api._COVERAGE_JOB_STATE_PATH
         path.write_text(_json.dumps({
             "status": "running",
-            "started_at": "2026-05-28T20:30:00+00:00",
+            "started_at": _RECENT,
             "finished_at": None,
             "duration_seconds": None,
             "result": None,
@@ -775,7 +790,7 @@ class TestCoverageAuditAsync:
         assert resp.status_code == 200
         body = resp.get_json()
         assert body["status"] == "running"
-        assert body["started_at"] == "2026-05-28T20:30:00+00:00"
+        assert body["started_at"] == _RECENT
 
     def test_kickoff_returns_409_when_already_running(
         self, authed_client, monkeypatch,
@@ -791,7 +806,7 @@ class TestCoverageAuditAsync:
         # in-flight job and bails.
         utilities_api._write_coverage_job_state({
             "status": "running",
-            "started_at": "2026-05-27T12:00:00+00:00",
+            "started_at": _RECENT,
             "finished_at": None,
             "duration_seconds": None,
             "result": None,
@@ -804,7 +819,7 @@ class TestCoverageAuditAsync:
             assert resp.status_code == 409
             body = resp.get_json()
             assert "already running" in body["error"].lower()
-            assert body["started_at"] == "2026-05-27T12:00:00+00:00"
+            assert body["started_at"] == _RECENT
         finally:
             # Restore idle state so later tests aren't blocked.
             utilities_api._write_coverage_job_state({
@@ -1263,3 +1278,203 @@ class TestUtilitiesPageRunLinks:
         # Exactly 6 links total — guards against accidentally adding one to
         # clear-stale-next-week-due-dates or project-goal-cleanup.
         assert html.count('class="utility-runs-link"') == 6
+
+
+# --- #512: what the 2026-10-19 refresh found ------------------------------------
+
+POST_ROUTES = [
+    "/api/utilities/clear-stale-next-week-due-dates",
+    "/api/utilities/trigger-backup",
+    "/api/utilities/trigger-restore-drill",
+    "/api/utilities/run-bug-pattern-scan",
+    "/api/utilities/run-security-posture-scan",
+    "/api/utilities/run-coverage-audit",
+    "/api/utilities/run-tech-debt-audit",
+]
+
+
+class TestEveryRunRoute:
+
+    @pytest.mark.parametrize("url", POST_ROUTES)
+    def test_a_signed_in_get_is_405(self, authed_client, url):
+        """The old rejects-GET tests used a signed-out client, so the
+        login redirect answered first and they'd pass with GET allowed."""
+        assert authed_client.get(url).status_code == 405
+
+    def test_every_post_route_is_rate_limited_and_none_take_get(self, app):
+        import inspect
+
+        import utilities_api
+
+        posts = [r for r in app.url_map.iter_rules()
+                 if r.endpoint.startswith("utilities_api.") and "POST" in r.methods]
+        assert sorted(r.rule for r in posts) == sorted(POST_ROUTES)
+        for rule in posts:
+            assert "GET" not in rule.methods, rule.rule
+            view = getattr(utilities_api, rule.endpoint.split(".", 1)[1])
+            assert "@limiter.limit(UTILITY_RUN" in inspect.getsource(view), rule.rule
+
+    def test_tech_debt_run_needs_a_sign_in(self, client, monkeypatch):
+        monkeypatch.setattr(auth, "get_current_user_email", lambda: None)
+        assert client.post("/api/utilities/run-tech-debt-audit").status_code == 401
+
+
+class TestDispatchTokenStaysSecret:
+    SENTINEL = "github_pat_SENTINEL_0123456789"
+
+    @pytest.mark.parametrize("outcome", ["ok", "401", "html-502", "network"])
+    def test_the_token_is_in_no_log_line_and_no_answer(
+            self, app, authed_client, monkeypatch, caplog, outcome):
+        import logging
+
+        import requests
+
+        import utilities_api
+
+        monkeypatch.setenv("GITHUB_DISPATCH_TOKEN", self.SENTINEL)
+
+        def post(url, headers=None, **kw):
+            assert self.SENTINEL not in url
+            if outcome == "network":
+                raise requests.ConnectionError(f"failed: {headers}")
+            if outcome == "ok":
+                return _MockResponse(204)
+            if outcome == "401":
+                return _MockResponse(401, {"message": "Bad credentials"})
+            return _MockResponse(502, text="<html>gateway " + self.SENTINEL[:6] + "</html>")
+
+        monkeypatch.setattr(utilities_api.requests, "post", post)
+        with caplog.at_level(logging.DEBUG):
+            resp = authed_client.post("/api/utilities/trigger-backup")
+            utilities_api._dispatch_audit_workflow_for_autofile("coverage")
+        assert resp.status_code in (200, 503)
+        assert self.SENTINEL not in resp.get_data(as_text=True)
+        assert not any(self.SENTINEL in r.getMessage() for r in caplog.records)
+
+
+class TestAStoppedRunDoesNotJamTheSlot:
+    """A gunicorn worker killed mid-run (timeout 120s; #439 saw it) took
+    its daemon thread with it, leaving "running" in /tmp forever: every
+    Run answered 409 until the container restarted."""
+
+    @pytest.fixture(autouse=True)
+    def state_files(self, tmp_path, monkeypatch):
+        import utilities_api
+
+        monkeypatch.setattr(utilities_api, "_COVERAGE_JOB_STATE_PATH",
+                            tmp_path / "coverage_state.json")
+        monkeypatch.setattr(utilities_api, "_TECH_DEBT_JOB_STATE_PATH",
+                            tmp_path / "tech_debt_state.json")
+        monkeypatch.setattr("threading.Thread", _NoThread)
+
+    def _running(self, path, minutes_ago):
+        import datetime
+
+        import utilities_api
+
+        started = datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=minutes_ago)
+        utilities_api._write_job_state(path, {
+            **utilities_api._COVERAGE_IDLE_STATE,
+            "status": "running", "started_at": started.isoformat(),
+        })
+
+    @pytest.mark.parametrize("which", ["coverage", "tech-debt"])
+    def test_an_hour_old_run_reads_as_stopped_and_frees_the_slot(
+            self, authed_client, which):
+        import utilities_api
+
+        path = (utilities_api._COVERAGE_JOB_STATE_PATH if which == "coverage"
+                else utilities_api._TECH_DEBT_JOB_STATE_PATH)
+        self._running(path, minutes_ago=60)
+        status = authed_client.get(f"/api/utilities/{which}-audit-status").get_json()
+        assert status["status"] == "error"
+        assert "run it again" in status["error"]
+        assert authed_client.post(f"/api/utilities/run-{which}-audit").status_code == 200
+
+    @pytest.mark.parametrize("which", ["coverage", "tech-debt"])
+    def test_a_fresh_run_still_holds_the_slot(self, authed_client, which):
+        import utilities_api
+
+        path = (utilities_api._COVERAGE_JOB_STATE_PATH if which == "coverage"
+                else utilities_api._TECH_DEBT_JOB_STATE_PATH)
+        self._running(path, minutes_ago=2)
+        assert authed_client.post(f"/api/utilities/run-{which}-audit").status_code == 409
+
+    @pytest.mark.parametrize("content", ["[1, 2]", "{not json", ""])
+    def test_a_corrupt_state_file_is_idle(self, authed_client, content):
+        import utilities_api
+
+        utilities_api._COVERAGE_JOB_STATE_PATH.write_text(content, encoding="utf-8")
+        assert utilities_api._read_coverage_job_state()["status"] == "idle"
+        assert authed_client.post("/api/utilities/run-coverage-audit").status_code == 200
+
+
+class _NoThread:
+    """Stands in for threading.Thread so a kickoff doesn't really run."""
+
+    def __init__(self, *a, **k):
+        pass
+
+    def start(self):
+        pass
+
+
+class TestCoverageRunnerNeverDiesRunning:
+    """Every way the background run can fail must end in "error" (or
+    "complete" when only the autofile side broke), never stuck."""
+
+    @pytest.fixture(autouse=True)
+    def state_file(self, tmp_path, monkeypatch):
+        import utilities_api
+
+        monkeypatch.setattr(utilities_api, "_COVERAGE_JOB_STATE_PATH",
+                            tmp_path / "coverage_state.json")
+
+    def _run(self, monkeypatch, tmp_path, *, rc=1, result_text=None, autofile=None):
+        import subprocess
+
+        import utilities_api
+
+        out = tmp_path / "result.json"
+
+        def fake_run(cmd, **kw):
+            if result_text is not None:
+                out.write_text(result_text, encoding="utf-8")
+
+            class P:
+                returncode = rc
+            return P()
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        monkeypatch.setattr(utilities_api, "_dispatch_audit_workflow_for_autofile",
+                            lambda name: None)
+        if autofile is not None:
+            from scripts import backlog_autofile
+            monkeypatch.setattr(backlog_autofile, "run_for_audit", autofile)
+        utilities_api._write_coverage_job_state({
+            **utilities_api._COVERAGE_IDLE_STATE, "status": "running",
+            "started_at": "2026-10-19T12:00:00+00:00"})
+        utilities_api._run_coverage_audit_subprocess(str(out))
+        return utilities_api._read_coverage_job_state()
+
+    def test_a_result_that_is_not_an_object_is_an_error(self, monkeypatch, tmp_path):
+        state = self._run(monkeypatch, tmp_path, result_text="[1, 2, 3]")
+        assert state["status"] == "error"
+
+    def test_exit_2_is_an_error_with_its_reason(self, monkeypatch, tmp_path):
+        state = self._run(monkeypatch, tmp_path, rc=2)
+        assert state["status"] == "error"
+        assert "exited 2" in state["error"]
+
+    def test_no_result_file_is_an_error(self, monkeypatch, tmp_path):
+        state = self._run(monkeypatch, tmp_path, rc=1)
+        assert state["status"] == "error"
+        assert "no result file" in state["error"]
+
+    def test_any_autofile_failure_still_completes(self, monkeypatch, tmp_path):
+        def boom(name, findings):
+            raise TypeError("unexpected shape")
+
+        state = self._run(monkeypatch, tmp_path,
+                          result_text='{"total": 0, "findings": []}', autofile=boom)
+        assert state["status"] == "complete"

@@ -38,18 +38,19 @@ workflow + email):
     POST /api/utilities/run-tech-debt-audit  (#477: background job,
          polled via GET /api/utilities/tech-debt-audit-status)
          — invokes scripts/check_tech_debt.CHECKS (the #228 weekly
-           audit; the dependency-drift check inside shells out to
-           pip + npm so this endpoint is the slowest of the three,
-           typically ~2-5s).
-    All three return ``{total, per_check, findings}``. Skips the
-    SendGrid email path (the UI surface IS the result channel).
+           audit; the dependency-drift and duplication checks shell
+           out to pip / npm / jscpd, so it can take minutes — hence the
+           background job). Returns ``{status: "running", started_at}``;
+           its status poll's ``result`` is the shape below.
+    The two inline scans return ``{total, per_check, findings}``. None of
+    them sends the audit email (the UI surface IS the result channel).
 
 Async-scan utility (#229b, 2026-05-27) — POST kicks off a
 subprocess and returns immediately, GET polls for status:
     POST /api/utilities/run-coverage-audit
          — spawns `scripts/check_test_coverage.py --json-only` in a
-           background thread (pytest+coverage takes ~30s, can't
-           block the request). Returns {status: "running",
+           background thread (the full pytest+coverage run takes
+           minutes, can't block the request). Returns {status: "running",
            started_at, estimated_duration_seconds}. 409 if another
            run is in flight.
     GET  /api/utilities/coverage-audit-status
@@ -58,6 +59,9 @@ subprocess and returns immediately, GET polls for status:
            returns {status: "complete", duration_seconds, result:
            {total, per_check, findings, overall}}. On failure,
            returns {status: "error", error}. Safe to poll every 2s.
+         #512: a "running" record older than 15 minutes reads as error
+         ("stopped without finishing — run it again"), so a worker
+         killed mid-run can't jam the slot (409) until a restart.
 """
 from __future__ import annotations
 
@@ -503,6 +507,17 @@ _COVERAGE_IDLE_STATE: dict = {
 }
 _coverage_job_lock = __import__("threading").Lock()
 
+# #512: a "running" record older than this can't be a live run — the
+# longest audit's subprocess times out at 600s. A worker killed mid-run
+# (gunicorn's 120s timeout; #439 saw it) takes its daemon thread along,
+# and the record used to say "running" until the container restarted:
+# every Run answered 409 and the status poll never ended.
+_STALE_RUN_SECONDS = 15 * 60
+_STOPPED_RUN_ERROR = (
+    "The last run stopped without finishing (the server restarted mid-run) "
+    "— run it again."
+)
+
 
 def _read_coverage_job_state() -> dict:
     """The coverage job's state (#250). Thin wrapper — the shared file
@@ -531,9 +546,24 @@ def _read_job_state(path: Path) -> dict:
         # Defensive: ensure all expected keys are present.
         out = dict(_COVERAGE_IDLE_STATE)
         out.update(parsed)
-        return out
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return dict(_COVERAGE_IDLE_STATE)
+    if out["status"] == "running" and _run_is_stale(out.get("started_at")):
+        out.update({"status": "error", "error": _STOPPED_RUN_ERROR})
+    return out
+
+
+def _run_is_stale(started_at) -> bool:
+    """#512: True when a "running" record is too old to be a live run.
+    An unreadable start time counts as stale — nothing could finish it."""
+    try:
+        started = datetime.datetime.fromisoformat(str(started_at))
+    except ValueError:
+        return True
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=datetime.UTC)
+    age = datetime.datetime.now(datetime.UTC) - started
+    return age.total_seconds() > _STALE_RUN_SECONDS
 
 
 def _write_job_state(path: Path, state: dict) -> None:
@@ -635,8 +665,11 @@ def _run_coverage_audit_subprocess(json_path: str) -> None:
                 f"(rc={proc.returncode}, stderr_tail={stderr_tail!r})",
             )
         result = json.loads(result_path.read_text(encoding="utf-8"))
-    except (subprocess.TimeoutExpired, RuntimeError, OSError,
-            json.JSONDecodeError) as e:
+        if not isinstance(result, dict):
+            raise RuntimeError(
+                f"coverage script wrote {type(result).__name__}, not an object",
+            )
+    except Exception as e:  # noqa: BLE001 — #512: any failure must end in "error", never stuck "running"
         finished = datetime.datetime.now(datetime.UTC)
         # #250 — write state to the shared file so all gunicorn workers
         # see the new "error" state. Reading first preserves any fields
@@ -688,7 +721,7 @@ def _run_coverage_audit_subprocess(json_path: str) -> None:
             for f in (result.get("findings") or [])
         ]
         backlog_autofile.run_for_audit("coverage", adapted)
-    except (ImportError, FileNotFoundError, ValueError, OSError) as e:
+    except Exception as e:  # noqa: BLE001 — #512: autofile is best-effort; the audit result stands
         logger.warning(
             "utilities: coverage autofile failed (continuing): "
             "%s: %s",

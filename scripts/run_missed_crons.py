@@ -2,9 +2,11 @@
 """Manually re-run the four midnight cron jobs after a scheduler outage.
 
 When Railway drops a midnight cron fire (container restart at the
-wrong second, a deploy that overlapped 00:00, an outage), the four
-midnight jobs silently skip until the next 24h cycle. This script
-replays them in the same order the APScheduler runs them:
+wrong second, a deploy that overlapped 00:00, an outage) the app's own
+boot-time replay (#167, ``cron_audit_service.replay_missed``) and the
+scheduler's one-hour misfire grace (#439) usually catch it. This script
+is the manual fallback: it replays the four midnight jobs in the same
+order the APScheduler runs them:
 
     00:01  tomorrow_roll                  roll_tomorrow_to_today
     00:02  promote_due_today              promote_due_today_tasks
@@ -56,6 +58,10 @@ Notes
 * Every start/finish/failure logs at WARNING through the standard
   ``logging`` chain so the run lands in ``/api/debug/logs`` alongside
   real scheduler firings.
+* #512: each job that succeeds (not on ``--dry-run``) is written to the
+  ``cron_audit`` table like a scheduler fire, so the next boot's replay
+  doesn't run it a second time that day. A failed job is not written,
+  so the replay can still retry it.
 """
 from __future__ import annotations
 
@@ -196,7 +202,7 @@ def _invoke(module_name: str, fn_name: str, date_override: date | None) -> int:
     result = fn(**kwargs)
     if isinstance(result, list):
         return len(result)
-    return int(result)
+    return int(result or 0)  # #512: None = work done, nothing counted
 
 
 def _print_summary(rows: list[tuple[str, str, str, int, float]], *, dry_run: bool) -> None:
@@ -283,6 +289,14 @@ def main(argv: list[str] | None = None) -> int:
                 job_id, status, rows, elapsed_ms,
             )
             summary.append((job_id, sched_time, status, rows, elapsed_ms))
+            if not args.dry_run:
+                # #512: as a scheduler fire would — else the next boot's
+                # replay runs it again (record() never raises).
+                import cron_audit_service
+
+                cron_audit_service.record(
+                    job_id, status="OK", rowcount=rows, elapsed_ms=elapsed_ms,
+                )
 
     _print_summary(summary, dry_run=args.dry_run)
     return exit_code
