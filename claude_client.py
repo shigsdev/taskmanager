@@ -8,7 +8,9 @@ Before this module, four services (`scan_service`,
 call. The model id was a bare hardcoded string in five places.
 
 Six callers use it today: those five plus ``reflection_service``
-(#511 recount), which calls :func:`call_claude` directly.
+(#511 recount), which calls :func:`call_claude` directly. The five read
+the reply through :func:`reply_text` (#513); reflection keeps its own
+reader because it retries a cut-off analysis with more room (#342).
 
 This centralises the HTTP mechanics and the model ids so a model
 bump, an `anthropic-version` change, or an egress-policy tweak is a
@@ -86,3 +88,39 @@ def call_claude(
         )
     except EgressError as e:
         raise RuntimeError(str(e)) from e
+
+
+def reply_text(response: Any, *, cut_off_hint: str = "try again") -> str:
+    """The text of a Messages-API reply, or a RuntimeError saying why not (#513).
+
+    ``data["content"][0]["text"]`` is not safe: a refusal arrives as HTTP
+    200 with ``stop_reason: "refusal"`` and can carry ``content: []``
+    (IndexError → a bare 500), and a reply cut off at ``max_tokens`` is
+    half a JSON document that parsers read as "nothing found". Every
+    caller turns the RuntimeError into an error the user sees, like an
+    egress failure from :func:`call_claude`.
+
+    Args:
+        response: the dict :func:`call_claude` returned.
+        cut_off_hint: what to tell the user when the answer ran out of
+            room, e.g. ``"try a shorter transcript"``.
+    """
+    data = response if isinstance(response, dict) else {}
+    stop = data.get("stop_reason")
+    if stop == "refusal":
+        raise RuntimeError(
+            "Claude declined to answer this one — try rewording it.",
+        )
+    if stop == "max_tokens":
+        raise RuntimeError(
+            f"Claude's answer was cut off before it finished — {cut_off_hint}.",
+        )
+    content = data.get("content")
+    blocks = content if isinstance(content, list) else []
+    text = "".join(
+        b["text"] for b in blocks
+        if isinstance(b, dict) and isinstance(b.get("text"), str)
+    )
+    if not text.strip():
+        raise RuntimeError("Claude sent back an empty answer — try again.")
+    return text

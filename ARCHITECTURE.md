@@ -176,7 +176,9 @@ component is added, a data flow changes, or a security boundary shifts.
   candidates. Server-side only. Every Claude call goes through one
   shared client, `claude_client.call_claude` (#195) — model ids
   (`SONNET`/`HAIKU`) and the egress wiring live there, not inlined per
-  service.
+  service. Replies are read through `claude_client.reply_text` (#513):
+  an empty, refused or cut-off answer is a RuntimeError the route shows
+  the user, never an IndexError 500 or a silent "nothing found".
 - **Work Outlook** — receives the daily digest. Air-gapped from the app;
   digest is the only bridge.
 - **GitHub repo** (`shigsdev/taskmanager`) — source of truth. Push to main

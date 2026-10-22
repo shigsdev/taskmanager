@@ -23,6 +23,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from claude_client import reply_text
 from models import (
     Goal,
     GoalCategory,
@@ -183,7 +184,7 @@ def _call_claude_api(api_key: str, ocr_text: str) -> list[str]:
         prompt=_PARSE_PROMPT.format(ocr_text=ocr_text),
         max_tokens=1024,
     )
-    content = data.get("content", [{}])[0].get("text", "")
+    content = reply_text(data, cut_off_hint="try a photo with less on it")
     return _extract_json_array(content)
 
 
@@ -326,7 +327,7 @@ def parse_projects_from_text(ocr_text: str) -> list[dict[str, Any]]:
         prompt=_PROJECT_PARSE_PROMPT.format(ocr_text=ocr_text),
         max_tokens=2048,
     )
-    content = data.get("content", [{}])[0].get("text", "")
+    content = reply_text(data, cut_off_hint="try a photo with less on it")
     return _extract_json_object_list(content)
 
 
@@ -364,7 +365,7 @@ def _call_claude_api_goals(
         prompt=_GOAL_PARSE_PROMPT.format(ocr_text=ocr_text),
         max_tokens=2048,
     )
-    content = data.get("content", [{}])[0].get("text", "")
+    content = reply_text(data, cut_off_hint="try a photo with less on it")
     return _extract_json_object_list(content)
 
 
@@ -730,7 +731,7 @@ def _call_claude_api_voice(
         ),
         max_tokens=2048,
     )
-    content = data.get("content", [{}])[0].get("text", "")
+    content = reply_text(data, cut_off_hint="try a shorter memo")
     return _normalise_voice_candidates(
         _extract_json_object_list(content),
         projects=projects,

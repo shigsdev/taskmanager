@@ -121,3 +121,49 @@ def test_the_planner_asks_haiku_with_its_long_timeout():
     assert kwargs["model"] == claude_client.HAIKU
     assert kwargs["timeout_sec"] == 180
     assert kwargs["max_tokens"] == 12000
+
+
+# --- #513: reply_text — the one safe way to read a reply ---------------------
+
+
+class TestReplyText:
+
+    def test_returns_the_text(self):
+        assert claude_client.reply_text(
+            {"content": [{"type": "text", "text": "[1]"}], "stop_reason": "end_turn"},
+        ) == "[1]"
+
+    def test_joins_every_text_block_and_skips_the_rest(self):
+        reply = {"content": [
+            {"type": "thinking", "thinking": "hm"},
+            {"type": "text", "text": "[1, "},
+            "not a block",
+            {"type": "text", "text": "2]"},
+        ]}
+        assert claude_client.reply_text(reply) == "[1, 2]"
+
+    @pytest.mark.parametrize("reply", [
+        {"content": [], "stop_reason": "refusal"},
+        # A refusal can arrive with some text; it is still a refusal.
+        {"content": [{"type": "text", "text": "I can't help"}], "stop_reason": "refusal"},
+    ])
+    def test_a_refusal_says_claude_declined(self, reply):
+        with pytest.raises(RuntimeError, match="Claude declined"):
+            claude_client.reply_text(reply)
+
+    def test_a_cut_off_reply_says_so_with_the_callers_hint(self):
+        reply = {"content": [{"type": "text", "text": '[{"title": "Bu'}],
+                 "stop_reason": "max_tokens"}
+        with pytest.raises(RuntimeError) as exc:
+            claude_client.reply_text(reply, cut_off_hint="try a shorter memo")
+        assert str(exc.value) == (
+            "Claude's answer was cut off before it finished — try a shorter memo.")
+
+    @pytest.mark.parametrize("reply", [
+        {"content": []}, {"content": None}, {}, None, "not a dict",
+        {"content": ["not a dict"]}, {"content": [{"type": "text", "text": "  \n"}]},
+        {"content": [{"type": "text", "text": 42}]},
+    ])
+    def test_nothing_readable_is_an_empty_answer(self, reply):
+        with pytest.raises(RuntimeError, match="empty answer — try again"):
+            claude_client.reply_text(reply)

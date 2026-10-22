@@ -238,8 +238,8 @@ Each object has:
 - notes (string or null) — optional one-line context if useful
 
 Example output:
-[{"title": "Email Sarah the Q3 plan", "notes": null},
- {"title": "Schedule design review with Alex", "notes": "before EOM"}]
+[{{"title": "Email Sarah the Q3 plan", "notes": null}},
+ {{"title": "Schedule design review with Alex", "notes": "before EOM"}}]
 
 Transcript:
 {transcript}
@@ -343,13 +343,15 @@ def _call_claude_for_transcript(api_key: str, transcript: str) -> list[Any]:
     """
     # #195: route through the shared claude_client instead of an
     # inline egress.safe_call_api block.
-    from claude_client import SONNET, call_claude
+    from claude_client import SONNET, call_claude, reply_text
 
     prompt = _TRANSCRIPT_PROMPT.format(transcript=transcript)
     data = call_claude(
         api_key=api_key, prompt=prompt, max_tokens=2048, model=SONNET,
     )
-    content = data.get("content", [{}])[0].get("text", "")
+    # #513: empty / refused / cut off is a RuntimeError the route shows,
+    # not a 500 or "no action items found".
+    content = reply_text(data, cut_off_hint="try a shorter transcript")
     return _extract_transcript_json_array(content)
 
 

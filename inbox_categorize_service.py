@@ -335,8 +335,18 @@ def categorize_inbox() -> dict:
     # ~150 chars per suggestion × 50 max = ~7500 chars; 8000 token budget
     # leaves room for verbose reasons without truncation.
     response = _post_to_claude(api_key, prompt, max_tokens=8000)
-    raw_text = response.get("content", [{}])[0].get("text", "")
-    raw_suggestions = _parse_claude_response(raw_text)
+    # #513: an empty, refused, cut-off or unreadable reply is Claude's
+    # failure — RuntimeError, so the route says 502 with a message the
+    # review can show (it was an IndexError / ValueError → 500).
+    from claude_client import reply_text
+
+    raw_text = reply_text(response, cut_off_hint="try again")
+    try:
+        raw_suggestions = _parse_claude_response(raw_text)
+    except ValueError as e:
+        raise RuntimeError(
+            "Claude's suggestions came back unreadable — try again.",
+        ) from e
 
     title_lookup = {str(t.id): t.title for t in tasks}
     valid_task_ids = set(title_lookup.keys())

@@ -579,6 +579,26 @@ def _parse_claude_response(raw_text: str) -> list[dict]:
     return changes
 
 
+def _reply_changes(
+    response: dict[str, Any], *, cut_off_hint: str = "try again",
+) -> list[dict]:
+    """The changes array from Claude's reply, or a RuntimeError (#513).
+
+    An empty, refused, cut-off or unreadable reply is Claude's failure:
+    the routes say 502 for RuntimeError. A ValueError there means "no
+    such focus" (404) or "no focus to plan" (422), which these are not.
+    """
+    from claude_client import reply_text
+
+    raw_text = reply_text(response, cut_off_hint=cut_off_hint)
+    try:
+        return _parse_claude_response(raw_text)
+    except ValueError as e:
+        raise RuntimeError(
+            "Claude's plan came back unreadable — try again.",
+        ) from e
+
+
 def _validate_change(
     raw: dict,
     *,
@@ -703,8 +723,7 @@ def plan_for_focus(
     )
 
     response = _post_to_claude(api_key, prompt, max_tokens=4000)
-    raw_text = response.get("content", [{}])[0].get("text", "")
-    raw_changes = _parse_claude_response(raw_text)
+    raw_changes = _reply_changes(response)
 
     title_lookup = {str(t.id): t.title for t in tasks}
     valid_task_ids = set(title_lookup.keys())
@@ -827,8 +846,9 @@ def plan_for_all_focus(today: date | None = None, week_offset: int = 0) -> dict:
     )
 
     response = _post_to_claude(api_key, prompt, max_tokens=4000)
-    raw_text = response.get("content", [{}])[0].get("text", "")
-    raw_changes = _parse_claude_response(raw_text)
+    raw_changes = _reply_changes(
+        response, cut_off_hint="try planning one focus at a time",
+    )
 
     title_lookup = {str(t.id): t.title for t in tasks}
     valid_task_ids = set(title_lookup.keys())
