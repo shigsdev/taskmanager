@@ -3441,7 +3441,7 @@ Skip this line (too short)</pre>
             <ul>
                 <li><strong>Daily backup workflow</strong> — every day at 03:30 ET (07:30 UTC). Runs OUTSIDE Railway in GitHub Actions, so a Railway-side incident can't take both the data and the backup runner. Pulls a <code>pg_dump --format=custom</code> of the live Postgres, encrypts with Fernet, pushes ciphertext to a private GitHub repo (e.g. <code>shigsdev/taskmanager-backups</code>). Every daily backup is kept (about 260 KB each).</li>
                 <li><strong>Monthly restore drill</strong> — first of every month at 04:00 ET. Pulls the latest dump, decrypts, restores into a scratch Postgres inside the GitHub Actions runner, validates row counts match the live DB within ±5%. Catches dump corruption, key drift, and pg_restore version skew BEFORE the day you actually need to restore.</li>
-                <li><strong>Status emails</strong> — every backup AND every drill sends a result email to your <code>DIGEST_TO_EMAIL</code> (same address as the daily digest). Subject starts with <strong>OK</strong> for success, <strong>FAIL</strong> for failure.</li>
+                <li><strong>Status emails</strong> — every backup AND every drill sends a result email to your <code>DIGEST_TO_EMAIL</code> (same address as the daily digest), sent through Brevo. The subject starts <code>[Taskmanager backup]</code>, then <strong>✓</strong> when it worked (<em>Daily backup OK</em>, <em>Restore drill PASSED</em>), <strong>✗</strong> when it failed, or <strong>⚠ NOT VERIFIED</strong> when a backup was pushed but its row counts couldn't be checked.</li>
             </ul>
 
             <hr>
@@ -3526,7 +3526,7 @@ Skip this line (too short)</pre>
                 <li><strong><code>BACKUP_REPO_DEPLOY_KEY</code></strong> — the PRIVATE SSH key. Paste the ENTIRE contents of the <code>backup-key</code> file (the one without <code>.pub</code>), starting with <code>-----BEGIN OPENSSH PRIVATE KEY-----</code> and ending with <code>-----END OPENSSH PRIVATE KEY-----</code>, including those lines and the trailing newline.</li>
                 <li><strong><code>BACKUP_FERNET_KEY</code></strong> — the Fernet key from Step 3. Paste the 44-character string only (no quotes, no spaces).</li>
                 <li><strong><code>DATABASE_URL</code></strong> — your Railway Postgres <em>public</em> URL. Find it on Railway: open your project → click the Postgres service → Variables tab → copy <strong><code>DATABASE_PUBLIC_URL</code></strong> (NOT the plain <code>DATABASE_URL</code>, which is the private <code>postgres.railway.internal</code> hostname — reachable only inside Railway's network, NOT from GitHub Actions). The public URL host ends in <code>.railway.app</code> and usually uses a non-standard port like <code>12345</code> (not 5432). If you don't see <code>DATABASE_PUBLIC_URL</code>, open the Postgres service's <strong>Networking</strong> sub-tab and toggle <strong>Public Networking / TCP Proxy</strong> to ON — Railway then generates one. Symptom of getting this wrong: workflow fails with <code>pg_dump: error: could not translate host name "postgres.railway.internal" to address</code>.</li>
-                <li><strong><code>SENDGRID_API_KEY</code></strong> — used only for the backup-failure <em>alert</em> email sent by this GitHub Actions workflow (the app's own daily digest now sends via SMTP, not SendGrid). Optional: leave it unset and the backup still runs, you just won't get an email if a run fails. If you want the alert, paste a SendGrid API key (starts with <code>SG.</code>). Migrating these workflow alerts to SMTP too is tracked in the backlog.</li>
+                <li><strong><code>BREVO_API_KEY</code></strong> — for the result emails this workflow sends (the same Brevo service as the app's daily digest; you can paste the same key). Optional: leave it unset and the backup still runs, it just emails nothing, and the log says <code>[backup] Brevo not configured; skipping email</code>.</li>
             </ol>
 
             <p>
@@ -3558,8 +3558,8 @@ Skip this line (too short)</pre>
                 <li>Click <strong>Daily backup</strong> in the left sidebar.</li>
                 <li>Click <strong>Run workflow</strong> (top-right of the runs list) → keep the default branch → <strong>Run workflow</strong>.</li>
                 <li>Wait ~30 seconds for the run to appear, then click into it. Expand the <strong>Run backup</strong> step.</li>
-                <li>Expected log output: <code>[backup] pg_dump → taskmanager-...dump</code>, <code>[backup] dump OK — N bytes in M.Ms</code>, <code>[backup] encrypted → ...dump.fernet</code>, <code>[backup] cloning git@github.com:.../taskmanager-backups.git</code>, <code>[backup] pushed &lt;sha&gt;</code>, <code>[backup] email sent: HTTP 202</code>.</li>
-                <li>Check your inbox — within 60 seconds you should see an email with subject <code>[Taskmanager backup] OK daily backup OK — &lt;date&gt;</code>.</li>
+                <li>Expected log output: <code>[backup] pg_dump → taskmanager-...dump</code>, <code>[backup] dump OK — N bytes in M.Ms</code>, <code>[backup] encrypted → ...dump.fernet</code>, <code>[backup] cloning git@github.com:.../taskmanager-backups.git</code>, <code>[backup] pushed &lt;sha&gt;</code>, <code>[backup] email sent: HTTP 201</code>.</li>
+                <li>Check your inbox — within 60 seconds you should see an email with subject <code>[Taskmanager backup] ✓ Daily backup OK — &lt;date&gt;</code>.</li>
                 <li>Visit your <code>taskmanager-backups</code> repo on GitHub — you should see one new file like <code>taskmanager-20260510T030000Z.dump.fernet</code>.</li>
             </ol>
 
@@ -3602,11 +3602,11 @@ Skip this line (too short)</pre>
                 <dt><code>FATAL: invalid Fernet key: ... Token must be 32 url-safe base64-encoded bytes</code></dt>
                 <dd>The <code>BACKUP_FERNET_KEY</code> secret got mangled during paste. Re-generate (Step 3), update the secret, run again.</dd>
 
-                <dt><code>[backup] email sent: HTTP 401</code></dt>
-                <dd>The <code>SENDGRID_API_KEY</code> secret is wrong. The backup itself succeeded; just the email didn't. Fix the key so future runs notify you on failure.</dd>
+                <dt><code>[backup] email send failed: HTTP Error 401: Unauthorized</code></dt>
+                <dd>The <code>BREVO_API_KEY</code> secret is wrong. The backup itself succeeded; just the email didn't. Fix the key so future runs tell you how they went.</dd>
 
                 <dt>Workflow runs successfully but no email arrives</dt>
-                <dd>Check spam. SendGrid sometimes routes to spam on a new sender domain. If it stays in spam, mark "Not spam" once and Gmail learns it.</dd>
+                <dd>Check the run log for <code>[backup] email sent: HTTP 201</code>: if it's there, Brevo took the email, so look in spam and mark it "Not spam" once. If the log says <code>Brevo not configured; skipping email</code>, add <code>BREVO_API_KEY</code> (Step 5) and the <code>DIGEST_FROM_EMAIL</code> / <code>DIGEST_TO_EMAIL</code> variables.</dd>
 
                 <dt>Daily backup doesn't trigger on schedule</dt>
                 <dd>GitHub Actions cron has a ~5-15 minute jitter and pauses for repos with no activity in 60+ days. To re-arm: push any commit to main, or trigger the workflow manually once.</dd>
@@ -4046,7 +4046,8 @@ print('wrote', out)
                     database URL, deploy key and backup key together.
                 </p>
                 <p class="docs-step-label">When it's right</p>
-                <p>Both emails start with <strong>OK</strong>.</p>
+                <p>The two emails read <em>✓ Daily backup OK</em> and
+                    <em>✓ Restore drill PASSED</em>.</p>
             </div>
         </section>
     </main>

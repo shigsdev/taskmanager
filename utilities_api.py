@@ -250,7 +250,7 @@ def trigger_backup(email: str):  # noqa: ARG001
 #   2. Visibility: a workflow_dispatch shows up as "dispatched, see
 #      Actions tab" — the user doesn't see the finding list until
 #      the email arrives. Inline scan shows the findings RIGHT NOW.
-# Side effect: the SendGrid email path is skipped (no cron, no
+# Side effect: the email path is skipped (no cron, no
 # email). That's intentional — the on-demand UI IS the email-substitute.
 
 
@@ -400,7 +400,7 @@ def _run_audit_script_checks(
 @limiter.limit(UTILITY_RUN, error_message=UTILITY_RUN_MESSAGE)
 def run_bug_pattern_scan(email: str):  # noqa: ARG001
     """#236 — run the #226 weekly bug-pattern scanner in-process and
-    return the findings inline. Skips the SendGrid email path (the UI
+    return the findings inline. Skips the email path (the UI
     surfaces the results directly).
 
     Returns ``{total, per_check, findings}``. `per_check` is the
@@ -425,7 +425,7 @@ def run_bug_pattern_scan(email: str):  # noqa: ARG001
 @limiter.limit(UTILITY_RUN, error_message=UTILITY_RUN_MESSAGE)
 def run_security_posture_scan(email: str):  # noqa: ARG001
     """#236 — run the #227 monthly security-posture audit in-process
-    and return findings inline. Skips the SendGrid email path. The
+    and return findings inline. Skips the email path. The
     operator-maintained source-of-truth files
     (`docs/security/pat-inventory.json`,
     `docs/security/oauth-scopes.json`) are read on every call so the

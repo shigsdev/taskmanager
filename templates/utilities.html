@@ -86,8 +86,8 @@
             Dispatches the <code>daily-backup.yml</code> GitHub Actions
             workflow on-demand. The workflow does a <code>pg_dump</code>
             of production, Fernet-encrypts the output, commits it to the
-            private backup repo, prunes anything older than 7 days, and
-            emails a PASS/FAIL status report.
+            private backup repo (every backup is kept; nothing is pruned),
+            and emails how it went (OK, NOT VERIFIED or FAILED).
         </p>
         <p class="utility-description">
             Useful before risky migrations, before/after a large data
@@ -117,7 +117,7 @@
     {# #236 (2026-05-26): on-demand cards for the recurring audit scripts.
        Inline-scan shape — POST runs the scan IN-PROCESS and the result
        JSON includes the findings, which utilities.js renders inline as
-       a per-check breakdown. Skips SendGrid (no email on UI runs). #}
+       a per-check breakdown. Sends no email on UI runs. #}
     <section class="utility-card" data-utility="run-bug-pattern-scan">
         <h2>Run weekly bug-pattern scan (#226)</h2>
         <p class="utility-description">
