@@ -140,11 +140,12 @@ All secrets live in the Railway dashboard — never committed to git.
 | Variable | Purpose |
 |---|---|
 | `SECRET_KEY` | Flask session secret (random 32+ char string) |
-| `ENCRYPTION_KEY` | Fernet symmetric encryption key for sensitive fields |
+| `ENCRYPTION_KEY` | Fernet key for `crypto.encrypt` / `decrypt`. Today only the `/healthz` `encryption` self-test uses it; no stored field is encrypted with it, so it can be swapped freely (Help → Rotate every secret, step 5) |
 | `GOOGLE_CLIENT_ID` | From Google Cloud Console |
 | `GOOGLE_CLIENT_SECRET` | From Google Cloud Console |
 | `AUTHORIZED_EMAIL` | The only Google account allowed to log in |
 | `DATABASE_URL` | Railway PostgreSQL connection string (auto-injected) |
+| `DATABASE_PUBLIC_URL` | **Not set on the app.** Read only by `scripts/rotate_db_password.py` (#518), from your own shell, to skip its prompt: the Postgres service's public URL (Railway → Postgres → Variables). The script changes the database password over it |
 | `BREVO_API_KEY` | Brevo transactional-email API key (`xkeysib-…`). **Preferred digest transport on Railway** — sends over HTTPS, since Railway blocks outbound SMTP on non-Pro plans (ADR-035). When set, it takes precedence over the `SMTP_*` vars. |
 | `SMTP_HOST` | SMTP server for the digest (default `smtp.gmail.com`). Fallback transport used only when `BREVO_API_KEY` is unset. |
 | `SMTP_PORT` | SMTP submission port (default `587`, STARTTLS) |

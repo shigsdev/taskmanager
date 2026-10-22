@@ -1479,7 +1479,15 @@ skew before the day you actually need to restore.
   yields opaque ciphertext; a leaked key without the repo is useless.
 - The Fernet key never lives in the main repo, the backups repo, or any
   log line. Stored in GitHub Actions secrets (encrypted, masked in workflow
-  logs) and a copy in 1Password for human-restore use.
+  logs) and a copy in 1Password for human-restore use. It is NOT a Railway
+  variable: the app never reads it, yet a copy (and the deploy key) sat on
+  the `web` service until Railway's 2026-10-21 env-var breach exposed both.
+  Help → Rotate every secret (#518) has you rotate them and delete them
+  from Railway.
+- `scripts/rotate_db_password.py` (#518) changes the Postgres password
+  over `DATABASE_PUBLIC_URL` (an `ALTER ROLE`, then a test connection with
+  the new password) and prints the new public URL for the `DATABASE_URL`
+  secret above. It is run by hand during a rotation, never by a workflow.
 - `.gitignore` covers `*.dump`, `*.dump.fernet`, and `*.sql` so a
   fat-fingered `git add .` can't accidentally commit a dump or its
   encryption key to the main repo.

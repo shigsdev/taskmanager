@@ -73,6 +73,7 @@
             <li><a href="#digest">Email digest</a></li>
             <li><a href="#settings">Settings</a></li>
             <li><a href="#backups">Backups &amp; restore</a></li>
+            <li><a href="#rotate-secrets">Rotate every secret (after a leak)</a></li>
             <li><a href="#status-page">If the app won't load</a></li>
         </ul>
 
@@ -3655,6 +3656,11 @@ print('wrote', out)
 
             <h3>Key rotation (recommended yearly, or after any leak suspicion)</h3>
             <p>
+                After a leak, rotate everything, not just this key:
+                <a href="#rotate-secrets">Rotate every secret</a> walks
+                through all of them in order.
+            </p>
+            <p>
                 The Fernet key never expires, so rotation is optional.
                 But if you suspect the key leaked, rotating means
                 future backups can't be decrypted with the old key
@@ -3677,6 +3683,371 @@ print('wrote', out)
                 <li><strong>Restore drill tolerance</strong> — edit <code>TOLERANCE = 0.05</code> in <code>scripts/restore_drill.py</code> (5% row-count drift allowed before FAIL).</li>
                 <li><strong>Disable temporarily</strong> — in the Actions tab, click the workflow → "..." menu → Disable workflow. Re-enable later.</li>
             </ul>
+        </section>
+
+        <section id="rotate-secrets" class="docs-section">
+            <h2>Rotate every secret (after a leak)</h2>
+            <p>
+                If the app's secrets may have leaked (for example, Railway's
+                21 October 2026 notice that customers' environment variables
+                were read), replace every one of them. This is the whole list,
+                in a safe order: about an hour, and nothing in it touches your
+                tasks. Each step says where the new value comes from, where it
+                goes, and how to tell it worked.
+            </p>
+
+            <h3>What changes for you</h3>
+            <ul>
+                <li>You're <strong>signed out</strong> on every device (the new
+                    session key, step 4). Sign in again (step 15).</li>
+                <li>Your <strong>Siri token</strong> stops working. Make a new
+                    one and paste it into both Shortcuts (step 16).</li>
+                <li>The <strong>validator cookie</strong> the deploy checks use
+                    stops working. Make a new one (step 17).</li>
+                <li>Backups made before today can only be opened with the
+                    <strong>old</strong> backup key. Keep it (step 3).</li>
+            </ul>
+
+            <h3>How the steps work</h3>
+            <ul>
+                <li><strong>Railway</strong>: open the project, click a
+                    service (<strong>web</strong> or
+                    <strong>Postgres</strong>), then its
+                    <strong>Variables</strong> tab. A changed variable only
+                    takes effect after a deploy, so make all the Railway
+                    changes first and deploy once (step 14).</li>
+                <li><strong>GitHub</strong>: the backup workflows keep their
+                    own copies of some secrets. The commands below set them
+                    with <code>gh</code>. Run them in PowerShell, in the
+                    taskmanager folder. Always use <code>--body</code>:
+                    typing <code>gh secret set NAME</code> and pasting at its
+                    prompt saves an <em>empty</em> secret in PowerShell.
+                    <code>gh secret list</code> then shows that secret updated
+                    a moment ago.</li>
+                <li>Keep <strong>1Password</strong> open and save each new
+                    value as you make it.</li>
+                <li>At each provider, <strong>delete the old key</strong> once
+                    the new one is in, and look at its usage page for anything
+                    on days you didn't use the app.</li>
+            </ul>
+
+            <h3>Part 1: the backups (do these first)</h3>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">1</span> iCloud password (<code>ICLOUD_APP_PASSWORD</code>)</h4>
+                <p>It also opens your iCloud Mail and Contacts, so it goes first.</p>
+                <ol>
+                    <li>At <strong>account.apple.com</strong> → Sign-In and
+                        Security → App-Specific Passwords, revoke the one this
+                        app uses and create a new one.</li>
+                    <li>Railway → <strong>web</strong> → Variables: paste it into
+                        <code>ICLOUD_APP_PASSWORD</code>.</li>
+                </ol>
+                <p class="docs-step-label">When it's right (after step 14)</p>
+                <p><a href="{{ url_for('calendar_page') }}">Calendar</a> shows
+                    your iCloud events again.</p>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">2</span> Backup repository key (<code>BACKUP_REPO_DEPLOY_KEY</code>)</h4>
+                <p>
+                    It can read and write the backups repository. With the
+                    backup key (step 3) it opens every backup.
+                </p>
+                <ol>
+                    <li>On GitHub, open <strong>taskmanager-backups</strong> →
+                        Settings → Deploy keys, and delete the old key.</li>
+                    <li>Make a new key pair. Press Enter twice when it asks
+                        for a passphrase:</li>
+                </ol>
+                <div class="docs-copy">
+                    <input type="text" id="docsRotKeygen" readonly aria-label="Make a new key pair" value="ssh-keygen -t ed25519 -C &quot;taskmanager backup bot&quot; -f &quot;$HOME\backup-key&quot;">
+                    <button type="button" class="btn btn-sm" data-copy-for="docsRotKeygen">Copy</button>
+                </div>
+                <ol start="3">
+                    <li>Copy the public half, then on the same Deploy keys
+                        page click <strong>Add deploy key</strong>, paste it,
+                        and tick <strong>Allow write access</strong>:</li>
+                </ol>
+                <div class="docs-copy">
+                    <input type="text" id="docsRotPubClip" readonly aria-label="Copy the public key" value="Get-Content &quot;$HOME\backup-key.pub&quot; | Set-Clipboard">
+                    <button type="button" class="btn btn-sm" data-copy-for="docsRotPubClip">Copy</button>
+                </div>
+                <ol start="4">
+                    <li>Give the private half to the backup workflow:</li>
+                </ol>
+                <div class="docs-copy">
+                    <input type="text" id="docsRotDeployKeySecret" readonly aria-label="Set the deploy key secret" value="gh secret set BACKUP_REPO_DEPLOY_KEY --body (Get-Content &quot;$HOME\backup-key&quot; -Raw)">
+                    <button type="button" class="btn btn-sm" data-copy-for="docsRotDeployKeySecret">Copy</button>
+                </div>
+                <ol start="5">
+                    <li>Railway → <strong>web</strong> → Variables:
+                        <strong>delete</strong>
+                        <code>BACKUP_REPO_DEPLOY_KEY</code>. The app never uses
+                        it; only the GitHub workflow does.</li>
+                    <li>Delete the two key files:</li>
+                </ol>
+                <div class="docs-copy">
+                    <input type="text" id="docsRotKeyCleanup" readonly aria-label="Delete the key files" value="Remove-Item &quot;$HOME\backup-key&quot;, &quot;$HOME\backup-key.pub&quot;">
+                    <button type="button" class="btn btn-sm" data-copy-for="docsRotKeyCleanup">Copy</button>
+                </div>
+                <p class="docs-step-label">When it's right</p>
+                <p>The backup in step 18 says it pushed.</p>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">3</span> Backup key (<code>BACKUP_FERNET_KEY</code>)</h4>
+                <ol>
+                    <li>In 1Password, rename the current backup key to end in
+                        <em>(old)</em>. <strong>Don't delete it</strong>: every
+                        backup made before today needs it.</li>
+                    <li>Make a new key and give it to the backup workflow in
+                        one go. It prints the key: save that in 1Password.</li>
+                </ol>
+                <div class="docs-copy">
+                    <input type="text" id="docsRotBackupFernet" readonly aria-label="Make and set a new backup key" value="$k = python -c &quot;from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())&quot;; gh secret set BACKUP_FERNET_KEY --body $k; $k">
+                    <button type="button" class="btn btn-sm" data-copy-for="docsRotBackupFernet">Copy</button>
+                </div>
+                <ol start="3">
+                    <li>Railway → <strong>web</strong> → Variables:
+                        <strong>delete</strong> <code>BACKUP_FERNET_KEY</code>.
+                        The app never uses it.</li>
+                </ol>
+                <p class="docs-step-label">When it's right</p>
+                <p>The restore drill in step 18 opens the new backup.</p>
+            </div>
+
+            <h3>Part 2: the app's own keys</h3>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">4</span> Session key (<code>SECRET_KEY</code>)</h4>
+                <p>
+                    It signs your sign-in, your Siri tokens and the validator
+                    cookie. Changing it ends all three (steps 15 to 17).
+                </p>
+                <div class="docs-copy">
+                    <input type="text" id="docsRotSecretKey" readonly aria-label="Make a new session key" value="python -c &quot;import secrets; print(secrets.token_urlsafe(48))&quot;">
+                    <button type="button" class="btn btn-sm" data-copy-for="docsRotSecretKey">Copy</button>
+                </div>
+                <p>Paste what it prints into Railway → <strong>web</strong> →
+                    <code>SECRET_KEY</code>.</p>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">5</span> Encryption key (<code>ENCRYPTION_KEY</code>)</h4>
+                <p>
+                    Only the health check's self-test uses it; nothing stored
+                    is encrypted with it, so swapping it loses nothing.
+                </p>
+                <div class="docs-copy">
+                    <input type="text" id="docsRotFernet" readonly aria-label="Make a new encryption key" value="python -c &quot;from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())&quot;">
+                    <button type="button" class="btn btn-sm" data-copy-for="docsRotFernet">Copy</button>
+                </div>
+                <p>Paste it into Railway → <strong>web</strong> →
+                    <code>ENCRYPTION_KEY</code>.</p>
+                <p class="docs-step-label">When it's right (after step 14)</p>
+                <p><code>/healthz</code> shows <code>"encryption":"ok"</code>.</p>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">6</span> Google sign-in (<code>GOOGLE_CLIENT_SECRET</code>)</h4>
+                <ol>
+                    <li>In Google Cloud Console → APIs &amp; Services →
+                        Credentials, open the app's OAuth client and add a new
+                        client secret.</li>
+                    <li>Paste it into Railway → <strong>web</strong> →
+                        <code>GOOGLE_CLIENT_SECRET</code>.</li>
+                    <li>Leave the old secret until you've signed in with the new
+                        one (step 15), then disable and delete it.</li>
+                </ol>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">7</span> Backup button token (<code>GITHUB_DISPATCH_TOKEN</code>)</h4>
+                <p>It can start this repository's GitHub workflows.</p>
+                <ol>
+                    <li>At <strong>github.com/settings/personal-access-tokens</strong>,
+                        regenerate it with the same settings: only the
+                        <code>taskmanager</code> repository, Actions read and
+                        write.</li>
+                    <li>Paste it into Railway → <strong>web</strong> →
+                        <code>GITHUB_DISPATCH_TOKEN</code>.</li>
+                </ol>
+                <p class="docs-step-label">When it's right (after step 14)</p>
+                <p><a href="{{ url_for('utilities_page') }}">Utilities</a> →
+                    Trigger off-cycle backup → <strong>Run</strong> starts a
+                    backup.</p>
+            </div>
+
+            <h3>Part 3: the paid services</h3>
+            <p>
+                The risk here is someone running up charges. For each: make a
+                new key, paste it into Railway → <strong>web</strong>, delete
+                the old key, and check the usage page.
+            </p>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">8</span> Claude (<code>ANTHROPIC_API_KEY</code>)</h4>
+                <p>At <strong>console.anthropic.com</strong> → API Keys.</p>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">9</span> Whisper (<code>OPENAI_API_KEY</code>)</h4>
+                <p>At <strong>platform.openai.com</strong> → API keys.</p>
+                <p class="docs-step-label">When it's right (after step 14)</p>
+                <p>A short <a href="{{ url_for('voice_memo_page') }}">voice
+                    memo</a> turns into text.</p>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">10</span> Google Vision (<code>GOOGLE_VISION_API_KEY</code>)</h4>
+                <p>In Google Cloud Console → APIs &amp; Services → Credentials,
+                    on the API key.</p>
+                <p class="docs-step-label">When it's right (after step 14)</p>
+                <p><a href="{{ url_for('scan_page') }}">Scan</a> a photo of a
+                    written list: reading it uses Google Vision and Claude, so it
+                    checks steps 8 and 10 together.</p>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">11</span> Email (<code>BREVO_API_KEY</code>)</h4>
+                <p>A stolen key could send email as your domain.</p>
+                <ol>
+                    <li>At <strong>app.brevo.com</strong> → SMTP &amp; API → API
+                        Keys, make a new key and copy it.</li>
+                    <li>Paste it into Railway → <strong>web</strong> →
+                        <code>BREVO_API_KEY</code>.</li>
+                    <li>The backup emails use their own copy. With the key
+                        still copied:</li>
+                </ol>
+                <div class="docs-copy">
+                    <input type="text" id="docsRotBrevoSecret" readonly aria-label="Set the email key secret" value="gh secret set BREVO_API_KEY --body (Get-Clipboard)">
+                    <button type="button" class="btn btn-sm" data-copy-for="docsRotBrevoSecret">Copy</button>
+                </div>
+                <p class="docs-step-label">When it's right (after step 14)</p>
+                <p><a href="{{ url_for('settings_page') }}">Settings</a> → Daily
+                    Digest → <strong>Send Now</strong> says "Digest sent
+                    successfully!" and the email arrives.</p>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">12</span> Delete what the app no longer uses</h4>
+                <p>In Railway → <strong>web</strong> → Variables, delete:</p>
+                <ul>
+                    <li><code>APP_DEBUG_TOKEN</code> (and
+                        <code>APP_DEBUG_ADMIN_TOKEN</code> if it's there):
+                        none of your tools sends them any more. With them
+                        gone, the debug pages accept only your sign-in.</li>
+                    <li><code>SENDGRID_API_KEY</code>: email moved to Brevo. If
+                        the SendGrid account still exists, revoke the key
+                        there.</li>
+                    <li><code>SMTP_PASSWORD</code>, <code>SMTP_USERNAME</code>,
+                        <code>SMTP_HOST</code>, <code>SMTP_PORT</code>: the
+                        digest sends through Brevo, and Railway blocks email
+                        over SMTP. Revoke that password where it came from (for
+                        example, a Gmail app password).</li>
+                </ul>
+            </div>
+
+            <h3>Part 4: the database, then deploy</h3>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">13</span> Database password (<code>DATABASE_URL</code>)</h4>
+                <p>
+                    Do this last, just before step 14. Once the database has
+                    its new password, the app can't open new connections until
+                    Railway deploys with it.
+                </p>
+                <ol>
+                    <li>Railway → <strong>Postgres</strong> → Variables: copy
+                        <code>DATABASE_PUBLIC_URL</code>.</li>
+                    <li>Run this, paste the URL when it asks (it stays hidden),
+                        and type <code>ROTATE</code>. It changes the password
+                        and prints the new password and the new public
+                        URL:</li>
+                </ol>
+                <div class="docs-copy">
+                    <input type="text" id="docsRotDbScript" readonly aria-label="Change the database password" value="python scripts\rotate_db_password.py">
+                    <button type="button" class="btn btn-sm" data-copy-for="docsRotDbScript">Copy</button>
+                </div>
+                <ol start="3">
+                    <li>Railway → <strong>Postgres</strong> → Variables: paste
+                        the new password into <code>POSTGRES_PASSWORD</code>.
+                        If <code>PGPASSWORD</code>, <code>DATABASE_URL</code> or
+                        <code>DATABASE_PUBLIC_URL</code> there shows a typed-out
+                        value instead of a <code>${{ '{{' }}…}}</code>
+                        reference, update it too.</li>
+                    <li>Railway → <strong>web</strong> → Variables: open
+                        <code>DATABASE_URL</code>. If it reads
+                        <code>${{ '{{' }}Postgres.DATABASE_URL}}</code> it
+                        follows by itself. If it's a typed-out URL, change it to
+                        exactly that.</li>
+                    <li>Copy the new public URL it printed, then give it to the
+                        backup workflows:</li>
+                </ol>
+                <div class="docs-copy">
+                    <input type="text" id="docsRotDbSecret" readonly aria-label="Set the database URL secret" value="gh secret set DATABASE_URL --body (Get-Clipboard)">
+                    <button type="button" class="btn btn-sm" data-copy-for="docsRotDbSecret">Copy</button>
+                </div>
+                <ol start="6">
+                    <li>Save the new password in 1Password.</li>
+                </ol>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">14</span> Deploy</h4>
+                <p>
+                    Railway shows the changes waiting on each service.
+                    Deploy both (<strong>Postgres</strong> and
+                    <strong>web</strong>) and wait a few minutes.
+                </p>
+                <p class="docs-step-label">When it's right</p>
+                <p>
+                    <code>/healthz</code> shows <code>"status":"ok"</code> and
+                    no check starting with <code>fail</code>. The
+                    <code>icloud</code> line can say <em>no read yet on this
+                    worker</em> until Calendar has been opened.
+                </p>
+            </div>
+
+            <h3>Part 5: sign back in and check</h3>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">15</span> Sign in again</h4>
+                <p>
+                    On your computer and your iPhone. Then go back to Google
+                    Cloud and delete the old client secret (step 6).
+                </p>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">16</span> New Siri token</h4>
+                <p>
+                    <a href="{{ url_for('settings_page') }}">Settings</a> → Siri
+                    voice review → <strong>Make a new token</strong> →
+                    <strong>Copy header value</strong>, then paste it into the
+                    <strong>Text</strong> action of both Shortcuts, in place of
+                    the old token (<a href="#voice-review-shortcut">Hands-free
+                    voice review</a>, step 2). Every old token already stopped
+                    working at step 14.
+                </p>
+                <p class="docs-step-label">When it's right</p>
+                <p>"Review my tasks" reads your tasks.</p>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">17</span> New validator cookie</h4>
+                <p>
+                    The deploy checks on your computer sign in with it. If
+                    <code>railway</code> says Unauthorized, run
+                    <code>railway login</code> first. Then:
+                </p>
+                <div class="docs-copy">
+                    <input type="text" id="docsRotMint" readonly aria-label="Make a new validator cookie" value="railway run &quot;$env:LOCALAPPDATA\Python\bin\python.exe&quot; scripts\mint_validator_cookie.py | Set-Content -NoNewline -Path &quot;$HOME\.taskmanager-session-cookie&quot;">
+                    <button type="button" class="btn btn-sm" data-copy-for="docsRotMint">Copy</button>
+                </div>
+                <p class="docs-note">
+                    It runs Python by its full path because a bare
+                    <code>python</code> can hang under <code>railway run</code>.
+                </p>
+                <p class="docs-step-label">When it's right</p>
+                <p><code>python scripts\validate_deploy.py</code> passes its
+                    auth preflight.</p>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">18</span> Run a backup and a restore drill</h4>
+                <p>
+                    On GitHub → <strong>Actions</strong>, run <strong>Daily
+                    backup</strong>, and when it's done, <strong>Monthly restore
+                    drill</strong> (each: Run workflow). That proves the new
+                    database URL, deploy key and backup key together.
+                </p>
+                <p class="docs-step-label">When it's right</p>
+                <p>Both emails start with <strong>OK</strong>.</p>
+            </div>
         </section>
     </main>
 </div>
