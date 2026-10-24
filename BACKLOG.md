@@ -1142,7 +1142,7 @@ The script preserves operator-added prose across re-renders. -->
 <!-- audit-row: tech-debt/stale-tests/tests-test_checklist_notes.py -->
 | `tech-debt/stale-tests/tests-test_checklist_notes.py` | **tests/test_checklist_notes.py** — last touched 2026-04-05 (188 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-03 | 2026-10-10 | Refreshed against current behaviour by #413 (not just touched). Auto-resolves on the next audit run.; 🟢 auto-detected resolved 2026-10-17 |
 <!-- audit-row: tech-debt/stale-tests/tests-test_egress.py -->
-| `tech-debt/stale-tests/tests-test_egress.py` | **tests/test_egress.py** — last touched 2026-04-21 (181 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-19 | 2026-10-19 | Refreshed against current behaviour by #507 (`04f13de`), not just touched — should auto-resolve on the next audit run. |
+| `tech-debt/stale-tests/tests-test_egress.py` | **tests/test_egress.py** — last touched 2026-04-21 (181 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-19 | 2026-10-19 | Refreshed against current behaviour by #507 (`04f13de`), not just touched — should auto-resolve on the next audit run.; 🟢 auto-detected resolved 2026-10-24 |
 <!-- audit-row: tech-debt/stale-tests/tests-test_inbox_triage.py -->
 | `tech-debt/stale-tests/tests-test_inbox_triage.py` | **tests/test_inbox_triage.py** — last touched 2026-04-05 (188 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-03 | 2026-10-10 | Refreshed against current behaviour by #413 (not just touched). Auto-resolves on the next audit run.; 🟢 auto-detected resolved 2026-10-17 |
 <!-- audit-row: tech-debt/stale-tests/tests-test_mobile_css.py -->
@@ -1152,7 +1152,7 @@ The script preserves operator-added prose across re-renders. -->
 <!-- audit-row: tech-debt/stale-tests/tests-test_smoke.py -->
 | `tech-debt/stale-tests/tests-test_smoke.py` | **tests/test_smoke.py** — last touched 2026-04-05 (188 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-03 | 2026-10-10 | Refreshed against current behaviour by #413 (not just touched). Auto-resolves on the next audit run.; 🟢 auto-detected resolved 2026-10-17 |
 <!-- audit-row: tech-debt/stale-tests/tests-test_upload_helper.py -->
-| `tech-debt/stale-tests/tests-test_upload_helper.py` | **tests/test_upload_helper.py** — last touched 2026-04-21 (181 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-19 | 2026-10-19 | Refreshed against current behaviour by #507 (`04f13de`), not just touched — should auto-resolve on the next audit run. |
+| `tech-debt/stale-tests/tests-test_upload_helper.py` | **tests/test_upload_helper.py** — last touched 2026-04-21 (181 days ago) — likely doesn't reflect current behavior. Audit + refresh. | 2026-10-19 | 2026-10-19 | Refreshed against current behaviour by #507 (`04f13de`), not just touched — should auto-resolve on the next audit run.; 🟢 auto-detected resolved 2026-10-24 |
 <!-- autofile-section-end -->
 
 ## Resolved (newest first)
