@@ -21,7 +21,7 @@ python -m pytest tests/test_x.py::TestClass --no-cov -q
 
 npm test                                          # full Jest suite
 
-# Post-push deploy validation (auto-detects expected SHA from HEAD):
+# Post-merge deploy validation, on the updated main (expects HEAD's SHA):
 python scripts/validate_deploy.py --monitor-minutes 5   # 0 for doc-only
 
 # Prod Playwright smoke (REQUIRES the cookie env — see Gotchas):
@@ -134,35 +134,45 @@ python scripts/stop_dev_bypass.py                 # canonical teardown
 
 ## Branching Workflow (mandatory for all changes)
 
-Never commit directly to `main`. All work happens on a feature branch,
-gets tested there, and only merges to `main` when all quality gates pass.
+Never commit or push directly to `main`. All work happens on a branch,
+gets tested there, and reaches `main` only through a pull request once
+all quality gates pass (user decision 2026-10-25 — it replaced "merge
+locally and push `main`").
 
-1. **Create a feature branch** before writing any code:
+1. **Create a branch from an up-to-date `main`** before writing any code:
    ```
+   git checkout main && git pull --ff-only origin main
    git checkout -b feature/<short-name>
    ```
    Use a descriptive kebab-case name: `feature/jest-testing`,
-   `fix/sw-cache-bump`, `feature/calendar-view`, etc.
+   `fix/sw-cache-bump`, `docs/<topic>`, etc.
 
-2. **Do all development on the feature branch.** Commit as often as
+2. **Do all development on the branch.** Commit as often as
    needed — messy WIP commits are fine here.
 
-3. **Run all quality gates** on the feature branch (ruff, pytest, jest,
+3. **Run all quality gates** on the branch (ruff, pytest, jest,
    regression if UI changed). Everything must be green.
 
-4. **Merge locally into `main`:**
+4. **Push the branch and open a PR:**
    ```
-   git checkout main
-   git pull origin main        # catch any remote changes first
-   git merge feature/<name>    # fast-forward or merge commit, either OK
+   git push -u origin feature/<name>
+   gh pr create --base main
    ```
+   The PR body says what changed and why, and carries the gate results
+   (the same summary as the commit trailer).
 
-5. **Push `main`:**
+5. **Merge the PR**, then bring the local `main` up to date:
    ```
-   git push
+   gh pr merge <number> --rebase --delete-branch
+   git checkout main && git pull --ff-only origin main
    ```
+   `--rebase` keeps `main`'s history linear, as it has always been.
+   Merging pushes to `main`, and that is what makes Railway deploy.
 
-6. **Run deploy validation + monitor + prod smoke** before declaring done:
+6. **Run deploy validation + monitor + prod smoke** before declaring done,
+   from the updated `main` — the script expects `git rev-parse HEAD`, and a
+   rebase merge gives the commits new SHAs, so run from the old branch it
+   waits for a SHA that never deploys:
    ```
    python scripts/validate_deploy.py --monitor-minutes 5
    npm run test:e2e:prod
@@ -203,14 +213,19 @@ gets tested there, and only merges to `main` when all quality gates pass.
      Truncating prod-smoke output is fine (it's just N PASS lines);
      truncating validate_deploy output is not.
 
-7. **Clean up** the feature branch after deploy is green:
+7. **Clean up:** `--delete-branch` already removed the branch on GitHub
+   and locally; drop the stale remote-tracking ref:
    ```
-   git branch -d feature/<name>
+   git fetch --prune origin
    ```
 
-**Exceptions** — the user may explicitly approve pushing directly to
-`main` for trivial changes (typo fixes, doc-only edits). When in doubt,
-use a branch.
+**No exceptions for people.** Typo fixes, doc-only edits and the
+BACKLOG "mark SHIPPED" follow-up each get their own small branch and PR —
+there is no "just push it to `main`" path any more, even with approval.
+The only commits that land on `main` without a PR are the recurring audit
+workflows' `chore(autofile): … [skip ci]` rows, pushed by the
+github-actions bot (see "CI auto-files to BACKLOG.md" above). Turning on
+GitHub branch protection for `main` would have to exempt that bot.
 
 ---
 
@@ -289,7 +304,7 @@ Report.
    Status:    READY TO COMMIT
    ```
 4. Only after the report shows all green: commit and push
-- **Post-push deploy validation** (after every `git push`):
+- **Post-merge deploy validation** (after every PR merged to `main`):
 
   **Skip for doc-only changes.** If the push only touches `.md` files,
   `.gitignore`, or other non-code files that don't affect the running
@@ -1320,7 +1335,7 @@ Report.
     [✅] Pulled latest main                     <branch state>
     [✅] Feature branch created                 feature/<name>
     [✅] Small logical commits                  <N> commits: <summaries>
-    [✅] Merged to main + pushed                fast-forward | merge commit
+    [✅] PR opened + merged                     PR #<n>, rebase merge
     [✅] Feature branch cleaned up              deleted
   Phase 3  Coding Standards
     [✅] Code changes                           <what changed>

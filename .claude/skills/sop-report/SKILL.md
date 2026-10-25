@@ -53,7 +53,7 @@ Phase 2  Git Workflow
   [✅] Pulled latest main                     <SHA / branch state>
   [✅] Feature branch created                 feature/<name>
   [✅] Small logical commits                  <N> commits: <SHA list + one-line summaries>
-  [✅] Merged to main + pushed                fast-forward | merge commit
+  [✅] PR opened + merged                     PR #<n>, rebase merge
   [✅] Feature branch cleaned up              deleted
 Phase 3  Coding Standards
   [✅] Code changes                           <what changed, in one or two sentences>
