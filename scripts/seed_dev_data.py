@@ -4,8 +4,9 @@ Usage:
     /usr/local/bin/python3.14 scripts/seed_dev_data.py [--many-backlog]
 
 Populates tasks across all tiers, goals, projects, recurring templates,
-subtasks, completed tasks, and recycle-bin items.  Safe to re-run — it
-wipes existing data first so the seed is idempotent.
+subtasks, completed tasks, recycle-bin items, past reflections and
+Strength Forge sessions (#520).  Safe to re-run — it wipes existing data
+first so the seed is idempotent.
 
 #491: it also seeds the rough shapes real use has and short seed titles
 never did — a ~300-character title, a bare-URL title (one unbroken
@@ -35,10 +36,14 @@ from models import (  # noqa: E402
     ProjectType,
     RecurringFrequency,
     RecurringTask,
+    Reflection,
+    ReflectionInputMode,
     Task,
     TaskStatus,
     TaskType,
     Tier,
+    WorkoutSession,
+    WorkoutSet,
     db,
 )
 
@@ -52,6 +57,10 @@ def _seed(many_backlog: bool = False):
         ImportLog.query.delete()
         Project.query.delete()
         Goal.query.delete()
+        # #520: bulk delete skips the ORM cascade, so sets go before sessions.
+        WorkoutSet.query.delete()
+        WorkoutSession.query.delete()
+        Reflection.query.delete()
         db.session.commit()
 
         today = date.today()
@@ -629,6 +638,51 @@ def _seed(many_backlog: bool = False):
         )
         db.session.add(import_log)
 
+        # --- Reflections (#520) ----------------------------------------------
+        # The /reflection E2E suites (#330 #334 #335 #339) and the #398 tap-
+        # target test expect history rows to exist and never create their
+        # own. A dev.db that had collected real sittings hid that; a fresh
+        # clone failed ~70 tests. Submitted (not draft), one week apart,
+        # one untitled so the generated label renders too.
+        now = datetime.now(UTC)
+        reflection_rows = [
+            ("Week review - work focus", ReflectionInputMode.TYPED,
+             "Shipped the backlog cleanup. Want to protect mornings for deep "
+             "work and batch meetings into the afternoon."),
+            ("Health check-in", ReflectionInputMode.VOICE,
+             "Sleep was rough midweek. Move workouts earlier and cut late "
+             "screens."),
+            (None, ReflectionInputMode.TYPED,
+             "The house projects slipped again; pick one and finish it."),
+            ("Planning the month", ReflectionInputMode.TYPED,
+             "Finish the garage, two strength sessions a week, call Mom on "
+             "Sundays."),
+        ]
+        for weeks_ago, (title, mode, text) in enumerate(reflection_rows, start=1):
+            when = now - timedelta(weeks=weeks_ago)
+            iso = when.isocalendar()
+            db.session.add(Reflection(
+                iso_week=f"{iso.year}-W{iso.week:02d}",
+                title=title,
+                input_mode=mode,
+                transcript=text,
+                created_at=when,
+            ))
+
+        # --- Strength Forge sessions (#520) ----------------------------------
+        # The #398 tap-target test checks .sf-track-del and
+        # .sf-track-expandable, which only render for logged sessions; the
+        # expandable label needs one with sets (#287).
+        quick = WorkoutSession(plan_type="split-3", session_date=today - timedelta(days=2))
+        detailed = WorkoutSession(plan_type="split-1", session_date=today - timedelta(days=1))
+        detailed.sets = [
+            WorkoutSet(exercise_id="band-chest-press",
+                       exercise_name="Standing Band Chest Press",
+                       set_number=n, reps=12, resistance="Medium")
+            for n in (1, 2, 3)
+        ]
+        db.session.add_all([quick, detailed])
+
         db.session.commit()
 
         # --- Summary ---------------------------------------------------------
@@ -645,6 +699,8 @@ def _seed(many_backlog: bool = False):
         print(f"  Goals:     {goal_count}")  # noqa: T201
         print(f"  Projects:  {project_count}")  # noqa: T201
         print(f"  Recurring: {recurring_count} templates")  # noqa: T201
+        print(f"  Reflections: {Reflection.query.count()}")  # noqa: T201
+        print(f"  Workouts:  {WorkoutSession.query.count()} sessions")  # noqa: T201
 
 
 if __name__ == "__main__":
