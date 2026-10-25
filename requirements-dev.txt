@@ -4,7 +4,10 @@
 # prod container. They satisfy the dev workflow as transitively
 # included from requirements.txt; left as a comment here for the
 # bisect-this-file searcher.
-ruff==0.6.3
+# #520 (2026-10-25): was 0.6.3, but the code is linted with current ruff —
+# 0.6.3 still flags UP038 / UP027, rules later ruff removed, so a fresh
+# install from this file failed gate 1 on untouched code.
+ruff==0.17.2
 pre-commit==4.6.0
 # #274 (2026-05-31): parallelize the pytest gate (run_all_gates.sh). Tests
 # are fully isolated (function-scoped sqlite:///:memory: DB per test), so
