@@ -319,7 +319,8 @@ npm run test:e2e:headed           # same, but visible browser window
 
 ### Post-deploy validation
 
-After every `git push`, run `python scripts/validate_deploy.py` to confirm the
+After every PR merged to `main` (from the updated `main`), run
+`python scripts/validate_deploy.py` to confirm the
 deploy actually reached Railway (SHA match) and that every check on `/healthz`
 is green. This catches the failure mode where Railway's rolling deploy keeps
 the **old** container serving traffic because the new build failed its health

@@ -831,7 +831,7 @@ def _print_sop_template(expected_sha: str, monitor_ran: bool, log_status_label: 
     print("  [__] Pulled latest main")
     print("  [__] Feature branch created                   feature/<name>")
     print("  [__] Small logical commits                    <N> commits: <SHAs>")
-    print("  [__] Merged to main + pushed")
+    print("  [__] PR opened + merged                    PR #<n>, rebase merge")
     print("  [__] Feature branch cleaned up")
     print("Phase 3  Coding Standards")
     print("  [__] Code changes                             <what changed>")
