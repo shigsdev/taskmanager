@@ -21,9 +21,19 @@ const MEASURE = `
     const a = top[3];
     return [0, 1, 2].map((i) => top[i] * a + under[i] * (1 - a)).concat(1);
   };
+  // #521: finish in-flight transitions on el and its ancestors first, so a
+  // read after a hover reports the settled colour, not one mid-fade (same
+  // fix as SETTLED_BG in pages.spec.js). finish() throws on an infinite
+  // animation; those have no settled state to wait for.
+  const settle = (el) => {
+    for (let n = el; n; n = n.parentElement) {
+      n.getAnimations().forEach((a) => { try { a.finish(); } catch (e) { /* infinite */ } });
+    }
+    return el;
+  };
   const bgOf = (el) => {
     const stack = [];
-    for (let n = el; n; n = n.parentElement) {
+    for (let n = settle(el); n; n = n.parentElement) {
       const c = parse(getComputedStyle(n).backgroundColor);
       if (c[3] > 0) stack.push(c);
       if (c[3] >= 1) break;
@@ -41,7 +51,7 @@ const MEASURE = `
     return (x + 0.05) / (y + 0.05);
   };
   window.__contrast = {
-    text: (el) => ratio(over(parse(getComputedStyle(el).color), bgOf(el)), bgOf(el)),
+    text: (el) => ratio(over(parse(getComputedStyle(settle(el)).color), bgOf(el)), bgOf(el)),
     tint: (el) => ratio(bgOf(el), bgOf(el.parentElement)),
     bgLum: (el) => lum(bgOf(el)),   // #471
   };
@@ -106,6 +116,22 @@ test.describe("#451 dark-theme contrast", () => {
             expect(r, `${id} tint vs panel`).toBeGreaterThanOrEqual(1.25);
             expect(await text(page, id), `${id} text`).toBeGreaterThanOrEqual(4.5);
         }
+    });
+
+    test("a hover is measured settled, not mid-transition (#521)", async ({ page }) => {
+        // The card ✓ fades sage over 0.15s; read inside that window it
+        // measured 1.49 → 4.45 → 7.12, so a loaded machine failed the
+        // hover check above. Freeze the fade 34ms in and the helper must
+        // still report the settled colour.
+        await build(page, `<div class="task-card"><button class="task-complete-btn" id="b5">✓</button></div>`);
+        await page.hover("#b5");
+        const frozen = await page.evaluate(() => {
+            const anims = document.getElementById("b5").getAnimations();
+            anims.forEach((a) => { a.pause(); a.currentTime = 34; });
+            return anims.length;
+        });
+        test.skip(frozen === 0, "no hover transition (prefers-reduced-motion)");
+        expect(await text(page, "#b5")).toBeGreaterThanOrEqual(7);
     });
 });
 

@@ -18,7 +18,8 @@
 # Usage:
 #   bash scripts/run_all_gates.sh
 #   PLAYWRIGHT_WORKERS=N bash scripts/run_all_gates.sh   # #402: N local
-#       Playwright lanes (1-8, default 8), each its own throwaway server +
+#       Playwright lanes (1-8; default sized to the machine's RAM and CPUs,
+#       #521 — 8 on a 32 GB box, 4 on an 8 GB one), each its own throwaway server +
 #       DB copy on :5111..:5111+N-1. PLAYWRIGHT_WORKERS=1 = one server,
 #       serial (low RAM).
 #
@@ -315,8 +316,17 @@ fi
 # lanes ran Windows' 16,384-port pool out (net::ERR_ADDRESS_IN_USE). On
 # waitress 8 lanes peak at ~6.7k (41%). Watch that number before raising
 # LANE_MAX.
+# #521: 8 is the most lanes, not the default everywhere. 8 was measured on a
+# 32 GB / 32-core machine; an 8 GB Mac swapped at 8 and failed a different
+# handful of tests each run. Unset, the count comes from the machine
+# (scripts/playwright_lanes.py: 2 GB of RAM per lane, no more than the CPUs,
+# at most 8). An explicit PLAYWRIGHT_WORKERS still wins.
 # Specs: docs/design/402-parallel-playwright-lanes.md, 403-keepalive-lane-servers.md.
-PLAYWRIGHT_WORKERS="${PLAYWRIGHT_WORKERS:-8}"
+if [ -z "${PLAYWRIGHT_WORKERS:-}" ]; then
+    PLAYWRIGHT_WORKERS="$(python scripts/playwright_lanes.py 2>/dev/null || true)"
+    [[ "$PLAYWRIGHT_WORKERS" =~ ^[1-8]$ ]] || PLAYWRIGHT_WORKERS=8
+    printf "${YELLOW}…${NC} %s Playwright lane(s), sized to this machine (set PLAYWRIGHT_WORKERS to override)\n" "$PLAYWRIGHT_WORKERS"
+fi
 LANE_BASE_PORT=5111
 LANE_MAX=8
 LANE_PIDS=()

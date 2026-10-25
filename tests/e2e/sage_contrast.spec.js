@@ -21,9 +21,19 @@ const MEASURE = `
     const a = top[3];
     return [0, 1, 2].map((i) => top[i] * a + under[i] * (1 - a)).concat(1);
   };
+  // #521: finish in-flight transitions on el and its ancestors first, so a
+  // read after a hover reports the settled colour, not one mid-fade (same
+  // fix as SETTLED_BG in pages.spec.js). finish() throws on an infinite
+  // animation; those have no settled state to wait for.
+  const settle = (el) => {
+    for (let n = el; n; n = n.parentElement) {
+      n.getAnimations().forEach((a) => { try { a.finish(); } catch (e) { /* infinite */ } });
+    }
+    return el;
+  };
   const bgOf = (el) => {
     const stack = [];
-    for (let n = el; n; n = n.parentElement) {
+    for (let n = settle(el); n; n = n.parentElement) {
       const c = parse(getComputedStyle(n).backgroundColor);
       if (c[3] > 0) stack.push(c);
       if (c[3] >= 1) break;
@@ -40,7 +50,7 @@ const MEASURE = `
     const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
     return (x + 0.05) / (y + 0.05);
   };
-  const text = (el) => ratio(over(parse(getComputedStyle(el).color), bgOf(el)), bgOf(el));
+  const text = (el) => ratio(over(parse(getComputedStyle(settle(el)).color), bgOf(el)), bgOf(el));
   const SAGE = "148,164,139";
   const isSage = (el) => {
     const c = parse(getComputedStyle(el).backgroundColor);

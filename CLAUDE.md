@@ -96,7 +96,14 @@ python scripts/stop_dev_bypass.py                 # canonical teardown
   Railway. Each Playwright worker talks only to its own lane
   (`tests/e2e/lane.js`). Gate run 8m27s → ~3m30s. Knob:
   `PLAYWRIGHT_WORKERS=N` (1–8); `=1` is the old single-server serial run
-  for a low-RAM machine, same tests. **The lane servers must keep
+  for a low-RAM machine, same tests. **Unset, the lane count is sized to
+  the machine** (#521, `scripts/playwright_lanes.py`: 2 GB of RAM per lane,
+  no more than the CPUs, at most 8) — 8 on the 32 GB Windows box, 4 on the
+  8 GB Mac, where 8 lanes swapped and each run failed a different 0–7
+  tests that passed alone (hung clicks, cleanup hooks timing out and
+  leaking into the next test). The gate prints the count it picked. A
+  random handful of fails that pass alone = check RAM/swap before the
+  tests. **The lane servers must keep
   connections open**: `run_dev_bypass.py` serves the app with waitress
   (`requirements-dev.txt`), NOT `flask run`. Werkzeug's dev server closes
   every connection, so each request parks a loopback port in TIME_WAIT —
