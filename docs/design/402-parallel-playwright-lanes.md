@@ -119,6 +119,15 @@ server (e.g. waitress) for the lane servers: filed as #403.
 peak at 6.7k TIME_WAIT (41%) and the default is 8 (gate run 3m08s–3m40s over 4 runs). See
 `docs/design/403-keepalive-lane-servers.md` §4.
 
+**Update (#521, 2026-10-25):** 8 is the ceiling, not the default everywhere.
+§4 measured on 32 GB / 32 cores; the same 8 lanes on an 8 GB / 8-core Mac
+swapped (~1.5 GB out per run) and 7 of 16 full runs failed a different
+1-7 tests that passed alone — clicks never acknowledged, recordings that
+never started, cleanup hooks that timed out and leaked into the next test
+on the lane; failures on separate lanes landed in the same second. The
+unset default is now `scripts/playwright_lanes.py`: 2 GB of RAM per lane,
+no more than the CPUs, at most 8 (so 8 here, 4 on that Mac).
+
 ## 5. Docs
 
 - `CLAUDE.md` "Local-dev gotchas": the #394 bullet becomes the lanes bullet
