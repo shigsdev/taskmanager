@@ -409,7 +409,10 @@ add a task — title, Work / Personal, due date). It cannot delete, touch any
 other field, tasks CRUD, settings, or exports (ADR-034, ADR-043). The
 Shortcut sends what you said to `POST /api/voice-review/<id>/answer` (or
 `/tasks` to add one) and speaks the `say` sentence that comes back; the
-step-by-step setup is in Help → Hands-free voice review.
+step-by-step setup is in Help → Hands-free voice review. On a Mac,
+`python3 scripts/build_voice_shortcuts.py --open` (#523) writes and signs
+both Shortcuts (no token in the files — the Add Shortcut window asks for
+it) and opens them to add.
 
 **Make it on the phone (#499).** Signed in on the iPhone, open
 **Settings → Siri voice review**, pick a lifetime (30 / 90 / 180 / 365
