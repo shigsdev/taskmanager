@@ -3,6 +3,13 @@
 Every data route must go through ``login_required``. The decorator rejects
 anyone whose Google email does not match the configured ``AUTHORIZED_EMAIL``.
 
+Two scoped bearer tokens are the exceptions, each accepted by ONE decorator
+and read by nothing else (``login_required`` never inspects a bearer):
+``voice_action_or_login`` for ``/api/voice-review/*`` (the Siri Shortcut,
+ADR-034), and ``mcp_token_required`` for ``POST /mcp`` (the claude.ai
+connector, ADR-044) — which takes no OAuth session, validator cookie or dev
+bypass either.
+
 Local dev bypass
 ----------------
 The ``LOCAL_DEV_BYPASS_AUTH`` env var enables a short-circuit that lets the
@@ -390,4 +397,61 @@ def voice_action_or_login(view):
         return fallback(*args, **kwargs)
 
     wrapped._login_required = True
+    return wrapped
+
+
+def _mcp_revoked_jtis() -> frozenset[str]:
+    """The denylist of revoked MCP token ids (ADR-044). Never raises: on
+    any error, apply no extra revocations — the token still needs a valid
+    signature, email and age, and ``SECRET_KEY`` rotation is the hard
+    kill-switch."""
+    try:
+        import mcp_token
+        import voice_token_service
+
+        return frozenset(voice_token_service.read_jti_denylist(mcp_token.REVOKED_JTIS_KEY))
+    except Exception:
+        return frozenset()
+
+
+def mcp_token_required(view):
+    """Auth for ``POST /mcp``, the claude.ai MCP connector (#522, ADR-044).
+
+    Accepts ONLY a valid MCP token in ``Authorization: Bearer <token>``.
+    Unlike ``voice_action_or_login`` there is no fallback: no OAuth session,
+    validator cookie, voice token or dev bypass opens ``/mcp`` (a browser
+    session can't be ridden into it). And ``login_required`` never reads
+    this token, so it opens nothing else. Every refusal is the same 401 —
+    no hint of why.
+    """
+
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        import mcp_token
+
+        auth_header = request.headers.get("Authorization", "")
+        # The scheme is case-insensitive (RFC 7235); the value is typed by
+        # hand into claude.ai's connector dialog, which never shows it again.
+        scheme, _, token = auth_header.partition(" ")
+        token = token.strip() if scheme.lower() == "bearer" else ""
+        authorized = (current_app.config.get("AUTHORIZED_EMAIL") or "").strip().lower()
+        secret = current_app.config.get("SECRET_KEY") or ""
+        email = (
+            mcp_token.parse(
+                secret_key=secret,
+                token=token,
+                authorized_email=authorized,
+                revoked_jtis=_mcp_revoked_jtis(),
+            )
+            if (token and authorized and secret)
+            else None
+        )
+        if not email:
+            return jsonify(
+                jsonrpc="2.0", id=None, error={"code": -32001, "message": "Unauthorized"}
+            ), 401
+        g.mcp = True
+        return view(*args, **kwargs)
+
+    wrapped._mcp_token_required = True
     return wrapped

@@ -56,7 +56,15 @@ class TestSection:
 
     def test_steps_numbered_in_order(self, authed_client):
         nums = re.findall(r'<span class="docs-step-num">(\d+)</span>', _section(authed_client))
-        assert nums == [str(n) for n in range(1, 19)]
+        assert nums == [str(n) for n in range(1, 20)]
+
+    def test_claude_connector_token_step(self, authed_client):
+        # #522: a new SECRET_KEY kills the MCP token too; the last step
+        # makes a new one and points at the connector section.
+        section = _section(authed_client)
+        last = section[section.index('docs-step-num">19<'):]
+        assert "Claude" in last
+        assert 'href="#claude-connector"' in last
 
     def test_every_secret_the_code_reads_is_covered(self, authed_client):
         # A new secret in the code (or a workflow) must get a step here.

@@ -60,7 +60,7 @@ def test_healthz_no_auth(client):
 # register_blueprint line) fails here first.
 EXPECTED_BLUEPRINTS = {
     "auth_api", "debug_api", "digest_api", "goals_api", "google",
-    "import_api", "inbox_categorize_api", "planner_api", "projects_api",
+    "import_api", "inbox_categorize_api", "mcp_api", "planner_api", "projects_api",
     "recurring_api", "recycle_api", "reflection_api", "review_api",
     "scan_api", "settings_api", "strength_forge_api", "tasks_api",
     "triage_api", "utilities_api", "voice_api", "voice_review_api",

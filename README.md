@@ -86,6 +86,10 @@ work and personal life, with a regulated (air-gapped) work environment.
 - **Voice memo** — record long-form audio, transcribed via Whisper, parsed into
   candidates by Claude; keyword router classifies each candidate as
   **task / goal / project** (clickable badge to override before commit)
+- **Claude connector** (#522) — add the app to claude.ai as a custom MCP
+  connector (`POST /mcp`, ADR-044) and Claude can create, list, complete,
+  edit and move your tasks from any chat, on the computer or the phone. No
+  delete. Setup: Help → Connect Claude.
 - **Import** — multiple modes: OneNote tasks (paste-text or .docx), Excel goals
   (.xlsx), Excel/paste-text projects, **Excel tasks (.xlsx)** with full column
   set (title, type, tier, due_date, linked_goal, linked_project, notes, url) —
@@ -434,6 +438,29 @@ revoke-voice-action-token <jti>` from a shell that can reach the database
 (`railway run` on a laptop can't: `postgres.railway.internal` only resolves
 inside Railway). Rotating `SECRET_KEY` on the server invalidates *every*
 token (voice-action AND validator cookie) at once — the emergency lever.
+
+### Claude connector token (#522 / ADR-044)
+
+The claude.ai custom connector authenticates with a **scoped MCP token**:
+a `SECRET_KEY`-signed bearer token (salt `taskmanager-mcp-v1`, 365 days)
+that opens ONLY `POST /mcp` — and `/mcp` takes nothing else (no OAuth
+session, validator cookie, voice token or dev bypass). It can create tasks,
+read every task's title and notes, and complete / edit / move open tasks;
+it cannot delete or cancel, or reach goals, projects, recurring templates,
+settings, exports or auth.
+
+```bash
+# Mint (365 days). The token goes to the clipboard; the jti prints on
+# stderr so you can revoke this one token later.
+railway run .venv/bin/python scripts/mint_mcp_token.py | pbcopy
+```
+
+In claude.ai: Customize → Connectors → Add custom connector, URL
+`https://web-production-3e3ae.up.railway.app/mcp`, Authentication **No
+sign-in**, Request header `authorization` = `Bearer <token>`. **Revoke** one
+token with `flask revoke-mcp-token <jti>` from a shell that can reach the
+database (`railway ssh`, not `railway run`); rotating `SECRET_KEY` revokes
+every token at once.
 
 Validator cookies expire after the `--days` lifetime they were minted with
 (default 90 days, no sliding refresh). Browser session cookies (legacy

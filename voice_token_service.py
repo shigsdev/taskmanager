@@ -70,13 +70,16 @@ def _setting(key: str, *, lock: bool = False) -> AppSetting | None:
     return db.session.scalar(stmt)
 
 
-def _read_denylist(*, lock: bool = False) -> list[str]:
-    """``lock=True`` for a read that will be written back: Postgres holds
+def read_jti_denylist(key: str, *, lock: bool = False) -> list[str]:
+    """The revoked token ids stored under ``key`` (#522: the MCP token
+    keeps its own list under another key, read and written the same way).
+
+    ``lock=True`` for a read that will be written back: Postgres holds
     the row (SELECT … FOR UPDATE) until commit, so a revoke and a prune
     racing can't each write a list missing the other's change — a lost
     revoke would silently un-revoke a token. (SQLite ignores the hint; it
     serializes writers anyway.)"""
-    row = _setting(voice_action_token.REVOKED_JTIS_KEY, lock=lock)
+    row = _setting(key, lock=lock)
     if row is None or not row.value:
         return []
     try:
@@ -86,7 +89,7 @@ def _read_denylist(*, lock: bool = False) -> list[str]:
     return [str(x) for x in data] if isinstance(data, list) else []
 
 
-def _write_denylist(jtis: list[str]) -> None:
+def _write_jti_denylist(key: str, jtis: list[str]) -> None:
     value = json.dumps(jtis)
     if len(value) > _VALUE_MAX:
         # Never truncate: a cut JSON list fails to parse and silently
@@ -96,22 +99,36 @@ def _write_denylist(jtis: list[str]) -> None:
             "SECRET_KEY on the server to cut off every token at once.",
             "jti",
         )
-    row = _setting(voice_action_token.REVOKED_JTIS_KEY)
+    row = _setting(key)
     if row is None:
-        db.session.add(AppSetting(key=voice_action_token.REVOKED_JTIS_KEY, value=value))
+        db.session.add(AppSetting(key=key, value=value))
     else:
         row.value = value
 
 
-def add_revoked_jti(jti: str) -> bool:
-    """Append ``jti`` to the denylist. Returns False if it was already on
-    it. Raises ``ValidationError`` rather than overflow the column. The
-    caller commits."""
-    current = _read_denylist(lock=True)
+def add_jti_to_denylist(key: str, jti: str) -> bool:
+    """Append ``jti`` to the list under ``key``. Returns False if it was
+    already on it. Raises ``ValidationError`` rather than overflow the
+    column. The caller commits."""
+    current = read_jti_denylist(key, lock=True)
     if jti in current:
         return False
-    _write_denylist([*current, jti])
+    _write_jti_denylist(key, [*current, jti])
     return True
+
+
+def _read_denylist(*, lock: bool = False) -> list[str]:
+    return read_jti_denylist(voice_action_token.REVOKED_JTIS_KEY, lock=lock)
+
+
+def _write_denylist(jtis: list[str]) -> None:
+    _write_jti_denylist(voice_action_token.REVOKED_JTIS_KEY, jtis)
+
+
+def add_revoked_jti(jti: str) -> bool:
+    """Append ``jti`` to the voice-token denylist (see
+    ``add_jti_to_denylist``)."""
+    return add_jti_to_denylist(voice_action_token.REVOKED_JTIS_KEY, jti)
 
 
 def _rows() -> list[AppSetting]:

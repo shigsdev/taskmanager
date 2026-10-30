@@ -24,6 +24,7 @@ import goals_api
 import icloud_api
 import import_api
 import inbox_categorize_api
+import mcp_api
 import planner_api
 import projects_api
 import recurring_api
@@ -253,6 +254,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(auth_api.bp)
     app.register_blueprint(voice_api.bp)
     app.register_blueprint(voice_review_api.bp)  # #297 / ADR-034
+    app.register_blueprint(mcp_api.bp)  # #522 / ADR-044: claude.ai MCP connector
     app.register_blueprint(reflection_api.bp)
 
     # --- Global error handlers (#50, ADR-031) ---
@@ -778,6 +780,29 @@ def _register_cli_commands(app: Flask) -> None:
                 return
             total = voice_token_service.revoked_count()
             click.echo(f"Revoked jti {jti}. ({total} total revoked.)")
+
+    @app.cli.command("revoke-mcp-token")
+    @click.argument("jti")
+    def revoke_mcp_token(jti: str) -> None:
+        """Revoke a single MCP connector token by its ``jti`` (#522 /
+        ADR-044). Rotating SECRET_KEY still kills ALL tokens at once."""
+        import mcp_token
+        import voice_token_service
+        from models import db
+        from utils import ValidationError
+
+        with app.app_context():
+            try:
+                added = voice_token_service.add_jti_to_denylist(
+                    mcp_token.REVOKED_JTIS_KEY, jti
+                )
+            except ValidationError as e:
+                raise click.ClickException(str(e)) from e
+            db.session.commit()
+            if not added:
+                click.echo(f"jti {jti} already revoked.")
+                return
+            click.echo(f"Revoked jti {jti}.")
 
 
 def _start_digest_scheduler(app: Flask) -> None:

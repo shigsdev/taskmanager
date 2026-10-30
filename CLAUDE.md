@@ -1009,6 +1009,11 @@ Report.
      #505: "Or have Claude build them on a Mac" shows the brief in a
      full-width box at both widths (16px at 375, no sideways scroll); its
      Copy button copies the whole brief.
+     #522: Help → Connect Claude (claude.ai) is in the contents and reads
+     at both widths with no sideways scroll; its "Turn it off" link and
+     Rotate every secret step 19's link each land on their section below
+     the pinned nav. (The /mcp protocol and scope are pytest's:
+     test_mcp_api.py / test_mcp_tools.py; MCP Inspector before ship.)
   10. **Import page**: verify buttons render and are clickable.
       #390: in the task preview a row WITH a due date shows its Tier
       locked to the date's section with "Set by due date"; clearing the
@@ -1241,6 +1246,7 @@ Report.
   Settings: Siri token make/copy/revoke PASS  Settings: Siri token make/copy/revoke PASS
   Help: Siri setup, answer + add PASS         Help: Siri setup, answer + add PASS
   Help: Siri step cards + Copy  PASS          Help: Siri step cards + Copy  PASS
+  Help: Connect Claude reads    PASS          Help: Connect Claude reads    PASS
   Import: button click          PASS          Import: button click          PASS
   Import: dated row tier locked PASS          Import: dated row tier locked PASS
   Import: late parse dropped    PASS          Import: late parse dropped    PASS
@@ -1724,6 +1730,15 @@ This app is a **single-user personal tool** with:
   which `voice_answer.py` (fixed rules, no AI) turns into one action whose
   own keys alone reach `create_task` / `update_task`
   (`tests/test_voice_answer_api.py` holds the scope checks).
+- A scoped **MCP token** (`mcp_token.py`, ADR-044, #522) for the claude.ai
+  custom connector — a `SECRET_KEY`-signed bearer token (salt
+  `taskmanager-mcp-v1`, 365 days) sent as the connector's Request header
+  `authorization: Bearer <token>`. It authenticates ONLY `POST /mcp`
+  (`@mcp_token_required`), and `/mcp` accepts nothing else — no OAuth
+  session, validator cookie, voice token or dev bypass. Minted offline by
+  `scripts/mint_mcp_token.py`; revoked by `flask revoke-mcp-token <jti>`
+  (the `mcp_revoked_jtis` denylist) or `SECRET_KEY` rotation. Never in a
+  URL. `tests/test_mcp_api.py` holds the scope rows.
 - An optional Apple **app-specific password** (`ICLOUD_APP_PASSWORD`,
   #371) for the read-only iCloud Calendar reader on `/calendar` — see the
   trade-off below
@@ -1793,6 +1808,18 @@ about these — they're not relevant here):
   Since ADR-043 (#500) a leaked token can also add up to 30 tasks a minute
   and rename or re-date open tasks — still no delete, no other field, no
   read beyond the queue, and every change is visible and reversible.
+- MCP token (ADR-044, #522) can create tasks, read every task's title and
+  notes, and complete / edit / move open tasks for up to 365 days if leaked
+  — wider than the voice token (it reads the whole list), narrower than an
+  OAuth session (no delete or cancel, no goals / projects / recurring /
+  settings / exports / auth). Accepted because it is revocable per token,
+  rate-limited (60/min), audited (`mcp: <action> task <id>`, never the
+  title), and every change is visible (completions and moves can be
+  undone; an overwritten title or notes can't). Its value lives in
+  claude.ai's connector settings, so it rotates with `SECRET_KEY`
+  (Help → Rotate every secret, step 19). Task text reaching Claude chats is
+  the point; a title carrying prompt-injection text meets claude.ai's
+  per-call confirmation unless the user picked "Always allow".
 - `LOCAL_DEV_BYPASS_AUTH` exists at all (acceptable because of the
   four-gate defense including the triple Railway tripwire)
 

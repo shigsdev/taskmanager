@@ -27,6 +27,7 @@
         <ul>
             <li><a href="#install-iphone">Install on iPhone (Safari)</a></li>
             <li><a href="#voice-review-shortcut">Hands-free voice review (Siri Shortcut)</a></li>
+            <li><a href="#claude-connector">Connect Claude (claude.ai)</a></li>
             <li><a href="#apple-health">Apple Health (not built yet)</a></li>
         </ul>
 
@@ -679,6 +680,89 @@ Test each with the run button. "Review my tasks" should read my overdue, today a
                     <em>and</em> the deploy-validator cookie). Make a new
                     one afterward.
                 </li>
+            </ul>
+        </section>
+
+        <section id="claude-connector" class="docs-section">
+            <h2>Connect Claude (claude.ai)</h2>
+            <p>
+                Let Claude manage your tasks from any chat in claude.ai, on
+                your computer or phone: say "logged: draft Apigee vendor
+                questions, due Fri" and the task appears on your board. You
+                set it up once, as a <strong>custom connector</strong> in
+                claude.ai, with a token you make on your computer.
+            </p>
+
+            <h3>What Claude can (and can't) do</h3>
+            <ul>
+                <li><strong>Add a task</strong>, Work or Personal. It goes to
+                    the Inbox unless you give a due date or a section; a due
+                    date files it to the section that date falls in.</li>
+                <li><strong>List tasks</strong>: open ones by default, by
+                    section, type, project, or completed ones.</li>
+                <li><strong>Complete</strong> a task (its open subtasks too,
+                    only if you say so), <strong>edit</strong> its title, due
+                    date, notes or project, and <strong>move</strong> it to
+                    another section.</li>
+                <li>It works on open tasks only, and it
+                    <strong>cannot delete</strong> or cancel anything, or touch
+                    goals, repeating tasks, settings or exports.</li>
+            </ul>
+            <p class="docs-note">
+                Claude names a project by its exact name, and it must be of
+                the task's type. claude.ai shows each action and asks before
+                running it unless you pick <strong>Always allow</strong>.
+            </p>
+
+            <div class="docs-step">
+                <h4><span class="docs-step-num">1</span> Make a token</h4>
+                <p>
+                    On your computer, in the taskmanager folder (with
+                    <code>railway</code> signed in), run this. It puts the
+                    token on your clipboard without showing it, and prints a
+                    line like <code>jti=…</code>: keep that id, it's how you
+                    turn this one token off later.
+                </p>
+                <pre><code>railway run .venv/bin/python scripts/mint_mcp_token.py | pbcopy</code></pre>
+                <p class="docs-note">
+                    On Windows (PowerShell):
+                    <code>railway run "$env:LOCALAPPDATA\Python\bin\python.exe" scripts\mint_mcp_token.py | Set-Clipboard</code>.
+                    The token works for 365 days.
+                </p>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">2</span> Add the connector in claude.ai</h4>
+                <ol>
+                    <li>Customize → Connectors → <strong>Add custom
+                        connector</strong>.</li>
+                    <li>Name: <code>Task Manager</code>. URL:
+                        <code>https://web-production-3e3ae.up.railway.app/mcp</code>.
+                        If the check on this screen doesn't pass, choose
+                        <strong>Continue anyway</strong>: the app only answers
+                        once it has the token.</li>
+                    <li>Authentication: <strong>No sign-in</strong>.</li>
+                    <li>Request headers: name <code>authorization</code>,
+                        value <code>Bearer </code> followed by the token you
+                        copied (one space after Bearer). Then add the
+                        connector.</li>
+                </ol>
+                <p class="docs-step-label">When it's right</p>
+                <p>In a new chat, "what's on my list for today?" lists your
+                    Today tasks.</p>
+            </div>
+
+            <h3>Turn it off</h3>
+            <ul>
+                <li>Remove the connector in claude.ai, and</li>
+                <li>turn the token off: in a shell on the server
+                    (<code>railway ssh</code>), run
+                    <code>python -m flask revoke-mcp-token &lt;jti&gt;</code>
+                    with the id from step 1. A shell on your computer can't
+                    reach the database, so <code>railway run</code> won't do
+                    it.</li>
+                <li>A new <code>SECRET_KEY</code> turns off every token at
+                    once (<a href="#rotate-secrets">Rotate every secret</a>,
+                    step 19).</li>
             </ul>
         </section>
 
@@ -3704,6 +3788,8 @@ print('wrote', out)
                     one and paste it into both Shortcuts (step 16).</li>
                 <li>The <strong>validator cookie</strong> the deploy checks use
                     stops working. Make a new one (step 17).</li>
+                <li>Claude's <strong>connector token</strong> stops working.
+                    Make a new one and re-add the connector (step 19).</li>
                 <li>Backups made before today can only be opened with the
                     <strong>old</strong> backup key. Keep it (step 3).</li>
             </ul>
@@ -4048,6 +4134,18 @@ print('wrote', out)
                 <p class="docs-step-label">When it's right</p>
                 <p>The two emails read <em>✓ Daily backup OK</em> and
                     <em>✓ Restore drill PASSED</em>.</p>
+            </div>
+            <div class="docs-step">
+                <h4><span class="docs-step-num">19</span> New Claude connector token</h4>
+                <p>
+                    The new session key (step 4) turned off the token Claude's
+                    connector uses. Make a new one
+                    (<a href="#claude-connector">Connect Claude</a>, step 1),
+                    then in claude.ai remove the connector and add it again
+                    with the new token (step 2 there).
+                </p>
+                <p class="docs-step-label">When it's right</p>
+                <p>Claude can list your tasks again.</p>
             </div>
         </section>
     </main>
