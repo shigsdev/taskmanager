@@ -48,3 +48,23 @@ def test_says_what_it_cannot_do(authed_client):
     section = _section(authed_client)
     assert "cannot delete" in section
     assert "365 days" in section
+
+
+def test_revoke_command_runs_the_apps_python(authed_client):
+    """Over `railway ssh` the container's plain `python` has no Flask
+    (found revoking a token in prod, 2026-10-30); the app's lives in
+    /opt/venv."""
+    section = _section(authed_client)
+    assert "cd /app &amp;&amp; /opt/venv/bin/python -m flask revoke-mcp-token" in section
+    assert "railway ssh keys add" in section
+
+
+def test_token_is_copied_right_before_pasting(authed_client):
+    """Copying the URL replaced a clipboard token, so every request got 401.
+    The token waits in a private file and the full header value is copied
+    at the moment it is pasted."""
+    section = _section(authed_client)
+    assert "umask 077" in section
+    assert "~/.taskmanager-mcp-token" in section
+    assert "printf &#39;Bearer %s&#39;" in section or "printf 'Bearer %s'" in section
+    assert "rm ~/.taskmanager-mcp-token" in section

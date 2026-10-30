@@ -450,17 +450,24 @@ it cannot delete or cancel, or reach goals, projects, recurring templates,
 settings, exports or auth.
 
 ```bash
-# Mint (365 days). The token goes to the clipboard; the jti prints on
-# stderr so you can revoke this one token later.
-railway run .venv/bin/python scripts/mint_mcp_token.py | pbcopy
+# Mint (365 days) into a file only you can read; the jti prints on stderr
+# so you can revoke this one token later.
+umask 077; railway run .venv/bin/python scripts/mint_mcp_token.py > ~/.taskmanager-mcp-token
+# At the connector's header field, copy the whole value and paste it at once
+# (copying the URL in between replaced a clipboard token → every call 401):
+printf 'Bearer %s' "$(cat ~/.taskmanager-mcp-token)" | pbcopy
+rm ~/.taskmanager-mcp-token   # once it connects; claude.ai keeps a copy
 ```
 
 In claude.ai: Customize → Connectors → Add custom connector, URL
 `https://web-production-3e3ae.up.railway.app/mcp`, Authentication **No
 sign-in**, Request header `authorization` = `Bearer <token>`. **Revoke** one
-token with `flask revoke-mcp-token <jti>` from a shell that can reach the
-database (`railway ssh`, not `railway run`); rotating `SECRET_KEY` revokes
-every token at once.
+token on the server — a laptop can't reach the database, so not `railway
+run` — with `railway ssh -- sh -c "cd /app && /opt/venv/bin/python -m flask
+revoke-mcp-token <jti>"` (the container's plain `python` has no Flask; first
+time on a computer: `ssh-keygen -t ed25519`, `railway ssh keys add`, then
+accept Railway's host once). Rotating `SECRET_KEY` revokes every token at
+once.
 
 Validator cookies expire after the `--days` lifetime they were minted with
 (default 90 days, no sliding refresh). Browser session cookies (legacy

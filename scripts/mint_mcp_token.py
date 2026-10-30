@@ -11,12 +11,13 @@ the token can be piped straight to the clipboard and the id kept for
 Usage:
     railway run python scripts/mint_mcp_token.py [--days N] [--email EMAIL]
 
-Put it on the clipboard (macOS) without it showing on screen::
+Save it to a file only you can read, then copy the whole header value at
+the moment you paste it into claude.ai's connector (Request header
+``authorization``) — copying anything in between replaces it (#522)::
 
-    railway run python scripts/mint_mcp_token.py | pbcopy
-
-Then in claude.ai's connector, add the Request header ``authorization``
-with the value ``Bearer <paste>``.
+    umask 077; railway run .venv/bin/python scripts/mint_mcp_token.py > ~/.taskmanager-mcp-token
+    printf 'Bearer %s' "$(cat ~/.taskmanager-mcp-token)" | pbcopy
+    rm ~/.taskmanager-mcp-token
 """
 
 from __future__ import annotations
