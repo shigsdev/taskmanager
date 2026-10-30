@@ -179,6 +179,9 @@ def _detect_auth(view: Any) -> str:
         # Check for our auth marker (set in auth.login_required)
         if getattr(fn, "_login_required", False):
             return "login"
+        # #522: /mcp takes only the MCP token (ADR-044)
+        if getattr(fn, "_mcp_token_required", False):
+            return "mcp-token"
         # Walk through functools.wraps chain
         next_fn = getattr(fn, "__wrapped__", None)
         if next_fn is None or next_fn is fn:

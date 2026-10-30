@@ -53,3 +53,6 @@ UTILITY_RUN_MESSAGE = "Too many runs — wait a minute and try again."
 # hour is plenty for "make one, maybe redo it".
 VOICE_MINT_LIMIT = "5 per hour"
 VOICE_MINT_LIMIT_MESSAGE = "Too many new tokens — wait a while and try again."
+# #522: the claude.ai MCP connector (ADR-044). One chat turn makes a few
+# calls; a minute's worth caps what a leaked token can do in a burst.
+MCP_LIMIT = "60 per minute"

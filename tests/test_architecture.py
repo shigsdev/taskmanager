@@ -203,6 +203,15 @@ class TestBuildRouteCatalog:
         if healthz_entries:  # may not exist in all test configs
             assert all(e["auth"] == "public" for e in healthz_entries)
 
+    def test_mcp_route_tagged_mcp_token(self, app):
+        """#522: /mcp is neither public nor login — it takes only the MCP
+        token (ADR-044), and the catalog says so."""
+        from architecture_service import build_route_catalog
+        catalog = build_route_catalog(app)
+        entries = [e for e in catalog if e["path"] == "/mcp"]
+        assert entries, "expected /mcp in catalog"
+        assert all(e["auth"] == "mcp-token" for e in entries)
+
     def test_each_entry_has_method_and_path(self, app):
         from architecture_service import build_route_catalog
         catalog = build_route_catalog(app)
@@ -312,6 +321,18 @@ class TestBuildPerTableSchema:
 
 
 class TestSplitRouteCatalog:
+
+    def test_page_descriptions_wrap_on_a_phone(self, app):
+        """#522: the always-visible pages table has no sideways scroll, so
+        one long unbreakable word in a route's description ("create/list/
+        complete/update/move", 32 characters) widened /architecture to
+        404px at 375. Keep every word short enough to wrap."""
+        from architecture_service import build_route_catalog, split_route_catalog
+        pages, _ = split_route_catalog(build_route_catalog(app))
+        too_long = {
+            e["path"]: w for e in pages for w in e["doc"].split() if len(w) > 24
+        }
+        assert not too_long
 
     def test_partitions_pages_from_api_endpoints(self, app):
         from architecture_service import build_route_catalog, split_route_catalog

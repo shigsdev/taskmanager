@@ -92,6 +92,15 @@ component is added, a data flow changes, or a security boundary shifts.
   in a per-worker in-memory cache (15 min per window, calendars 1 h).
   Nothing is written to iCloud or the DB. `/healthz` `icloud` reports the
   last read (warn, never fail).
+- **claude.ai MCP connector** (#522, ADR-044 — `mcp_api.py` +
+  `mcp_tools.py` + `mcp_token.py`) — `POST /mcp`, a hand-written stateless
+  MCP Streamable HTTP server (JSON only, no SSE, no sessions) speaking both
+  the 2026-07-28 per-request era (`_meta` + `MCP-Protocol-Version` /
+  `Mcp-Method` / `Mcp-Name` headers, `server/discover`) and the older
+  `initialize` era. Five tools — `create_task`, `list_tasks`,
+  `complete_task`, `update_task`, `move_task` — each a thin wrapper over
+  `task_service`, so every task rule applies. Authenticated only by the MCP
+  token (`auth.mcp_token_required`), rate-limited `MCP_LIMIT` (60/min).
 - **PostgreSQL** — Railway-managed. Stores tasks (with optional `url`,
   self-referential `parent_id` for one-level subtasks, `deleted_with_parent`
   for #433 — set on an open subtask that went to the Recycle Bin with its
@@ -199,6 +208,17 @@ component is added, a data flow changes, or a security boundary shifts.
   lists the rows (pruning expired ones and their denylist entries);
   `POST …/<jti>/revoke` adds the jti to `voice_action_revoked_jtis`, which
   `auth.voice_action_or_login` reads on every `/api/voice-review/*` call.
+- **claude.ai → /mcp** (#522): Anthropic's servers `POST /mcp` with the
+  connector's Request header `authorization: Bearer <token>` → the
+  blueprint's `before_request` refuses a foreign `Origin` (403) →
+  `auth.mcp_token_required` (`mcp_token.parse` + the `mcp_revoked_jtis`
+  denylist; anything else → 401) → `mcp_api` checks the JSON-RPC envelope
+  and the era's headers → `tools/call` → `mcp_tools.call_tool` →
+  `task_service.create_task / list_tasks / complete_parent_task /
+  update_task` → a `CallToolResult` (text + `structuredContent`, or
+  `isError` with the app's own message). Each tool logs one
+  `taskmanager.mcp` WARNING line (so it persists at the default
+  `APP_LOG_LEVEL`) with the task id and action, never the title.
 - **App → Brevo API**: once per day at `DIGEST_TIME`, a multipart (HTML +
   plain-text) email with Today / Overdue / Goals summary / This Week count,
   POSTed to Brevo's transactional email API over HTTPS via
@@ -1258,6 +1278,11 @@ the code.
 /api/voice-review/<uuid:task_id>/answer            # POST — #500: {text} → one action (complete/cancel/move/rename/due/skip) + `say`
 /api/voice-review/tasks                            # POST — #500: {text} → add a task (title, work/personal, due date) + `say`
 
+# mcp_api.py — #522 / ADR-044. The claude.ai MCP connector. Authenticated
+# ONLY by the scoped MCP token (Authorization: Bearer) — no OAuth session,
+# validator cookie, voice token or dev bypass; no other route reads it.
+/mcp                                               # POST — JSON-RPC: server/discover, initialize, tools/list, tools/call, ping (GET/DELETE 405)
+
 # reflection_api.py — Weekly Reflection (2026-05-16)
 /api/reflection                                  # POST submit (typed/audio), GET list
 /api/reflection/transcribe-segment               # POST — #232 one-segment Whisper transcribe for the pause/resume flow (no Reflection row, no Claude call)
@@ -1399,6 +1424,16 @@ the code.
   `voice_answer.py` (fixed rules, no AI) turns into one action whose own
   keys alone reach `update_task` / `create_task`; every answer carries a
   `say` sentence the Shortcut speaks.
+- **MCP token boundary** (#522, ADR-044): the claude.ai connector's bearer
+  reaches only `POST /mcp`, and `/mcp` takes nothing else. Salt
+  `taskmanager-mcp-v1`, 365 days, minted offline by
+  `scripts/mint_mcp_token.py`, revoked one at a time with `flask
+  revoke-mcp-token <jti>` (the `mcp_revoked_jtis` denylist) or all at once
+  by rotating `SECRET_KEY`. It travels only in a header — never a URL — so
+  no request log holds it. It can create tasks, read every task's title and
+  notes, and complete / edit / move open tasks; it cannot delete, cancel,
+  or reach goals, projects, recurring templates, settings, exports or auth.
+  A request whose `Origin` isn't claude.ai / claude.com gets 403.
 - **Air-gap boundary**: the user's work VDI cannot reach the app directly.
   The daily digest email to work Outlook is the only (one-way) bridge.
 
