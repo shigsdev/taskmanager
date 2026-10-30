@@ -328,6 +328,31 @@
                 from the iPhone.
             </p>
 
+            <h3>Quickest on a Mac: one command builds both</h3>
+            <p>
+                If the app's code is on your Mac, a script makes both
+                Shortcuts for you, with every action from steps 1 to 20
+                already in place. It needs only the Mac's own Python.
+            </p>
+            <ol>
+                <li>Copy your token first (step 0, in the Mac's browser:
+                    <strong>Copy header value</strong>).</li>
+                <li>In Terminal, in the taskmanager folder, run:
+                    <pre><code>python3 scripts/build_voice_shortcuts.py --open</code></pre>
+                    Two <strong>Add Shortcut</strong> windows open, one for
+                    <strong>Review my tasks</strong> and one for
+                    <strong>Add a task</strong>.</li>
+                <li>In each window, paste your token into the box that asks
+                    for it and click <strong>Add Shortcut</strong>. Do both
+                    before you copy anything else.</li>
+                <li>Then run the tests: steps 10, 17 and 21.</li>
+            </ol>
+            <p class="docs-note">
+                The files hold no token (the window asks for it), and they
+                sync to your iPhone like any other Shortcut. Clicked ✕ by
+                mistake? Run the command again.
+            </p>
+
             <h3>Or have Claude build them on a Mac</h3>
             <p>
                 A Claude session on your Mac can build both Shortcuts for you

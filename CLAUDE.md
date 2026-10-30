@@ -1009,6 +1009,10 @@ Report.
      #505: "Or have Claude build them on a Mac" shows the brief in a
      full-width box at both widths (16px at 375, no sideways scroll); its
      Copy button copies the whole brief.
+     #523: Help → Hands-free voice review shows "Quickest on a Mac: one
+     command builds both" with `python3 scripts/build_voice_shortcuts.py
+     --open` at both widths, no sideways scroll (the files themselves are
+     pytest's: test_build_voice_shortcuts.py).
      #522: Help → Connect Claude (claude.ai) is in the contents and reads
      at both widths with no sideways scroll; its "Turn it off" link and
      Rotate every secret step 19's link each land on their section below
@@ -1246,6 +1250,7 @@ Report.
   Settings: Siri token make/copy/revoke PASS  Settings: Siri token make/copy/revoke PASS
   Help: Siri setup, answer + add PASS         Help: Siri setup, answer + add PASS
   Help: Siri step cards + Copy  PASS          Help: Siri step cards + Copy  PASS
+  Help: Shortcuts one command   PASS          Help: Shortcuts one command   PASS
   Help: Connect Claude reads    PASS          Help: Connect Claude reads    PASS
   Import: button click          PASS          Import: button click          PASS
   Import: dated row tier locked PASS          Import: dated row tier locked PASS
