@@ -718,15 +718,15 @@ Test each with the run button. "Review my tasks" should read my overdue, today a
                 <h4><span class="docs-step-num">1</span> Make a token</h4>
                 <p>
                     On your computer, in the taskmanager folder (with
-                    <code>railway</code> signed in), run this. It puts the
-                    token on your clipboard without showing it, and prints a
-                    line like <code>jti=…</code>: keep that id, it's how you
-                    turn this one token off later.
+                    <code>railway</code> signed in), run this. It saves the
+                    token in a file only you can read, without showing it,
+                    and prints a line like <code>jti=…</code>: keep that id,
+                    it's how you turn this one token off later.
                 </p>
-                <pre><code>railway run .venv/bin/python scripts/mint_mcp_token.py | pbcopy</code></pre>
+                <pre><code>umask 077; railway run .venv/bin/python scripts/mint_mcp_token.py &gt; ~/.taskmanager-mcp-token</code></pre>
                 <p class="docs-note">
                     On Windows (PowerShell):
-                    <code>railway run "$env:LOCALAPPDATA\Python\bin\python.exe" scripts\mint_mcp_token.py | Set-Clipboard</code>.
+                    <code>railway run "$env:LOCALAPPDATA\Python\bin\python.exe" scripts\mint_mcp_token.py | Set-Content -NoNewline "$HOME\.taskmanager-mcp-token"</code>.
                     The token works for 365 days.
                 </p>
             </div>
@@ -741,25 +741,38 @@ Test each with the run button. "Review my tasks" should read my overdue, today a
                         <strong>Continue anyway</strong>: the app only answers
                         once it has the token.</li>
                     <li>Authentication: <strong>No sign-in</strong>.</li>
-                    <li>Request headers: name <code>authorization</code>,
-                        value <code>Bearer </code> followed by the token you
-                        copied (one space after Bearer). Then add the
-                        connector.</li>
+                    <li>Request headers: type the name
+                        <code>authorization</code>. <strong>Only now</strong>,
+                        copy the whole value (<code>Bearer </code> and the
+                        token) with the command below, and paste it straight
+                        into the value field. Copying anything else first
+                        (even the URL above) replaces it, and the app turns
+                        every request away. Then add the connector.</li>
                 </ol>
+                <pre><code>printf 'Bearer %s' "$(cat ~/.taskmanager-mcp-token)" | pbcopy</code></pre>
+                <p class="docs-note">
+                    On Windows:
+                    <code>"Bearer " + (Get-Content -Raw "$HOME\.taskmanager-mcp-token") | Set-Clipboard</code>.
+                </p>
                 <p class="docs-step-label">When it's right</p>
                 <p>In a new chat, "what's on my list for today?" lists your
-                    Today tasks.</p>
+                    Today tasks. Then delete the file (claude.ai keeps its own
+                    copy): <code>rm ~/.taskmanager-mcp-token</code>
+                    (Windows: <code>Remove-Item "$HOME\.taskmanager-mcp-token"</code>).</p>
             </div>
 
             <h3>Turn it off</h3>
             <ul>
                 <li>Remove the connector in claude.ai, and</li>
-                <li>turn the token off: in a shell on the server
-                    (<code>railway ssh</code>), run
-                    <code>python -m flask revoke-mcp-token &lt;jti&gt;</code>
-                    with the id from step 1. A shell on your computer can't
-                    reach the database, so <code>railway run</code> won't do
-                    it.</li>
+                <li>turn the token off, with the id from step 1. It runs on
+                    the server: a shell on your computer can't reach the
+                    database, so <code>railway run</code> won't do it.
+                    <pre><code>railway ssh -- sh -c "cd /app &amp;&amp; /opt/venv/bin/python -m flask revoke-mcp-token &lt;jti&gt;"</code></pre>
+                    The first time on a computer, <code>railway ssh</code>
+                    needs a key: run <code>ssh-keygen -t ed25519</code>, then
+                    <code>railway ssh keys add</code>, then
+                    <code>railway ssh -- echo connected</code> once and
+                    answer <code>yes</code> to trust Railway's host.</li>
                 <li>A new <code>SECRET_KEY</code> turns off every token at
                     once (<a href="#rotate-secrets">Rotate every secret</a>,
                     step 19).</li>
