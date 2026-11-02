@@ -94,13 +94,16 @@ class TestChangingIt:
         assert _template(app, task).start_date == date(2026, 11, 2)
 
     def test_previews_follow_the_new_start_date(self, authed_client):
+        """Past Mondays only: the previews drop a template's day when a task
+        from it was CREATED that day (the real spawn wins), and _make creates
+        one today — so a future Monday here failed on the day it came round."""
         task = _make(authed_client)
         _save(authed_client, task, {"frequency": "weekly", "day_of_week": 0,
-                                    "start_date": "2026-11-02"})
+                                    "start_date": "2026-10-19"})
         rows = authed_client.get(
-            "/api/recurring/previews?start=2026-10-12&end=2026-11-15").get_json()
+            "/api/recurring/previews?start=2026-10-12&end=2026-11-01").get_json()
         mine = sorted(r["fire_date"] for r in rows if r["title"] == "Weekly Work Prep")
-        assert mine == ["2026-11-02", "2026-11-09"]
+        assert mine == ["2026-10-19", "2026-10-26"]
 
     def test_moving_it_later_leaves_spawned_tasks_alone(self, authed_client):
         task = _make(authed_client)
