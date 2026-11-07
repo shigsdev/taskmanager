@@ -8094,6 +8094,32 @@ test.describe("Strength Forge per-side logging (#410)", () => {
     });
 });
 
+// #526: a phone shows its number pad for resistance, not the full keyboard.
+test.describe("Strength Forge resistance opens the number pad (#526)", () => {
+    test("every resistance box, an added set's too, asks for the number pad", async ({ page }) => {
+        await page.goto("/strength-forge?nosw=1");
+        await page.waitForLoadState("networkidle");
+        await page.getByRole("button", { name: "🔁 Split" }).click();
+        await page.locator('.sf-panel[data-tab="split"] .sf-log-detail-btn').click();
+        await expect(page.locator(".sf-logform-overlay")).toBeVisible();
+
+        const ex = page.locator('.sf-logform-ex[data-exercise-id="band-chest-press"]');
+        const before = await ex.locator(".sf-logform-resist").count();
+        await ex.locator(".sf-logform-addset").click();
+        await expect(ex.locator(".sf-logform-resist")).toHaveCount(before + 1);
+
+        const boxes = page.locator(".sf-logform-resist");
+        const n = await boxes.count();
+        expect(n).toBeGreaterThan(before);
+        for (let i = 0; i < n; i++) {
+            await expect(boxes.nth(i)).toHaveAttribute("inputmode", "decimal");
+        }
+        // Still a text box: a band level typed (or restored) keeps its words.
+        await boxes.first().fill("Medium");
+        await expect(boxes.first()).toHaveValue("Medium");
+    });
+});
+
 test.describe("Recurring — paused templates stay on the page (#363)", () => {
     // Before #363 the page asked for `?active_only=false`, a param the
     // route never read, so a paused template vanished and the editor's
