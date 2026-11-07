@@ -943,6 +943,10 @@ Report.
      land on /login with "That sign-in didn't finish. Please sign in again."
      in a rust box, 16px off each edge at 375; reload and it's gone. A plain
      /login has no box (the quiet case) (test_oauth_state_mismatch_handler.py).
+     #526: on /strength-forge open ✎ Log details — every resistance box
+     (and one from + add set) has inputmode="decimal", so a phone shows the
+     number pad; it is still a text box ("Medium" types and saves), and at
+     1280 the Light / Medium / Heavy picks still show (the quiet case).
   7. **Goals page**: verify goal cards show progress bars with correct task
      counts. Filter by category/priority/status, verify results change.
      Expand a card's `Projects (N)` toggle, drag a project chip onto
@@ -1213,6 +1217,7 @@ Report.
   Recurring: deleted row gone   PASS          Recurring: deleted row gone   PASS
   Recurring: archive pause reason PASS        Recurring: archive pause reason PASS
   Sign in: interrupted says so  PASS          Sign in: interrupted says so  PASS
+  Strength: resistance number pad PASS        Strength: resistance number pad PASS
   Goals: progress bars          PASS          Goals: progress bars          PASS
   Goals: filter category        PASS          Goals: filter category        PASS
   Goals: filter priority        PASS          Goals: filter priority        PASS

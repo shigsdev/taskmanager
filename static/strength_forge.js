@@ -1118,10 +1118,12 @@
     if (showResist) {
       // Placeholder shows last-used resistance as a reference without
       // recording it — the row stays blank until the user actually types.
+      // #526: inputmode opens a phone's number pad (with "." for 12.5);
+      // type stays text so a saved "Medium" still shows and saves.
       var resist = el("input", {
         cls: "sf-logform-resist",
         attrs: {
-          type: "text", list: "sf-resistance-options",
+          type: "text", inputmode: "decimal", list: "sf-resistance-options",
           placeholder: hintResist ? hintResist : "resistance", "aria-label": "resistance",
         },
       });
