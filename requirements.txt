@@ -41,7 +41,10 @@ pytest-cov==7.0.0
 # Only ever reads bytes already in memory — nothing is written to disk.
 # #524 (2026-11-02): 6.21.2 -> 6.21.4 for seven crafted-PDF DoS CVEs
 # (CVE-2026-119203..119209: infinite loops / runaway memory on open).
-pypdf==6.21.4
+# #525 (2026-11-07): -> 7.0.0 (tech-debt audit: a major behind). 7.0 drops
+# Python 3.9 and cryptography<43 and removes deprecated APIs — none used here
+# (PdfReader / is_encrypted / decrypt / pages / extract_text only).
+pypdf==7.0.0
 # #371 (2026-10-17): read-only iCloud Calendar events over CalDAV.
 # icalendar parses the VEVENTs, recurring-ical-events expands repeats
 # (RRULE / EXDATE / RECURRENCE-ID) in the window, defusedxml parses the
