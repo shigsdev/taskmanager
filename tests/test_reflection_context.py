@@ -69,6 +69,18 @@ def build_pdf(text: str) -> bytes:
     return bytes(out)
 
 
+def encrypt_pdf(data: bytes, user_password: str) -> bytes:
+    """``data`` re-saved AES-256 encrypted; "" opens with no password."""
+    from pypdf import PdfReader, PdfWriter
+
+    writer = PdfWriter(clone_from=PdfReader(io.BytesIO(data)))
+    writer.encrypt(user_password=user_password, owner_password="owner",
+                   algorithm="AES-256")
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
 def build_docx(paragraphs: list[str]) -> bytes:
     import docx
 
@@ -154,6 +166,21 @@ class TestExtraction:
             ctx.extract_text("broken.pdf", b"not a pdf at all")
         except ctx.ContextExtractionError as e:
             assert "PDF" in str(e)
+        else:  # pragma: no cover
+            raise AssertionError("expected ContextExtractionError")
+
+    def test_pdf_locked_with_an_empty_password_still_reads(self):
+        """#525: AES-256 goes through pypdf's cryptography path, which
+        pypdf 7 changed (dropped cryptography<43)."""
+        data = encrypt_pdf(build_pdf("Start date is November 2"), "")
+        assert "November 2" in ctx.extract_text("jd.pdf", data)
+
+    def test_password_protected_pdf_says_so(self):
+        data = encrypt_pdf(build_pdf("Start date is November 2"), "secret")
+        try:
+            ctx.extract_text("jd.pdf", data)
+        except ctx.ContextExtractionError as e:
+            assert "password-protected" in str(e)
         else:  # pragma: no cover
             raise AssertionError("expected ContextExtractionError")
 
