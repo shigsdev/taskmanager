@@ -450,7 +450,7 @@ class TestMainDecision:
         assert "SOP Compliance Report" in out
 
     def test_waits_through_the_old_sha_and_an_unreachable_poll(self, tmp_path):
-        answers = [_healthz(sha="0" * 40), None, _healthz()]
+        answers = [_healthz(sha=NONE), None, _healthz()]
         assert self._main(tmp_path, answers) == vd.EXIT_GREEN
 
     def test_a_fail_check_is_red_even_when_status_says_ok(self, tmp_path, capsys):
@@ -467,7 +467,7 @@ class TestMainDecision:
         assert self._main(tmp_path, [_healthz(status="fail")]) == vd.EXIT_RED
 
     def test_never_seeing_the_sha_times_out_red(self, tmp_path, capsys):
-        answers = [_healthz(sha="0" * 40)] * vd.MAX_POLLS
+        answers = [_healthz(sha=NONE)] * vd.MAX_POLLS
         assert self._main(tmp_path, answers) == vd.EXIT_RED
         assert "Timed out" in capsys.readouterr().out
 
@@ -570,14 +570,47 @@ class TestDeployWouldSkip:
         assert [p.lstrip("!") for p in documented[1:]] == list(vd.WATCH_EXCLUDES)
 
 
+# Blob ids as `git diff --raw --no-abbrev` prints them (#528).
+B1, B2, NONE = "1" * 40, "2" * 40, "0" * 40
+
+
 class TestChangedFiles:
 
-    def test_lists_names_from_git_diff(self):
+
+    @staticmethod
+    def _raw(*rows):
+        """`git diff --raw --no-abbrev` lines: (status, old blob, new blob, path…)."""
         from unittest.mock import MagicMock
-        res = MagicMock(returncode=0, stdout="BACKLOG.md\ntests/test_x.py\n")
+        out = "".join(
+            f":100644 100644 {old} {new} {st}\t" + "\t".join(paths) + "\n"
+            for st, old, new, *paths in rows)
+        return MagicMock(returncode=0, stdout=out)
+
+    def test_lists_names_from_git_diff(self):
+        res = self._raw(("M", B1, B2, "BACKLOG.md"),
+                        ("A", NONE, B2, "tests/test_x.py"))
         with patch.object(vd.subprocess, "run", return_value=res) as run:
             assert vd.changed_files("aaa", "bbb") == ["BACKLOG.md", "tests/test_x.py"]
         assert run.call_args[0][0][-2:] == ["aaa", "bbb"]
+
+    def test_a_mode_only_change_is_not_a_change(self):
+        """#528: Railway's Watch Paths count content, not the exec bit. 224cfbf
+        made .githooks/pre-commit 755 (same blob) + touched BACKLOG.md;
+        Railway skipped it, and the script must call that a skip too."""
+        res = self._raw(("M", B1, B1, ".githooks/pre-commit"),
+                        ("M", B1, B2, "BACKLOG.md"))
+        with patch.object(vd.subprocess, "run", return_value=res):
+            files = vd.changed_files("aaa", "bbb")
+        assert files == ["BACKLOG.md"]
+        assert vd.deploy_would_skip(files) is True
+
+    def test_a_rename_counts_both_paths(self):
+        """Moving app code under tests/ still changes app code."""
+        res = self._raw(("R100", B1, B1, "app.py", "tests/app.py"))
+        with patch.object(vd.subprocess, "run", return_value=res):
+            files = vd.changed_files("aaa", "bbb")
+        assert files == ["app.py", "tests/app.py"]
+        assert vd.deploy_would_skip(files) is False
 
     def test_unknown_sha_or_no_git_is_none(self):
         from unittest.mock import MagicMock

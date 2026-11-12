@@ -25,8 +25,9 @@ With --check-logs:
 
 A push Railway skips (#508):
     The ``web`` service rebuilds only when a changed file is outside its
-    Watch Paths excludes (``WATCH_EXCLUDES``). When every file changed
-    since the live SHA is excluded (tests, docs, BACKLOG.md, …), Railway
+    Watch Paths excludes (``WATCH_EXCLUDES``). When every file whose
+    content changed since the live SHA is excluded (a mode-only change
+    doesn't count, #528) (tests, docs, BACKLOG.md, …), Railway
     never builds, so the SHA can never match. The script then waits a
     short grace window instead of 10 minutes and reports DEPLOY SKIPPED,
     judged on the live container's own checks.
@@ -95,11 +96,16 @@ def deploy_would_skip(files: list[str]) -> bool:
 
 
 def changed_files(base: str, head: str) -> list[str] | None:
-    """Files changed between two commits, or None when git can't tell
-    (a SHA this checkout doesn't have, no git)."""
+    """Files whose content changed between two commits, or None when git
+    can't tell (a SHA this checkout doesn't have, no git).
+
+    #528: Railway's Watch Paths count content, not the file mode — a
+    mode-only change (same blob on both sides, e.g. a hook made
+    executable) is left out, as Railway leaves it out. A rename lists both
+    paths: the old one is gone, which is a change Railway sees."""
     try:
         result = subprocess.run(
-            ["git", "diff", "--name-only", base, head],
+            ["git", "diff", "--raw", "--no-abbrev", base, head],
             capture_output=True,
             text=True,
             check=False,
@@ -108,7 +114,17 @@ def changed_files(base: str, head: str) -> list[str] | None:
         return None
     if result.returncode != 0:
         return None
-    return [ln for ln in result.stdout.splitlines() if ln.strip()]
+    files: list[str] = []
+    for line in result.stdout.splitlines():
+        meta, _, paths = line.partition("\t")
+        fields = meta.split()
+        if not paths or len(fields) < 5:
+            continue
+        _old_mode, _new_mode, old_blob, new_blob, status = fields[:5]
+        if status == "M" and old_blob == new_blob:
+            continue  # mode-only
+        files.extend(paths.split("\t"))
+    return files
 
 
 def get_local_head() -> str:

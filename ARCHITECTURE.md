@@ -952,10 +952,14 @@ visible in the dashboard. A docs-only push that does NOT change prod's
 
 `scripts/validate_deploy.py` keeps a copy of the Watch Paths excludes
 (`WATCH_EXCLUDES`, #508) so it can tell a push Railway will skip from a
-stalled build: when every file changed since the live SHA is excluded,
-it reports DEPLOY SKIPPED on the live container's checks after a
+stalled build: when every file whose content changed since the live SHA
+is excluded, it reports DEPLOY SKIPPED on the live container's checks after a
 2-minute grace instead of timing out RED. `tests/test_validate_deploy.py`
 fails if that copy and the table above disagree — change both together.
+Railway counts content changes only: a mode-only change (same blob, e.g.
+a hook made executable) never triggers a build, so the script ignores it
+too (#528). `railway deployment list` shows a skipped push as `SKIPPED`
+with Railway's own reason ("No changes to watched files").
 
 ### Off-Railway status page (#204 option E)
 
