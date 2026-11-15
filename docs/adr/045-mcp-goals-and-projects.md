@@ -2,8 +2,8 @@
 
 Date: 2026-11-15
 
-Status: PROPOSED (#530, user request 2026-11-15 "allow for creating and
-updating projects and goals"; the design calls below await review in the PR)
+Status: ACCEPTED (#530, user request 2026-11-15 "allow for creating and
+updating projects and goals"; design calls approved with PR #25's merge)
 
 Amends: ADR-044 (scoped MCP connector token). Its token format, salt,
 lifetime, header-only transport, `/mcp`-only scope, per-jti denylist, rate
