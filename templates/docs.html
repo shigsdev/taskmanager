@@ -711,7 +711,7 @@ Test each with the run button. "Review my tasks" should read my overdue, today a
         <section id="claude-connector" class="docs-section">
             <h2>Connect Claude (claude.ai)</h2>
             <p>
-                Let Claude manage your tasks from any chat in claude.ai, on
+                Let Claude manage your tasks, goals and projects from any chat in claude.ai, on
                 your computer or phone: say "logged: draft Apigee vendor
                 questions, due Fri" and the task appears on your board. You
                 set it up once, as a <strong>custom connector</strong> in
@@ -729,9 +729,25 @@ Test each with the run button. "Review my tasks" should read my overdue, today a
                     only if you say so), <strong>edit</strong> its title, due
                     date, notes or project, and <strong>move</strong> it to
                     another section.</li>
-                <li>It works on open tasks only, and it
-                    <strong>cannot delete</strong> or cancel anything, or touch
-                    goals, repeating tasks, settings or exports.</li>
+                <li><strong>List, add and edit goals</strong>: title,
+                    category, priority, status, target quarter, actions and
+                    notes. A list shows each goal's tasks done.</li>
+                <li><strong>List, add and edit projects</strong>: name,
+                    Work / Personal, goal, priority, status, target quarter,
+                    actions and notes. A new project can't share its name with
+                    another active project of the same type.</li>
+                <li>If a project edit would also change its tasks (a new type
+                    makes them that type; a new goal clears their goals, or
+                    puts tasks that sit on several goals onto one), nothing
+                    changes at first: Claude tells you what would change, and
+                    it goes ahead once you say so. Moving a project whose
+                    tasks all share one goal, or giving a goal to a project
+                    whose tasks have none, goes ahead without asking, as it
+                    does in the app.</li>
+                <li>It works on open tasks and active goals and projects only,
+                    and it <strong>cannot delete</strong> or cancel anything,
+                    archive a goal or project, or touch repeating tasks,
+                    settings or exports.</li>
             </ul>
             <p class="docs-note">
                 Claude names a project by its exact name, and it must be of

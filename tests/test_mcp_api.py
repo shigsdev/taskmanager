@@ -85,6 +85,13 @@ class TestModern:
         result = _modern(client, "server/discover").get_json()["result"]
         assert local_today_date().isoformat() in result["instructions"]
 
+    def test_instructions_say_to_ask_before_a_cascade(self, client):
+        """#530: apply_to_tasks is the user's call, not Claude's."""
+        text = _modern(client, "server/discover").get_json()["result"]["instructions"]
+        assert "goals and projects" in text
+        assert "not archive or delete them" in text
+        assert "apply_to_tasks: true only once they agree" in text
+
     def test_tools_list_modern(self, client):
         result = _modern(client, "tools/list").get_json()["result"]
         assert [t["name"] for t in result["tools"]] == [
@@ -93,6 +100,12 @@ class TestModern:
             "complete_task",
             "update_task",
             "move_task",
+            "list_goals",
+            "create_goal",
+            "update_goal",
+            "list_projects",
+            "create_project",
+            "update_project",
         ]
         assert result["resultType"] == "complete"
 
@@ -189,7 +202,7 @@ class TestLegacy:
         note = _legacy(client, "notifications/initialized", id=None)
         assert note.status_code == 202
         listed = _legacy(client, "tools/list", id=2)
-        assert len(listed.get_json()["result"]["tools"]) == 5
+        assert len(listed.get_json()["result"]["tools"]) == 11
         called = _legacy(client, "tools/call", _create_params("Legacy"), id=3)
         assert called.status_code == 200
         assert called.get_json()["result"]["isError"] is False
