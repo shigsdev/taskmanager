@@ -97,9 +97,13 @@ component is added, a data flow changes, or a security boundary shifts.
   MCP Streamable HTTP server (JSON only, no SSE, no sessions) speaking both
   the 2026-07-28 per-request era (`_meta` + `MCP-Protocol-Version` /
   `Mcp-Method` / `Mcp-Name` headers, `server/discover`) and the older
-  `initialize` era. Five tools — `create_task`, `list_tasks`,
-  `complete_task`, `update_task`, `move_task` — each a thin wrapper over
-  `task_service`, so every task rule applies. Authenticated only by the MCP
+  `initialize` era. Eleven tools — `create_task`, `list_tasks`,
+  `complete_task`, `update_task`, `move_task` (each a thin wrapper over
+  `task_service`, so every task rule applies), and since #530 (ADR-045)
+  `list_goals`, `create_goal`, `update_goal`, `list_projects`,
+  `create_project`, `update_project` over `goal_service` /
+  `project_service`. `update_project` refuses a type or goal change whose
+  task cascade can't be undone (#482, #351) unless `apply_to_tasks: true`. Authenticated only by the MCP
   token (`auth.mcp_token_required`), rate-limited `MCP_LIMIT` (60/min).
 - **PostgreSQL** — Railway-managed. Stores tasks (with optional `url`,
   self-referential `parent_id` for one-level subtasks, `deleted_with_parent`
@@ -215,7 +219,8 @@ component is added, a data flow changes, or a security boundary shifts.
   denylist; anything else → 401) → `mcp_api` checks the JSON-RPC envelope
   and the era's headers → `tools/call` → `mcp_tools.call_tool` →
   `task_service.create_task / list_tasks / complete_parent_task /
-  update_task` → a `CallToolResult` (text + `structuredContent`, or
+  update_task` (or `goal_service.list_goals / create_goal / update_goal`,
+  `project_service.list_projects / create_project / update_project`) → a `CallToolResult` (text + `structuredContent`, or
   `isError` with the app's own message). Each tool logs one
   `taskmanager.mcp` WARNING line (so it persists at the default
   `APP_LOG_LEVEL`) with the task id and action, never the title.
@@ -1282,7 +1287,7 @@ the code.
 /api/voice-review/<uuid:task_id>/answer            # POST — #500: {text} → one action (complete/cancel/move/rename/due/skip) + `say`
 /api/voice-review/tasks                            # POST — #500: {text} → add a task (title, work/personal, due date) + `say`
 
-# mcp_api.py — #522 / ADR-044. The claude.ai MCP connector. Authenticated
+# mcp_api.py — #522 / ADR-044 (+ #530 / ADR-045 goal + project tools). The claude.ai MCP connector. Authenticated
 # ONLY by the scoped MCP token (Authorization: Bearer) — no OAuth session,
 # validator cookie, voice token or dev bypass; no other route reads it.
 /mcp                                               # POST — JSON-RPC: server/discover, initialize, tools/list, tools/call, ping (GET/DELETE 405)
@@ -1435,8 +1440,9 @@ the code.
   revoke-mcp-token <jti>` (the `mcp_revoked_jtis` denylist) or all at once
   by rotating `SECRET_KEY`. It travels only in a header — never a URL — so
   no request log holds it. It can create tasks, read every task's title and
-  notes, and complete / edit / move open tasks; it cannot delete, cancel,
-  or reach goals, projects, recurring templates, settings, exports or auth.
+  notes, and complete / edit / move open tasks, and (#530, ADR-045) list,
+  create and edit goals and projects; it cannot delete, cancel or archive
+  anything, or reach recurring templates, settings, exports or auth.
   A request whose `Origin` isn't claude.ai / claude.com gets 403.
 - **Air-gap boundary**: the user's work VDI cannot reach the app directly.
   The daily digest email to work Outlook is the only (one-way) bridge.

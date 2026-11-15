@@ -1,4 +1,4 @@
-"""Scoped MCP connector token (#522, ADR-044).
+"""Scoped MCP connector token (#522, ADR-044; widened by #530, ADR-045).
 
 Why this module exists
 ----------------------
@@ -12,8 +12,10 @@ scoped to ``/api/voice-review/*``, so none of them fits.
 
 The token authenticates ONLY ``POST /mcp`` (``auth.mcp_token_required``).
 No other route reads it, so a leaked token can create tasks, read every
-task's title and notes, and complete / edit / move open tasks — never
-delete, and never reach goals, projects, settings, exports or auth.
+task's title and notes, and complete / edit / move open tasks, and (since
+#530, ADR-045) list, create and edit goals and projects — never delete,
+cancel or archive, and never reach recurring templates, settings, exports
+or auth.
 
 A copy of ``voice_action_token.py``'s design:
 - Signed with the app's ``SECRET_KEY`` (rotating the key invalidates

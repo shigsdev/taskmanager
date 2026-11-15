@@ -2,7 +2,8 @@
 
 Date: 2026-10-30
 
-Status: ACCEPTED (#522, user decisions 2026-10-30)
+Status: ACCEPTED (#522, user decisions 2026-10-30); amended by ADR-045 (#530:
+goal and project tools)
 
 Related: ADR-034 / ADR-042 / ADR-043 (the voice-action token this copies),
 ADR-003 / ADR-004 (the read-only validator cookie).

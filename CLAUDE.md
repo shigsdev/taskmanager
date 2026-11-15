@@ -1022,6 +1022,11 @@ Report.
      Rotate every secret step 19's link each land on their section below
      the pinned nav. (The /mcp protocol and scope are pytest's:
      test_mcp_api.py / test_mcp_tools.py; MCP Inspector before ship.)
+     #530: Help → Connect Claude lists "List, add and edit goals" and
+     "… projects", the held-back project edit and "archive a goal or
+     project" under what it can't do, at both widths with no sideways
+     scroll. (The tools and the apply_to_tasks rule are pytest's:
+     test_mcp_goal_project_tools.py.)
   10. **Import page**: verify buttons render and are clickable.
       #390: in the task preview a row WITH a due date shows its Tier
       locked to the date's section with "Set by due date"; clearing the
@@ -1257,6 +1262,7 @@ Report.
   Help: Siri step cards + Copy  PASS          Help: Siri step cards + Copy  PASS
   Help: Shortcuts one command   PASS          Help: Shortcuts one command   PASS
   Help: Connect Claude reads    PASS          Help: Connect Claude reads    PASS
+  Help: Claude goals + projects PASS          Help: Claude goals + projects PASS
   Import: button click          PASS          Import: button click          PASS
   Import: dated row tier locked PASS          Import: dated row tier locked PASS
   Import: late parse dropped    PASS          Import: late parse dropped    PASS
@@ -1749,6 +1755,10 @@ This app is a **single-user personal tool** with:
   `scripts/mint_mcp_token.py`; revoked by `flask revoke-mcp-token <jti>`
   (the `mcp_revoked_jtis` denylist) or `SECRET_KEY` rotation. Never in a
   URL. `tests/test_mcp_api.py` holds the scope rows.
+  Since #530 (ADR-045) it can also list, create and edit goals and
+  projects (no archive, no delete); a project edit that re-types its tasks
+  or clears / flattens their goals runs only on a second call with
+  `apply_to_tasks: true` (`tests/test_mcp_goal_project_tools.py`).
 - An optional Apple **app-specific password** (`ICLOUD_APP_PASSWORD`,
   #371) for the read-only iCloud Calendar reader on `/calendar` — see the
   trade-off below
@@ -1818,14 +1828,17 @@ about these — they're not relevant here):
   Since ADR-043 (#500) a leaked token can also add up to 30 tasks a minute
   and rename or re-date open tasks — still no delete, no other field, no
   read beyond the queue, and every change is visible and reversible.
-- MCP token (ADR-044, #522) can create tasks, read every task's title and
-  notes, and complete / edit / move open tasks for up to 365 days if leaked
-  — wider than the voice token (it reads the whole list), narrower than an
-  OAuth session (no delete or cancel, no goals / projects / recurring /
-  settings / exports / auth). Accepted because it is revocable per token,
-  rate-limited (60/min), audited (`mcp: <action> task <id>`, never the
-  title), and every change is visible (completions and moves can be
-  undone; an overwritten title or notes can't). Its value lives in
+- MCP token (ADR-044, #522; ADR-045, #530) can create tasks, read every
+  task's title and notes, and complete / edit / move open tasks, and read,
+  create and edit goals and projects (incl. re-typing a project's tasks or
+  moving them to another goal), for up to 365 days if leaked — wider than
+  the voice token (it reads the whole list), narrower than an OAuth session
+  (no delete, cancel or archive, no recurring / settings / exports / auth).
+  Accepted because it is revocable per token, rate-limited (60/min),
+  audited (`mcp: <action> <task|goal|project> <id>`, never the title), and
+  every change is visible (completions, moves and most field edits can be
+  undone; an overwritten title, actions or notes, or a flattened goal
+  spread, can't). Its value lives in
   claude.ai's connector settings, so it rotates with `SECRET_KEY`
   (Help → Rotate every secret, step 19). Task text reaching Claude chats is
   the point; a title carrying prompt-injection text meets claude.ai's

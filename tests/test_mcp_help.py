@@ -50,6 +50,20 @@ def test_says_what_it_cannot_do(authed_client):
     assert "365 days" in section
 
 
+def test_goal_and_project_tools_match_the_server(authed_client):
+    """#530: the Help list names what the tools take, and no more."""
+    from mcp_tools import TOOLS
+
+    section = _section(authed_client)
+    names = {t["name"] for t in TOOLS}
+    assert {"create_goal", "update_goal", "create_project", "update_project"} <= names
+    assert "List, add and edit goals" in section
+    assert "List, add and edit projects" in section
+    assert "archive a goal or project" in section
+    for tool in TOOLS:
+        assert "is_active" not in tool["inputSchema"]["properties"]
+
+
 def test_revoke_command_runs_the_apps_python(authed_client):
     """Over `railway ssh` the container's plain `python` has no Flask
     (found revoking a token in prod, 2026-10-30); the app's lives in

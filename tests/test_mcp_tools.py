@@ -69,6 +69,12 @@ def test_tools_listed_in_order(app):
         "complete_task",
         "update_task",
         "move_task",
+        "list_goals",
+        "create_goal",
+        "update_goal",
+        "list_projects",
+        "create_project",
+        "update_project",
     ]
     for tool in TOOLS:
         assert tool["inputSchema"]["additionalProperties"] is False

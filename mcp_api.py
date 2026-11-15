@@ -1,4 +1,4 @@
-"""The claude.ai MCP connector endpoint, ``POST /mcp`` (#522, ADR-044).
+"""The claude.ai MCP connector endpoint, ``POST /mcp`` (#522, ADR-044, ADR-045).
 
 Claude in claude.ai (desktop and phone) reaches this app through a custom
 connector: a remote MCP server Anthropic's servers call with the
@@ -18,8 +18,9 @@ Security (ADR-044): ``@mcp_token_required`` accepts only the MCP token —
 no OAuth session, validator cookie, voice token or dev bypass — and no
 other route reads that token. A request with an ``Origin`` other than
 claude.ai / claude.com is refused (MCP's DNS-rebinding rule). The tools
-(``mcp_tools``) can create, list, complete, edit and move tasks; nothing
-deletes, cancels, or reaches goals, settings, exports or auth.
+(``mcp_tools``) can create, list, complete, edit and move tasks, and (#530,
+ADR-045) list, create and edit goals and projects; nothing deletes, cancels
+or archives, or reaches recurring templates, settings, exports or auth.
 """
 
 from __future__ import annotations
@@ -74,7 +75,11 @@ def build_instructions() -> str:
         "due date or section places it; a due date files it to the section that date "
         "falls in. Write dates as YYYY-MM-DD. Projects are named by their exact name and "
         "must be of the task's type. You can create, list, complete, edit and move tasks; "
-        "you cannot delete or cancel them. Use list_tasks to find a task's id."
+        "you cannot delete or cancel them. Use list_tasks to find a task's id. You can "
+        "also list, create and edit goals and projects (list_goals / list_projects give "
+        "their ids), but not archive or delete them. When update_project says a change "
+        "would also rewrite the project's tasks, tell the user what it said and pass "
+        "apply_to_tasks: true only once they agree."
     )
 
 

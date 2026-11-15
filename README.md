@@ -88,8 +88,9 @@ work and personal life, with a regulated (air-gapped) work environment.
   **task / goal / project** (clickable badge to override before commit)
 - **Claude connector** (#522) — add the app to claude.ai as a custom MCP
   connector (`POST /mcp`, ADR-044) and Claude can create, list, complete,
-  edit and move your tasks from any chat, on the computer or the phone. No
-  delete. Setup: Help → Connect Claude.
+  edit and move your tasks, and list, create and edit your goals and
+  projects (#530, ADR-045), from any chat, on the computer or the phone. No
+  delete or archive. Setup: Help → Connect Claude.
 - **Import** — multiple modes: OneNote tasks (paste-text or .docx), Excel goals
   (.xlsx), Excel/paste-text projects, **Excel tasks (.xlsx)** with full column
   set (title, type, tier, due_date, linked_goal, linked_project, notes, url) —
@@ -442,15 +443,16 @@ revoke-voice-action-token <jti>` from a shell that can reach the database
 inside Railway). Rotating `SECRET_KEY` on the server invalidates *every*
 token (voice-action AND validator cookie) at once — the emergency lever.
 
-### Claude connector token (#522 / ADR-044)
+### Claude connector token (#522 / ADR-044, #530 / ADR-045)
 
 The claude.ai custom connector authenticates with a **scoped MCP token**:
 a `SECRET_KEY`-signed bearer token (salt `taskmanager-mcp-v1`, 365 days)
 that opens ONLY `POST /mcp` — and `/mcp` takes nothing else (no OAuth
 session, validator cookie, voice token or dev bypass). It can create tasks,
-read every task's title and notes, and complete / edit / move open tasks;
-it cannot delete or cancel, or reach goals, projects, recurring templates,
-settings, exports or auth.
+read every task's title and notes, and complete / edit / move open tasks,
+and list, create and edit goals and projects (#530, ADR-045); it cannot
+delete, cancel or archive, or reach recurring templates, settings, exports
+or auth.
 
 ```bash
 # Mint (365 days) into a file only you can read; the jti prints on stderr
