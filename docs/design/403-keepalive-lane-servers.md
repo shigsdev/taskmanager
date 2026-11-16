@@ -86,6 +86,12 @@ peak 1.4k). All `ALL GATES GREEN`.
 fresh TIME_WAIT measurement; returns are already shrinking (6 → 8 saved 0.6
 min of Playwright).
 
+**Update (#531, 2026-11-15):** `LANE_MAX` is 12 (ports 5111–5122), 8 on
+Windows. Measured on a 32 GB / 12-core Mac mini: 12 lanes 5 of 5 green,
+Playwright 187 → 134 s, TIME_WAIT peak ~5k; 16 lanes 1 of 6 failed (click
+timeouts, CPU-bound). Windows is unmeasured at 12 and its TIME_WAIT lasts
+~4× longer, so it keeps 8.
+
 Waitress detail found while testing: it keeps a connection open only when the
 response has a Content-Length, and closes after a chunked one. Flask sets
 Content-Length on everything this app returns (pages, JSON, static files —
