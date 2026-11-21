@@ -1147,7 +1147,7 @@ The script preserves operator-added prose across re-renders. -->
 <!-- audit-row: tech-debt/dependency-drift/pip-dep-gunicorn-stuck-at-22.0.0-latest-is-26.0.0-4-major-version-s-behind -->
 | `tech-debt/dependency-drift/pip-dep-gunicorn-stuck-at-22.0.0-latest-is-26.0.0-4-major-version-s-behind` | pip dep 'gunicorn' stuck at 22.0.0 — latest is 26.0.0 (4 major version(s) behind) | 2026-05-28 | 2026-05-28 | 🟢 auto-detected resolved 2026-05-30 |
 <!-- audit-row: tech-debt/dependency-drift/pip-dep-gunicorn-stuck-at-26.0.0-latest-is-27.0.1-1-major-version-s-behind -->
-| `tech-debt/dependency-drift/pip-dep-gunicorn-stuck-at-26.0.0-latest-is-27.0.1-1-major-version-s-behind` | pip dep 'gunicorn' stuck at 26.0.0 — latest is 27.0.1 (1 major version(s) behind) | 2026-11-14 | 2026-11-14 |  |
+| `tech-debt/dependency-drift/pip-dep-gunicorn-stuck-at-26.0.0-latest-is-27.0.1-1-major-version-s-behind` | pip dep 'gunicorn' stuck at 26.0.0 — latest is 27.0.1 (1 major version(s) behind) | 2026-11-14 | 2026-11-14 | 🟢 auto-detected resolved 2026-11-21 |
 <!-- audit-row: tech-debt/dependency-drift/pip-dep-pypdf-stuck-at-6.21.4-latest-is-7.0.0-1-major-version-s-behind -->
 | `tech-debt/dependency-drift/pip-dep-pypdf-stuck-at-6.21.4-latest-is-7.0.0-1-major-version-s-behind` | pip dep 'pypdf' stuck at 6.21.4 — latest is 7.0.0 (1 major version(s) behind) | 2026-11-07 | 2026-11-07 | Bumped to 7.0.0 by #525 — the next weekly audit should mark it resolved; 🟢 auto-detected resolved 2026-11-14 |
 <!-- audit-row: tech-debt/stale-tests/tests-test_auth_api.py -->
