@@ -89,19 +89,22 @@ python scripts/stop_dev_bypass.py                 # canonical teardown
   `PYTEST_ADDOPTS`, use forward slashes — it is split with POSIX `shlex`,
   which eats `\` and turns the path relative, i.e. into the repo.
   Cite "all passed, <coverage>%" in commit trailers, not a raw count.
-- **Local Playwright runs in 8 parallel "lanes" on throwaway LOCAL servers
-  (#402/#403, was 2 in #394).** `run_all_gates.sh` starts one dev-bypass
-  server per lane on `:5111..:5118` (lanes 1–7 on copies of the dev DB via
+- **Local Playwright runs in up to 12 parallel "lanes" on throwaway LOCAL
+  servers (#402/#403/#531, was 2 in #394).** `run_all_gates.sh` starts one
+  dev-bypass server per lane on `:5111..:5122` (lanes 1–11 on copies of the dev DB via
   `scripts/clone_dev_db.py`) and tears them all down on exit — nothing on
   Railway. Each Playwright worker talks only to its own lane
   (`tests/e2e/lane.js`). Gate run 8m27s → ~3m30s. Knob:
-  `PLAYWRIGHT_WORKERS=N` (1–8); `=1` is the old single-server serial run
+  `PLAYWRIGHT_WORKERS=N` (1–12); `=1` is the old single-server serial run
   for a low-RAM machine, same tests. **Unset, the lane count is sized to
   the machine** (#521, `scripts/playwright_lanes.py`: 2 GB of RAM per lane,
-  no more than the CPUs, at most 8) — 8 on the 32 GB Windows box, 4 on the
-  8 GB Mac, where 8 lanes swapped and each run failed a different 0–7
-  tests that passed alone (hung clicks, cleanup hooks timing out and
-  leaking into the next test). The gate prints the count it picked. A
+  no more than the CPUs, at most 12 — at most 8 on Windows) — 12 on the
+  32 GB / 12-core Mac mini (Playwright 187s → 134s, #531), 8 on the 32 GB
+  Windows box, 4 on the 8 GB Mac, where 8 lanes swapped and each run
+  failed a different 0–7 tests that passed alone (hung clicks, cleanup
+  hooks timing out and leaking into the next test). 16 lanes on the Mac
+  mini failed 1 run in 6 the same way (CPU-bound, not RAM); GPU rendering
+  flags didn't change that (#531). The gate prints the count it picked. A
   random handful of fails that pass alone = check RAM/swap before the
   tests. **The lane servers must keep
   connections open**: `run_dev_bypass.py` serves the app with waitress
@@ -109,7 +112,9 @@ python scripts/stop_dev_bypass.py                 # canonical teardown
   every connection, so each request parks a loopback port in TIME_WAIT —
   on it, 8 lanes ran Windows out of ports (`net::ERR_ADDRESS_IN_USE` on
   random `/goals` tests, not a test bug). On waitress 8 lanes peak at
-  ~6.7k of 16,384. If you see that error, check `netstat -ano | grep -c
+  ~6.7k of 16,384 on Windows; 12 on the Mac peak at ~5k (macOS frees a
+  closed port after ~30s, Windows after up to ~2 min — why Windows stays
+  at 8 until measured). If you see that error, check `netstat -ano | grep -c
   TIME_WAIT` before suspecting a test. If any lane port is already taken
   the gate refuses to start rather than reuse an unknown process —
   including a second gate run you forgot was still going.
